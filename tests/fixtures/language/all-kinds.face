@@ -1,0 +1,70 @@
+/* Every construct of the face circuit language, version 1. */
+circuit "All kinds \"quoted\" \\ name" {
+    constant bare at (0, 0) {
+        description = "line one\nline two"
+        enabled = false
+        item:iron-plate = 5
+        fluid:water = -3
+        item:"odd name"@"odd quality" = 0x10
+        virtual:signal-A@rare = 2147483647
+        space-location:nauvis = -2147483648
+        custom:my.signal-1 = 0
+    }
+
+    constant grouped at (240, 0) tile (1.5, -2) facing east {
+        section "Ore" {
+            active = false
+            multiplier = -0.5
+            item:iron-ore = 1
+            item:copper-ore = 2
+        }
+        section {
+            asteroid-chunk:metallic-asteroid-chunk = 1; recipe:iron-gear-wheel = 2, entity:small-biter = 3
+        }
+        section "Empty" { }
+    }
+
+    arithmetic each_op at (0, 160) { each = each[red] * virtual:signal-A[green] }
+    arithmetic shift tile (3, 4) { virtual:signal-B = 1 << item:iron-plate }
+    arithmetic logic facing south at (480, 160) { quality:legendary = virtual:signal-A XOR -1 }
+    arithmetic blank { }
+
+    decider gate at (0, 320) {
+        when each > 5 and virtual:signal-A[red] != virtual:signal-B[green] or anything <= -1 or everything = 0
+        output each = input[red]
+        output virtual:signal-C = 7
+        output everything = input
+        else output virtual:signal-D = input[green]
+        else output anything = 1
+    }
+
+    selector pick at (0, 480) { operation = select  order = min  index = virtual:signal-I  index-comparator = >= }
+    selector plain_selector {}
+    selector counter { operation = count output = virtual:signal-C }
+    selector rnd { operation = random interval = 60 }
+    selector stack { operation = stack-size }
+    selector rocket { operation = rocket-capacity }
+    selector qf { operation = quality-filter quality = rare comparator = > }
+    selector qs { operation = quality-select order = lowest }
+    selector qt1 { operation = quality-transfer source = legendary destination = each }
+    selector qt2 { operation = quality-transfer source = signal source-signal = item:iron-plate destination = virtual:signal-Q }
+    selector clock { operation = time day-length = virtual:signal-L day-tick = virtual:signal-D game-tick = virtual:signal-T }
+
+    lamp plain { }
+    lamp light at (240, 480) {
+        when anything > virtual:signal-A
+        networks = green
+        always-on = true
+        colors = components
+        red = virtual:signal-red
+        green = virtual:signal-green
+        blue = virtual:signal-blue
+        rgb = virtual:signal-white
+        color = #ff8000
+    }
+
+    wire red bare.out <-> each_op.in
+    wire green each_op.out <-> each_op.in
+    wire red gate.in <-> each_op.out
+    wire green gate.out <-> light.in
+}

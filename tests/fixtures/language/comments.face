@@ -1,0 +1,23 @@
+// Preserve this circuit heading exactly.
+circuit "Text / canvas experiment" {
+
+    // The source keeps this leading comment.
+    constant source at (40, 80) {
+        virtual:signal-A   =   5  // deliberately irregular spacing
+        enabled = true    /* explicit default */
+    }
+
+    // A wire between declarations tests ordering in the model.
+    wire red source.out <-> twice.in
+
+    arithmetic twice at (300, 80) {
+        virtual:signal-B = virtual:signal-A * 2 // result
+        description = "doubles A" // deliberately noncanonical order
+    }
+
+    lamp light at (560, 80) {
+        when virtual:signal-B > 8
+        always-on = false
+    }
+    wire green twice.out <-> light.in // keep this end-of-line comment
+}
