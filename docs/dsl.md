@@ -38,7 +38,7 @@ circuit "Feedback example" {
 - Whitespace and newlines separate tokens and are otherwise insignificant. Statements need no terminator; an optional `;` or `,` between statements is ignored.
 - Comments: `// to end of line` and `/* block */`. Comments and whitespace are trivia and are preserved by every editor operation that does not rewrite the enclosing statement.
 - Identifier (entity names): `[A-Za-z_][A-Za-z0-9_]*`. Keywords are reserved and case-sensitive.
-- Integer: optional `-` followed by decimal digits, or `0x` hexadecimal; must fit signed 32 bit. A `-` directly followed by a digit after an operator or `=` is a sign. Decimal numbers (`1.5`) are only legal in `tile (...)`.
+- Integer: optional `-` followed by decimal digits, or `0x` hexadecimal; must fit signed 32 bit. A `-` directly followed by a digit after an operator or `=` is a sign. Decimal numbers (`1.5`, `-0.5`) are only legal in `tile (...)` and as a section `multiplier`.
 - String: double-quoted, escapes `\"`, `\\`, `\n`.
 - Signal literal: `kind:name` or `kind:name@quality`, written without spaces. `kind` is one of `item`, `fluid`, `virtual`, `entity`, `recipe`, `space-location`, `asteroid-chunk`, `quality`, `custom`. `name` and `quality` match `[A-Za-z0-9_][A-Za-z0-9_.-]*`; any other prototype name is written quoted: `item:"odd name"@"odd quality"`. Because names may contain `-`, the binary operators `-` and `+` must be surrounded by whitespace.
 - Wildcards are keywords, not signal literals: `each`, `anything`, `everything`. (`virtual:signal-each` etc. are accepted and normalized to the keyword form by the editor; they denote the same signals.)
@@ -85,10 +85,10 @@ Entity names are unique within a circuit. Members may appear in any order; a wir
 ```ebnf
 constant-stmt = filter | section | "enabled" "=" BOOL | property ;
 filter        = SIGNAL "=" INT ;
-section       = "section" [ STRING ] "{" { filter | "active" "=" BOOL | "multiplier" "=" INT } "}" ;
+section       = "section" [ STRING ] "{" { filter | "active" "=" BOOL | "multiplier" "=" NUMBER } "}" ;
 ```
 
-Bare filters form one anonymous section. If `section` blocks are present, bare filters are an error. A quoted section name is the logistic group. Defaults: `enabled = true`, `active = true`, `multiplier = 1`. Wildcards are not legal in a constant combinator.
+Bare filters form one anonymous section. If `section` blocks are present, bare filters are an error. A quoted section name is the logistic group. Defaults: `enabled = true`, `active = true`, `multiplier = 1`. The multiplier is a decimal number and may be negative (the game stores a float). A signal may appear only once per section (error); the same signal in different sections adds up. Wildcards are not legal in a constant combinator.
 
 ### arithmetic
 
@@ -121,7 +121,7 @@ Property bag; `operation` selects the mode and determines which other properties
 | `random` | `interval = INT` (`0`) |
 | `stack-size` | none |
 | `rocket-capacity` | none |
-| `quality-filter` | `quality = <quality name>`; `comparator = <comparator>` |
+| `quality-filter` | `quality = <quality name>` (absent: any quality, then only `=` is meaningful); `comparator = <comparator>` (`=`) |
 | `quality-select` | `order = highest` or `lowest` (`highest`) |
 | `quality-transfer` | `source = <quality name>` or `source = signal` with `source-signal = signal`; `destination = signal` |
 | `time` | `day-length = signal`; `day-tick = signal`; `game-tick = signal` |
