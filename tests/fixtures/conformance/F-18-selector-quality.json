@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "id": "F-18-selector-quality",
+  "covers": ["F-18"],
+  "title": "Selector quality-filter, quality-select and quality-transfer; quality comparisons use levels (legendary = 5)",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-18-selector-quality",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "item", "name": "gear"}, "count": 1}, {"signal": {"kind": "item", "name": "gear", "quality": "rare"}, "count": 3}, {"signal": {"kind": "item", "name": "gear", "quality": "legendary"}, "count": 5}, {"signal": {"kind": "fluid", "name": "water"}, "count": 6}]}]},
+      {"id": "above-rare", "name": "above-rare", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "quality-filter", "comparator": ">", "quality": "rare"}},
+      {"id": "normal-only", "name": "normal-only", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "quality-filter", "comparator": "=", "quality": "normal"}},
+      {"id": "highest", "name": "highest", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "quality-select", "highest": true}},
+      {"id": "lowest", "name": "lowest", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "quality-select", "highest": false}},
+      {"id": "to-epic", "name": "to-epic", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "quality-transfer", "source": {"type": "quality", "quality": "epic"}, "destination": {"kind": "item", "name": "gear"}}},
+      {"id": "from-gear", "name": "from-gear", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "quality-transfer", "source": {"type": "signal", "signal": {"kind": "item", "name": "gear"}}, "destination": {"kind": "fluid", "name": "water"}}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "above-rare", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "normal-only", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "highest", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "lowest", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "to-epic", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "from-gear", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "through": 3, "outputs": {"above-rare": {"item:gear@legendary": 5}, "normal-only": {"item:gear": 1, "fluid:water": 6}, "highest": {"item:gear@legendary": 5, "fluid:water": 6}, "lowest": {"item:gear": 1, "fluid:water": 6}, "to-epic": {"item:gear@epic": 1}, "from-gear": {"fluid:water@legendary": 6}}}
+  ]
+}

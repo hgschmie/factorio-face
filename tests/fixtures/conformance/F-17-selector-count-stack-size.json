@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "F-17-selector-count-stack-size",
+  "covers": ["F-17"],
+  "title": "Selector count, stack-size and rocket-capacity over items with quality variants, a fluid and a virtual signal",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "environment": {"stackSizes": {"item:iron-plate": 100}, "rocketCapacities": {"item:iron-plate": 1000}},
+  "circuit": {
+    "name": "F-17-selector-count-stack-size",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "item", "name": "iron-plate"}, "count": 7}, {"signal": {"kind": "item", "name": "iron-plate", "quality": "rare"}, "count": 1}, {"signal": {"kind": "fluid", "name": "water"}, "count": 50}, {"signal": {"kind": "virtual", "name": "signal-A"}, "count": 3}]}]},
+      {"id": "count", "name": "count", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "count", "output": {"kind": "virtual", "name": "signal-N"}}},
+      {"id": "stack", "name": "stack", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "stack-size"}},
+      {"id": "rocket", "name": "rocket", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "rocket-capacity"}}
+    ],
+    "wires": [
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "count", "side": "in"}},
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "stack", "side": "in"}},
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "rocket", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "through": 3, "outputs": {"count": {"virtual:signal-N": 4}, "stack": {"item:iron-plate": 100, "item:iron-plate@rare": 100}, "rocket": {"item:iron-plate": 1000, "item:iron-plate@rare": 1000}}}
+  ]
+}

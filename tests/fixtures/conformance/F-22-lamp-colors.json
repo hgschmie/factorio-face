@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "id": "F-22-lamp-colors",
+  "covers": ["F-22"],
+  "title": "Lamp colors: mapping priority (red before green and blue), clamped components, packed 0xRRGGBB, static color as fallback",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-22-lamp-colors",
+    "entities": [
+      {"id": "rgb", "name": "rgb", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-green"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-red"}, "count": 1}, {"signal": {"kind": "virtual", "name": "signal-blue"}, "count": 9}]}]},
+      {"id": "parts", "name": "parts", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-red"}, "count": 300}, {"signal": {"kind": "virtual", "name": "signal-green"}, "count": -1}, {"signal": {"kind": "virtual", "name": "signal-blue"}, "count": 128}]}]},
+      {"id": "packed", "name": "packed", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-white"}, "count": 16744448}]}]},
+      {"id": "other", "name": "other", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
+      {"id": "mapping", "name": "mapping", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": true, "colorMode": "mapping"},
+      {"id": "components", "name": "components", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": true, "colorMode": "components"},
+      {"id": "packed-rgb", "name": "packed-rgb", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": true, "colorMode": "packed-rgb"},
+      {"id": "fallback-static", "name": "fallback-static", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": true, "colorMode": "mapping", "color": {"r": 1, "g": 2, "b": 3}},
+      {"id": "fallback-white", "name": "fallback-white", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": true, "colorMode": "mapping"}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "rgb", "side": "out"}, "b": {"entity": "mapping", "side": "in"}},
+      {"color": "red", "a": {"entity": "parts", "side": "out"}, "b": {"entity": "components", "side": "in"}},
+      {"color": "green", "a": {"entity": "packed", "side": "out"}, "b": {"entity": "packed-rgb", "side": "in"}},
+      {"color": "red", "a": {"entity": "other", "side": "out"}, "b": {"entity": "fallback-static", "side": "in"}},
+      {"color": "red", "a": {"entity": "other", "side": "out"}, "b": {"entity": "fallback-white", "side": "in"}}
+    ]
+  },
+  "ticks": 1,
+  "expect": [
+    {"tick": 0, "through": 1, "lamps": {"mapping": {"lit": true, "color": {"r": 255, "g": 0, "b": 0}}, "components": {"lit": true, "color": {"r": 255, "g": 0, "b": 128}}, "packed-rgb": {"lit": true, "color": {"r": 255, "g": 128, "b": 0}}, "fallback-static": {"lit": true, "color": {"r": 1, "g": 2, "b": 3}}, "fallback-white": {"lit": true, "color": null}}}
+  ]
+}

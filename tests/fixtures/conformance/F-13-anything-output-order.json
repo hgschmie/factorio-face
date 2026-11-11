@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "F-13-anything-output-order",
+  "covers": ["F-13"],
+  "title": "An anything output emits the first candidate in signal order (order supplied by the environment; quality variants by level)",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "environment": {"signalOrder": ["item:iron-plate", "fluid:water", "virtual:signal-Z"]},
+  "circuit": {
+    "name": "F-13-anything-output-order",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-Z"}, "count": 9}, {"signal": {"kind": "item", "name": "iron-plate", "quality": "rare"}, "count": 4}, {"signal": {"kind": "item", "name": "iron-plate"}, "count": 3}, {"signal": {"kind": "fluid", "name": "water"}, "count": 1}]}]},
+      {"id": "first-input", "name": "first-input", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-Z"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-anything"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "first-passing", "name": "first-passing", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-anything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 3}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-anything"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "first-input", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "first-passing", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "through": 3, "outputs": {"first-input": {"item:iron-plate": 3}, "first-passing": {"item:iron-plate@rare": 4}}}
+  ]
+}

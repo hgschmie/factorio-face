@@ -1,0 +1,34 @@
+{
+  "format": 1,
+  "id": "F-05-decider-clock",
+  "covers": ["F-05"],
+  "title": "Decider clock: constant A = 1 plus the decider's own output, condition A < 5, output A with input count; period 5",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-05-decider-clock",
+    "entities": [
+      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
+      {"id": "clock", "name": "clock", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": "<", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "clock", "side": "in"}},
+      {"color": "red", "a": {"entity": "clock", "side": "out"}, "b": {"entity": "clock", "side": "in"}}
+    ]
+  },
+  "ticks": 11,
+  "expect": [
+    {"tick": 0, "outputs": {"clock": {}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 1}}]},
+    {"tick": 1, "outputs": {"clock": {"virtual:signal-A": 1}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 2}}]},
+    {"tick": 2, "outputs": {"clock": {"virtual:signal-A": 2}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 3}}]},
+    {"tick": 3, "outputs": {"clock": {"virtual:signal-A": 3}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 4}}]},
+    {"tick": 4, "outputs": {"clock": {"virtual:signal-A": 4}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 5}}]},
+    {"tick": 5, "outputs": {"clock": {}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 1}}]},
+    {"tick": 6, "outputs": {"clock": {"virtual:signal-A": 1}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 2}}]},
+    {"tick": 7, "outputs": {"clock": {"virtual:signal-A": 2}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 3}}]},
+    {"tick": 8, "outputs": {"clock": {"virtual:signal-A": 3}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 4}}]},
+    {"tick": 9, "outputs": {"clock": {"virtual:signal-A": 4}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 5}}]},
+    {"tick": 10, "outputs": {"clock": {}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 1}}]},
+    {"tick": 11, "outputs": {"clock": {"virtual:signal-A": 1}}, "networks": [{"terminal": {"entity": "clock", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 2}}]}
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "format": 1,
+  "id": "F-10-decider-and-or-precedence",
+  "covers": ["F-10"],
+  "title": "AND binds tighter than OR in a decider condition list (wiki Decider_combinator); else outputs fire when false (changelog 2.1.9)",
+  "provenance": "documented",
+  "source": "Derived by hand from statements with a data, api, changelog or web source in docs/factorio-audit.md (cited in the title); not checked against the game. Only steady-state ticks are asserted, so the unverified timing of constant combinators does not matter.",
+  "circuit": {
+    "name": "F-10-decider-and-or-precedence",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
+      {"id": "a-and-b-or-c", "name": "a-and-b-or-c", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "and", "first": {"kind": "virtual", "name": "signal-B"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "or", "first": {"kind": "virtual", "name": "signal-C"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "a-or-b-and-c", "name": "a-or-b-and-c", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "or", "first": {"kind": "virtual", "name": "signal-B"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "and", "first": {"kind": "virtual", "name": "signal-C"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "c-and-b-or-a", "name": "c-and-b-or-a", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-C"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "and", "first": {"kind": "virtual", "name": "signal-B"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "a-and-not-b-and-not-c", "name": "a-and-not-b-and-not-c", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}, {"join": "and", "first": {"kind": "virtual", "name": "signal-B"}, "firstNetworks": {"red": true, "green": true}, "comparator": "=", "second": {"type": "constant", "value": 0}}, {"join": "and", "first": {"kind": "virtual", "name": "signal-C"}, "firstNetworks": {"red": true, "green": true}, "comparator": "=", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "a-and-b-or-c", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "a-or-b-and-c", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "c-and-b-or-a", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "a-and-not-b-and-not-c", "side": "in"}}
+    ]
+  },
+  "ticks": 5,
+  "expect": [
+    {"tick": 3, "through": 5, "outputs": {"a-and-b-or-c": {"virtual:signal-N": 1}, "a-or-b-and-c": {"virtual:signal-Y": 1}, "c-and-b-or-a": {"virtual:signal-Y": 1}, "a-and-not-b-and-not-c": {"virtual:signal-Y": 1}}}
+  ]
+}

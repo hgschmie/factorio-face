@@ -1,0 +1,27 @@
+{
+  "format": 1,
+  "id": "F-05-counter",
+  "covers": ["F-05"],
+  "title": "Self-wired arithmetic A + 1 -> A counts one per tick, starting with 1 at tick 1",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-05-counter",
+    "entities": [
+      {"id": "n", "name": "n", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "n", "side": "out"}, "b": {"entity": "n", "side": "in"}}
+    ]
+  },
+  "ticks": 6,
+  "expect": [
+    {"tick": 0, "outputs": {"n": {}}},
+    {"tick": 1, "outputs": {"n": {"virtual:signal-A": 1}}, "networks": [{"terminal": {"entity": "n", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 1}}]},
+    {"tick": 2, "outputs": {"n": {"virtual:signal-A": 2}}, "networks": [{"terminal": {"entity": "n", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 2}}]},
+    {"tick": 3, "outputs": {"n": {"virtual:signal-A": 3}}, "networks": [{"terminal": {"entity": "n", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 3}}]},
+    {"tick": 4, "outputs": {"n": {"virtual:signal-A": 4}}, "networks": [{"terminal": {"entity": "n", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 4}}]},
+    {"tick": 5, "outputs": {"n": {"virtual:signal-A": 5}}, "networks": [{"terminal": {"entity": "n", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 5}}]},
+    {"tick": 6, "outputs": {"n": {"virtual:signal-A": 6}}, "networks": [{"terminal": {"entity": "n", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 6}}]}
+  ]
+}

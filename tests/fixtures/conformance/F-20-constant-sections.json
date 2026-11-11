@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "F-20-constant-sections",
+  "covers": ["F-20"],
+  "title": "Constant combinator: sections add per signal and wrap (changelog 2.0.45), inactive sections and a switched-off combinator emit nothing (api)",
+  "provenance": "documented",
+  "source": "Derived by hand from statements with a data, api, changelog or web source in docs/factorio-audit.md (cited in the title); not checked against the game. Only steady-state ticks are asserted, so the unverified timing of constant combinators does not matter.",
+  "circuit": {
+    "name": "F-20-constant-sections",
+    "entities": [
+      {"id": "wrap", "name": "wrap", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 2147483647}]}, {"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
+      {"id": "sections", "name": "sections", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 10}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}, {"active": false, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}, {"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": -3}]}]},
+      {"id": "off", "name": "off", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": false, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 10}]}]},
+      {"id": "probe", "name": "probe", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping"}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "wrap", "side": "out"}, "b": {"entity": "probe", "side": "in"}},
+      {"color": "green", "a": {"entity": "sections", "side": "out"}, "b": {"entity": "probe", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 2, "through": 3, "outputs": {"wrap": {"virtual:signal-A": -2147483648}, "sections": {"virtual:signal-A": 7, "virtual:signal-B": 1}, "off": {}}, "networks": [{"terminal": {"entity": "probe", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": -2147483648}}, {"terminal": {"entity": "probe", "side": "in"}, "color": "green", "signals": {"virtual:signal-A": 7, "virtual:signal-B": 1}}]}
+  ]
+}

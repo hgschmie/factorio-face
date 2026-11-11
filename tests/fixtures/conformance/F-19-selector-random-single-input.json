@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "F-19-selector-random-single-input",
+  "covers": ["F-19"],
+  "title": "Selector random with a single input signal passes that signal (the only case whose result does not depend on the generator)",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "seed": 1,
+  "circuit": {
+    "name": "F-19-selector-random-single-input",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}]}]},
+      {"id": "r", "name": "r", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "random", "interval": 3}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "r", "side": "in"}}
+    ]
+  },
+  "ticks": 7,
+  "expect": [
+    {"tick": 0, "outputs": {"r": {}}},
+    {"tick": 1, "through": 7, "outputs": {"r": {"virtual:signal-A": 4}}}
+  ]
+}

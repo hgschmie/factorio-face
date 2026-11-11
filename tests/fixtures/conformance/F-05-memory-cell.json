@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "F-05-memory-cell",
+  "covers": ["F-05", "F-19"],
+  "title": "A one-tick pulse (time selector, decider T = 3) is latched by a self-wired each + 0 -> each memory cell",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-05-memory-cell",
+    "entities": [
+      {"id": "t", "name": "t", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "time", "gameTick": {"kind": "virtual", "name": "signal-T"}}},
+      {"id": "pulse", "name": "pulse", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-T"}, "firstNetworks": {"red": true, "green": true}, "comparator": "=", "second": {"type": "constant", "value": 3}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": false, "constant": 7, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "cell", "name": "cell", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-each"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-each"}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "t", "side": "out"}, "b": {"entity": "pulse", "side": "in"}},
+      {"color": "green", "a": {"entity": "pulse", "side": "out"}, "b": {"entity": "cell", "side": "in"}},
+      {"color": "green", "a": {"entity": "cell", "side": "out"}, "b": {"entity": "cell", "side": "in"}}
+    ]
+  },
+  "ticks": 12,
+  "expect": [
+    {"tick": 0, "through": 1, "outputs": {"t": {}, "pulse": {}, "cell": {}}},
+    {"tick": 4, "outputs": {"t": {"virtual:signal-T": 3}, "pulse": {}, "cell": {}}},
+    {"tick": 5, "outputs": {"t": {"virtual:signal-T": 4}, "pulse": {"virtual:signal-A": 7}, "cell": {}}, "networks": [{"terminal": {"entity": "cell", "side": "in"}, "color": "green", "signals": {"virtual:signal-A": 7}}]},
+    {"tick": 6, "outputs": {"pulse": {}, "cell": {"virtual:signal-A": 7}}, "networks": [{"terminal": {"entity": "cell", "side": "in"}, "color": "green", "signals": {"virtual:signal-A": 7}}]},
+    {"tick": 7, "through": 12, "outputs": {"pulse": {}, "cell": {"virtual:signal-A": 7}}}
+  ]
+}

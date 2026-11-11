@@ -1,0 +1,34 @@
+{
+  "format": 1,
+  "id": "F-16-selector-select",
+  "covers": ["F-16"],
+  "title": "Selector select: highest, lowest (signed), index, index out of range, single input, index comparator <",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-16-selector-select",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 9}, {"signal": {"kind": "virtual", "name": "signal-C"}, "count": -3}, {"signal": {"kind": "virtual", "name": "signal-D"}, "count": 7}]}]},
+      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}]}]},
+      {"id": "max-0", "name": "max-0", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 0}, "indexComparator": "="}},
+      {"id": "min-0", "name": "min-0", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": false, "index": {"type": "constant", "value": 0}, "indexComparator": "="}},
+      {"id": "max-1", "name": "max-1", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 1}, "indexComparator": "="}},
+      {"id": "out-of-range", "name": "out-of-range", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 4}, "indexComparator": "="}},
+      {"id": "top-2", "name": "top-2", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 2}, "indexComparator": "<"}},
+      {"id": "single", "name": "single", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 5}, "indexComparator": "="}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "max-0", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "min-0", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "max-1", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "out-of-range", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "top-2", "side": "in"}},
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "single", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 0, "outputs": {"max-0": {}, "single": {}}},
+    {"tick": 1, "through": 3, "outputs": {"max-0": {"virtual:signal-B": 9}, "min-0": {"virtual:signal-C": -3}, "max-1": {"virtual:signal-D": 7}, "out-of-range": {}, "top-2": {"virtual:signal-B": 9, "virtual:signal-D": 7}, "single": {"virtual:signal-A": 4}}}
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "id": "F-06-arithmetic-edge-cases",
+  "covers": ["F-06"],
+  "title": "Arithmetic operator edge cases on constant operands: wrap, division and modulo by zero, power, shift masking, bitwise",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-06-arithmetic-edge-cases",
+    "entities": [
+      {"id": "add-wrap", "name": "add-wrap", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 2147483647}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "sub-wrap", "name": "sub-wrap", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -2147483648}, "operation": "-", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "mul-wrap", "name": "mul-wrap", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 65536}, "operation": "*", "second": {"type": "constant", "value": 65537}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "mul-min", "name": "mul-min", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -2147483648}, "operation": "*", "second": {"type": "constant", "value": -1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "div-trunc", "name": "div-trunc", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -21}, "operation": "/", "second": {"type": "constant", "value": 10}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "div-zero", "name": "div-zero", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 7}, "operation": "/", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "div-min", "name": "div-min", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -2147483648}, "operation": "/", "second": {"type": "constant", "value": -1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "mod-sign", "name": "mod-sign", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -13}, "operation": "%", "second": {"type": "constant", "value": 3}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "mod-zero", "name": "mod-zero", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 7}, "operation": "%", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "mod-min", "name": "mod-min", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -2147483648}, "operation": "%", "second": {"type": "constant", "value": -1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "pow-zero-zero", "name": "pow-zero-zero", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 0}, "operation": "^", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "pow-31", "name": "pow-31", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 2}, "operation": "^", "second": {"type": "constant", "value": 31}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "pow-32", "name": "pow-32", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 2}, "operation": "^", "second": {"type": "constant", "value": 32}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "pow-negative", "name": "pow-negative", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 1}, "operation": "^", "second": {"type": "constant", "value": -1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "shl-32", "name": "shl-32", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 3}, "operation": "<<", "second": {"type": "constant", "value": 32}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "shl-33", "name": "shl-33", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 3}, "operation": "<<", "second": {"type": "constant", "value": 33}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "shl-minus-1", "name": "shl-minus-1", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": 1}, "operation": "<<", "second": {"type": "constant", "value": -1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "shr-sign", "name": "shr-sign", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -8}, "operation": ">>", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "shr-33", "name": "shr-33", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -8}, "operation": ">>", "second": {"type": "constant", "value": 33}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "and", "name": "and", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -1}, "operation": "AND", "second": {"type": "constant", "value": 255}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "xor", "name": "xor", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -1}, "operation": "XOR", "second": {"type": "constant", "value": -2147483648}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "or", "name": "or", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "constant", "value": -2147483648}, "operation": "OR", "second": {"type": "constant", "value": 2147483647}, "output": {"kind": "virtual", "name": "signal-A"}}
+    ],
+    "wires": [
+    ]
+  },
+  "ticks": 2,
+  "expect": [
+    {"tick": 0, "outputs": {"add-wrap": {}, "sub-wrap": {}, "mul-wrap": {}, "mul-min": {}, "div-trunc": {}, "div-zero": {}, "div-min": {}, "mod-sign": {}, "mod-zero": {}, "mod-min": {}, "pow-zero-zero": {}, "pow-31": {}, "pow-32": {}, "pow-negative": {}, "shl-32": {}, "shl-33": {}, "shl-minus-1": {}, "shr-sign": {}, "shr-33": {}, "and": {}, "xor": {}, "or": {}}},
+    {"tick": 1, "through": 2, "outputs": {"add-wrap": {"virtual:signal-A": -2147483648}, "sub-wrap": {"virtual:signal-A": 2147483647}, "mul-wrap": {"virtual:signal-A": 65536}, "mul-min": {"virtual:signal-A": -2147483648}, "div-trunc": {"virtual:signal-A": -2}, "div-zero": {}, "div-min": {"virtual:signal-A": -2147483648}, "mod-sign": {"virtual:signal-A": -1}, "mod-zero": {}, "mod-min": {}, "pow-zero-zero": {"virtual:signal-A": 1}, "pow-31": {"virtual:signal-A": -2147483648}, "pow-32": {}, "pow-negative": {}, "shl-32": {"virtual:signal-A": 3}, "shl-33": {"virtual:signal-A": 6}, "shl-minus-1": {"virtual:signal-A": -2147483648}, "shr-sign": {"virtual:signal-A": -4}, "shr-33": {"virtual:signal-A": -4}, "and": {"virtual:signal-A": 255}, "xor": {"virtual:signal-A": 2147483647}, "or": {"virtual:signal-A": -1}}}
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "format": 1,
+  "id": "F-11-everything-anything-truth-table",
+  "covers": ["F-11"],
+  "title": "everything is true for no input and when all inputs pass; anything is false for no input and true when one input passes (base.cfg tooltips, wiki Circuit_network)",
+  "provenance": "documented",
+  "source": "Derived by hand from statements with a data, api, changelog or web source in docs/factorio-audit.md (cited in the title); not checked against the game. Only steady-state ticks are asserted, so the unverified timing of constant combinators does not matter.",
+  "circuit": {
+    "name": "F-11-everything-anything-truth-table",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 2}]}]},
+      {"id": "everything-all", "name": "everything-all", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-everything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "everything-some", "name": "everything-some", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-everything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 1}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "anything-some", "name": "anything-some", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-anything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 1}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "anything-none", "name": "anything-none", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-anything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 2}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "everything-no-input", "name": "everything-no-input", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-everything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "anything-no-input", "name": "anything-no-input", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-anything"}, "firstNetworks": {"red": true, "green": true}, "comparator": "<", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]}
+    ],
+    "wires": [
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "everything-all", "side": "in"}},
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "everything-some", "side": "in"}},
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "anything-some", "side": "in"}},
+      {"color": "green", "a": {"entity": "c", "side": "out"}, "b": {"entity": "anything-none", "side": "in"}}
+    ]
+  },
+  "ticks": 5,
+  "expect": [
+    {"tick": 3, "through": 5, "outputs": {"everything-all": {"virtual:signal-Y": 1}, "everything-some": {"virtual:signal-N": 1}, "anything-some": {"virtual:signal-Y": 1}, "anything-none": {"virtual:signal-N": 1}, "everything-no-input": {"virtual:signal-Y": 1}, "anything-no-input": {"virtual:signal-N": 1}}}
+  ]
+}

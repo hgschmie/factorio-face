@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "F-21-lamp-enable",
+  "covers": ["F-21"],
+  "title": "Lamp lighting: enable condition true / false, always-on overridden by a false condition, no wire, no day/night cycle",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-21-lamp-enable",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}]},
+      {"id": "true", "name": "true", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": ">", "second": {"type": "constant", "value": 0}}},
+      {"id": "false", "name": "false", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": ">", "second": {"type": "constant", "value": 9}}},
+      {"id": "false-always-on", "name": "false-always-on", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": ">", "second": {"type": "constant", "value": 9}}},
+      {"id": "plain", "name": "plain", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping"},
+      {"id": "always-on", "name": "always-on", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": true, "useColors": false, "colorMode": "mapping"},
+      {"id": "condition-no-wire", "name": "condition-no-wire", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 0}}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "true", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "false", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "false-always-on", "side": "in"}}
+    ]
+  },
+  "ticks": 2,
+  "expect": [
+    {"tick": 0, "through": 2, "lamps": {"true": {"lit": true, "color": null}, "false": {"lit": false}, "false-always-on": {"lit": false}, "plain": {"lit": false}, "always-on": {"lit": true}, "condition-no-wire": {"lit": false}}}
+  ]
+}

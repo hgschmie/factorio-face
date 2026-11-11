@@ -1,0 +1,24 @@
+{
+  "format": 1,
+  "id": "F-11-right-hand-signal-excluded",
+  "covers": ["F-11"],
+  "title": "everything / anything compared with a signal: that signal is excluded from the checked set (wiki claim, unverified)",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-11-right-hand-signal-excluded",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 2}, {"signal": {"kind": "virtual", "name": "signal-L"}, "count": 5}]}]},
+      {"id": "everything-below-l", "name": "everything-below-l", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-everything"}, "firstNetworks": {"red": true, "green": true}, "comparator": "<", "second": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-L"}, "networks": {"red": true, "green": true}}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]},
+      {"id": "anything-equals-l", "name": "anything-equals-l", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-anything"}, "firstNetworks": {"red": true, "green": true}, "comparator": "=", "second": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-L"}, "networks": {"red": true, "green": true}}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "everything-below-l", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "anything-equals-l", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "through": 3, "outputs": {"everything-below-l": {"virtual:signal-Y": 1}, "anything-equals-l": {"virtual:signal-N": 1}}}
+  ]
+}

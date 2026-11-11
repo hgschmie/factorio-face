@@ -1,0 +1,23 @@
+{
+  "format": 1,
+  "id": "F-05-counter-wrap",
+  "covers": ["F-05", "F-06"],
+  "title": "A self-wired accumulator wraps from 2147483647 into the negative range",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-05-counter-wrap",
+    "entities": [
+      {"id": "n", "name": "n", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 2147483647}, "output": {"kind": "virtual", "name": "signal-A"}}
+    ],
+    "wires": [
+      {"color": "green", "a": {"entity": "n", "side": "out"}, "b": {"entity": "n", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "outputs": {"n": {"virtual:signal-A": 2147483647}}},
+    {"tick": 2, "outputs": {"n": {"virtual:signal-A": -2}}},
+    {"tick": 3, "outputs": {"n": {"virtual:signal-A": 2147483645}}}
+  ]
+}

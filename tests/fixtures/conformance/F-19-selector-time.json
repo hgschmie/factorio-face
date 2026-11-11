@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "id": "F-19-selector-time",
+  "covers": ["F-19"],
+  "title": "Selector time mode with day length 100 and clock origin 98: game tick of the evaluating tick appears one tick later; the day tick restarts at the day length",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "environment": {"time": {"dayLength": 100, "startTick": 98}},
+  "circuit": {
+    "name": "F-19-selector-time",
+    "entities": [
+      {"id": "s", "name": "s", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "time", "gameTick": {"kind": "virtual", "name": "signal-T"}, "dayTick": {"kind": "virtual", "name": "signal-D"}, "dayLength": {"kind": "virtual", "name": "signal-L"}}}
+    ],
+    "wires": [
+    ]
+  },
+  "ticks": 4,
+  "expect": [
+    {"tick": 0, "outputs": {"s": {}}},
+    {"tick": 1, "outputs": {"s": {"virtual:signal-T": 98, "virtual:signal-D": 98, "virtual:signal-L": 100}}},
+    {"tick": 2, "outputs": {"s": {"virtual:signal-T": 99, "virtual:signal-D": 99, "virtual:signal-L": 100}}},
+    {"tick": 3, "outputs": {"s": {"virtual:signal-T": 100, "virtual:signal-L": 100}}},
+    {"tick": 4, "outputs": {"s": {"virtual:signal-T": 101, "virtual:signal-D": 1, "virtual:signal-L": 100}}}
+  ]
+}

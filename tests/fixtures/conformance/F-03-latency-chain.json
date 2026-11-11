@@ -1,0 +1,29 @@
+{
+  "format": 1,
+  "id": "F-03-latency-chain",
+  "covers": ["F-03"],
+  "title": "Constant -> arithmetic -> arithmetic -> decider: constants are present at tick 0, every combinator stage adds one tick",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-03-latency-chain",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}]},
+      {"id": "a1", "name": "a1", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "a2", "name": "a2", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "*", "second": {"type": "constant", "value": 2}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "d", "name": "d", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "a1", "side": "in"}},
+      {"color": "red", "a": {"entity": "a1", "side": "out"}, "b": {"entity": "a2", "side": "in"}},
+      {"color": "green", "a": {"entity": "a2", "side": "out"}, "b": {"entity": "d", "side": "in"}}
+    ]
+  },
+  "ticks": 5,
+  "expect": [
+    {"tick": 0, "outputs": {"c": {"virtual:signal-A": 5}, "a1": {}, "a2": {}, "d": {}}, "networks": [{"terminal": {"entity": "c", "side": "out"}, "color": "red", "signals": {"virtual:signal-A": 5}}, {"terminal": {"entity": "a2", "side": "in"}, "color": "red", "signals": {}}, {"terminal": {"entity": "d", "side": "in"}, "color": "green", "signals": {}}]},
+    {"tick": 1, "outputs": {"a1": {"virtual:signal-A": 6}, "a2": {}, "d": {}}, "networks": [{"terminal": {"entity": "a2", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 6}}]},
+    {"tick": 2, "outputs": {"a1": {"virtual:signal-A": 6}, "a2": {"virtual:signal-A": 12}, "d": {}}, "networks": [{"terminal": {"entity": "d", "side": "in"}, "color": "green", "signals": {"virtual:signal-A": 12}}]},
+    {"tick": 3, "through": 5, "outputs": {"c": {"virtual:signal-A": 5}, "a1": {"virtual:signal-A": 6}, "a2": {"virtual:signal-A": 12}, "d": {"virtual:signal-A": 12}}}
+  ]
+}

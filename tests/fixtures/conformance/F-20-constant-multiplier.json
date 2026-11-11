@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "id": "F-20-constant-multiplier",
+  "covers": ["F-20"],
+  "title": "Constant combinator section multipliers: count * multiplier truncates toward zero per filter before sections are summed",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-20-constant-multiplier",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 0.5, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 3}]}, {"active": true, "multiplier": 1.5, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}, {"active": true, "multiplier": -1, "filters": [{"signal": {"kind": "virtual", "name": "signal-B"}, "count": 3}]}]},
+      {"id": "exact", "name": "exact", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 0.29, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 100}]}]}
+    ],
+    "wires": [
+    ]
+  },
+  "ticks": 1,
+  "expect": [
+    {"tick": 0, "through": 1, "outputs": {"c": {"virtual:signal-A": 9, "virtual:signal-B": -2}, "exact": {"virtual:signal-A": 29}}}
+  ]
+}

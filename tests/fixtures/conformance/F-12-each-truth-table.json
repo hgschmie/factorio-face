@@ -1,0 +1,32 @@
+{
+  "format": 1,
+  "id": "F-12-each-truth-table",
+  "covers": ["F-12", "F-14"],
+  "title": "Decider with each > 5 over A=1, B=7, C=9, D=-2: each, anything and specific outputs with input count and constant; else outputs for failing signals",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-12-each-truth-table",
+    "entities": [
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 7}, {"signal": {"kind": "virtual", "name": "signal-C"}, "count": 9}, {"signal": {"kind": "virtual", "name": "signal-D"}, "count": -2}]}]},
+      {"id": "each-copy", "name": "each-copy", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-each"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-each"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "each-one", "name": "each-one", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-each"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-each"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "sum", "name": "sum", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-each"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-S"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "count", "name": "count", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-each"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-S"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "first", "name": "first", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-each"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-anything"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []},
+      {"id": "split", "name": "split", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-each"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-each"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-each"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "each-copy", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "each-one", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "sum", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "count", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "first", "side": "in"}},
+      {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "split", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "through": 3, "outputs": {"each-copy": {"virtual:signal-B": 7, "virtual:signal-C": 9}, "each-one": {"virtual:signal-B": 1, "virtual:signal-C": 1}, "sum": {"virtual:signal-S": 16}, "count": {"virtual:signal-S": 2}, "first": {"virtual:signal-B": 7}, "split": {"virtual:signal-B": 7, "virtual:signal-C": 9, "virtual:signal-A": 1, "virtual:signal-D": 1}}}
+  ]
+}

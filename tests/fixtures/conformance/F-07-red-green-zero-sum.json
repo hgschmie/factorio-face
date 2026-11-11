@@ -1,0 +1,34 @@
+{
+  "format": 1,
+  "id": "F-07-red-green-zero-sum",
+  "covers": ["F-07"],
+  "title": "Red and green are separate networks; an input sums both, and red +3 with green -3 removes the signal for each, count and anything",
+  "provenance": "assumed",
+  "source": "Derived by hand from the reference model in docs/factorio-audit.md section 6; not checked against the game.",
+  "circuit": {
+    "name": "F-07-red-green-zero-sum",
+    "entities": [
+      {"id": "r", "name": "r", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 3}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}]},
+      {"id": "g", "name": "g", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": -3}, {"signal": {"kind": "virtual", "name": "signal-C"}, "count": 2}]}]},
+      {"id": "sum", "name": "sum", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-each"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-each"}},
+      {"id": "red-only", "name": "red-only", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-each"}, "networks": {"red": true, "green": false}}, "operation": "+", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-each"}},
+      {"id": "count", "name": "count", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "count", "output": {"kind": "virtual", "name": "signal-N"}}},
+      {"id": "any", "name": "any", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-anything"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 2}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-Y"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": [{"signal": {"kind": "virtual", "name": "signal-N"}, "copyCountFromInput": false, "constant": 1, "networks": {"red": true, "green": true}}]}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "r", "side": "out"}, "b": {"entity": "sum", "side": "in"}},
+      {"color": "red", "a": {"entity": "r", "side": "out"}, "b": {"entity": "red-only", "side": "in"}},
+      {"color": "red", "a": {"entity": "r", "side": "out"}, "b": {"entity": "count", "side": "in"}},
+      {"color": "red", "a": {"entity": "r", "side": "out"}, "b": {"entity": "any", "side": "in"}},
+      {"color": "green", "a": {"entity": "g", "side": "out"}, "b": {"entity": "sum", "side": "in"}},
+      {"color": "green", "a": {"entity": "g", "side": "out"}, "b": {"entity": "red-only", "side": "in"}},
+      {"color": "green", "a": {"entity": "g", "side": "out"}, "b": {"entity": "count", "side": "in"}},
+      {"color": "green", "a": {"entity": "g", "side": "out"}, "b": {"entity": "any", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 0, "through": 3, "networks": [{"terminal": {"entity": "r", "side": "out"}, "color": "red", "signals": {"virtual:signal-A": 3, "virtual:signal-B": 1}}, {"terminal": {"entity": "g", "side": "out"}, "color": "green", "signals": {"virtual:signal-A": -3, "virtual:signal-C": 2}}]},
+    {"tick": 1, "through": 3, "outputs": {"sum": {"virtual:signal-B": 1, "virtual:signal-C": 2}, "red-only": {"virtual:signal-A": 3, "virtual:signal-B": 1}, "count": {"virtual:signal-N": 2}, "any": {"virtual:signal-N": 1}}}
+  ]
+}
