@@ -1204,3 +1204,13 @@ so a lamp without circuit control is displayed as "ambient" (lit only if `always
 3. Rocket capacity needs runtime item weights (`LuaItemPrototype` at runtime), which a `--dump-data-raw` style dump does not contain. Either extend the dump task or keep the mode non-simulated.
 4. Whether 1.x strings should be converted rather than rejected: the game still imports them, so users may hold such strings.
 5. The DSL needs a way to say "group" as OR-of-ANDs only; a richer boolean syntax must be normalized or rejected.
+
+## 11. Errata from the engine data dump (2026-11-11)
+
+The catalog generator (`tools/catalog`, see `packages/catalog/README.md`) dumped the engine's finalised prototypes for all eight dependency-closed module sets. Where it disagrees with the sections above, the dump wins:
+
+- Section 2.4: the engine marks eight virtual signals as `special`, not four: everything, anything, each, `signal-unknown` and the four train-interrupt parameters (`signal-item-parameter`, `signal-fuel-parameter`, `signal-fluid-parameter`, `signal-signal-parameter`). Only everything, anything and each are wildcards for combinators.
+- Section 2.3: asteroid chunks are hidden signals with `hide_from_signal_gui = true` and an `item_signal_alias` to the same-named item; `hide_from_signal_gui` is false for hidden recipes, so `hidden` must be checked first.
+- Section 6.5 and open question 3: rocket capacity is computable. Every item has an engine-computed `weight` in the catalog and the rocket lift weight is in the dump (1,000,000 with Space Age; effectively unlimited without it).
+- Section 1.2: because Space Age only recommends Quality (`+` marker), there are eight valid module sets, not five; the catalog records per-set variants (for example `space-science-pack` stack size 2000 versus 200 with Space Age).
+- Open question 2: group, subgroup and order strings and quality levels are in the catalog; the comparator itself still needs fixtures F-13 and F-16.
