@@ -1,0 +1,167 @@
+/* Left panel: tools, building blocks, entity list. */
+.palette {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: var(--palette-width);
+  padding: 20px 15px 0;
+  border-right: 1px solid var(--border-subtle);
+  background: var(--surface-palette);
+}
+
+.palette-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 3px 16px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  letter-spacing: 1.45px;
+  color: #c4c9b7;
+}
+
+.palette .section-label {
+  margin: 0 4px 10px;
+}
+
+.tool-row {
+  display: grid;
+  grid-template-columns: 34px 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+
+.tool-button {
+  gap: 5px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 3px;
+  border-color: #434b39;
+  font-size: var(--text-md);
+  color: #9ba990;
+  background: #2b3228;
+}
+
+.tool-button[aria-pressed="true"] {
+  border-color: #67724f;
+  color: #e2d6ae;
+  background: var(--surface-selected);
+}
+
+.tool-button.wire-red {
+  color: var(--wire-red-ui);
+}
+
+.tool-button.wire-green {
+  color: var(--wire-green-ui);
+}
+
+.tool-button.wire-red[aria-pressed="true"] {
+  border-color: var(--wire-red-border);
+  background: var(--wire-red-surface);
+}
+
+.tool-button.wire-green[aria-pressed="true"] {
+  border-color: var(--wire-green-border);
+  background: var(--wire-green-surface);
+}
+
+.palette-items {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.palette-item {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 8px;
+  border-color: #434b39;
+  text-align: left;
+  background: linear-gradient(135deg, #333a2e, #2b3228);
+  box-shadow: 0 2px 2px rgb(0 0 0 / 5%);
+}
+
+.palette-item:hover:not(:disabled),
+.palette-item[aria-pressed="true"] {
+  border-color: var(--amber-border);
+  background: #3b412f;
+}
+
+.palette-item-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.palette-item strong {
+  display: block;
+  font-size: var(--text-base);
+  font-weight: 550;
+}
+
+.palette-item small {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  white-space: normal;
+  color: #9ba58f;
+}
+
+.palette-item > svg:last-child {
+  color: #9b9f84;
+}
+
+.palette-divider {
+  margin: 18px 0 16px;
+  border-bottom: 1px solid #3f4736;
+}
+
+.entity-list {
+  flex: 1;
+  min-height: 40px;
+  margin: 0 -6px;
+  padding: 0 6px 8px;
+  overflow: auto;
+}
+
+.entity-list button {
+  justify-content: flex-start;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: var(--text-base);
+  text-align: left;
+  color: #aeb8a4;
+}
+
+.entity-list button span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.entity-list button[aria-pressed="true"] {
+  color: #e1dec4;
+  background: #3c4433;
+}
+
+.kind-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: var(--kind-color, var(--amber));
+}
+
+.entity-icon {
+  flex-shrink: 0;
+  filter: drop-shadow(0 3px 2px rgb(0 0 0 / 33%));
+}
+
+@media (max-width: 1250px) {
+  /* The narrow palette has no room for the wire glyphs next to the labels. */
+  .tool-button.wire-red svg,
+  .tool-button.wire-green svg {
+    display: none;
+  }
+}

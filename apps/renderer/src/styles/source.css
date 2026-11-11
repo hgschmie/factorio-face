@@ -1,0 +1,110 @@
+/* Source pane: heading, CodeMirror host, diagnostics list. The editor's own colors live in editor/theme.ts and read these tokens. */
+.source-heading {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 37px;
+  padding: 0 14px;
+  border-bottom: 1px solid #323a2f;
+  font-size: var(--text-xs);
+  letter-spacing: 1px;
+  color: #8d9a85;
+}
+
+.source-heading .file-name {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--text-md);
+  letter-spacing: 0;
+  color: #bac2ae;
+}
+
+.source-editor {
+  flex: 1;
+  min-height: 0;
+  user-select: text;
+}
+
+.source-editor .cm-editor {
+  height: 100%;
+}
+
+.diagnostics {
+  flex-shrink: 0;
+  max-height: 110px;
+  margin: 0;
+  padding: 7px;
+  overflow: auto;
+  border-top: 1px solid #7e6540;
+  list-style: none;
+  background: #3b2f24;
+}
+
+.diagnostics button {
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding: 4px;
+  font-size: var(--text-md);
+  text-align: left;
+  white-space: normal;
+  color: #e2bf8c;
+}
+
+.diagnostics .severity-info button {
+  color: #b9c3ac;
+}
+
+.diagnostics .severity-error button {
+  color: #f0b19c;
+}
+
+/* Token classes produced by the tokenize prop (see editor/tokenHighlight.ts). */
+.face-tok-keyword {
+  color: #e6af61;
+}
+
+.face-tok-string {
+  color: #a5c69a;
+}
+
+.face-tok-number {
+  color: #d7b68c;
+}
+
+.face-tok-comment {
+  font-style: italic;
+  color: #737e75;
+}
+
+.face-tok-signal {
+  color: #9cc7b4;
+}
+
+.face-tok-color-red {
+  color: var(--wire-red-ui);
+}
+
+.face-tok-color-green {
+  color: var(--wire-green-ui);
+}
+
+.face-tok-atom {
+  color: #d5a98c;
+}
+
+.face-tok-name {
+  color: #dddcd0;
+}
+
+.face-tok-operator,
+.face-tok-punctuation {
+  color: #9aa390;
+}
+
+.face-tok-invalid {
+  text-decoration: underline wavy var(--status-error);
+}

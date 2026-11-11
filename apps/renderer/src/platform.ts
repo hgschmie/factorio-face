@@ -1,0 +1,19 @@
+// Platform-dependent labels for keyboard shortcuts shown in the UI.
+export const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
+
+export const SHORTCUT = {
+  delete: IS_MAC ? "⌫" : "Del",
+  selectAll: IS_MAC ? "⌘A" : "Ctrl+A",
+  undo: IS_MAC ? "⌘Z" : "Ctrl+Z",
+  redo: IS_MAC ? "⇧⌘Z" : "Ctrl+Y",
+  save: IS_MAC ? "⌘S" : "Ctrl+S",
+  fit: IS_MAC ? "⌘0" : "Ctrl+0",
+} as const;
+
+/** True when keyboard input currently belongs to a text control or the source editor rather than to the canvas. */
+export function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  if (target.isContentEditable || target.closest(".cm-editor")) return true;
+  if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
+  return target instanceof HTMLInputElement && !["checkbox", "radio", "button", "range", "color"].includes(target.type);
+}

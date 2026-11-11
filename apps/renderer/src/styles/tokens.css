@@ -1,0 +1,113 @@
+/* Design tokens of the approved theme: olive/charcoal surfaces, warm amber controls, distinct red and green wires. */
+:root {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest */
+  --surface-window: #20251f;
+  --surface-editor: #1c201e;
+  --surface-inset: #1e241f;
+  --surface-well: #191f19;
+  --surface-statusbar: #20271c;
+  --surface-titlebar: #242920;
+  --surface-palette: #262c24;
+  --surface-inspector: #292f26;
+  --surface-dock: #2a3025;
+  --surface-projectbar: #2b3027;
+  --surface-raised: #373d30;
+  --surface-raised-hover: #444a38;
+  --surface-selected: #414935;
+  --surface-active: #454936;
+  --surface-hover: rgb(255 255 255 / 4%);
+  --surface-popover: #30362f;
+
+  /* Canvas */
+  --canvas-center: #283228;
+  --canvas-mid: #20291f;
+  --canvas-edge: #1c251c;
+  --canvas-dot: #536052;
+  --card-top: #333b33;
+  --card-bottom: #2a312b;
+  --card-border: #55604e;
+  --card-border-hover: #a1ab87;
+  --card-divider: #60694f;
+  --card-lit: #3d422d;
+  --terminal-fill: #1b241a;
+  --terminal-border: #6c795e;
+  --terminal-in: #adb7a0;
+  --terminal-out: #cfac69;
+
+  /* Borders */
+  --border-subtle: #3b4236;
+  --border: #454c3b;
+  --border-strong: #565b42;
+  --border-input: #464d40;
+
+  /* Text */
+  --text: #dedfd4;
+  --text-strong: #f0e4c8;
+  --text-soft: #b9c3ac;
+  --text-muted: #91998b;
+  --text-dim: #7e8978;
+  --text-label: #a4ad96;
+
+  /* Amber accent */
+  --amber: #d9b06a;
+  --amber-strong: #d3b36c;
+  --amber-bright: #e5c78a;
+  --amber-ink: #292f20;
+  --amber-border: #9f8954;
+  --amber-surface: #514d31;
+  --focus-ring: #d5ae6d;
+
+  /* Wires: saturated on the canvas, softer in controls */
+  --wire-red: #e17e6d;
+  --wire-green: #83b489;
+  --wire-casing: #151a15;
+  --wire-red-ui: #dc8978;
+  --wire-green-ui: #92b894;
+  --wire-red-surface: #533a2d;
+  --wire-red-border: #8c5c50;
+  --wire-green-surface: #324731;
+  --wire-green-border: #6a8966;
+
+  /* Entity kind accents */
+  --kind-constant: #cea866;
+  --kind-arithmetic: #8db1a4;
+  --kind-decider: #c2a6c3;
+  --kind-selector: #9aa7cf;
+  --kind-lamp: #afba75;
+
+  /* Status */
+  --status-ok: #a9bb79;
+  --status-warning: #d1b47c;
+  --status-error: #e08d76;
+  --danger: #d98f78;
+  --danger-surface: #4a3129;
+  --danger-border: #8a5a4b;
+  --notice-surface: #4a3f27;
+  --notice-border: #8f7847;
+  --notice-text: #e8d6ac;
+
+  /* Typography */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --text-xs: 9px;
+  --text-sm: 10px;
+  --text-md: 11px;
+  --text-base: 12px;
+  --text-lg: 15px;
+  --text-xl: 17px;
+  --tracking-label: 1.2px;
+
+  /* Shape and layout */
+  --radius-sm: 4px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --titlebar-height: 62px;
+  --projectbar-height: 68px;
+  --palette-width: 240px;
+  --inspector-width: 286px;
+  --dock-height: 160px;
+  --statusbar-height: 27px;
+  --shadow-popover: 0 8px 25px rgb(0 0 0 / 33%);
+}

@@ -1,0 +1,378 @@
+/* Circuit canvas: SVG scene plus HTML overlays (heading, hint, zoom controls, selection toolbar, context menu). */
+.canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: radial-gradient(ellipse at 50% 35%, var(--canvas-center) 0%, var(--canvas-mid) 60%, var(--canvas-edge) 100%);
+}
+
+.canvas-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+  cursor: default;
+}
+
+.canvas-svg:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px rgb(213 174 109 / 45%);
+}
+
+.canvas.tool-place .canvas-svg {
+  cursor: copy;
+}
+
+.canvas.tool-wire .canvas-svg {
+  cursor: crosshair;
+}
+
+.canvas.panning .canvas-svg {
+  cursor: grabbing;
+}
+
+/* Scene */
+.grid-dot {
+  fill: var(--canvas-dot);
+  opacity: 0.55;
+}
+
+.wire-casing {
+  fill: none;
+  stroke: var(--wire-casing);
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+
+.wire-core {
+  fill: none;
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+
+.wire.red .wire-core {
+  stroke: var(--wire-red);
+}
+
+.wire.green .wire-core {
+  stroke: var(--wire-green);
+}
+
+.wire-preview {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-dasharray: 6 5;
+  pointer-events: none;
+}
+
+.wire-preview.red {
+  stroke: var(--wire-red);
+}
+
+.wire-preview.green {
+  stroke: var(--wire-green);
+}
+
+.card {
+  cursor: grab;
+}
+
+.canvas.tool-wire .card,
+.canvas.tool-place .card {
+  cursor: inherit;
+}
+
+.card-body {
+  fill: url(#card-surface);
+  stroke: var(--card-border);
+  stroke-width: 1;
+}
+
+.card:hover .card-body {
+  stroke: var(--card-border-hover);
+}
+
+.card.selected .card-body,
+.card.selected:hover .card-body {
+  stroke: var(--amber);
+  stroke-width: 2;
+}
+
+.card.active .card-body {
+  fill: var(--card-lit);
+}
+
+.card-divider {
+  stroke: var(--card-divider);
+  opacity: 0.4;
+}
+
+.card-accent {
+  fill: var(--kind-color);
+}
+
+.card-kind {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.3px;
+  fill: var(--text-soft);
+}
+
+.card-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.3px;
+  fill: #e1e6d8;
+}
+
+.card-summary {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  fill: #aebca2;
+}
+
+.card-status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: #a2b68f;
+}
+
+.card-status-dot {
+  fill: #8eac77;
+}
+
+.card.active .card-status {
+  fill: #e3c77c;
+}
+
+.card.active .card-status-dot {
+  fill: #e9cb71;
+}
+
+.terminal {
+  cursor: default;
+}
+
+.terminal-ring {
+  fill: var(--terminal-fill);
+  stroke: var(--terminal-border);
+  stroke-width: 1.5;
+}
+
+.terminal-hit {
+  fill: transparent;
+}
+
+.terminal.in .terminal-core {
+  fill: var(--terminal-in);
+}
+
+.terminal.out .terminal-core {
+  fill: var(--terminal-out);
+}
+
+.canvas.tool-wire .terminal {
+  cursor: crosshair;
+}
+
+.canvas.tool-wire .terminal-ring {
+  stroke: var(--amber-border);
+  stroke-width: 2;
+}
+
+.canvas.tool-wire .terminal:hover .terminal-ring,
+.terminal.pending .terminal-ring {
+  stroke: var(--amber);
+  stroke-width: 3;
+}
+
+.marquee {
+  fill: rgb(217 176 106 / 10%);
+  stroke: var(--amber);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* Overlays */
+.canvas-heading {
+  position: absolute;
+  top: 21px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.canvas-heading .counts {
+  display: flex;
+  align-items: center;
+  font-size: var(--text-sm);
+  color: #72866a;
+}
+
+.canvas-heading .meta-dot {
+  margin: 0 6px;
+  background: #64775a;
+}
+
+.canvas-footer {
+  position: absolute;
+  right: 17px;
+  bottom: 16px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.canvas-hint {
+  max-width: 65%;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: #839477;
+}
+
+.zoom-controls {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid #4c5941;
+  border-radius: var(--radius-md);
+  background: #2c3528;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+  pointer-events: auto;
+}
+
+.zoom-controls button {
+  width: 26px;
+  height: 26px;
+  color: #b3c1a4;
+}
+
+.zoom-controls output {
+  width: 38px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  text-align: center;
+  color: #cad4bc;
+}
+
+.zoom-controls .divider {
+  width: 1px;
+  height: 17px;
+  margin: 0 3px;
+  background: #4b5940;
+}
+
+.canvas-empty {
+  position: absolute;
+  top: 38%;
+  right: 15%;
+  left: 15%;
+  text-align: center;
+  color: #93a480;
+  pointer-events: none;
+}
+
+.canvas-empty h2 {
+  margin: 14px 0 8px;
+  font-size: 19px;
+  font-weight: 500;
+  color: #d1dbc2;
+}
+
+/* Toolbar attached to the selected card: the visible home of Delete. */
+.selection-toolbar {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--amber-border);
+  border-radius: 6px;
+  background: #33382a;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 35%);
+  transform: translate(-100%, -100%);
+}
+
+.selection-toolbar .selection-count {
+  padding: 0 7px 0 8px;
+  font-size: var(--text-md);
+  color: var(--text-soft);
+}
+
+.selection-toolbar button {
+  gap: 6px;
+  height: 26px;
+  padding: 0 9px;
+  font-size: var(--text-md);
+}
+
+.danger-button {
+  border-color: var(--danger-border);
+  color: #f0c4b3;
+  background: var(--danger-surface);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: #5d3a2f;
+}
+
+.danger-button kbd {
+  color: #c79a89;
+}
+
+.context-menu {
+  position: absolute;
+  z-index: 4;
+  min-width: 190px;
+  padding: 5px;
+  border: 1px solid #555c50;
+  border-radius: 7px;
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-popover);
+}
+
+.context-menu button {
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-base);
+  text-align: left;
+}
+
+.context-menu button .label {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.context-menu button:hover:not(:disabled),
+.context-menu button:focus-visible {
+  outline: none;
+  background: var(--surface-active);
+}
+
+.context-menu button.danger {
+  color: #f0c4b3;
+}
+
+.context-menu .menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: #4b5345;
+}

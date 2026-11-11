@@ -1,0 +1,7 @@
+{
+  "name": "@face/renderer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "React workbench of FActorio Circuit Editor"
+}
