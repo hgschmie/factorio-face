@@ -64,10 +64,10 @@ function selectorSummary(entity: SelectorCombinator): string {
   }
 }
 
+// "Always on" is about the time of day; a lamp controlled by the circuit network follows its condition either way, so the card shows that.
 function lampSummary(entity: Lamp): string {
-  if (entity.alwaysOn) return "always on";
   const condition = entity.condition;
-  if (!condition) return "no condition";
+  if (!condition) return entity.alwaysOn ? "always on" : "no condition";
   return `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}`;
 }
 

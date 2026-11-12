@@ -134,9 +134,10 @@ test("canvas and text share one undo history", async ({ page }) => {
   const afterComment = await sourceText(page);
   expect(afterComment).toContain("lamp light at (560, 80) { // typed");
   await selectEntity(page, "light");
-  await page.getByRole("complementary", { name: "Inspector" }).getByLabel("Always on").check();
+  await page.getByRole("complementary", { name: "Inspector" }).getByLabel("Controlled by the circuit network").uncheck();
+  await expect(card(page, "light").locator(".card-summary")).toHaveText("no condition");
   const afterInspector = await sourceText(page);
-  expect(afterInspector).toContain("always-on = true");
+  expect(afterInspector).not.toContain("when virtual:signal-B > 8");
   expect(afterInspector).toContain("{ // typed");
   await caretAtEndOf(page, "when virtual:signal-A < 10");
   await page.keyboard.type("0");
@@ -165,7 +166,7 @@ test("canvas and text share one undo history", async ({ page }) => {
   await redo.click();
   await expect(redo).toBeDisabled();
   await expect(card(page, "gate").locator(".card-summary")).toHaveText("A < 100 → A");
-  await expect(card(page, "light").locator(".card-summary")).toHaveText("always on");
+  await expect(card(page, "light").locator(".card-summary")).toHaveText("no condition");
   await mode(page, "Source").click();
   await expect(page.locator(".source-pane .cm-line", { hasText: "{ // typed" })).toHaveCount(1);
 });

@@ -83,7 +83,11 @@ test("the inspector edits settings of each kind as controlled forms", async ({ p
   await expect(summary("pick")).toHaveText("count → C");
 
   await select("light");
+  // "Always on" is about the time of day: the card keeps the condition and shows "always on" only without circuit control.
   await inspector.getByLabel("Always on").check();
+  await expect.poll(() => sourceText(page)).toContain("always-on = true");
+  await expect(summary("light")).toHaveText("B > 8");
+  await inspector.getByLabel("Controlled by the circuit network").uncheck();
   await expect(summary("light")).toHaveText("always on");
 
   // Every change is a patch of the statements it concerns; nothing moved and nothing else was rewritten.
@@ -99,6 +103,8 @@ test("the inspector edits settings of each kind as controlled forms", async ({ p
   await page.getByRole("button", { name: "Circuit", exact: true }).click();
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(summary("light")).toHaveText("B > 8");
+  await page.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(() => sourceText(page)).not.toContain("always-on");
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(summary("pick")).toHaveText("count → ?");
   await page.getByRole("button", { name: "Undo" }).click();

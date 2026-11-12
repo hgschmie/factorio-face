@@ -65,6 +65,9 @@ describe("card summaries", () => {
     expect(entitySummary({ ...base, kind: "selector", mode: { operation: "random", interval: 60 } })).toBe("random / 60 ticks");
     expect(entitySummary({ ...base, kind: "selector", mode: { operation: "quality-filter", comparator: ">=", quality: "rare" } })).toBe("quality ≥ rare");
     expect(entitySummary({ ...base, ...DEFAULT_ENTITY.lamp, alwaysOn: true })).toBe("always on");
+    // A lamp controlled by the circuit network shows its condition, always on or not.
+    const condition = { first: A, comparator: ">", second: { type: "constant", value: 8 } } as const;
+    for (const alwaysOn of [true, false]) expect(entitySummary({ ...base, ...DEFAULT_ENTITY.lamp, alwaysOn, condition })).toBe("A > 8");
     expect(entitySummary({ ...base, kind: "decider", conditions: [{ join: "and", firstNetworks: BOTH_NETWORKS, comparator: "!=", second: { type: "signal", signal: A, networks: BOTH_NETWORKS } }], outputs: [], elseOutputs: [] })).toBe("? ≠ A → ?");
   });
 
