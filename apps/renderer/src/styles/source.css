@@ -7,10 +7,10 @@
   gap: 12px;
   height: 37px;
   padding: 0 14px;
-  border-bottom: 1px solid #323a2f;
+  border-bottom: 1px solid var(--border-edge);
   font-size: var(--text-xs);
   letter-spacing: 1px;
-  color: #8d9a85;
+  color: var(--text-muted);
 }
 
 .source-heading .file-name {
@@ -19,7 +19,7 @@
   gap: 7px;
   font-size: var(--text-md);
   letter-spacing: 0;
-  color: #bac2ae;
+  color: var(--text-soft);
 }
 
 .source-editor {
@@ -37,8 +37,8 @@
   flex-shrink: 0;
   max-height: 124px;
   overflow: auto;
-  border-top: 1px solid #5e5136;
-  background: #2a2a21;
+  border-top: 1px solid var(--border-edge);
+  background: var(--surface-window);
 }
 
 .diagnostics-heading {
@@ -50,8 +50,8 @@
   padding: 6px 14px 5px;
   font-size: var(--text-xs);
   letter-spacing: 1.1px;
-  color: #a9a07f;
-  background: #2f2e24;
+  color: var(--text-label);
+  background: var(--surface-window);
 }
 
 .diagnostics-heading > span:last-child {
@@ -74,7 +74,7 @@
   font-size: var(--text-md);
   text-align: left;
   white-space: normal;
-  color: #dcc79b;
+  color: var(--notice-text);
 }
 
 .diagnostic-dot {
@@ -90,11 +90,11 @@
   min-width: 42px;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  color: #8f937c;
+  color: var(--text-muted);
 }
 
 .diagnostics .severity-error button {
-  color: #f0b19c;
+  color: var(--danger-text);
 }
 
 .diagnostics .severity-error .diagnostic-dot {
@@ -102,13 +102,13 @@
 }
 
 .diagnostics .severity-info button {
-  color: #b9c3ac;
+  color: var(--text-soft);
 }
 
 .diagnostics-more {
   padding: 0 14px 7px 36px;
   font-size: var(--text-sm);
-  color: #8f937c;
+  color: var(--text-muted);
 }
 
 /* Diagnostics inside the editor (lint extension): underline in the status colors instead of the library's defaults. */
@@ -145,24 +145,24 @@
 
 /* Token classes produced by the tokenize prop (see editor/tokenHighlight.ts). */
 .face-tok-keyword {
-  color: #e6af61;
+  color: var(--accent);
 }
 
 .face-tok-string {
-  color: #a5c69a;
+  color: var(--syntax-string);
 }
 
 .face-tok-number {
-  color: #d7b68c;
+  color: var(--syntax-number);
 }
 
 .face-tok-comment {
   font-style: italic;
-  color: #737e75;
+  color: var(--text-dim);
 }
 
 .face-tok-signal {
-  color: #9cc7b4;
+  color: var(--syntax-signal);
 }
 
 .face-tok-color-red {
@@ -174,16 +174,16 @@
 }
 
 .face-tok-atom {
-  color: #d5a98c;
+  color: var(--syntax-atom);
 }
 
 .face-tok-name {
-  color: #dddcd0;
+  color: var(--text);
 }
 
 .face-tok-operator,
 .face-tok-punctuation {
-  color: #9aa390;
+  color: var(--text-label);
 }
 
 .face-tok-invalid {

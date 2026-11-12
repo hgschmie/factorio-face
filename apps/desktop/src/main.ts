@@ -10,7 +10,8 @@ import { handleSchemes, registerSchemes, RENDERER_URL } from "./protocols.ts";
 import { RecentProjects } from "./recentProjects.ts";
 import { hardenSession, hardenWebContents } from "./security.ts";
 
-const WINDOW_BACKGROUND = "#1d201e";
+// Matches --surface-window in apps/renderer/src/styles/tokens.css, so the window does not flash on launch.
+const WINDOW_BACKGROUND = "#313031";
 
 // Everything in this block must happen before `ready`: Electron resolves its profile directories on first use.
 app.setName(APP_NAME);

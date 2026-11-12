@@ -7,7 +7,7 @@
   padding: 20px 18px 0;
   overflow-x: hidden;
   overflow-y: auto;
-  border-left: 1px solid var(--border);
+  border-left: 1px solid var(--border-edge);
   background: var(--surface-inspector);
 }
 
@@ -24,9 +24,9 @@
   place-items: center;
   width: 58px;
   height: 56px;
-  border: 1px solid #515a40;
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  background: radial-gradient(#54523c, #343c2c 70%);
+  background: radial-gradient(var(--surface-raised-hover), var(--surface-raised) 70%);
   box-shadow:
     0 6px 16px rgb(0 0 0 / 13%),
     inset 0 1px rgb(255 255 255 / 3%);
@@ -34,7 +34,7 @@
 
 .inspector-identity .eyebrow {
   font-size: 8px;
-  color: #8f9c80;
+  color: var(--text-muted);
 }
 
 .inspector-identity h2 {
@@ -42,11 +42,12 @@
   font-size: 19px;
   font-weight: 550;
   letter-spacing: -0.5px;
+  color: var(--text-strong);
 }
 
 .inspector-identity p {
   font-size: var(--text-md);
-  color: #929f85;
+  color: var(--text-muted);
 }
 
 .inspector-fieldset {
@@ -62,7 +63,7 @@
   align-items: flex-end;
   gap: 8px;
   padding-bottom: 16px;
-  border-bottom: 1px solid #454e3b;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .inspector-primary .name-field {
@@ -293,14 +294,16 @@
   flex-direction: column;
   gap: 11px;
   padding: 16px 0;
-  border-bottom: 1px solid #454e3b;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .list-item {
+  /* A raised card: dividers inside it use the card divider gray instead of the well gray of the panel. */
+  --border-subtle: var(--gray-divider);
   padding: 9px 10px 11px;
-  border: 1px solid #434b39;
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: rgb(0 0 0 / 8%);
+  background: var(--surface-raised);
 }
 
 .list-item-header {
@@ -318,16 +321,16 @@
   gap: 6px;
   height: 27px;
   padding: 0 10px;
-  border: 1px dashed #5b6248;
+  border: 1px dashed var(--border-strong);
   font-size: var(--text-md);
-  color: #c5c59f;
+  color: var(--text-soft);
 }
 
 .remove-button {
   flex-shrink: 0;
   width: 24px;
   height: 24px;
-  color: #8e9c80;
+  color: var(--text-muted);
 }
 
 .remove-button:hover:not(:disabled) {
@@ -364,12 +367,12 @@
   min-width: 0;
   padding: 5px 6px;
   font-size: var(--text-base);
-  color: #becbb1;
+  color: var(--text-soft);
 }
 
 .connection-target small {
   font-size: var(--text-xs);
-  color: #849777;
+  color: var(--text-dim);
 }
 
 .inspector-footer {
@@ -377,16 +380,16 @@
   align-items: center;
   min-height: 42px;
   margin-top: auto;
-  border-top: 1px solid #454e3b;
+  border-top: 1px solid var(--border-subtle);
   font-size: var(--text-sm);
-  color: #7f9070;
+  color: var(--text-dim);
 }
 
 .inspector-footer b {
   margin: 0 11px 0 4px;
   font-family: var(--font-mono);
   font-weight: 400;
-  color: #a7b799;
+  color: var(--text-label);
 }
 
 /* Multi-selection and empty state */
@@ -399,6 +402,7 @@
 .inspector-multi h2 {
   font-size: var(--text-xl);
   font-weight: 550;
+  color: var(--text-strong);
 }
 
 .inspector-multi .delete-entity {
@@ -409,11 +413,11 @@
   margin: auto 0;
   line-height: 1.7;
   text-align: center;
-  color: #92a282;
+  color: var(--text-muted);
 }
 
 .inspector-empty > svg {
-  color: #b2b787;
+  color: var(--text-label);
 }
 
 .inspector-empty h3 {
@@ -421,7 +425,7 @@
   font-size: var(--text-xl);
   font-weight: 500;
   line-height: 1.4;
-  color: #c9d4b9;
+  color: var(--text-strong);
 }
 
 .inspector-empty p {
@@ -431,13 +435,13 @@
 .mini-fact {
   margin: 30px 12px;
   padding-top: 23px;
-  border-top: 1px solid #47533b;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .mini-fact b {
   display: block;
   font: 30px var(--font-mono);
-  color: #c6cfad;
+  color: var(--text-soft);
 }
 
 .mini-fact span {

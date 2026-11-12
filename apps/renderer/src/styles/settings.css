@@ -11,7 +11,7 @@
   max-height: calc(100% - var(--titlebar-height) - var(--projectbar-height) - 20px);
   padding: 13px 15px 15px;
   overflow: auto;
-  border: 1px solid #555c50;
+  border: 1px solid var(--border-popover);
   border-radius: 7px;
   background: var(--surface-popover);
   box-shadow: var(--shadow-popover);

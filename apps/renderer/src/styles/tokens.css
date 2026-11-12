@@ -1,92 +1,125 @@
-/* Design tokens of the approved theme: olive/charcoal surfaces, warm amber controls, distinct red and green wires. */
+/* Design tokens. Neutral grays that nest (a frame around dark wells around lighter cards), cream headings, an orange accent, a green
+   confirm action, distinct red and green wires. Grays, cream, orange and confirm green are sampled from the Factorio mod portal.
+   No neutral has a green cast; test/themeColors.test.ts pins that for every stylesheet and the editor theme. */
 :root {
   color-scheme: dark;
 
-  /* Surfaces, darkest to lightest */
-  --surface-window: #20251f;
-  --surface-editor: #1c201e;
-  --surface-inset: #1e241f;
-  --surface-well: #191f19;
-  --surface-statusbar: #20271c;
-  --surface-titlebar: #242920;
-  --surface-palette: #262c24;
-  --surface-inspector: #292f26;
-  --surface-dock: #2a3025;
-  --surface-projectbar: #2b3027;
-  --surface-raised: #373d30;
-  --surface-raised-hover: #444a38;
-  --surface-selected: #414935;
-  --surface-active: #454936;
-  --surface-hover: rgb(255 255 255 / 4%);
-  --surface-popover: #30362f;
+  /* Reference grays, darkest to lightest */
+  --gray-shadow: #181818;
+  --gray-edge: #1c1c1c;
+  --gray-well: #242324;
+  --gray-frame: #313031;
+  --gray-divider: #383837;
+  --gray-card: #414040;
+  --gray-tab: #5c5a58;
+  --gray-control: #8e8e8e;
+
+  /* Surfaces: panels on the frame level, editors and inputs in wells, controls and cards raised */
+  --surface-window: var(--gray-frame);
+  --surface-titlebar: var(--gray-frame);
+  --surface-projectbar: var(--gray-frame);
+  --surface-palette: var(--gray-frame);
+  --surface-inspector: var(--gray-frame);
+  --surface-dock: var(--gray-frame);
+  --surface-statusbar: var(--gray-frame);
+  --surface-popover: var(--gray-frame);
+  --surface-editor: var(--gray-well);
+  --surface-inset: var(--gray-well);
+  --surface-well: var(--gray-well);
+  --surface-raised: var(--gray-card);
+  --surface-raised-hover: #4d4c4c;
+  --surface-active: #4d4c4c;
+  --surface-control: var(--gray-control);
+  --surface-hover: rgb(255 255 255 / 6%);
 
   /* Canvas */
-  --canvas-center: #283228;
-  --canvas-mid: #20291f;
-  --canvas-edge: #1c251c;
-  --canvas-dot: #536052;
-  --card-top: #333b33;
-  --card-bottom: #2a312b;
-  --card-border: #55604e;
-  --card-border-hover: #a1ab87;
-  --card-divider: #60694f;
-  --card-lit: #3d422d;
-  --terminal-fill: #1b241a;
-  --terminal-border: #6c795e;
-  --terminal-in: #adb7a0;
-  --terminal-out: #cfac69;
+  --canvas-center: #282728;
+  --canvas-mid: var(--gray-well);
+  --canvas-edge: #201f20;
+  --canvas-dot: #585858;
+  --card-top: #454444;
+  --card-bottom: #3d3c3c;
+  --card-border: var(--gray-tab);
+  --card-border-hover: var(--gray-control);
+  --card-divider: var(--gray-edge);
+  --card-lit: #5e4522;
+  --terminal-fill: var(--gray-edge);
+  --terminal-border: var(--gray-control);
+  --terminal-in: #c8c8c8;
+  --terminal-out: var(--accent);
 
-  /* Borders */
-  --border-subtle: #3b4236;
-  --border: #454c3b;
-  --border-strong: #565b42;
-  --border-input: #464d40;
+  /* Borders: dark edges between panels and around wells, lighter outlines on raised controls */
+  --border-edge: var(--gray-edge);
+  --border-subtle: var(--gray-well);
+  --border: #505050;
+  --border-strong: var(--gray-tab);
+  --border-input: var(--gray-edge);
+  --border-popover: var(--gray-tab);
 
-  /* Text */
-  --text: #dedfd4;
-  --text-strong: #f0e4c8;
-  --text-soft: #b9c3ac;
-  --text-muted: #91998b;
-  --text-dim: #7e8978;
-  --text-label: #a4ad96;
+  /* Text: near-white body, cream headings, gray steps for secondary text */
+  --text: #ececec;
+  --text-strong: #ffe6c0;
+  --text-soft: #c8c8c8;
+  --text-label: #a8a8a8;
+  --text-muted: #989898;
+  --text-dim: #808080;
+  --text-faint: #6a6a6a;
+  --ink: var(--gray-edge);
 
-  /* Amber accent */
-  --amber: #d9b06a;
-  --amber-strong: #d3b36c;
-  --amber-bright: #e5c78a;
-  --amber-ink: #292f20;
-  --amber-border: #9f8954;
-  --amber-surface: #514d31;
-  --focus-ring: #d5ae6d;
+  /* Orange accent: text, icons, selection outlines and focus; the fill is for active and selected controls, with --ink on it */
+  --accent: #f0a418;
+  --accent-fill: #f1bd65;
+  --accent-bright: #f8d28e;
+  --accent-border: #b07a12;
+  --focus-ring: var(--accent);
+
+  /* Confirm: the primary action of a group, with --ink on it */
+  --confirm: #5eb663;
+  --confirm-bright: #78ca7c;
+  --confirm-edge: #3f8c45;
 
   /* Wires: saturated on the canvas, softer in controls */
-  --wire-red: #e17e6d;
-  --wire-green: #83b489;
-  --wire-casing: #151a15;
-  --wire-red-ui: #dc8978;
-  --wire-green-ui: #92b894;
-  --wire-red-surface: #533a2d;
-  --wire-red-border: #8c5c50;
-  --wire-green-surface: #324731;
-  --wire-green-border: #6a8966;
+  --wire-red: #e5574d;
+  --wire-green: #5fc46a;
+  --wire-casing: var(--gray-shadow);
+  --wire-red-ui: #f6928a;
+  --wire-green-ui: #84d28b;
+  --wire-red-surface: #4d2a28;
+  --wire-red-border: #96443e;
+  --wire-green-surface: #27412a;
+  --wire-green-border: #4c8c53;
 
-  /* Entity kind accents */
-  --kind-constant: #cea866;
-  --kind-arithmetic: #8db1a4;
-  --kind-decider: #c2a6c3;
-  --kind-selector: #9aa7cf;
-  --kind-lamp: #afba75;
+  /* Entity kind accents: five hues away from the accent orange and both wire colors */
+  --kind-constant: #ee8fb8;
+  --kind-arithmetic: #5cc6cc;
+  --kind-decider: #c09af0;
+  --kind-selector: #8ea6f2;
+  --kind-lamp: #f0e05a;
 
   /* Status */
-  --status-ok: #a9bb79;
-  --status-warning: #d1b47c;
-  --status-error: #e08d76;
-  --danger: #d98f78;
-  --danger-surface: #4a3129;
-  --danger-border: #8a5a4b;
-  --notice-surface: #4a3f27;
-  --notice-border: #8f7847;
-  --notice-text: #e8d6ac;
+  --status-ok: var(--confirm);
+  --status-warning: #ecd04e;
+  --status-error: #f4776d;
+  --danger: #e8635a;
+  --danger-text: #f8d0cb;
+  --danger-muted: #cf9a94;
+  --danger-surface: #4f2927;
+  --danger-surface-hover: #643230;
+  --danger-border: #96443e;
+  --notice-surface: #4e3b1a;
+  --notice-border: #9a7d2a;
+  --notice-text: #f6e5b4;
+
+  /* Signal traces in the dock */
+  --trace-1: var(--accent);
+  --trace-2: #90c4dc;
+  --trace-3: #c09af0;
+
+  /* Source highlighting; keywords use --accent, the wire colors their own tokens */
+  --syntax-signal: #90c4dc;
+  --syntax-number: #ecd88c;
+  --syntax-string: #e6a6c6;
+  --syntax-atom: #c09af0;
 
   /* Typography */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -109,5 +142,5 @@
   --inspector-width: 286px;
   --dock-height: 160px;
   --statusbar-height: 27px;
-  --shadow-popover: 0 8px 25px rgb(0 0 0 / 33%);
+  --shadow-popover: 0 8px 25px rgb(0 0 0 / 40%);
 }

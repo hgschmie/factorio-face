@@ -87,7 +87,7 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
             Settings
           </button>
           <span className="action-divider" />
-          <button type="button" className="save-button" title={`Save (${SHORTCUT.save})`} onClick={onSave}>
+          <button type="button" className={`save-button${project.dirty ? " unsaved" : ""}`} title={`Save (${SHORTCUT.save})`} onClick={onSave}>
             <Icon name="save" size={16} />
             Save
           </button>

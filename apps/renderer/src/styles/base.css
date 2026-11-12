@@ -83,7 +83,7 @@ select {
 
 input:focus,
 select:focus {
-  border-color: var(--amber-border);
+  border-color: var(--accent);
 }
 
 input[aria-invalid="true"] {
@@ -99,7 +99,7 @@ input[type="checkbox"] {
   height: 14px;
   margin: 0;
   padding: 0;
-  accent-color: var(--amber);
+  accent-color: var(--surface-control);
 }
 
 /* Keyboard focus is always visible. */
@@ -126,7 +126,7 @@ kbd {
 ::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 6px;
-  background: #4a5342;
+  background: var(--gray-tab);
   background-clip: content-box;
 }
 
@@ -166,24 +166,24 @@ kbd {
 
 .count-badge {
   padding: 3px 6px;
-  border: 1px solid #484f3c;
+  border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   letter-spacing: 0;
-  color: #939b84;
+  color: var(--text-muted);
 }
 
 .muted-note {
   font-size: var(--text-md);
   line-height: 1.7;
-  color: #8e9e7f;
+  color: var(--text-muted);
 }
 
 .icon-button {
   width: 32px;
   height: 32px;
-  color: #b2b8a8;
+  color: var(--text-soft);
 }
 
 .wire-dot {
@@ -224,13 +224,13 @@ kbd {
 
 /* Placeholder entity pictograms (icons/EntityIcon.tsx) */
 .entity-glyph .frame {
-  fill: #2b3128;
+  fill: var(--surface-inset);
   stroke: var(--kind-color);
   stroke-width: 1.6;
 }
 
 .entity-glyph .display {
-  fill: #1b211b;
+  fill: var(--gray-edge);
 }
 
 .entity-glyph .mark {

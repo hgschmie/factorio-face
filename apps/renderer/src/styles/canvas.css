@@ -19,7 +19,7 @@
 
 .canvas-svg:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px rgb(213 174 109 / 45%);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--focus-ring) 45%, transparent);
 }
 
 .canvas.tool-place .canvas-svg {
@@ -97,7 +97,7 @@
 
 .card.selected .card-body,
 .card.selected:hover .card-body {
-  stroke: var(--amber);
+  stroke: var(--accent);
   stroke-width: 2;
 }
 
@@ -125,31 +125,31 @@
   font-size: 15px;
   font-weight: 600;
   letter-spacing: -0.3px;
-  fill: #e1e6d8;
+  fill: var(--text-strong);
 }
 
 .card-summary {
   font-family: var(--font-mono);
   font-size: 12px;
-  fill: #aebca2;
+  fill: var(--text-soft);
 }
 
 .card-status {
   font-family: var(--font-mono);
   font-size: 9px;
-  fill: #a2b68f;
+  fill: var(--text-label);
 }
 
 .card-status-dot {
-  fill: #8eac77;
+  fill: var(--text-muted);
 }
 
 .card.active .card-status {
-  fill: #e3c77c;
+  fill: var(--accent-bright);
 }
 
 .card.active .card-status-dot {
-  fill: #e9cb71;
+  fill: var(--accent);
 }
 
 .terminal {
@@ -179,19 +179,19 @@
 }
 
 .canvas.tool-wire .terminal-ring {
-  stroke: var(--amber-border);
+  stroke: var(--accent-border);
   stroke-width: 2;
 }
 
 .canvas.tool-wire .terminal:hover .terminal-ring,
 .terminal.pending .terminal-ring {
-  stroke: var(--amber);
+  stroke: var(--accent);
   stroke-width: 3;
 }
 
 .marquee {
-  fill: rgb(217 176 106 / 10%);
-  stroke: var(--amber);
+  fill: color-mix(in srgb, var(--accent) 10%, transparent);
+  stroke: var(--accent);
   stroke-width: 1;
   stroke-dasharray: 4 3;
   vector-effect: non-scaling-stroke;
@@ -213,12 +213,12 @@
   display: flex;
   align-items: center;
   font-size: var(--text-sm);
-  color: #72866a;
+  color: var(--text-dim);
 }
 
 .canvas-heading .meta-dot {
   margin: 0 6px;
-  background: #64775a;
+  background: var(--text-faint);
 }
 
 .canvas-footer {
@@ -237,7 +237,7 @@
   max-width: 65%;
   font-size: var(--text-sm);
   line-height: 1.6;
-  color: #839477;
+  color: var(--text-muted);
 }
 
 .zoom-controls {
@@ -246,9 +246,9 @@
   align-items: center;
   gap: 3px;
   padding: 3px;
-  border: 1px solid #4c5941;
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: #2c3528;
+  background: var(--surface-popover);
   box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
   pointer-events: auto;
 }
@@ -256,7 +256,7 @@
 .zoom-controls button {
   width: 26px;
   height: 26px;
-  color: #b3c1a4;
+  color: var(--text-soft);
 }
 
 .zoom-controls output {
@@ -264,14 +264,14 @@
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   text-align: center;
-  color: #cad4bc;
+  color: var(--text);
 }
 
 .zoom-controls .divider {
   width: 1px;
   height: 17px;
   margin: 0 3px;
-  background: #4b5940;
+  background: var(--border-strong);
 }
 
 .canvas-empty {
@@ -280,7 +280,7 @@
   right: 15%;
   left: 15%;
   text-align: center;
-  color: #93a480;
+  color: var(--text-muted);
   pointer-events: none;
 }
 
@@ -288,7 +288,7 @@
   margin: 14px 0 8px;
   font-size: 19px;
   font-weight: 500;
-  color: #d1dbc2;
+  color: var(--text-strong);
 }
 
 /* Toolbar attached to the selected card: the visible home of Delete. */
@@ -299,9 +299,9 @@
   align-items: center;
   gap: 4px;
   padding: 3px;
-  border: 1px solid var(--amber-border);
+  border: 1px solid var(--accent-border);
   border-radius: 6px;
-  background: #33382a;
+  background: var(--surface-popover);
   box-shadow: 0 4px 14px rgb(0 0 0 / 35%);
   transform: translate(-100%, -100%);
 }
@@ -321,17 +321,17 @@
 
 .danger-button {
   border-color: var(--danger-border);
-  color: #f0c4b3;
+  color: var(--danger-text);
   background: var(--danger-surface);
 }
 
 .danger-button:hover:not(:disabled) {
   border-color: var(--danger);
-  background: #5d3a2f;
+  background: var(--danger-surface-hover);
 }
 
 .danger-button kbd {
-  color: #c79a89;
+  color: var(--danger-muted);
 }
 
 .context-menu {
@@ -339,7 +339,7 @@
   z-index: 4;
   min-width: 190px;
   padding: 5px;
-  border: 1px solid #555c50;
+  border: 1px solid var(--border-popover);
   border-radius: 7px;
   background: var(--surface-popover);
   box-shadow: var(--shadow-popover);
@@ -368,11 +368,11 @@
 }
 
 .context-menu button.danger {
-  color: #f0c4b3;
+  color: var(--danger-text);
 }
 
 .context-menu .menu-separator {
   height: 1px;
   margin: 4px 6px;
-  background: #4b5345;
+  background: var(--border);
 }

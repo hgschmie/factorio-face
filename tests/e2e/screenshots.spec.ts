@@ -21,7 +21,11 @@ test("captures the workbench in its main states", async ({ page }) => {
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-context-menu.png") });
   await page.keyboard.press("Escape");
 
-  await page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Green wire" }).click();
+  const greenWire = page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Green wire" });
+  await greenWire.click();
+  await expect(greenWire).toHaveAttribute("aria-pressed", "true");
+  // The pressed colors fade in.
+  await page.waitForTimeout(250);
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-wire-tool.png") });
 });
 

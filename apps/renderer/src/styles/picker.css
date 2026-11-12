@@ -6,7 +6,7 @@
   flex-direction: column;
   width: 432px;
   max-height: min(520px, calc(100vh - 16px));
-  border: 1px solid #555c50;
+  border: 1px solid var(--border-popover);
   border-radius: 7px;
   background: var(--surface-popover);
   box-shadow: var(--shadow-popover);
@@ -34,22 +34,23 @@
   flex-wrap: wrap;
   gap: 3px;
   padding: 0 9px 7px;
-  border-bottom: 1px solid #454c3f;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .picker-tabs button {
   min-width: 36px;
   height: 36px;
   padding: 0 3px;
-  border-color: #474e41;
+  border-color: var(--border);
   font-size: var(--text-sm);
   color: var(--text-soft);
-  background: var(--surface-inset);
+  background: var(--surface-raised);
 }
 
 .picker-tabs button[aria-selected="true"] {
-  border-color: var(--amber-border);
-  background: var(--amber-surface);
+  border-color: var(--accent-fill);
+  color: var(--ink);
+  background: var(--accent-fill);
 }
 
 .picker-tabs button:disabled {
@@ -87,8 +88,8 @@
 .picker-signal {
   width: 36px;
   height: 36px;
-  border-color: #454c40;
-  background: #262c25;
+  border-color: var(--border-edge);
+  background: var(--surface-inset);
 }
 
 .picker-signal.text {
@@ -104,9 +105,11 @@
   background: var(--surface-raised);
 }
 
-.picker-signal.current {
-  border-color: var(--amber);
-  background: var(--amber-surface);
+.picker-signal.current,
+.picker-signal.current:hover:not(:disabled) {
+  border-color: var(--accent-fill);
+  color: var(--ink);
+  background: var(--accent-fill);
 }
 
 .picker-qualities {
@@ -114,7 +117,7 @@
   gap: 4px;
   align-items: center;
   padding: 7px 9px 9px;
-  border-top: 1px solid #454c3f;
+  border-top: 1px solid var(--border-subtle);
 }
 
 .picker-qualities .field-label {
@@ -125,16 +128,17 @@
   min-width: 30px;
   height: 30px;
   padding: 0 5px;
-  border: 1px solid #454c40;
+  border: 1px solid var(--border-edge);
   border-bottom-width: 3px;
   font-size: var(--text-sm);
   color: var(--text-soft);
-  background: #262c25;
+  background: var(--surface-inset);
 }
 
 .picker-qualities button[aria-checked="true"] {
-  border-top-color: var(--amber);
-  border-right-color: var(--amber);
-  border-left-color: var(--amber);
-  background: var(--amber-surface);
+  border-top-color: var(--accent-fill);
+  border-right-color: var(--accent-fill);
+  border-left-color: var(--accent-fill);
+  color: var(--ink);
+  background: var(--accent-fill);
 }

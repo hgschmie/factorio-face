@@ -37,6 +37,8 @@ test("switches between Circuit, Source and Split", async ({ page }) => {
   await expect(palette).toHaveCount(0);
   await expect(editor.locator(".cm-content")).toContainText('circuit "Feedback example" {');
   await expect(editor.locator(".cm-lineNumbers")).toBeVisible();
+  // The mode switch fades between its states.
+  await page.waitForTimeout(250);
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-source.png") });
 
   await mode("Split").click();
@@ -45,6 +47,7 @@ test("switches between Circuit, Source and Split", async ({ page }) => {
   const canvasBox = (await canvas(page).boundingBox())!;
   const editorBox = (await editor.boundingBox())!;
   expect(canvasBox.x + canvasBox.width).toBeLessThanOrEqual(editorBox.x + 1);
+  await page.waitForTimeout(250);
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-split.png") });
 
   await mode("Circuit").click();

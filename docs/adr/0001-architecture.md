@@ -4,7 +4,7 @@ Date: 2026-11-11. Status: accepted for Milestone 1; revisit items are marked.
 
 ## Context
 
-The user selected a custom React/Electron desktop application and approved the visual design of the `prototypes/react-electron` experiment. The handoff left the parser/runtime, diagram rendering, project format and build tooling as implementation decisions.
+The user selected a custom React/Electron desktop application and approved the visual design of the `prototypes/react-electron` experiment. Layout and typography of that design stand; its olive and amber colors were replaced on 2026-11-11, at the user's request, by neutral grays, cream, orange and a confirm green taken from the Factorio mod portal (tokens in `apps/renderer/src/styles/tokens.css`, rules pinned by `apps/renderer/test/themeColors.test.ts`). The handoff left the parser/runtime, diagram rendering, project format and build tooling as implementation decisions.
 
 ## Decisions
 

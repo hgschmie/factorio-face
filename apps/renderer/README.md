@@ -136,18 +136,31 @@ has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line num
 
 ## Design tokens
 
-`styles/tokens.css` holds the approved theme as CSS custom properties; the other stylesheets and the CodeMirror theme refer to them.
+`styles/tokens.css` holds the theme as CSS custom properties; the other stylesheets and the CodeMirror theme refer to them and carry no
+colors of their own apart from black and white overlays.
+
+Colors: neutral grays, cream, an orange accent and a confirm green, sampled from the Factorio mod portal. The grays nest: panels are on the
+frame level (`#313031`), editors, inputs and the canvas are wells (`#242324`), cards and controls are raised (`#414040`); dark edges
+(`#1c1c1c`) separate panels and surround wells. No neutral has a green cast. Headings and names are cream (`#ffe6c0`), body text is near
+white. The accent orange (`#f0a418`) is for accent text, icons, selection outlines and focus; active and selected controls are filled with
+`--accent-fill` (`#f1bd65`) and dark `--ink`. The primary action of a group (Run, Save while there are unsaved changes) is filled with
+`--confirm` green. Green otherwise means the green wire or an ok status, red the red wire, an error or a delete control.
+`test/themeColors.test.ts` pins these rules: grays stay grays, chromatic colors are declared tokens, green dominates only in the confirm and
+green wire tokens, every `var()` resolves, the window background of the main process matches, and ink and accent text keep their contrast.
 
 | Group | Tokens |
 | --- | --- |
-| Surfaces | `--surface-window`, `-editor`, `-inset`, `-well`, `-titlebar`, `-projectbar`, `-palette`, `-inspector`, `-dock`, `-statusbar`, `-raised`, `-selected`, `-active`, `-popover` |
-| Canvas | `--canvas-center` / `-mid` / `-edge`, `--canvas-dot`, `--card-top` / `-bottom` / `-border` / `-lit`, `--terminal-*` |
-| Borders | `--border-subtle`, `--border`, `--border-strong`, `--border-input` |
-| Text | `--text`, `--text-strong`, `--text-soft`, `--text-muted`, `--text-dim`, `--text-label` |
-| Amber accent | `--amber`, `--amber-strong`, `--amber-bright`, `--amber-ink`, `--amber-border`, `--focus-ring` |
+| Reference grays | `--gray-shadow`, `-edge`, `-well`, `-frame`, `-divider`, `-card`, `-tab`, `-control` |
+| Surfaces | `--surface-window`, `-titlebar`, `-projectbar`, `-palette`, `-inspector`, `-dock`, `-statusbar`, `-popover` (frame); `-editor`, `-inset`, `-well` (wells); `-raised`, `-raised-hover`, `-active`, `-control`, `-hover` |
+| Canvas | `--canvas-center` / `-mid` / `-edge`, `--canvas-dot`, `--card-top` / `-bottom` / `-border` / `-divider` / `-lit`, `--terminal-*` |
+| Borders | `--border-edge`, `--border-subtle`, `--border`, `--border-strong`, `--border-input`, `--border-popover` |
+| Text | `--text`, `--text-strong` (cream), `--text-soft`, `--text-label`, `--text-muted`, `--text-dim`, `--text-faint`, `--ink` (dark, on filled controls) |
+| Accent | `--accent`, `--accent-fill`, `--accent-bright`, `--accent-border`, `--focus-ring` |
+| Confirm | `--confirm`, `--confirm-bright`, `--confirm-edge` |
 | Wires | `--wire-red`, `--wire-green`, `--wire-casing` (canvas); `--wire-red-ui`, `--wire-green-ui` and their `-surface` / `-border` (controls) |
-| Entity kinds | `--kind-constant`, `--kind-arithmetic`, `--kind-decider`, `--kind-selector`, `--kind-lamp`; a `kind-<kind>` class sets `--kind-color` |
+| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow); a `kind-<kind>` class sets `--kind-color` |
 | Status | `--status-ok`, `--status-warning`, `--status-error`, `--danger*`, `--notice-*` |
+| Traces and syntax | `--trace-1` ... `-3`, `--syntax-signal`, `-number`, `-string`, `-atom` |
 | Typography | `--font-ui`, `--font-mono`, `--text-xs` ... `--text-xl`, `--tracking-label` |
 | Layout | `--titlebar-height`, `--projectbar-height`, `--palette-width`, `--inspector-width`, `--dock-height`, `--statusbar-height`, `--radius-*` |
 
