@@ -1,0 +1,17 @@
+---
+
+# Project settings; never put credentials in this file.
+base: origin/main
+model: deepseek/deepseek-v4-flash
+reasoning-enabled: true
+reasoning-exclude: true
+reasoning-max-tokens: 8192
+max-tokens: 131072
+max-diff-chars: 0
+timeout-seconds: 1500
+user-prompt: |
+  Please review the following code changes.
+  Write all review explanations in English, regardless of the language used in the code or comments.
+  Your job is to review the changes in the PR and those changes only. Do not widen the scope of the review or suggest major refactorings.
+  Focus on the major findings, do not overly polish. Point out parts that are hard to read for a human.
+  Focus on the actual code changes, not the tests. Review the tests for completeness and functionality but do not polish them.
