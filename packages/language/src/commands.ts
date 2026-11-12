@@ -359,13 +359,15 @@ export function renameEntity(parse: ParseResult, id: EntityId, newName: string):
   return edit.finish();
 }
 
-/** Removes the declarations and every declaration of every incident wire. */
-export function deleteEntities(parse: ParseResult, ids: readonly EntityId[]): TextChange[] {
+/** Removes the declarations of the entities, every declaration of every incident wire and of the connections in `wires` (`wireKey`s). */
+export function deleteEntities(parse: ParseResult, ids: readonly EntityId[], wires: readonly string[] = []): TextChange[] {
   const edit = new Edit(parse);
   const doomed = new Set(ids);
+  const doomedWires = new Set(wires);
   for (const id of doomed) edit.remove(edit.entity(id).range);
-  for (const wire of parse.sourceMap.wires.values()) {
-    if (doomed.has(wire.wire.a.entity) || doomed.has(wire.wire.b.entity)) for (const declaration of wire.declarations) edit.remove(declaration.range);
+  for (const key of doomedWires) if (!parse.sourceMap.wires.has(key)) throw new EditError("unknown-wire", `Unknown wire '${key}'`);
+  for (const [key, wire] of parse.sourceMap.wires) {
+    if (doomedWires.has(key) || doomed.has(wire.wire.a.entity) || doomed.has(wire.wire.b.entity)) for (const declaration of wire.declarations) edit.remove(declaration.range);
   }
   return edit.finish();
 }
@@ -682,7 +684,7 @@ export type EditCommand =
   | { readonly type: "addEntity"; readonly kind: EntityKind; readonly position: Point; readonly name?: string }
   | { readonly type: "moveEntities"; readonly moves: readonly EntityMove[] }
   | { readonly type: "renameEntity"; readonly id: EntityId; readonly name: string }
-  | { readonly type: "deleteEntities"; readonly ids: readonly EntityId[] }
+  | { readonly type: "deleteEntities"; readonly ids: readonly EntityId[]; /** Connections to remove in the same edit, as `wireKey`s. */ readonly wires?: readonly string[] }
   | { readonly type: "addWire"; readonly color: WireColor; readonly a: TerminalRef; readonly b: TerminalRef }
   | { readonly type: "removeWire"; readonly key: string }
   | { readonly type: "updateEntity"; readonly id: EntityId; readonly entity: Entity }
@@ -706,7 +708,7 @@ export function executeCommand(parse: ParseResult, command: EditCommand): EditRe
       case "addEntity": return { ok: true, ...addEntity(parse, command.kind, command.position, command.name) };
       case "moveEntities": return { ok: true, changes: moveEntities(parse, command.moves) };
       case "renameEntity": return { ok: true, changes: renameEntity(parse, command.id, command.name) };
-      case "deleteEntities": return { ok: true, changes: deleteEntities(parse, command.ids) };
+      case "deleteEntities": return { ok: true, changes: deleteEntities(parse, command.ids, command.wires) };
       case "addWire": return { ok: true, changes: addWire(parse, command.color, command.a, command.b) };
       case "removeWire": return { ok: true, changes: removeWire(parse, command.key) };
       case "updateEntity": return { ok: true, changes: updateEntity(parse, command.id, command.entity) };

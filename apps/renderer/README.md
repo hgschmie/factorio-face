@@ -34,12 +34,13 @@ src/
   workbench/
     controller.ts      the WorkbenchController seam (state, commands, shared view types)
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
+    selectionText.ts   the selection in words: status bar text, counts, wire labels   (pure)
     TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, save state, undo, redo, fit, settings, save)
     Palette.tsx        tools (select, red wire, green wire), the five building blocks, entity list
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
     Canvas.tsx         SVG canvas: camera, gestures, pending wire, context menu; emits callbacks only
-    Scene.tsx          memoized wires and cards, culled to the visible area
+    Scene.tsx          memoized wires (with their click target) and cards, culled to the visible area
     EntityCard.tsx     one memoized card (icon, name, summary, description marker, live status line, a red and a green pin per side in TERMINALS)
     ContextMenu.tsx    keyboard-navigable popup menu
     geometry.ts        card and pin geometry (`pinPoint`), rectangles  (pure)
@@ -53,7 +54,8 @@ src/
     tokenHighlight.ts  viewport decorations from an external tokenizer
     tokens.ts          token kind to class mapping, minimal text diff  (pure)
   inspector/
-    Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; undo and redo from its fields
+    Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; a selected wire;
+                       the summary of several selected things; undo and redo from its fields
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
     fields.tsx         text, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
@@ -87,12 +89,12 @@ interface WorkbenchController {
 ```
 
 `WorkbenchState`: `project` (name, path, fileName, dirty, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
-has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
+has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
 `WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `updateEntity`,
-`discardDraft`, `renameEntity`, `deleteEntities`, `copyEntities`, `pasteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`),
+`discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
 `loadProject`, `save`, `saveAs`).
@@ -151,8 +153,15 @@ simulation (`run`, `pause`,
   `ProjectSession.acceptAnalysis` is the entry point for that. With errors, `editable` is false, the last valid circuit stays, and
   commands and simulation are blocked. Entities whose declaration text did not change keep their object identity, which is what lets the
   memoized cards skip rendering.
-- **Selection** is a list of entity ids. Ids come from the language session and survive renames, by command or by typing. A caret the user
-  places inside a declaration selects that entity.
+- **Selection** is two lists: entity ids (`selection`) and wire keys (`wireSelection`, the `wireKey` of `@face/model`: color plus
+  the ids of both ends, independent of the direction of the declaration). `select(ids, wires?)` replaces both, so every caller
+  that passes entities only clears the wires. Ids come from the language session and survive renames, by command or by typing,
+  and a wire key with them. After every analysis both lists are reduced to what the circuit still has, so a selected wire stays
+  selected through moves, renames and typing elsewhere and leaves the selection when it is removed, by whatever means. Undo of
+  a deletion does not select again. A caret the user places inside a declaration selects that entity, one inside a wire
+  statement that wire (`sourceMap.wireAt`); nothing is scrolled or marked in the source in the other direction, for entities
+  and wires alike. `deleteSelection()` removes the selected entities with their wires and the selected wires as one language
+  command (`deleteEntities` with `wires`), which is one undo step. The simulation dock follows the entity selection only.
 - **Inspector drafts.** Forms emit complete entities. `drafts.ts` first sets fields without meaning to what the language implies (the
   output constant while copying the input count, the join of the first condition, ...). If the result is still not expressible (a
   condition without signal, an expression without output, a signal twice in a section), it is kept in `state.draft` with a hint; the
@@ -232,13 +241,26 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
     of the other one (cards side by side), the wire first passes 10 and 30 units below that card, or above it when the other terminal
     is higher (green is then outside); the crossing is at the far corner of that lane.
   Routes do not avoid other cards, and wires of different connections may share a line.
+- Wires in the DOM: `g.wire` in `g.wires` with `data-wire` (the wire key), `data-color` and the class `selected`; inside it
+  `path.wire-hit`, `path.wire-casing` and `path.wire-core` on the same route. `wire-hit` is a 12 unit wide stroke: it takes the
+  pointer while the select tool is active (and only then), shows a faint glow under the pointer and is the accent outline of a
+  selected wire, whose core is also drawn thicker. Hover is CSS only; a selection change re-renders the wires whose `selected`
+  flag changed, and selected wires are moved to the end of `g.wires`, above the other wires and below the cards.
+- Selecting wires (select tool): a press on a wire selects it alone, with Shift it is added to or taken out of the selection,
+  which may hold entities as well; a drag that starts on a wire pans. Cards and their pins lie above the wires, so a pin wins
+  over the end of a wire and a card over a wire behind it. Where wires overlap or cross (routes may share a line), the one drawn
+  last takes the click, a selected one therefore first; 12 units keep the target off the casing of a neighbor 10 units away.
+  With a wire tool or a place tool a wire is no target: the click pans, starts nothing, or places the card. The marquee and
+  Select All take entities only (the marquee keeps the selected wires, Select All drops them). Escape and a click on empty
+  canvas clear both lists.
 - A drop is computed from the press and release coordinates of the pointer, not from the rendered preview.
 - The wheel listener is registered non-passive on the canvas container and cancels scrolling.
 - Cut, copy and paste: Edit > Cut / Copy / Paste and Cmd/Ctrl+X / C / V both end in the browser's `cut`, `copy` and `paste` events,
   which `Workbench` handles on the document. The events carry the clipboard (`clipboardData`), so the page needs no clipboard
   permission and no IPC for them. They act on the entities when the canvas is shown and the focus is not in a text control, the
   source editor or a dialog (`focusIsOnText`); there, and for a copy while text of the page is selected (a message in the toast),
-  they stay the browser's own. A paste puts the top-left corner of the group on the grid point under
+  they stay the browser's own. Cut and copy take the selected entities only (the wires between them are part of the text
+  anyway): with wires alone selected both do nothing, and a cut leaves a selected wire that still exists selected. A paste puts the top-left corner of the group on the grid point under
   the pointer while that is over the canvas (`CanvasHandle.pasteCorner`); otherwise see `pasteShift` above. While the source has
   errors copy works, cut and paste do nothing. The context menu of a card has Cut and Copy with their shortcuts (Cut disabled
   while the source has errors); they run `document.execCommand`, which raises the same events. There is no Paste in the context
@@ -246,7 +268,13 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   would need a channel on which the main process pastes on the page's behalf. Pasting is Edit > Paste and Cmd/Ctrl+V.
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
   while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
-  control or the source editor has focus.
+  control or the source editor has focus. All of them delete the whole selection, entities and wires, as one undo step
+  (`deleteSelection`). A right click on a card or (select tool) a wire outside the selection selects it alone first; the menu
+  of a wire has Delete, and Cut and Copy as well when entities are selected with it.
+- Inspector: one selected wire is shown as `.inspector-wire` (`data-wire`, `data-color`) with its two ends as buttons
+  (`.wire-end`, `data-side`, output first) that select the entity, and Delete. More than one selected thing is summed up in
+  `.inspector-multi`: the names of the entities, the wires as `ul.selected-wires` and one Delete for all of it. The status bar
+  (`.status-selection`) names up to four entities or a single wire and counts anything else.
 - Rendering: the scene is memoized against a culling rectangle snapped to a 400 unit lattice, cards and wires are memoized individually,
   cards become outlines below 30 % zoom, and the drop shadow is skipped above 60 visible cards.
 

@@ -297,6 +297,21 @@ describe("deleteEntities", () => {
     expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe(circuit("    // about a\n    lamp a { } // trailing a\n    // about b\n    // the end"));
   });
 
+  it("removes selected wires together with entities and their wires, as one edit", () => {
+    const source = circuit("    lamp a { }\n    lamp b { }\n    lamp c { }\n\n    wire red a.in <-> b.in\n    wire green a.in <-> b.in // keep\n    wire red b.in <-> c.in\n    wire red b.in <-> a.in // the red one again");
+    const parse = valid(source);
+    const red = wireKey({ color: "red", a: { entity: "e2", side: "in" }, b: { entity: "e1", side: "in" } });
+    const green = wireKey({ color: "green", a: { entity: "e1", side: "in" }, b: { entity: "e2", side: "in" } });
+    // Every declaration of the connection goes, in either direction.
+    expect(applyChanges(source, deleteEntities(parse, [], [red]))).toBe(circuit("    lamp a { }\n    lamp b { }\n    lamp c { }\n\n    wire green a.in <-> b.in // keep\n    wire red b.in <-> c.in"));
+    expect(deleteEntities(parse, [], [red])).toEqual(removeWire(parse, red));
+    // A wire of a deleted entity may be named as well; the wires that are left keep their lines.
+    expect(applyChanges(source, deleteEntities(parse, ["e3"], [red, red]))).toBe(circuit("    lamp a { }\n    lamp b { }\n\n    wire green a.in <-> b.in // keep"));
+    expect(applyChanges(source, deleteEntities(parse, ["e3"], [red, green]))).toBe(circuit("    lamp a { }\n    lamp b { }"));
+    expect(executeCommand(parse, { type: "deleteEntities", ids: ["e3"], wires: [green] })).toMatchObject({ ok: true });
+    expect(failure(() => deleteEntities(parse, ["e3"], ["red|e1.in|e9.in"]))).toBe("unknown-wire");
+  });
+
   it("handles declarations sharing a line", () => {
     const source = 'circuit "t" { lamp a {} lamp b {} wire red a.in <-> b.in lamp c {} }';
     const parse = valid(source);

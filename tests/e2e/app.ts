@@ -114,6 +114,43 @@ export function wires(page: Page): Locator {
   return page.locator("g.wire");
 }
 
+/**
+ * The key (`data-wire`) of a wire given as in the source, for example `wireKeyOf(page, "red", "source.out", "gate.in")`.
+ * The order of the two ends does not matter.
+ */
+export async function wireKeyOf(page: Page, color: "red" | "green", a: string, b: string): Promise<string> {
+  return page.evaluate(
+    ([wireColor, ...ends]) => {
+      const ids = new Map(window.faceSession!.getState().circuit.entities.map((entity) => [entity.name, entity.id]));
+      const terminals = ends.map((end) => {
+        const [name = "", side] = end.split(".");
+        return `${ids.get(name) ?? name}.${side}`;
+      });
+      return [wireColor, ...terminals.sort()].join("|");
+    },
+    [color, a, b],
+  );
+}
+
+export function wire(page: Page, key: string): Locator {
+  return page.locator(`g.wire[data-wire="${key}"]`);
+}
+
+/**
+ * Window coordinates of the point at `fraction` of the length of a wire, taken from its path. Throws when a card, a pin or
+ * another wire is on top of the wire there, so a test never clicks something else by accident.
+ */
+export async function wirePoint(page: Page, key: string, fraction = 0.5): Promise<Point> {
+  return wire(page, key)
+    .locator("path.wire-core")
+    .evaluate((path: SVGPathElement, at) => {
+      const point = path.getPointAtLength(path.getTotalLength() * at).matrixTransform(path.getScreenCTM()!);
+      const top = document.elementFromPoint(point.x, point.y);
+      if (top?.closest("g.wire") !== path.parentElement) throw new Error(`The wire is covered at ${at} of its length by ${top?.closest("[data-wire], [data-entity-name]")?.outerHTML.slice(0, 120) ?? top?.tagName}`);
+      return { x: point.x, y: point.y };
+    }, fraction);
+}
+
 export async function canvasView(page: Page): Promise<CanvasView> {
   const svg = canvas(page);
   const box = await svg.boundingBox();

@@ -1,5 +1,6 @@
 // Right panel: identity and primary actions of the selection (rename, delete) at the top, then the description, the per-kind
-// settings form and the connections. Presentational: every edit is emitted through a callback.
+// settings form and the connections. A selected wire shows its color and its two ends; several things selected are summed up.
+// Presentational: every edit is emitted through a callback.
 import { wireKey, type Circuit, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
@@ -8,6 +9,7 @@ import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
 import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
+import { countLabel, entityNames, selectedItems, wireEndsLabel, type EntityNames } from "../workbench/selectionText.ts";
 import { FieldTextEpochContext, InputWiresContext, useFieldText } from "./fields.tsx";
 import { SignalInfoContext, SignalPickerContext, type SignalDescriber, type SignalPickerRenderer } from "./SignalField.tsx";
 import { entityNameError } from "./validation.ts";
@@ -26,6 +28,8 @@ export interface InspectorProps {
   readonly ref?: Ref<InspectorHandle>;
   readonly circuit: Circuit;
   readonly selection: readonly EntityId[];
+  /** The selected wires, as `wireKey`s. */
+  readonly wireSelection: readonly string[];
   /** When false, everything is shown read-only. */
   readonly editable: boolean;
   readonly resolveEntityIcon?: EntityIconResolver;
@@ -41,6 +45,8 @@ export interface InspectorProps {
   onChange(next: Entity, options?: UpdateOptions): void;
   onDiscardDraft?(): void;
   onDelete(ids: readonly EntityId[]): void;
+  /** Deletes everything that is selected, entities and wires, as one step. */
+  onDeleteSelection(): void;
   onRemoveWire(wire: Wire): void;
   onSelect(ids: readonly EntityId[]): void;
   /** One step back or forward in the document history. */
@@ -177,6 +183,49 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
   );
 }
 
+/** One selected wire: its color, its two ends (a click selects the entity) and Delete. The output end comes first. */
+function WireInspector({ wire, names, editable, onSelect, onDelete }: { readonly wire: Wire; readonly names: EntityNames; readonly editable: boolean; onSelect(ids: readonly EntityId[]): void; onDelete(): void }) {
+  const ends = wire.a.side === "in" && wire.b.side === "out" ? [wire.b, wire.a] : [wire.a, wire.b];
+  return (
+    <div className="inspector-wire" data-wire={wireKey(wire)} data-color={wire.color}>
+      <header className="inspector-identity">
+        <div className={`inspector-icon wire-icon ${wire.color}`}>
+          <Icon name="wire" size={30} />
+        </div>
+        <div>
+          <span className="eyebrow">Connection</span>
+          <h2>{wire.color === "red" ? "Red wire" : "Green wire"}</h2>
+          <p>Joins two terminals into one {wire.color} network.</p>
+        </div>
+      </header>
+      <section className="connections">
+        <div className="section-label">
+          <span>Ends</span>
+          {wire.a.entity === wire.b.entity && <span>feedback</span>}
+        </div>
+        <ul>
+          {ends.map((end) => {
+            const name = names.get(end.entity) ?? end.entity;
+            return (
+              <li key={end.side + end.entity} className="connection">
+                <span className={`wire-dot ${wire.color}`} />
+                <button type="button" className="connection-target wire-end" data-side={end.side} title={`Select ${name}`} onClick={() => onSelect([end.entity])}>
+                  <span>{name}</span>
+                  <small>{end.side === "out" ? "output" : "input"}</small>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+      <button type="button" className="danger-button delete-entity" disabled={!editable} onClick={onDelete} aria-label="Delete wire" title="Delete this wire">
+        <Icon name="trash" size={14} />
+        Delete
+      </button>
+    </div>
+  );
+}
+
 /** Controls whose edits arrive as a stream of intermediate values: typing in a text field, dragging in the color dialog. */
 function editsContinuously(target: EventTarget): boolean {
   return target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio";
@@ -253,9 +302,12 @@ function EntityInspector(props: EntityInspectorProps) {
 }
 
 export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
-  const { circuit, selection, editable } = props;
-  const selected = circuit.entities.filter((entity) => selection.includes(entity.id));
-  const single = selected.length === 1 ? selected[0] : undefined;
+  const { circuit, selection, wireSelection, editable } = props;
+  const { entities: selected, wires: selectedWires } = selectedItems(circuit, selection, wireSelection);
+  const count = selected.length + selectedWires.length;
+  const single = count === 1 ? selected[0] : undefined;
+  const singleWire = count === 1 ? selectedWires[0] : undefined;
+  const names = selectedWires.length > 0 ? entityNames(circuit) : undefined;
   const rootRef = useRef<HTMLElement>(null);
   const [textEpoch, setTextEpoch] = useState(0);
   // The document history is the only undo authority; a field has no undo of its own. What is not written is not in that history:
@@ -278,23 +330,34 @@ export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
     <aside ref={rootRef} className="inspector" aria-label="Inspector">
       <div className="palette-heading">
         <span>INSPECTOR</span>
-        {selected.length > 0 && <span className="count-badge">{String(selected.length).padStart(2, "0")}</span>}
+        {count > 0 && <span className="count-badge">{String(count).padStart(2, "0")}</span>}
       </div>
       <FieldTextEpochContext value={textEpoch}>
       <SignalInfoContext value={props.describeSignal}>
       <SignalPickerContext value={props.renderSignalPicker}>
         {single && <EntityInspector key={single.id} {...props} entity={single} />}
-        {selected.length > 1 && (
+        {singleWire && names && <WireInspector wire={singleWire} names={names} editable={editable} onSelect={props.onSelect} onDelete={props.onDeleteSelection} />}
+        {count > 1 && (
           <div className="inspector-multi">
-            <h2>{selected.length} entities selected</h2>
-            <p className="muted-note">{selected.map((entity) => entity.name).join(", ")}</p>
-            <button type="button" className="danger-button delete-entity" disabled={!editable} onClick={() => props.onDelete(selected.map((entity) => entity.id))}>
+            <h2>{countLabel(selected.length, selectedWires.length)} selected</h2>
+            {selected.length > 0 && <p className="muted-note">{selected.map((entity) => entity.name).join(", ")}</p>}
+            {names && (
+              <ul className="selected-wires">
+                {selectedWires.map((wire) => (
+                  <li key={wireKey(wire)} data-wire={wireKey(wire)}>
+                    <span className={`wire-dot ${wire.color}`} />
+                    {wireEndsLabel(wire, names)}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <button type="button" className="danger-button delete-entity" disabled={!editable} onClick={props.onDeleteSelection}>
               <Icon name="trash" size={14} />
-              Delete {selected.length} entities
+              Delete {countLabel(selected.length, selectedWires.length)}
             </button>
           </div>
         )}
-        {selected.length === 0 && (
+        {count === 0 && (
           <div className="inspector-empty">
             <Icon name="cursor" size={28} />
             <h3>Every signal starts somewhere.</h3>

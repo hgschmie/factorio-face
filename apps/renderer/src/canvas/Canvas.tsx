@@ -8,6 +8,7 @@ import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, SHORTCUT } from "../platform.ts";
 import { SELECT_TOOL, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
+import { countLabel } from "../workbench/selectionText.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
 import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, snapPoint, worldDelta, type EntityPosition } from "./drag.ts";
 import { cardRect, entitiesBounds, expandRect, GRID, pinPoint, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
@@ -28,6 +29,8 @@ export interface CanvasProps {
   readonly ref?: Ref<CanvasHandle>;
   readonly circuit: Circuit;
   readonly selection: readonly EntityId[];
+  /** The selected wires, as `wireKey`s. */
+  readonly wireSelection: readonly string[];
   readonly tool: Tool;
   /** When false the circuit is shown but cannot be changed (the source has errors). */
   readonly editable: boolean;
@@ -38,7 +41,8 @@ export interface CanvasProps {
   /** View to start with, for example the one in use before the canvas was unmounted. Without it the circuit is fitted. */
   readonly initialView?: CanvasView;
   onViewChange?(view: CanvasView): void;
-  onSelect(ids: readonly EntityId[]): void;
+  /** The new selection: these entities and these wires (none when omitted). */
+  onSelect(ids: readonly EntityId[], wires?: readonly string[]): void;
   onToolChange(tool: Tool): void;
   onPlaceEntity(kind: EntityKind, position: Point): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
@@ -58,7 +62,7 @@ type Gesture =
 interface MenuState {
   readonly x: number;
   readonly y: number;
-  readonly onEntity: boolean;
+  readonly on: "entity" | "wire" | "canvas";
 }
 
 /** Margins and cell size of the culling rectangle, in world units. */
@@ -88,16 +92,25 @@ function entityIdAt(target: Element): EntityId | null {
   return target.closest("[data-entity-id]")?.getAttribute("data-entity-id") ?? null;
 }
 
+/** The wire under the pointer, as its `wireKey`. */
+function wireAt(target: Element): string | null {
+  return target.closest("[data-wire]")?.getAttribute("data-wire") ?? null;
+}
+
+function toggled<T>(list: readonly T[], item: T): T[] {
+  return list.includes(item) ? list.filter((other) => other !== item) : [...list, item];
+}
+
 function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean): string {
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
   if (tool.type === "place") return `Click the canvas (or press Enter on it) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
   if (tool.type === "wire" && pending) return `Click a second ${tool.color} pin to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.`;
   if (tool.type === "wire") return `Click a ${tool.color} pin of an input or output to start a ${tool.color} wire.`;
-  return "Drag to arrange. Drag empty space to pan, Shift-drag to select an area, scroll to zoom.";
+  return "Drag to arrange, click a wire to select it. Drag empty space to pan, Shift-drag to select an area, scroll to zoom.";
 }
 
 export function Canvas(props: CanvasProps) {
-  const { circuit, selection, tool, editable, onSelect, onToolChange, onViewChange } = props;
+  const { circuit, selection, wireSelection, tool, editable, onSelect, onToolChange, onViewChange } = props;
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
@@ -130,6 +143,8 @@ export function Canvas(props: CanvasProps) {
 
   const entityById = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
   const selectionSet = useMemo(() => new Set(selection), [selection]);
+  const wireSelectionSet = useMemo(() => new Set(wireSelection), [wireSelection]);
+  const selectedCount = selection.length + wireSelection.length;
   const selectedEntities = useMemo(() => circuit.entities.filter((entity) => selectionSet.has(entity.id)), [circuit.entities, selectionSet]);
 
   const fit = useCallback(() => {
@@ -239,13 +254,21 @@ export function Canvas(props: CanvasProps) {
       if (editable) props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)));
       return;
     }
+    // From here on the select tool. Cards and their pins lie above the wires, so a wire is only found where neither is in the way.
+    const wire = entityId ? null : wireAt(target);
+    if (wire) {
+      if (event.shiftKey) return onSelect(selection, toggled(wireSelection, wire));
+      onSelect([], [wire]);
+      // A drag that starts on a wire still moves the view.
+      return beginGesture(event, pan);
+    }
     if (!entityId) {
       if (event.shiftKey) beginGesture(event, { type: "marquee", pointerId: event.pointerId, press, startWorld: worldPoint(event) });
       else beginGesture(event, { ...pan, clearsSelection: true });
       return;
     }
     if (event.shiftKey) {
-      onSelect(selectionSet.has(entityId) ? selection.filter((id) => id !== entityId) : [...selection, entityId]);
+      onSelect(toggled(selection, entityId), wireSelection);
       return;
     }
     const alreadySelected = selectionSet.has(entityId);
@@ -259,7 +282,7 @@ export function Canvas(props: CanvasProps) {
       grabbedId: entityId,
       origins: dragged.map(({ id, position }) => ({ id, position })),
       // A plain click on one member of a multi-selection narrows the selection to it.
-      collapseTo: alreadySelected && selection.length > 1 ? entityId : null,
+      collapseTo: alreadySelected && selectedCount > 1 ? entityId : null,
     });
   };
 
@@ -307,8 +330,8 @@ export function Canvas(props: CanvasProps) {
     } else if (gesture.type === "marquee") {
       const area = rectFromPoints(gesture.startWorld, worldPoint(event));
       const inside = circuit.entities.filter((entity) => rectsIntersect(cardRect(entity.position), area)).map((entity) => entity.id);
-      onSelect([...new Set([...selection, ...inside])]);
-    } else if (!moved && gesture.clearsSelection && selection.length > 0) {
+      onSelect([...new Set([...selection, ...inside])], wireSelection);
+    } else if (!moved && gesture.clearsSelection && selectedCount > 0) {
       onSelect([]);
     }
   };
@@ -318,16 +341,18 @@ export function Canvas(props: CanvasProps) {
     const container = containerRef.current;
     if (!container) return;
     const entityId = entityIdAt(event.target as Element);
+    const wire = entityId || tool.type !== "select" ? null : wireAt(event.target as Element);
     if (entityId && !selectionSet.has(entityId)) onSelect([entityId]);
-    if (!entityId && selection.length > 0) onSelect([]);
+    if (wire && !wireSelectionSet.has(wire)) onSelect([], [wire]);
+    if (!entityId && !wire && selectedCount > 0) onSelect([]);
     const bounds = container.getBoundingClientRect();
     // Keep the menu inside the canvas.
     const x = Math.min(event.clientX - bounds.left, bounds.width - MENU_SIZE.width);
-    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), onEntity: entityId !== null });
+    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), on: entityId ? "entity" : wire ? "wire" : "canvas" });
   };
 
   const deleteSelection = (): void => {
-    if (!editable || selection.length === 0) return;
+    if (!editable || selectedCount === 0) return;
     props.onDeleteSelection();
     svgRef.current?.focus();
   };
@@ -336,13 +361,13 @@ export function Canvas(props: CanvasProps) {
     if (isTextEntryTarget(event.target)) return;
     const nudge = NUDGE_KEYS[event.key];
     if (event.key === "Delete" || event.key === "Backspace") {
-      if (selection.length === 0) return;
+      if (selectedCount === 0) return;
       event.preventDefault();
       deleteSelection();
     } else if (event.key === "Escape") {
       if (pendingWire) setPendingWire(null);
       else if (tool.type !== "select") onToolChange(SELECT_TOOL);
-      else if (selection.length > 0) onSelect([]);
+      else if (selectedCount > 0) onSelect([]);
     } else if (event.key === "Enter" && tool.type === "place" && editable && event.target === svgRef.current) {
       // Keyboard placement: the new card goes to the middle of the view.
       event.preventDefault();
@@ -363,12 +388,17 @@ export function Canvas(props: CanvasProps) {
     action?.();
   };
   const selectAll = (): void => onSelect(circuit.entities.map((entity) => entity.id));
-  // A right click on empty canvas clears the selection, so cut and copy are only offered on a card.
-  const menuItems: ContextMenuItem[] = menu?.onEntity
+  // A right click on empty canvas clears the selection, so the actions on it are only offered on a card or a wire. Cut and
+  // copy take the selected entities; a selection of wires alone has neither.
+  const clipboardItems: ContextMenuItem[] = [
+    { id: "cut", label: "Cut", icon: "cut", shortcut: SHORTCUT.cut, disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
+    { id: "copy", label: "Copy", icon: "copy", shortcut: SHORTCUT.copy, disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
+  ];
+  const withClipboard = selection.length > 0;
+  const menuItems: ContextMenuItem[] = menu && menu.on !== "canvas"
     ? [
-        { id: "cut", label: "Cut", icon: "cut", shortcut: SHORTCUT.cut, disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
-        { id: "copy", label: "Copy", icon: "copy", shortcut: SHORTCUT.copy, disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
-        { id: "delete", label: selection.length > 1 ? `Delete ${selection.length} entities` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, separatorBefore: true, onSelect: deleteSelection },
+        ...(withClipboard ? clipboardItems : []),
+        { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, separatorBefore: withClipboard, onSelect: deleteSelection },
       ]
     : [
         { id: "select-all", label: "Select all", icon: "selectAll", shortcut: SHORTCUT.selectAll, disabled: circuit.entities.length === 0, onSelect: selectAll },
@@ -414,6 +444,7 @@ export function Canvas(props: CanvasProps) {
           circuit={circuit}
           previewPositions={previewPositions}
           selection={selectionSet}
+          wireSelection={wireSelectionSet}
           visible={stableCullRect}
           outline={camera.zoom < OUTLINE_ZOOM}
           pendingTerminal={pendingWire}

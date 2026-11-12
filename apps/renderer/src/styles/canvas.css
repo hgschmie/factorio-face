@@ -61,6 +61,41 @@
   stroke: var(--wire-green);
 }
 
+/* The wide stroke around a wire: its click target while the select tool is active, its glow on hover and its outline when selected.
+   12 units keep it off the casing of a neighbor 10 units away, the closest two wires of one pair of terminals come. */
+.wire-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 12;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.canvas.tool-select .wire {
+  cursor: pointer;
+}
+
+.canvas.tool-select .wire-hit {
+  pointer-events: stroke;
+}
+
+.canvas.panning .wire {
+  cursor: inherit;
+}
+
+.canvas.tool-select .wire:hover .wire-hit {
+  stroke: color-mix(in srgb, var(--text-strong) 30%, transparent);
+}
+
+.wire.selected .wire-hit,
+.canvas.tool-select .wire.selected:hover .wire-hit {
+  stroke: var(--accent);
+}
+
+.wire.selected .wire-core {
+  stroke-width: 3.6;
+}
+
 .wire-preview {
   fill: none;
   stroke-width: 2.2;

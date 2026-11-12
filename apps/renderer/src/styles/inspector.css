@@ -382,6 +382,24 @@
   color: var(--text-dim);
 }
 
+/* A selected wire */
+.inspector-wire {
+  display: flex;
+  flex-direction: column;
+}
+
+.inspector-wire .delete-entity {
+  align-self: flex-start;
+}
+
+.wire-icon.red {
+  color: var(--wire-red-ui);
+}
+
+.wire-icon.green {
+  color: var(--wire-green-ui);
+}
+
 .inspector-footer {
   display: flex;
   align-items: center;
@@ -414,6 +432,25 @@
 
 .inspector-multi .delete-entity {
   align-self: flex-start;
+}
+
+.selected-wires {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.selected-wires li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-wrap: anywhere;
 }
 
 .inspector-empty {

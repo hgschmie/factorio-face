@@ -189,6 +189,8 @@ export interface WorkbenchState {
   /** False while the source has errors: the canvas stays visible but graphical edits are blocked. */
   readonly editable: boolean;
   readonly selection: readonly EntityId[];
+  /** The selected wires as `wireKey`s. They exist in `circuit`; entities and wires can be selected together. */
+  readonly wireSelection: readonly string[];
   readonly mode: WorkbenchMode;
   readonly tool: Tool;
   /** Full text of the circuit source shown in the editor. */
@@ -220,7 +222,8 @@ export interface WorkbenchCommands {
   // View state: never part of undo history.
   setMode(mode: WorkbenchMode): void;
   setTool(tool: Tool): void;
-  select(ids: readonly EntityId[]): void;
+  /** Replaces the selection: these entities and these wires (`wireKey`s, none when omitted). What does not exist is left out. */
+  select(ids: readonly EntityId[], wires?: readonly string[]): void;
   dismissError(): void;
 
   // Document edits: each call is one undoable step.
@@ -237,6 +240,8 @@ export interface WorkbenchCommands {
   renameEntity(id: EntityId, name: string): void;
   /** Deletes the entities and every wire attached to them. */
   deleteEntities(ids: readonly EntityId[]): void;
+  /** Deletes the selected entities with every wire attached to them, and the selected wires, as one step. */
+  deleteSelection(): void;
   /**
    * The text a copy puts on the clipboard: the declarations of the entities and of the wires between them, in the circuit
    * language. Empty when none of the entities exists. It reads the circuit on show, so it also works while the source has errors.

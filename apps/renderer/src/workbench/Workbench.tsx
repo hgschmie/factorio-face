@@ -13,6 +13,7 @@ import { isTextEntryTarget, isTextField } from "../platform.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
 import type { Diagnostic, WorkbenchController } from "./controller.ts";
+import { selectedItems, selectionStatus } from "./selectionText.ts";
 import { Palette, type WireIconResolver } from "./Palette.tsx";
 import { SourcePane } from "./SourcePane.tsx";
 import { TopBar } from "./TopBar.tsx";
@@ -55,7 +56,7 @@ function pageTextIsSelected(): boolean {
 
 export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
-  const { circuit, selection, mode, tool, editable, simulation, project } = state;
+  const { circuit, selection, wireSelection, mode, tool, editable, simulation, project } = state;
   const canvasRef = useRef<CanvasHandle>(null);
   const editorRef = useRef<SourceEditorHandle>(null);
   const inspectorRef = useRef<InspectorHandle>(null);
@@ -78,7 +79,6 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   const stateRef = useRef(state);
   stateRef.current = state;
 
-  const deleteSelection = useCallback(() => commands.deleteEntities(stateRef.current.selection), [commands]);
   const save = useCallback(() => {
     writeFocusedField();
     return commands.save();
@@ -117,6 +117,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       const canvas = canvasRef.current;
       const data = event.clipboardData;
       if (!canvas || !data || focusIsOnText()) return;
+      // Cut and copy take the selected entities (with the wires between them); selected wires are left alone.
       const { selection, editable } = stateRef.current;
       if (event.type === "paste") {
         if (!editable) return;
@@ -170,7 +171,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         case "edit.redo":
           return history("redo");
         case "edit.delete":
-          return typing ? void document.execCommand("delete") : commands.deleteEntities(current.selection);
+          return typing ? void document.execCommand("delete") : commands.deleteSelection();
         case "edit.selectAll":
           return typing ? void document.execCommand("selectAll") : commands.select(current.circuit.entities.map((entity) => entity.id));
         case "view.circuit":
@@ -200,7 +201,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
 
   const errors = state.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warnings = state.diagnostics.length - errors;
-  const selectedNames = circuit.entities.filter((entity) => selection.includes(entity.id)).map((entity) => entity.name);
+  const selectionText = selectionStatus(circuit, selectedItems(circuit, selection, wireSelection));
   const showCanvas = mode !== "source";
 
   return (
@@ -233,6 +234,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   ref={canvasRef}
                   circuit={circuit}
                   selection={selection}
+                  wireSelection={wireSelection}
                   tool={tool}
                   editable={editable}
                   entityStatus={simulation.entityStatus}
@@ -245,7 +247,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   onPlaceEntity={commands.placeEntity}
                   onMoveEntities={commands.moveEntities}
                   onToggleWire={commands.toggleWire}
-                  onDeleteSelection={deleteSelection}
+                  onDeleteSelection={commands.deleteSelection}
                   onCopy={menuCopy}
                   onCut={menuCut}
                 />
@@ -268,6 +270,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           ref={inspectorRef}
           circuit={circuit}
           selection={selection}
+          wireSelection={wireSelection}
           editable={editable}
           resolveEntityIcon={resolveEntityIcon}
           renderSignalPicker={renderSignalPicker}
@@ -277,6 +280,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           onChange={commands.updateEntity}
           onDiscardDraft={commands.discardDraft}
           onDelete={commands.deleteEntities}
+          onDeleteSelection={commands.deleteSelection}
           onRemoveWire={commands.removeWire}
           onSelect={commands.select}
           onUndo={commands.undo}
@@ -297,7 +301,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           )}
         </span>
         <span>
-          {selectedNames.length === 0 ? "No selection" : selectedNames.length <= 4 ? selectedNames.join(", ") : `${selectedNames.length} entities selected`}
+          <span className="status-selection">{selectionText}</span>
           <span className="meta-dot" />
           20 unit grid
         </span>

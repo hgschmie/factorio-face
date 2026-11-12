@@ -29,6 +29,11 @@ const NO_DESKTOP = "Projects can only be opened and saved in the desktop app.";
 const PROJECT_NAME_LIMIT = 200;
 const NOT_A_FRAGMENT = "Nothing was pasted: the clipboard does not hold entities of a circuit.";
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
+const NO_WIRES: readonly string[] = [];
+
+function sameList(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((item, index) => item === b[index]);
+}
 
 export interface SessionOptions {
   /** The desktop bridge; without it the session works, but projects cannot be opened or saved. */
@@ -60,6 +65,8 @@ export class ProjectSession {
   private epoch = 0;
 
   private selection: readonly EntityId[] = [];
+  /** Selected wires as `wireKey`s. A key holds entity ids, so it survives renames and moves. */
+  private wireSelection: readonly string[] = NO_WIRES;
   private mode: WorkbenchMode = "circuit";
   private tool: Tool = SELECT_TOOL;
   private diagnostics: readonly Diagnostic[] = NO_DIAGNOSTICS;
@@ -166,6 +173,7 @@ export class ProjectSession {
       circuit: this.analysis.circuit,
       editable: this.editable,
       selection: this.selection,
+      wireSelection: this.wireSelection,
       mode: this.mode,
       tool: this.tool,
       source: this.document.text,
@@ -192,12 +200,16 @@ export class ProjectSession {
     else this.followCaret(transactions);
   }
 
-  /** A caret placed by the user inside an entity declaration selects that entity. */
+  /** A caret placed by the user inside an entity declaration selects that entity, one inside a wire declaration that wire. */
   private followCaret(transactions: readonly Transaction[]): void {
     const moved = transactions.findLast((transaction) => transaction.selection !== undefined && transaction.isUserEvent("select"));
-    if (!moved || !this.editable) return;
-    const id = this.analysis.parse?.sourceMap.entityAt(moved.newSelection.main.head);
+    const map = this.analysis.parse?.sourceMap;
+    if (!moved || !map || !this.editable) return;
+    const head = moved.newSelection.main.head;
+    const id = map.entityAt(head);
+    const wire = id === undefined ? map.wireAt(head) : undefined;
     if (id !== undefined) this.setSelection([id]);
+    else if (wire !== undefined) this.setSelection([], [wire]);
   }
 
   private analyze(): void {
@@ -230,15 +242,25 @@ export class ProjectSession {
     const pending = new Set(this.pendingSelection);
     const created = circuit.entities.filter((entity) => pending.has(entity.name)).map((entity) => entity.id);
     this.pendingSelection = undefined;
-    this.setSelection(created.length > 0 ? created : this.selection.filter((id) => byId.has(id)));
+    if (created.length > 0) this.setSelection(created);
+    else this.setSelection(this.selection.filter((id) => byId.has(id)), this.existingWires(this.wireSelection));
     if (this.draft && byId.get(this.draft.id) !== this.draft.base) this.draft = null;
     this.simulation.setCircuit(circuit);
   }
 
-  private setSelection(selection: readonly EntityId[]): void {
-    if (selection.length === this.selection.length && selection.every((id, index) => id === this.selection[index])) return;
+  /** The keys among `keys` that name a wire of the circuit on show, each once. */
+  private existingWires(keys: readonly string[]): readonly string[] {
+    if (keys.length === 0) return NO_WIRES;
+    const known = new Set(this.analysis.circuit.wires.map(wireKey));
+    return [...new Set(keys)].filter((key) => known.has(key));
+  }
+
+  private setSelection(selection: readonly EntityId[], wires: readonly string[] = NO_WIRES): void {
+    if (!sameList(wires, this.wireSelection)) this.wireSelection = wires;
+    // The inspector shows a draft only for an entity that is selected alone.
+    if (this.draft && !(selection.length === 1 && selection[0] === this.draft.id && wires.length === 0)) this.draft = null;
+    if (sameList(selection, this.selection)) return;
     this.selection = selection;
-    if (this.draft && !(selection.length === 1 && selection[0] === this.draft.id)) this.draft = null;
     this.simulation.setSelection(selection);
   }
 
@@ -317,9 +339,9 @@ export class ProjectSession {
     return {
       setMode: changing((mode) => void (this.mode = mode)),
       setTool: changing((tool) => void (sameTool(this.tool, tool) || (this.tool = tool))),
-      select: changing((ids) => {
+      select: changing((ids, wires = NO_WIRES) => {
         const known = new Set(this.analysis.circuit.entities.map((entity) => entity.id));
-        this.setSelection([...new Set(ids)].filter((id) => known.has(id)));
+        this.setSelection([...new Set(ids)].filter((id) => known.has(id)), this.existingWires(wires));
       }),
       dismissError: changing(() => void (this.error = null)),
 
@@ -339,6 +361,10 @@ export class ProjectSession {
       deleteEntities: changing((ids) => {
         const existing = [...new Set(ids)].filter((id) => this.entity(id) !== undefined);
         if (existing.length > 0) this.perform({ type: "deleteEntities", ids: existing });
+      }),
+      deleteSelection: changing(() => {
+        // Both lists were checked against the circuit when it arrived, so while the source is editable everything in them exists.
+        if (this.selection.length + this.wireSelection.length > 0) this.perform({ type: "deleteEntities", ids: this.selection, wires: this.wireSelection });
       }),
       copyEntities: (ids) => clipboardText(this.analysis.circuit, ids),
       pasteEntities: changing((text, corner) => this.pasteEntities(text, corner)),
@@ -402,6 +428,7 @@ export class ProjectSession {
       this.settings = settings;
       this.epoch++;
       this.selection = [];
+      this.wireSelection = NO_WIRES;
       this.draft = null;
       this.error = null;
       this.tool = SELECT_TOOL;

@@ -1,5 +1,6 @@
 // The circuit itself: wires below, cards above. Memoized as a whole, so camera changes that stay inside the current
-// culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved cards and wires.
+// culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved cards and wires
+// and a selection only the cards and wires whose state changed. Hovering a wire is CSS only.
 import { terminalKey, wireKey, type Circuit, type Entity, type EntityId, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -17,6 +18,8 @@ export interface SceneProps {
   /** Positions that override `entity.position` while a drag is in progress. */
   readonly previewPositions: ReadonlyMap<EntityId, Point> | null;
   readonly selection: ReadonlySet<EntityId>;
+  /** The selected wires, as `wireKey`s. */
+  readonly wireSelection: ReadonlySet<string>;
   /** Only elements intersecting this rectangle are rendered. */
   readonly visible: Rect;
   readonly outline: boolean;
@@ -36,9 +39,14 @@ interface RoutedWire {
   readonly title: string;
 }
 
-const WireView = memo(function WireView({ id, color, path, title }: { readonly id: string; readonly color: string; readonly path: string; readonly title: string }) {
+/**
+ * One wire. `wire-hit` is the wide stroke that takes the pointer while the select tool is active (the canvas reads `data-wire`
+ * from the group); it is also what lights up on hover and for a selected wire.
+ */
+const WireView = memo(function WireView({ id, color, path, title, selected }: { readonly id: string; readonly color: string; readonly path: string; readonly title: string; readonly selected: boolean }) {
   return (
-    <g className={`wire ${color}`} data-wire={id} data-color={color}>
+    <g className={`wire ${color}${selected ? " selected" : ""}`} data-wire={id} data-color={color}>
+      <path className="wire-hit" d={path} />
       <path className="wire-casing" d={path} />
       <path className="wire-core" d={path} />
       <title>{title}</title>
@@ -58,11 +66,13 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, posit
   return routed;
 }
 
-export const Scene = memo(function Scene({ circuit, previewPositions, selection, visible, outline, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon }: SceneProps) {
+export const Scene = memo(function Scene({ circuit, previewPositions, selection, wireSelection, visible, outline, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon }: SceneProps) {
   const byId = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
   const wires = useMemo(() => routeWires(circuit, byId, (entity) => previewPositions?.get(entity.id) ?? entity.position), [circuit, byId, previewPositions]);
 
-  const visibleWires = wires.filter((wire) => rectsIntersect(wire.bounds, visible));
+  const inView = wires.filter((wire) => rectsIntersect(wire.bounds, visible));
+  // Selected wires are drawn last, above the others (and still below the cards).
+  const visibleWires = wireSelection.size === 0 ? inView : [...inView.filter((wire) => !wireSelection.has(wire.key)), ...inView.filter((wire) => wireSelection.has(wire.key))];
   const visibleEntities = circuit.entities.filter((entity) => rectsIntersect(cardRect(previewPositions?.get(entity.id) ?? entity.position), visible));
   const shadow = visibleEntities.length <= SHADOW_LIMIT;
 
@@ -70,7 +80,7 @@ export const Scene = memo(function Scene({ circuit, previewPositions, selection,
     <>
       <g className="wires">
         {visibleWires.map((wire) => (
-          <WireView key={wire.key} id={wire.key} color={wire.wire.color} path={wire.path} title={wire.title} />
+          <WireView key={wire.key} id={wire.key} color={wire.wire.color} path={wire.path} title={wire.title} selected={wireSelection.has(wire.key)} />
         ))}
       </g>
       <g className="cards">
