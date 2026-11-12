@@ -185,8 +185,9 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
 
 `EntityIcon` / `EntityIconSvg` take an `EntityIconResolver` (`(kind) => url | undefined`). `icons/catalogEntityIcons.ts` probes the five
 item icons of the generated catalog through `face-asset://catalog/icons/item/<name>.png` and resolves only those that load.
-`icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe. When `packages/catalog/generated` is absent
-(it is git-ignored), entity kinds show inline pictograms and signals are shown by name, in the picker as well.
+`icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe; the two wire tool buttons of the palette
+take the game's `item/red-wire` and `item/green-wire` icons from it. When `packages/catalog/generated` is absent (it is git-ignored),
+entity kinds and wire tools show inline pictograms and signals are shown by name, in the picker as well.
 
 ## Commands
 

@@ -6,6 +6,7 @@ import { useCatalogIcons } from "./icons/catalogSignalIcons.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "./inspector/SignalField.tsx";
 import { SignalPicker } from "./picker/SignalPicker.tsx";
 import { useProjectSession } from "./session/useProjectSession.ts";
+import type { WireIconResolver } from "./workbench/Palette.tsx";
 import { Workbench } from "./workbench/Workbench.tsx";
 
 const STATUS_WARNINGS = { known: undefined, unknown: "Not a signal of Factorio's catalog", disabled: "Belongs to a signal group that is switched off" } as const;
@@ -15,6 +16,8 @@ export function App() {
   const controller = useProjectSession(api);
   const resolveEntityIcon = useCatalogEntityIcons(api?.catalogAssetUrl);
   const iconUrl = useCatalogIcons(api?.catalogAssetUrl);
+  // The game's wire items carry the icons of its wire tools.
+  const resolveWireIcon = useCallback<WireIconResolver>((color) => iconUrl(`item/${color}-wire`), [iconUrl]);
   const catalog = controller.state.catalog;
 
   const describeSignal = useMemo<SignalDescriber>(() => {
@@ -29,5 +32,5 @@ export function App() {
     [catalog, iconUrl],
   );
 
-  return <Workbench controller={controller} api={api} resolveEntityIcon={resolveEntityIcon} renderSignalPicker={renderSignalPicker} describeSignal={describeSignal} />;
+  return <Workbench controller={controller} api={api} resolveEntityIcon={resolveEntityIcon} resolveWireIcon={resolveWireIcon} renderSignalPicker={renderSignalPicker} describeSignal={describeSignal} />;
 }

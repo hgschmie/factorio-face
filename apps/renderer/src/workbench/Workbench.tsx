@@ -13,7 +13,7 @@ import { isTextEntryTarget } from "../platform.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
 import type { Diagnostic, WorkbenchController } from "./controller.ts";
-import { Palette } from "./Palette.tsx";
+import { Palette, type WireIconResolver } from "./Palette.tsx";
 import { SourcePane } from "./SourcePane.tsx";
 import { TopBar } from "./TopBar.tsx";
 
@@ -22,12 +22,13 @@ export interface WorkbenchProps {
   /** The desktop bridge; undefined when the renderer runs outside Electron. */
   readonly api?: FaceApi;
   readonly resolveEntityIcon?: EntityIconResolver;
+  readonly resolveWireIcon?: WireIconResolver;
   readonly renderSignalPicker?: SignalPickerRenderer;
   /** Catalog names and icons of signals, for the inspector, the cards and the dock. */
   readonly describeSignal?: SignalDescriber;
 }
 
-export function Workbench({ controller, api, resolveEntityIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
+export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
   const { circuit, selection, mode, tool, editable, simulation, project } = state;
   const canvasRef = useRef<CanvasHandle>(null);
@@ -132,7 +133,7 @@ export function Workbench({ controller, api, resolveEntityIcon, renderSignalPick
       {settingsOpen && <ProjectSettings project={project} catalog={state.catalog} onRename={commands.setProjectName} onModuleChange={commands.setModuleEnabled} close={closeSettings} />}
 
       <div className={`workbench mode-${mode}`}>
-        {showCanvas && <Palette tool={tool} editable={editable} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
+        {showCanvas && <Palette tool={tool} editable={editable} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} resolveWireIcon={resolveWireIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
 
         <main className="workspace">
           <div className="editor-area">

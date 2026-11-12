@@ -26,7 +26,7 @@
 
 .tool-row {
   display: grid;
-  grid-template-columns: 34px 1fr 1fr;
+  grid-template-columns: repeat(3, 34px);
   gap: 4px;
   margin-bottom: 20px;
 }
@@ -40,6 +40,14 @@
   font-size: var(--text-md);
   color: var(--text-soft);
   background: var(--surface-raised);
+}
+
+.tool-button .wire-icon {
+  flex-shrink: 0;
+}
+
+.tool-button:disabled .wire-icon {
+  opacity: 0.45;
 }
 
 .tool-button[aria-pressed="true"] {
@@ -179,12 +187,4 @@
 .entity-icon {
   flex-shrink: 0;
   filter: drop-shadow(0 3px 2px rgb(0 0 0 / 33%));
-}
-
-@media (max-width: 1250px) {
-  /* The narrow palette has no room for the wire glyphs next to the labels. */
-  .tool-button.wire-red svg,
-  .tool-button.wire-green svg {
-    display: none;
-  }
 }
