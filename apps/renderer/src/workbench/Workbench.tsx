@@ -39,6 +39,20 @@ function writeFocusedField(): void {
   focused.focus();
 }
 
+/** True when cut, copy and paste belong to text: the focus is in a text control, in the source editor or in a dialog. */
+function focusIsOnText(): boolean {
+  const focused = document.activeElement;
+  return isTextEntryTarget(focused) || focused?.closest('[role="dialog"]') != null;
+}
+
+/** True when text of the page itself, such as a message, is selected. A selection left behind in the source editor does not count. */
+function pageTextIsSelected(): boolean {
+  const selection = document.getSelection();
+  if (!selection || selection.isCollapsed) return false;
+  const anchor = selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode?.parentElement;
+  return anchor != null && anchor.closest(".cm-editor") === null;
+}
+
 export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
   const { circuit, selection, mode, tool, editable, simulation, project } = state;
@@ -94,6 +108,40 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
     document.addEventListener("beforeinput", onBeforeInput, true);
     return () => document.removeEventListener("beforeinput", onBeforeInput, true);
   }, [history]);
+
+  // Cut, copy and paste of entities. The Edit menu items and the keys both end in the browser's clipboard events, which carry
+  // the clipboard for the length of the event; that needs no access to the clipboard and nothing from the main process. The
+  // events are left alone wherever they mean text, and while the canvas is not shown.
+  useEffect(() => {
+    const onClipboard = (event: ClipboardEvent): void => {
+      const canvas = canvasRef.current;
+      const data = event.clipboardData;
+      if (!canvas || !data || focusIsOnText()) return;
+      const { selection, editable } = stateRef.current;
+      if (event.type === "paste") {
+        if (!editable) return;
+        event.preventDefault();
+        commands.pasteEntities(data.getData("text/plain"), canvas.pasteCorner());
+        return;
+      }
+      if (pageTextIsSelected() || (event.type === "cut" && !editable)) return;
+      const text = commands.copyEntities(selection);
+      if (text === "") return;
+      event.preventDefault();
+      data.setData("text/plain", text);
+      if (event.type === "cut") commands.deleteEntities(selection);
+    };
+    const clipboardEvents = ["cut", "copy", "paste"] as const;
+    for (const type of clipboardEvents) document.addEventListener(type, onClipboard);
+    return () => {
+      for (const type of clipboardEvents) document.removeEventListener(type, onClipboard);
+    };
+  }, [commands]);
+
+  // The context menu of the canvas starts the same events for a cut and a copy. A page cannot start a paste (the main process
+  // would have to do it on its behalf), so the menu has none: pasting is Edit > Paste and Cmd/Ctrl+V.
+  const menuCopy = useCallback(() => void document.execCommand("copy"), []);
+  const menuCut = useCallback(() => void document.execCommand("cut"), []);
 
   // Dirty-state handshake: main asks before closing a window that reported unsaved changes.
   useEffect(() => api?.setDirty(project.dirty), [api, project.dirty]);
@@ -198,6 +246,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   onMoveEntities={commands.moveEntities}
                   onToggleWire={commands.toggleWire}
                   onDeleteSelection={deleteSelection}
+                  onCopy={menuCopy}
+                  onCut={menuCut}
                 />
                 {!editable && (
                   <div className="invalid-banner" role="status">

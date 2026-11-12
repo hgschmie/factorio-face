@@ -148,6 +148,39 @@ lamp-stmt = "when" sigref-without-networks comparator ( SIGNAL | INT ) | propert
 
 `when` is the circuit enable condition (its presence sets `circuit_enabled`). Properties: `networks = red`, `green` or `none` (default both; the lamp's input network selection, which applies to the condition and to the color signals), `always-on = BOOL` (`false`), `colors = mapping`, `components` or `packed-rgb` (presence sets `use_colors`), `red`, `green`, `blue`, `rgb` (signals for the color modes), `color = #rrggbb` (static color).
 
+## Fragments
+
+A fragment is a sequence of entity and wire declarations as they stand inside a circuit block, without the block:
+
+```ebnf
+fragment    = { member } | circuit ;
+```
+
+```text
+constant source at (40, 80) {
+    virtual:signal-A = 1
+}
+
+decider gate at (300, 80) {
+    when virtual:signal-A < 10
+    output virtual:signal-A = input
+}
+
+wire red source.out <-> gate.in
+wire green gate.out <-> gate.in
+```
+
+It is the text a copy of entities puts on the clipboard (canonical form, no indentation, a blank line between entities and before
+the wires), and what a paste on the canvas reads. It is not a file format: a `.face` file is always a circuit. The same rules as
+in a circuit apply inside a fragment: names are unique, and every wire connects two entities of the fragment, so a copy never
+carries a wire to an entity outside the selection. Comments, `;` and `,` are allowed as in a circuit. The source of a whole
+circuit is accepted where a fragment is read and stands for its members; the circuit name is ignored. A fragment with any error
+is not a fragment: it is rejected as a whole. Pasted into a circuit, a fragment's entities keep their names where these are
+free; a taken name loses its trailing digits and gets the smallest number from 2 that is free (`gate` becomes `gate2`, `gate2`
+becomes `gate3`), and the wires of the fragment follow. `tile` is dropped (two entities cannot stand on one tile of the game);
+`facing`, the description and the configuration are kept. Because a fragment is ordinary source text, it can also be pasted
+between the braces of a circuit in a text editor; names then stay as they are and a clash is the usual duplicate-name error.
+
 ## Diagnostics
 
 Errors (block simulation and graphical edits until fixed; the last valid graph stays visible): syntax errors, duplicate entity names, unknown entity or terminal in a wire, a terminal the entity kind does not have (`constant.in`, `lamp.out`), a wire from a terminal to itself, integers outside int32, illegal wildcard use, duplicate or contradictory statements (two `when`, two expressions), unknown property or enum value.
@@ -162,6 +195,7 @@ Every diagnostic carries a source range, a severity, a stable code and a message
 - Graphical commands are source patches: the smallest set of text changes that performs the operation, applied as one undoable transaction. Unrelated text, comments, spacing and declaration order are never touched. Configuration changes replace only the affected statements; untouched statements keep their trivia.
 - Rename rewrites the declaration and every wire reference. Delete removes the entity, every incident wire declaration (including duplicates and reversed forms) and their own-line comments stay with whatever they were attached to unless they are trailing comments of a removed line.
 - Adding a wire that already exists (in either direction) is a no-op with no undo entry.
+- Paste inserts the entities of a fragment after the last entity and its wires after the last member, as `addEntity` and `addWire` do, in the indentation of the file and in canonical form; it is one transaction.
 - Wildcards and signal literals are printed in canonical form by commands; hand-written text is not reformatted.
 
 ## Open points for review

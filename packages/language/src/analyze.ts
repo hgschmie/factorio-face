@@ -6,9 +6,10 @@ import {
   type Entity, type EntityId, type EntityKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type RgbColor, type SelectorMode,
   type SelectorOperation, type SignalId, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
-import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
+import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
-import { parse } from "./parser.ts";
+import type { Fragment } from "./fragment.ts";
+import { parse, parseFragment } from "./parser.ts";
 import { lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, type PropertySpec, type SignalSlot, type StatementForm } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
 
@@ -717,18 +718,20 @@ function statementSources(block: CstBlock | undefined, kind: EntityKind): Statem
   return (block?.statements ?? []).map((statement) => ({ from: statement.from, to: statement.to, key: statementKey(statement, kind) }));
 }
 
-/**
- * Parses and analyzes `source`. Pass the previous result of the same document so that entity ids stay stable while it evolves.
- * Never throws; `circuit` is present exactly when there are no error diagnostics.
- */
-export function analyze(source: string, previous?: ParseResult, options: AnalyzeOptions = {}): ParseResult {
-  const syntax = parse(source);
-  const analyzer = new Analyzer(options.signals);
-  const members = syntax.cst.circuit?.members ?? [];
+interface MemberAnalysis {
+  readonly entityNodes: readonly CstEntity[];
+  readonly entities: readonly Entity[];
+  readonly wires: readonly Wire[];
+  readonly sources: Sources;
+  readonly match: IdentityMatch;
+}
+
+/** Entities, wires and their source map from the member declarations of a circuit or a fragment. */
+function analyzeMembers(members: readonly CstMember[], analyzer: Analyzer, previous: IdentityState | undefined): MemberAnalysis {
   const entityNodes = members.filter((member): member is CstEntity => member.type === "entity");
   const wireNodes = members.filter((member): member is CstWire => member.type === "wire");
 
-  const match = matchIdentity(entityNodes.map((node) => ({ name: node.name?.text ?? "", kind: node.kind })), previous?.identity);
+  const match = matchIdentity(entityNodes.map((node) => ({ name: node.name?.text ?? "", kind: node.kind })), previous);
   const positions = autoPlace(entityNodes.map((node) => analyzer.point(node.at, true)));
 
   const sources = new Sources();
@@ -788,15 +791,51 @@ export function analyze(source: string, previous?: ParseResult, options: Analyze
     sources.wireSpans.push({ from: node.from, to: node.to, key });
   }
   for (const [key, { wire, declarations }] of wires) sources.wires.set(key, { key, wire, declarations });
+  return { entityNodes, entities, wires: [...wires.values()].map((w) => w.wire), sources, match };
+}
 
-  const diagnostics = [...syntax.diagnostics, ...analyzer.diagnostics].sort((x, y) => x.from - y.from || x.to - y.to);
+function sortDiagnostics(...lists: readonly (readonly Diagnostic[])[]): Diagnostic[] {
+  return lists.flat().sort((x, y) => x.from - y.from || x.to - y.to);
+}
+
+/**
+ * Parses and analyzes `source`. Pass the previous result of the same document so that entity ids stay stable while it evolves.
+ * Never throws; `circuit` is present exactly when there are no error diagnostics.
+ */
+export function analyze(source: string, previous?: ParseResult, options: AnalyzeOptions = {}): ParseResult {
+  const syntax = parse(source);
+  const analyzer = new Analyzer(options.signals);
+  const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], analyzer, previous?.identity);
+
+  const diagnostics = sortDiagnostics(syntax.diagnostics, analyzer.diagnostics);
   const hasErrors = diagnostics.some((d) => d.severity === "error");
   const circuitNode = syntax.cst.circuit;
-  const circuit: Circuit | undefined = hasErrors || !circuitNode ? undefined : { name: circuitNode.name ? decodeString(circuitNode.name.text) : "", entities, wires: [...wires.values()].map((w) => w.wire) };
+  const circuit: Circuit | undefined = hasErrors || !circuitNode ? undefined : { name: circuitNode.name ? decodeString(circuitNode.name.text) : "", entities, wires };
   const identity: IdentityState = {
     nextId: match.nextId,
     entries: entityNodes.map((node, i) => ({ id: match.ids[i]!, name: node.name?.text ?? "", kind: node.kind })),
     lost: hasErrors ? match.unclaimed.slice(0, MAX_LOST) : [],
   };
   return compact({ source, version: options.version, cst: syntax.cst, diagnostics, hasErrors, circuit, sourceMap: sources, identity });
+}
+
+export interface FragmentResult {
+  /** Sorted by position; offsets refer to the fragment text. */
+  readonly diagnostics: readonly Diagnostic[];
+  readonly hasErrors: boolean;
+  /** Present only when there are no errors. Entity ids are local to the fragment. */
+  readonly fragment?: Fragment;
+}
+
+/**
+ * Parses and analyzes the text of a circuit fragment (see `parseFragment`). Never throws. Every wire has to connect two entities
+ * of the fragment; entities without an `at` clause are placed like in a circuit.
+ */
+export function analyzeFragment(source: string): FragmentResult {
+  const syntax = parseFragment(source);
+  const analyzer = new Analyzer(undefined);
+  const { entities, wires } = analyzeMembers(syntax.members, analyzer, undefined);
+  const diagnostics = sortDiagnostics(syntax.diagnostics, analyzer.diagnostics);
+  const hasErrors = diagnostics.some((d) => d.severity === "error");
+  return compact({ diagnostics, hasErrors, fragment: hasErrors ? undefined : { entities, wires } });
 }

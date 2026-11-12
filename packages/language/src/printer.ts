@@ -214,18 +214,27 @@ export function printWire(color: WireColor, a: { readonly name: string; readonly
   return `wire ${color} ${a.name}.${a.side} <-> ${b.name}.${b.side}`;
 }
 
-/** Canonical source of a whole circuit. Wire ends are written output first, then in declaration order of their entities. */
+/**
+ * Canonical declarations of entities and wires, each starting in column 0. Wire ends are written output first, then in declaration
+ * order of their entities.
+ */
+export function printMembers(members: Pick<Circuit, "entities" | "wires">, options: PrintOptions = {}): { entities: string[]; wires: string[] } {
+  const { entities } = members;
+  const names = new Map(entities.map((e) => [e.id, e.name]));
+  const order = new Map(entities.map((e, index) => [e.id, index]));
+  const end = (t: TerminalRef) => ({ name: names.get(t.entity) ?? t.entity, side: t.side });
+  const rank = (t: TerminalRef) => (t.side === "out" ? 0 : 1) * entities.length + (order.get(t.entity) ?? 0);
+  const wires = members.wires.map((w) => {
+    const [a, b] = rank(w.b) < rank(w.a) ? [w.b, w.a] : [w.a, w.b];
+    return printWire(w.color, end(a), end(b));
+  });
+  return { entities: entities.map((e) => printEntity(e, options)), wires };
+}
+
+/** Canonical source of a whole circuit. */
 export function printCircuit(circuit: Circuit, options: PrintOptions = {}): string {
   const unit = options.unit ?? "    ";
-  const names = new Map(circuit.entities.map((e) => [e.id, e.name]));
-  const order = new Map(circuit.entities.map((e, index) => [e.id, index]));
-  const end = (t: TerminalRef) => ({ name: names.get(t.entity) ?? t.entity, side: t.side });
-  const rank = (t: TerminalRef) => (t.side === "out" ? 0 : 1) * circuit.entities.length + (order.get(t.entity) ?? 0);
-  const entities = circuit.entities.map((e) => indent(printEntity(e, options), unit));
-  const wires = circuit.wires.map((w) => {
-    const [a, b] = rank(w.b) < rank(w.a) ? [w.b, w.a] : [w.a, w.b];
-    return unit + printWire(w.color, end(a), end(b));
-  });
-  const blocks = [...entities, ...(wires.length ? [wires.join("\n")] : [])];
+  const { entities, wires } = printMembers(circuit, options);
+  const blocks = [...entities.map((e) => indent(e, unit)), ...(wires.length ? [indent(wires.join("\n"), unit)] : [])];
   return `circuit ${encodeString(circuit.name)} {\n${blocks.length ? `${blocks.join("\n\n")}\n` : ""}}\n`;
 }

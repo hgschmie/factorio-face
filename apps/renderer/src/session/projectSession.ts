@@ -9,7 +9,7 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { wireKey, type Circuit, type Entity, type EntityId } from "@face/model";
+import { wireKey, type Circuit, type Entity, type EntityId, type Point } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import {
@@ -17,6 +17,7 @@ import {
 } from "../workbench/controller.ts";
 import { Analysis } from "./analysis.ts";
 import { CatalogService } from "./catalogService.ts";
+import { clipboardText, pasteShift, readClipboardText } from "./clipboard.ts";
 import { SourceDocument } from "./document.ts";
 import { checkDraft, normalizeEntity } from "./drafts.ts";
 import { languageSupport, lintTransaction } from "./editorSupport.ts";
@@ -26,6 +27,7 @@ import { SimulationRunner, type Scheduler } from "./simulationRunner.ts";
 
 const NO_DESKTOP = "Projects can only be opened and saved in the desktop app.";
 const PROJECT_NAME_LIMIT = 200;
+const NOT_A_FRAGMENT = "Nothing was pasted: the clipboard does not hold entities of a circuit.";
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
 
 export interface SessionOptions {
@@ -63,8 +65,8 @@ export class ProjectSession {
   private diagnostics: readonly Diagnostic[] = NO_DIAGNOSTICS;
   private draft: Draft | null = null;
   private error: string | null = null;
-  /** Name of an entity to select once the analysis of the edit that created it has arrived. */
-  private pendingSelection: string | undefined;
+  /** Names of the entities to select once the analysis of the edit that created them has arrived. */
+  private pendingSelection: readonly string[] | undefined;
   /** The last inspector edit that may still be extended into the same undo step. */
   private coalesce: { readonly key: string; readonly version: number } | undefined;
 
@@ -225,9 +227,10 @@ export class ProjectSession {
 
   private circuitChanged(circuit: Circuit): void {
     const byId = new Map(circuit.entities.map((entity) => [entity.id, entity]));
-    const created = this.pendingSelection === undefined ? undefined : circuit.entities.find((entity) => entity.name === this.pendingSelection);
+    const pending = new Set(this.pendingSelection);
+    const created = circuit.entities.filter((entity) => pending.has(entity.name)).map((entity) => entity.id);
     this.pendingSelection = undefined;
-    this.setSelection(created ? [created.id] : this.selection.filter((id) => byId.has(id)));
+    this.setSelection(created.length > 0 ? created : this.selection.filter((id) => byId.has(id)));
     if (this.draft && byId.get(this.draft.id) !== this.draft.base) this.draft = null;
     this.simulation.setCircuit(circuit);
   }
@@ -296,6 +299,19 @@ export class ProjectSession {
     if (result.changes.length > 0) this.coalesce = options.coalesce === undefined ? undefined : { key: options.coalesce, version: this.document.version };
   }
 
+  /** Inserts what the clipboard text declares, as one step; the copies become the selection when their analysis arrives. */
+  private pasteEntities(text: string, corner?: Point): void {
+    if (!this.editable) return;
+    const fragment = readClipboardText(text);
+    if (!fragment) return void (this.error = NOT_A_FRAGMENT);
+    const result = this.compute({ type: "pasteFragment", fragment, shift: pasteShift(fragment, this.analysis.circuit.entities, corner) });
+    if (!result) return;
+    if (!result.ok) return void (this.error = result.message);
+    this.pendingSelection = result.names;
+    this.tool = SELECT_TOOL;
+    this.document.edit(result.changes);
+  }
+
   private createCommands(): WorkbenchCommands {
     const changing = <A extends unknown[]>(action: (...args: A) => void) => (...args: A): void => this.change(() => action(...args));
     return {
@@ -312,7 +328,7 @@ export class ProjectSession {
         if (!result) return;
         if (!result.ok) return void (this.error = result.message);
         // The new entity gets its id from the analysis of the edit; it is selected when that arrives.
-        this.pendingSelection = result.name;
+        this.pendingSelection = result.name === undefined ? undefined : [result.name];
         this.tool = SELECT_TOOL;
         this.document.edit(result.changes);
       }),
@@ -324,6 +340,8 @@ export class ProjectSession {
         const existing = [...new Set(ids)].filter((id) => this.entity(id) !== undefined);
         if (existing.length > 0) this.perform({ type: "deleteEntities", ids: existing });
       }),
+      copyEntities: (ids) => clipboardText(this.analysis.circuit, ids),
+      pasteEntities: changing((text, corner) => this.pasteEntities(text, corner)),
       addWire: changing((wire) => void this.perform({ type: "addWire", color: wire.color, a: wire.a, b: wire.b })),
       removeWire: changing((wire) => {
         const key = wireKey(wire);

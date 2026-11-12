@@ -237,6 +237,18 @@ export interface WorkbenchCommands {
   renameEntity(id: EntityId, name: string): void;
   /** Deletes the entities and every wire attached to them. */
   deleteEntities(ids: readonly EntityId[]): void;
+  /**
+   * The text a copy puts on the clipboard: the declarations of the entities and of the wires between them, in the circuit
+   * language. Empty when none of the entities exists. It reads the circuit on show, so it also works while the source has errors.
+   */
+  copyEntities(ids: readonly EntityId[]): string;
+  /**
+   * Inserts the entities and wires that clipboard text declares and selects them. Taken names are replaced and `tile` is dropped.
+   * With `corner` (canvas units) the top-left corner of the group goes there, otherwise the group goes where it was copied from;
+   * either way it moves on until no copy sits exactly on another entity. Text that is not a circuit fragment changes nothing
+   * and is reported.
+   */
+  pasteEntities(text: string, corner?: Point): void;
   /** Adding a wire that already exists (in either direction) is a no-op without an undo entry. */
   addWire(wire: Wire): void;
   removeWire(wire: Wire): void;

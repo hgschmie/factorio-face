@@ -57,6 +57,19 @@ const GLYPHS = {
     </>
   ),
   note: <path d="M4 6h16M4 12h16M4 18h10" />,
+  copy: (
+    <>
+      <rect x="9" y="9" width="12" height="12" rx="2" />
+      <path d="M15 5V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h1" />
+    </>
+  ),
+  cut: (
+    <>
+      <circle cx="6" cy="6" r="3" />
+      <circle cx="6" cy="18" r="3" />
+      <path d="M8.5 8 20 19M8.5 16 20 5" />
+    </>
+  ),
   selectAll: (
     <>
       <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />

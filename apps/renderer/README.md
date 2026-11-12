@@ -21,6 +21,7 @@ src/
     document.ts        SourceDocument: the CodeMirror EditorState (text, history, selection) with or without a mounted view
     analysis.ts        runs the language per document version, drops stale results, keeps the last valid circuit, shares structure
     drafts.ts          inspector edits the language cannot write yet: normalization, completeness check, hints
+    clipboard.ts       copy and paste of entities: the clipboard text, what is accepted from it, where a pasted group lands   (pure)
     simulationRunner.ts  compile on change, keep state by semantic fingerprint, timer, bounded history, SimulationView
     simulationView.ts  snapshots to dock traces and card statuses                    (pure)
     catalogService.ts  per module set: SignalResolver, signal info, picker tree, module list for the settings
@@ -91,7 +92,8 @@ has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line num
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
 `WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `updateEntity`,
-`discardDraft`, `renameEntity`, `deleteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`), simulation (`run`, `pause`,
+`discardDraft`, `renameEntity`, `deleteEntities`, `copyEntities`, `pasteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`),
+simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
 `loadProject`, `save`, `saveAs`).
 
@@ -131,6 +133,19 @@ has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line num
 - **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
   a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
   so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.
+- **Copy, cut and paste of entities.** The clipboard carries text: `copyEntities(ids)` prints the entities and every wire whose two
+  ends are both among them as a circuit fragment (`docs/dsl.md`, "Fragments"), in canonical form, from the circuit on show; it
+  therefore also works while the source has errors. The text can be pasted into another project, another window, a text editor or
+  the source pane. `pasteEntities(text, corner?)` reads the text with `analyzeFragment` and runs the language command
+  `pasteFragment`: one transaction, one undo step, the copies appended where `addEntity` and `addWire` put theirs, in the
+  indentation of the file. A taken name loses its trailing digits and gets the smallest number from 2 that is free (`gate` becomes
+  `gate2`, `gate2` becomes `gate3`) and the wires follow; `tile` is dropped, everything else is copied. The copies get ids of their
+  own and are the selection afterwards. Text that is not a fragment as a whole (or declares no entity, or is longer than a circuit
+  source may be) changes nothing and is reported in the toast; there is no partial paste. Position (`pasteShift`): with `corner`
+  the top-left corner of the group goes there, otherwise the group goes where it was copied from; from there it moves on by
+  (40, 40) until none of its entities sits exactly on an existing one. A copy pasted into its own circuit so lands 40 units right
+  of and below the original, the next one 80, and a group that was cut comes back in place. Cut is `copyEntities` plus
+  `deleteEntities`, the deletion being the undo step.
 - **Analysis.** Every document change bumps a version and runs `analyze(source, previous, { signals, version })` synchronously.
   `Analysis.accept` only takes the result of the latest request, so the same code path works when the analysis moves to a worker;
   `ProjectSession.acceptAnalysis` is the entry point for that. With errors, `editable` is false, the last valid circuit stays, and
@@ -219,6 +234,16 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   Routes do not avoid other cards, and wires of different connections may share a line.
 - A drop is computed from the press and release coordinates of the pointer, not from the rendered preview.
 - The wheel listener is registered non-passive on the canvas container and cancels scrolling.
+- Cut, copy and paste: Edit > Cut / Copy / Paste and Cmd/Ctrl+X / C / V both end in the browser's `cut`, `copy` and `paste` events,
+  which `Workbench` handles on the document. The events carry the clipboard (`clipboardData`), so the page needs no clipboard
+  permission and no IPC for them. They act on the entities when the canvas is shown and the focus is not in a text control, the
+  source editor or a dialog (`focusIsOnText`); there, and for a copy while text of the page is selected (a message in the toast),
+  they stay the browser's own. A paste puts the top-left corner of the group on the grid point under
+  the pointer while that is over the canvas (`CanvasHandle.pasteCorner`); otherwise see `pasteShift` above. While the source has
+  errors copy works, cut and paste do nothing. The context menu of a card has Cut and Copy with their shortcuts (Cut disabled
+  while the source has errors); they run `document.execCommand`, which raises the same events. There is no Paste in the context
+  menu: a page cannot start a paste (`document.execCommand("paste")` is refused and the clipboard permissions are denied), so it
+  would need a channel on which the main process pastes on the page's behalf. Pasting is Edit > Paste and Cmd/Ctrl+V.
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
   while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
   control or the source editor has focus.

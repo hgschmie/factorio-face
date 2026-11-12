@@ -4,6 +4,8 @@ export const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.
 export const SHORTCUT = {
   delete: IS_MAC ? "⌫" : "Del",
   selectAll: IS_MAC ? "⌘A" : "Ctrl+A",
+  cut: IS_MAC ? "⌘X" : "Ctrl+X",
+  copy: IS_MAC ? "⌘C" : "Ctrl+C",
   undo: IS_MAC ? "⌘Z" : "Ctrl+Z",
   redo: IS_MAC ? "⇧⌘Z" : "Ctrl+Y",
   save: IS_MAC ? "⌘S" : "Ctrl+S",

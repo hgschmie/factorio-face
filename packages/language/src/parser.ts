@@ -155,6 +155,15 @@ class Parser {
     if (this.tok.kind === "string") name = this.next();
     else this.expected("the circuit name in double quotes");
     const open = this.take("{");
+    const members = this.members(true);
+    let close: Token | undefined;
+    if (this.is("}")) close = this.next();
+    else this.expected("'}' to close the circuit");
+    return { from: keyword.from, to: this.lastEnd, keyword, name, open, close, members };
+  }
+
+  /** The members of a circuit body up to its closing brace; a fragment has no braces around it and ends with the input. */
+  private members(braced: boolean): CstMember[] {
     const members: CstMember[] = [];
     for (;;) {
       this.keywords(...MEMBER_KEYWORDS);
@@ -162,7 +171,7 @@ class Parser {
       if (token.kind === "eof") break;
       if (this.is("}")) {
         // A closing brace followed by more members is a stray one, not the end of the circuit.
-        if (!isMemberStart(this.peek())) break;
+        if (braced && !isMemberStart(this.peek())) break;
         this.error(token, "Unexpected '}'");
         this.next();
       } else if (this.is(";") || this.is(",")) this.next();
@@ -170,15 +179,17 @@ class Parser {
       else if (this.is("wire")) members.push(this.wire());
       else if (token.kind === "keyword" && UNSUPPORTED.has(token.text)) this.unsupported();
       else if (this.is("circuit")) {
-        this.error(token, "A file contains exactly one circuit");
+        this.error(token, braced ? "A file contains exactly one circuit" : "A circuit cannot follow entity or wire declarations");
         this.next();
         this.skip(() => false);
       } else this.skip(() => false, "Expected an entity or wire declaration");
     }
-    let close: Token | undefined;
-    if (this.is("}")) close = this.next();
-    else this.expected("'}' to close the circuit");
-    return { from: keyword.from, to: this.lastEnd, keyword, name, open, close, members };
+    return members;
+  }
+
+  /** Entity and wire declarations without a circuit around them; a whole circuit is taken for its members. */
+  fragment(all: readonly Token[], length: number): readonly CstMember[] {
+    return this.is("circuit") ? (this.file(all, length).circuit?.members ?? []) : this.members(false);
   }
 
   private entity(): CstEntity {
@@ -465,13 +476,18 @@ class Parser {
   }
 }
 
-function run(source: string, expectations?: Expectation[]): SyntaxResult {
+function parserFor(source: string, expectations?: Expectation[]): { parser: Parser; tokens: readonly Token[] } {
   const { tokens, errors } = lex(source);
   // Error tokens are reported once by the lexer and hidden from the parser so that it can carry on.
   const significant = tokens.filter((t) => !isTrivia(t) && t.kind !== "error");
   significant.push({ kind: "eof", from: source.length, to: source.length, text: "" });
   const parser = new Parser(significant, expectations);
   for (const error of errors) parser.diagnostics.push(diagnostic(error, "syntax-error", error.message));
+  return { parser, tokens };
+}
+
+function run(source: string, expectations?: Expectation[]): SyntaxResult {
+  const { parser, tokens } = parserFor(source, expectations);
   const cst = parser.file(tokens, source.length);
   return { cst, diagnostics: parser.diagnostics };
 }
@@ -479,6 +495,21 @@ function run(source: string, expectations?: Expectation[]): SyntaxResult {
 /** Parses `source` into a concrete syntax tree plus lexical and syntax diagnostics. */
 export function parse(source: string): SyntaxResult {
   return run(source);
+}
+
+export interface FragmentSyntax {
+  readonly members: readonly CstMember[];
+  readonly diagnostics: readonly Diagnostic[];
+}
+
+/**
+ * Parses a circuit fragment: entity and wire declarations as they stand inside a circuit block, without the block. This is
+ * the text form of a copied selection. The source of a whole circuit is accepted too and yields its members.
+ */
+export function parseFragment(source: string): FragmentSyntax {
+  const { parser, tokens } = parserFor(source);
+  const members = parser.fragment(tokens, source.length);
+  return { members, diagnostics: parser.diagnostics };
 }
 
 /** Everything the grammar would accept directly after `prefix`. */

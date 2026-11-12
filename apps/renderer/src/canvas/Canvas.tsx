@@ -9,7 +9,7 @@ import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, SHORTCUT } from "../platform.ts";
 import { SELECT_TOOL, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
-import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, worldDelta, type EntityPosition } from "./drag.ts";
+import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, snapPoint, worldDelta, type EntityPosition } from "./drag.ts";
 import { cardRect, entitiesBounds, expandRect, GRID, pinPoint, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
 import { Scene } from "./Scene.tsx";
 import { cameraFor, cullingRect, DEFAULT_CAMERA, fitCamera, panFrom, screenToWorld, viewOf, visibleWorldRect, wheelZoomFactor, ZOOM_STEP, zoomAround, type Camera, type CanvasView, type Size } from "./viewport.ts";
@@ -20,6 +20,8 @@ export interface CanvasHandle {
   zoomBy(factor: number): void;
   resetZoom(): void;
   focus(): void;
+  /** Where a paste puts the top-left corner of its group: the grid point under the pointer while that is over the canvas. */
+  pasteCorner(): Point | undefined;
 }
 
 export interface CanvasProps {
@@ -43,6 +45,9 @@ export interface CanvasProps {
   /** A wire gesture was completed between the pins of two different terminals: connect them, or disconnect them if this wire exists. */
   onToggleWire(wire: Wire): void;
   onDeleteSelection(): void;
+  /** The clipboard actions of the context menu; an action the host cannot perform is absent and its item disabled. */
+  onCopy?(): void;
+  onCut?(): void;
 }
 
 type Gesture =
@@ -62,6 +67,8 @@ const CULL_CELL = 400;
 /** Below this zoom, text is illegible and cards are drawn as outlines. */
 const OUTLINE_ZOOM = 0.3;
 const FIT_PADDING = 70;
+/** Room kept for the context menu, so that it opens inside the canvas. */
+const MENU_SIZE = { width: 200, height: 150 };
 const NUDGE_KEYS: Readonly<Record<string, Point>> = { ArrowLeft: { x: -GRID, y: 0 }, ArrowRight: { x: GRID, y: 0 }, ArrowUp: { x: 0, y: -GRID }, ArrowDown: { x: 0, y: GRID } };
 
 function clientPoint(event: { readonly clientX: number; readonly clientY: number }): Point {
@@ -97,6 +104,8 @@ export function Canvas(props: CanvasProps) {
   /** The view to restore once the canvas has a size; a resize keeps its center in place. */
   const viewRef = useRef<CanvasView | undefined>(props.initialView);
   const sizeRef = useRef<Size>({ width: 0, height: 0 });
+  /** Where the pointer is, while it is over the canvas. */
+  const pointerRef = useRef<{ readonly clientX: number; readonly clientY: number } | null>(null);
 
   const [size, setSize] = useState<Size>({ width: 0, height: 0 });
   const [camera, setCameraState] = useState<Camera>(DEFAULT_CAMERA);
@@ -138,6 +147,7 @@ export function Canvas(props: CanvasProps) {
       zoomBy,
       resetZoom: () => zoomBy(1 / cameraRef.current.zoom),
       focus: () => svgRef.current?.focus(),
+      pasteCorner: () => (pointerRef.current && svgRef.current ? snapPoint(worldPoint(pointerRef.current)) : undefined),
     }),
     [fit, zoomBy],
   );
@@ -254,6 +264,7 @@ export function Canvas(props: CanvasProps) {
   };
 
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
+    pointerRef.current = { clientX: event.clientX, clientY: event.clientY };
     if (pendingWire) setPointerWorld(worldPoint(event));
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -311,7 +322,8 @@ export function Canvas(props: CanvasProps) {
     if (!entityId && selection.length > 0) onSelect([]);
     const bounds = container.getBoundingClientRect();
     // Keep the menu inside the canvas.
-    setMenu({ x: Math.min(event.clientX - bounds.left, bounds.width - 200), y: Math.min(event.clientY - bounds.top, bounds.height - 110), onEntity: entityId !== null });
+    const x = Math.min(event.clientX - bounds.left, bounds.width - MENU_SIZE.width);
+    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), onEntity: entityId !== null });
   };
 
   const deleteSelection = (): void => {
@@ -345,10 +357,21 @@ export function Canvas(props: CanvasProps) {
   };
 
   const closeMenu = useCallback(() => setMenu(null), []);
+  // The focus goes back to the canvas first: the clipboard then sees the same state as with the keys, and they work afterwards.
+  const clipboardAction = (action: (() => void) | undefined) => (): void => {
+    svgRef.current?.focus();
+    action?.();
+  };
+  const selectAll = (): void => onSelect(circuit.entities.map((entity) => entity.id));
+  // A right click on empty canvas clears the selection, so cut and copy are only offered on a card.
   const menuItems: ContextMenuItem[] = menu?.onEntity
-    ? [{ id: "delete", label: selection.length > 1 ? `Delete ${selection.length} entities` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, onSelect: deleteSelection }]
+    ? [
+        { id: "cut", label: "Cut", icon: "cut", shortcut: SHORTCUT.cut, disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
+        { id: "copy", label: "Copy", icon: "copy", shortcut: SHORTCUT.copy, disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
+        { id: "delete", label: selection.length > 1 ? `Delete ${selection.length} entities` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, separatorBefore: true, onSelect: deleteSelection },
+      ]
     : [
-        { id: "select-all", label: "Select all", icon: "selectAll", shortcut: SHORTCUT.selectAll, disabled: circuit.entities.length === 0, onSelect: () => onSelect(circuit.entities.map((entity) => entity.id)) },
+        { id: "select-all", label: "Select all", icon: "selectAll", shortcut: SHORTCUT.selectAll, disabled: circuit.entities.length === 0, onSelect: selectAll },
         { id: "fit", label: "Fit to content", icon: "fit", shortcut: SHORTCUT.fit, onSelect: fit },
       ];
 
@@ -371,6 +394,7 @@ export function Canvas(props: CanvasProps) {
         onPointerMove={onPointerMove}
         onPointerUp={(event) => endGesture(event, true)}
         onPointerCancel={(event) => endGesture(event, false)}
+        onPointerLeave={() => void (pointerRef.current = null)}
         onContextMenu={onContextMenu}
       >
         <defs>

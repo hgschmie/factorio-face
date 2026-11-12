@@ -5,5 +5,6 @@ export * from "./schema.ts";
 export * from "./parser.ts";
 export * from "./analyze.ts";
 export * from "./printer.ts";
+export * from "./fragment.ts";
 export * from "./commands.ts";
 export * from "./service.ts";

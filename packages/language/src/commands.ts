@@ -4,7 +4,8 @@
 import { DEFAULT_ENTITY, hasTerminal, isInt32, NORMAL_QUALITY, wireKey, type Circuit, type Entity, type EntityId, type EntityKind, type Point, type TerminalRef, type WireColor } from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
 import type { CstBlock, CstMember, CstSection, CstStatement } from "./cst.ts";
-import { entityItems, printAt, printCircuit, printEntity, printNumber, printWire, type StatementItem } from "./printer.ts";
+import { uniqueNames, type Fragment } from "./fragment.ts";
+import { entityItems, printAt, printCircuit, printEntity, printMembers, printNumber, printWire, type StatementItem } from "./printer.ts";
 import { encodeString, isIdentifier, isKeyword, type Range } from "./tokens.ts";
 
 /** Replace `[from, to)` of the source with `insert`. Offsets refer to the source the command was computed from. */
@@ -395,6 +396,49 @@ export function removeWire(parse: ParseResult, key: string): TextChange[] {
   return edit.finish();
 }
 
+/**
+ * Inserts copies of the entities and wires of `fragment`: the entities after the last entity, the wires at the end, where `addEntity`
+ * and `addWire` put theirs. Every position is moved by `shift`. A name that is taken is replaced (see `uniqueNames`) and the wires
+ * follow; `tile` is dropped, because two entities cannot stand on one tile of the game; everything else is copied.
+ */
+export function pasteFragment(parse: ParseResult, fragment: Fragment, shift: Point = { x: 0, y: 0 }): { changes: TextChange[]; names: string[] } {
+  const edit = new Edit(parse);
+  const taken = new Set(edit.circuit.entities.map((e) => e.name));
+  const names = uniqueNames(fragment.entities.map((e) => e.name), taken);
+  if (names.length === 0) return { changes: [], names };
+  const kinds = new Map<EntityId, EntityKind>();
+  const entities = fragment.entities.map((entity, i): Entity => {
+    checkName(names[i]!, taken);
+    taken.add(names[i]!);
+    if (kinds.has(entity.id)) throw new EditError("invalid-entity", `The fragment has two entities with the id '${entity.id}'`);
+    kinds.set(entity.id, entity.kind);
+    const direction = entity.placement?.direction;
+    return { ...entity, name: names[i]!, position: checkPosition({ x: entity.position.x + shift.x, y: entity.position.y + shift.y }), placement: direction && { direction } };
+  });
+  for (const wire of fragment.wires) {
+    for (const end of [wire.a, wire.b]) {
+      const kind = kinds.get(end.entity);
+      if (!kind || !hasTerminal(kind, end.side)) throw new EditError("invalid-terminal", `A wire of the fragment ends at '${end.entity}.${end.side}', which the fragment does not have`);
+    }
+    if (wire.a.entity === wire.b.entity && wire.a.side === wire.b.side) throw new EditError("self-wire", "A wire cannot connect a terminal to itself");
+  }
+
+  const { member, unit } = edit.style;
+  const printed = printMembers({ entities, wires: fragment.wires }, { unit });
+  const indented = (text: string) => member + indentRest(text, member);
+  const lastEntity = edit.members.findLast((m) => m.type === "entity");
+  const last = edit.members[edit.members.length - 1];
+  // Blank lines between the new declarations where the file, or failing that the canonical form, has them.
+  const spaced = lastEntity ? edit.spaced(lastEntity) : true;
+  const blocks = [printed.entities.map(indented).join(spaced ? "\n\n" : "\n")];
+  const wires = printed.wires.map(indented).join("\n");
+  // Without wires after the last entity both groups go to the same place and are one insertion.
+  if (wires && last === lastEntity) blocks.push(wires);
+  edit.insertMember(lastEntity, blocks.join(spaced ? "\n\n" : "\n"), lastEntity !== undefined && spaced);
+  if (wires && last !== lastEntity) edit.insertMember(last, wires, false);
+  return { changes: edit.finish(), names };
+}
+
 // updateEntity
 
 /** Canonical JSON of an entity without its id; absent, undefined and "normal" quality compare equal. */
@@ -641,10 +685,18 @@ export type EditCommand =
   | { readonly type: "deleteEntities"; readonly ids: readonly EntityId[] }
   | { readonly type: "addWire"; readonly color: WireColor; readonly a: TerminalRef; readonly b: TerminalRef }
   | { readonly type: "removeWire"; readonly key: string }
-  | { readonly type: "updateEntity"; readonly id: EntityId; readonly entity: Entity };
+  | { readonly type: "updateEntity"; readonly id: EntityId; readonly entity: Entity }
+  | { readonly type: "pasteFragment"; readonly fragment: Fragment; readonly shift?: Point };
 
 export type EditResult =
-  | { readonly ok: true; readonly changes: readonly TextChange[]; /** Name chosen by `addEntity`. */ readonly name?: string }
+  | {
+      readonly ok: true;
+      readonly changes: readonly TextChange[];
+      /** Name chosen by `addEntity`. */
+      readonly name?: string;
+      /** Names given by `pasteFragment`, in fragment order. */
+      readonly names?: readonly string[];
+    }
   | { readonly ok: false; readonly code: EditFailureCode; readonly message: string };
 
 /** Runs a command object and returns failures as values instead of throwing `EditError`. */
@@ -658,6 +710,7 @@ export function executeCommand(parse: ParseResult, command: EditCommand): EditRe
       case "addWire": return { ok: true, changes: addWire(parse, command.color, command.a, command.b) };
       case "removeWire": return { ok: true, changes: removeWire(parse, command.key) };
       case "updateEntity": return { ok: true, changes: updateEntity(parse, command.id, command.entity) };
+      case "pasteFragment": return { ok: true, ...pasteFragment(parse, command.fragment, command.shift) };
     }
   } catch (error) {
     if (error instanceof EditError) return { ok: false, code: error.code, message: error.message };
