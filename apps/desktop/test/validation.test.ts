@@ -1,19 +1,59 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS, type ProjectData } from "../src/ipc.ts";
-import { manifestFileContent, parseBoolean, parseCircuitFileName, parseManifest, parseManifestFile, parseProjectData, parseProjectPath, parseRecentProjects, parseSaveProjectRequest, resolveInsideProject, ValidationError } from "../src/validation.ts";
+import {
+  manifestFileContent,
+  parseArchiveEntryName,
+  parseBoolean,
+  parseCircuitFileName,
+  parseManifest,
+  parseManifestFile,
+  parseProjectData,
+  parseProjectPath,
+  parseRecentProjects,
+  parseSaveProjectRequest,
+  ValidationError,
+  withProjectExtension,
+} from "../src/validation.ts";
 
 const manifest = { formatVersion: 1, name: "Demo", gameVersion: "2.1.24", modules: ["base", "space-age"], customSignalGroups: [], circuits: ["main.face"] };
 const data: ProjectData = { manifest: { ...manifest, formatVersion: 1 }, files: [{ name: "main.face", source: 'circuit "Demo" {\n}\n' }] };
 
 describe("project paths", () => {
-  it("accepts absolute, normalized paths", () => {
-    expect(parseProjectPath("/Users/someone/projects/demo")).toBe("/Users/someone/projects/demo");
-    expect(parseProjectPath("/Users/someone/projects/demo/")).toBe("/Users/someone/projects/demo");
-    expect(parseProjectPath("/")).toBe("/");
+  it("accepts absolute, normalized paths of project files", () => {
+    for (const path of ["/Users/someone/projects/demo.faceproj", "/Users/someone/My circuits/a.b.faceproj", "/demo.FACEPROJ"]) expect(parseProjectPath(path)).toBe(path);
   });
 
-  it.each([["relative/path"], ["./demo"], ["../demo"], [""], ["/a/../b"], ["/a/./b"], ["/a//b"], ["/a/b\0c"], ["~/demo"], [42], [null], [undefined], [{}], [["/a"]], ["/" + "a".repeat(LIMITS.pathLength)]])("rejects %j", (value) => {
+  it.each([
+    ["relative/demo.faceproj"],
+    ["./demo.faceproj"],
+    ["../demo.faceproj"],
+    [""],
+    ["/a/../b.faceproj"],
+    ["/a/./b.faceproj"],
+    ["/a//b.faceproj"],
+    ["/a/b\0c.faceproj"],
+    ["~/demo.faceproj"],
+    [42],
+    [null],
+    [undefined],
+    [{}],
+    [["/a.faceproj"]],
+    ["/" + "a".repeat(LIMITS.pathLength) + ".faceproj"],
+  ])("rejects %j", (value) => {
     expect(() => parseProjectPath(value)).toThrow(ValidationError);
+  });
+
+  const notProjectFiles = ["/Users/someone/projects/demo", "/projects/demo/", "/", "/etc/passwd", "/a/demo.faceproj/", "/a/demo.faceproj.txt", "/a/demo.zip", "/a/.faceproj", "/a/faceproj"];
+  it.each(notProjectFiles.map((path) => [path]))("rejects %j, which does not name a project file", (value) => {
+    expect(() => parseProjectPath(value)).toThrow(/Not a face project file/);
+  });
+
+  it("appends the extension only where it is missing", () => {
+    expect(withProjectExtension("/projects/demo")).toBe("/projects/demo.faceproj");
+    expect(withProjectExtension("/projects/demo.v2")).toBe("/projects/demo.v2.faceproj");
+    expect(withProjectExtension("/projects/demo.faceproj")).toBe("/projects/demo.faceproj");
+    expect(withProjectExtension("/projects/demo.FaceProj")).toBe("/projects/demo.FaceProj");
+    expect(parseProjectPath(withProjectExtension("/projects/demo"))).toBe("/projects/demo.faceproj");
   });
 });
 
@@ -28,11 +68,22 @@ describe("circuit file names", () => {
       expect(() => parseCircuitFileName(value)).toThrow(ValidationError);
     },
   );
+});
 
-  it("resolves names directly inside the project directory", () => {
-    expect(resolveInsideProject("/projects/demo", "main.face")).toBe("/projects/demo/main.face");
-    expect(() => resolveInsideProject("/projects/demo", "../other/main.face")).toThrow(ValidationError);
-    expect(() => resolveInsideProject("projects/demo", "main.face")).toThrow(ValidationError);
+describe("project file entry names", () => {
+  it("accepts root entries and tolerates entries below assets/", () => {
+    for (const name of ["face.json", "main.face", "notes.txt", ".DS_Store", "assets"]) expect(parseArchiveEntryName(name)).toBe("root");
+    for (const name of ["assets/", "assets/icon.png", "assets/sub/icon.png"]) expect(parseArchiveEntryName(name)).toBe("assets");
+  });
+
+  const unsafe = ["", "../main.face", "..", "a..b.face", "sub/main.face", "sub/", "/main.face", "/assets/icon.png", "sub\\main.face", "C:main.face", "c:\\main.face", "main\0.face"];
+  const unsafeAssets = ["assets/../main.face", "assets/..\\x", "Assets/icon.png", "assets/a\0b"];
+  it.each([...unsafe, ...unsafeAssets].map((name) => [name]))("rejects %j", (name) => {
+    expect(() => parseArchiveEntryName(name)).toThrow(ValidationError);
+  });
+
+  it("does not repeat an oversized name in the message", () => {
+    expect(() => parseArchiveEntryName("/" + "x".repeat(60_000))).toThrow(/^.{0,200}$/);
   });
 });
 
@@ -109,7 +160,7 @@ describe("project data and save requests", () => {
   it("accepts matching manifest and files", () => {
     expect(parseProjectData(data)).toEqual(data);
     expect(parseSaveProjectRequest({ path: null, data })).toEqual({ path: null, data });
-    expect(parseSaveProjectRequest({ path: "/projects/demo", data }).path).toBe("/projects/demo");
+    expect(parseSaveProjectRequest({ path: "/projects/demo.faceproj", data }).path).toBe("/projects/demo.faceproj");
   });
 
   it("rejects files that the manifest does not list, missing files and duplicates", () => {
@@ -124,8 +175,10 @@ describe("project data and save requests", () => {
     expect(() => parseProjectData({ manifest, files: [{ name: "main.face", source: 5 }] })).toThrow(ValidationError);
   });
 
-  it("rejects save requests with a relative or missing path", () => {
-    expect(() => parseSaveProjectRequest({ path: "demo", data })).toThrow(ValidationError);
+  it("rejects save requests with a relative or missing path, or one that is not a project file", () => {
+    expect(() => parseSaveProjectRequest({ path: "demo.faceproj", data })).toThrow(ValidationError);
+    expect(() => parseSaveProjectRequest({ path: "/projects/demo", data })).toThrow(ValidationError);
+    expect(() => parseSaveProjectRequest({ path: "/Users/someone/.zshrc", data })).toThrow(ValidationError);
     expect(() => parseSaveProjectRequest({ data })).toThrow(ValidationError);
     expect(() => parseSaveProjectRequest("save")).toThrow(ValidationError);
   });
@@ -137,15 +190,21 @@ describe("project data and save requests", () => {
 });
 
 describe("recent projects file", () => {
-  const entry = { path: "/projects/demo", name: "Demo", openedAt: "2026-11-11T12:00:00.000Z" };
+  const entry = { path: "/projects/demo.faceproj", name: "Demo", openedAt: "2026-11-11T12:00:00.000Z" };
 
   it("keeps valid entries and drops malformed ones and duplicates", () => {
-    const parsed = parseRecentProjects([entry, { ...entry, path: "relative" }, { ...entry, openedAt: "yesterday" }, entry, "junk", null, { ...entry, path: "/projects/other" }]);
-    expect(parsed).toEqual([entry, { ...entry, path: "/projects/other" }]);
+    const parsed = parseRecentProjects([entry, { ...entry, path: "relative" }, { ...entry, openedAt: "yesterday" }, entry, "junk", null, { ...entry, path: "/projects/other.faceproj" }]);
+    expect(parsed).toEqual([entry, { ...entry, path: "/projects/other.faceproj" }]);
+  });
+
+  it("keeps an entry that points at a project directory of the dropped format; opening it reports the problem", () => {
+    const old = { ...entry, path: "/projects/old-directory" };
+    expect(parseRecentProjects([old])).toEqual([old]);
+    expect(() => parseProjectPath(old.path)).toThrow(/Not a face project file/);
   });
 
   it("returns an empty list for anything that is not an array and caps the length", () => {
     expect(parseRecentProjects({ entry })).toEqual([]);
-    expect(parseRecentProjects(Array.from({ length: 50 }, (_, i) => ({ ...entry, path: `/projects/p${i}` })))).toHaveLength(LIMITS.recentProjects);
+    expect(parseRecentProjects(Array.from({ length: 50 }, (_, i) => ({ ...entry, path: `/projects/p${i}.faceproj` })))).toHaveLength(LIMITS.recentProjects);
   });
 });

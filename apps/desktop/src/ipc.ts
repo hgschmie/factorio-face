@@ -13,12 +13,20 @@ export const ASSET_SCHEME = "face-asset";
 export const ASSET_HOST_CATALOG = "catalog";
 
 export const PROJECT_FORMAT_VERSION = 1;
+/** A project is one file with this extension: a zip archive. */
+export const PROJECT_FILE_EXTENSION = ".faceproj";
 export const MANIFEST_FILE_NAME = "face.json";
 export const CIRCUIT_FILE_EXTENSION = ".face";
 export const DEFAULT_CIRCUIT_FILE = "main.face";
 
 export const LIMITS = {
   pathLength: 4096,
+  /** Size of a project file (the zip archive) on disk. */
+  projectFileBytes: 64_000_000,
+  /** Entries of a project file, ignored ones included. */
+  projectEntries: 4096,
+  /** Sum of the uncompressed sizes of the manifest and the circuit files of one project. */
+  projectContentBytes: 128_000_000,
   projectNameLength: 200,
   circuitFiles: 256,
   circuitFileNameLength: 128,
@@ -34,7 +42,7 @@ export const LIMITS = {
   recentProjects: 10,
 } as const;
 
-// Project format v1 (ADR 0001, item 6): a directory with face.json, *.face sources and assets/.
+// Project format v1 (ADR 0001, item 6): a zip archive (*.faceproj) with face.json and the *.face sources at its root; assets/ is reserved for custom icons.
 
 export interface CustomSignal {
   readonly name: string;
@@ -58,7 +66,7 @@ export interface ProjectManifest {
   /** Enabled standard module groups, e.g. "base", "space-age". */
   readonly modules: readonly string[];
   readonly customSignalGroups: readonly CustomSignalGroup[];
-  /** Circuit source file names, relative to the project directory. */
+  /** Circuit source file names: entries at the root of the project file. */
   readonly circuits: readonly string[];
   /**
    * Top-level fields of face.json that this version does not know. They are read into this record and written back as
@@ -79,13 +87,13 @@ export interface ProjectData {
 }
 
 export interface LoadedProject {
-  /** Absolute project directory; null for a new project that has never been saved. */
+  /** Absolute path of the project file; null for a new project that has never been saved. */
   readonly path: string | null;
   readonly data: ProjectData;
 }
 
 export interface SaveProjectRequest {
-  /** Absolute project directory; null asks the user for a location first. */
+  /** Absolute path of the project file; null asks the user for a location first. */
   readonly path: string | null;
   readonly data: ProjectData;
 }
@@ -155,10 +163,10 @@ export interface FaceApi {
   readonly catalogAssetUrl: string;
   /** Returns an empty, unsaved project. Nothing is written to disk. */
   newProject(): Promise<IpcResult<LoadedProject>>;
-  /** Shows the native directory dialog. Resolves with null when the user cancels. */
+  /** Shows the native file dialog. Resolves with null when the user cancels. */
   openProject(): Promise<IpcResult<LoadedProject | null>>;
   loadProject(path: string): Promise<IpcResult<LoadedProject>>;
-  /** Writes face.json and the circuit files atomically. Resolves with null when a location dialog was cancelled. */
+  /** Replaces the project file atomically. Resolves with null when a location dialog was cancelled. */
   saveProject(request: SaveProjectRequest): Promise<IpcResult<SavedProject | null>>;
   saveProjectAs(data: ProjectData): Promise<IpcResult<SavedProject | null>>;
   getRecentProjects(): Promise<IpcResult<readonly RecentProject[]>>;

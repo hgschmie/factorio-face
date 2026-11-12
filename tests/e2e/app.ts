@@ -1,8 +1,9 @@
 // Launching and driving the built app. Each launch gets its own profile directory under .runtime/test-user-data.
 import { _electron, test as base, type ElectronApplication, type Locator, type Page } from "@playwright/test";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import type { ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export const ROOT = resolve(import.meta.dirname, "../..");
@@ -151,13 +152,26 @@ export async function sourceText(page: Page): Promise<string> {
 
 // Projects on disk
 
+/** A project is one zip archive with this extension; face.json and the circuit files are its entries. */
+export const PROJECT_FILE_EXTENSION = ".faceproj";
+
 let projectCount = 0;
 
-/** A fresh path under .runtime/e2e-projects; the directory itself does not exist yet. */
+/** A fresh project file path in a new, empty directory under .runtime/e2e-projects; the file itself does not exist yet. */
 export async function newProjectPath(name: string): Promise<string> {
   const parent = resolve(PROJECTS_DIR, `project-${process.pid}-${++projectCount}`);
   await mkdir(parent, { recursive: true });
-  return resolve(parent, name);
+  return resolve(parent, name + PROJECT_FILE_EXTENSION);
+}
+
+/** The entries of a project file as text, by entry name. */
+export async function readProjectEntries(path: string): Promise<Record<string, string>> {
+  return Object.fromEntries(Object.entries(unzipSync(await readFile(path))).map(([name, bytes]) => [name, strFromU8(bytes)]));
+}
+
+/** Replaces a project file with an archive of the given entries, as any zip tool could. */
+export async function writeProjectEntries(path: string, entries: Readonly<Record<string, string>>): Promise<void> {
+  await writeFile(path, zipSync(Object.fromEntries(Object.entries(entries).map(([name, text]) => [name, strToU8(text)]))));
 }
 
 export interface ProjectFiles {
@@ -167,20 +181,18 @@ export interface ProjectFiles {
   readonly manifest?: Readonly<Record<string, unknown>>;
 }
 
-/** Writes a project directory the way the app would, and returns its path. */
+/** Writes a project file the way the app would, and returns its path. */
 export async function writeProject({ name, source, manifest }: ProjectFiles): Promise<string> {
-  const directory = await newProjectPath(name);
-  await mkdir(directory);
-  await writeFile(resolve(directory, "main.face"), source);
+  const path = await newProjectPath(name);
   const content = { formatVersion: 1, name, gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"], ...manifest };
-  await writeFile(resolve(directory, "face.json"), JSON.stringify(content, null, 2) + "\n");
-  return directory;
+  await writeProjectEntries(path, { "face.json": JSON.stringify(content, null, 2) + "\n", "main.face": source });
+  return path;
 }
 
-/** Opens a project directory through the session's own load command (the path File > Open Recent takes) and waits for it. */
-export async function openProject(page: Page, directory: string): Promise<void> {
-  await page.evaluate((path) => window.faceSession!.commands.loadProject(path), directory);
-  await page.locator(".project-meta .path", { hasText: directory }).waitFor();
+/** Opens a project file through the session's own load command (the path File > Open Recent takes) and waits for it. */
+export async function openProject(page: Page, projectPath: string): Promise<void> {
+  await page.evaluate((path) => window.faceSession!.commands.loadProject(path), projectPath);
+  await page.locator(".project-meta .path", { hasText: projectPath }).waitFor();
 }
 
 /** Clicks the middle of an element with real mouse input. */
@@ -212,19 +224,36 @@ export interface DialogAnswers {
   readonly unsavedChoice?: number;
 }
 
-/** Makes the dialogs answer as given and counts how often each one was shown. */
+export interface DialogCalls {
+  readonly save: number;
+  readonly open: number;
+  readonly message: number;
+  /** What the app passed to the most recent save and open dialog. */
+  readonly saveOptions?: Electron.SaveDialogOptions;
+  readonly openOptions?: Electron.OpenDialogOptions;
+}
+
+/** Makes the dialogs answer as given, counts how often each one was shown and keeps the options of the last save and open dialog. */
 export async function stubDialogs(app: ElectronApplication, answers: DialogAnswers): Promise<void> {
   await app.evaluate(({ dialog }, { savePath, openPath, unsavedChoice }) => {
-    const calls = { save: 0, open: 0, message: 0 };
+    const calls: { save: number; open: number; message: number; saveOptions?: unknown; openOptions?: unknown } = { save: 0, open: 0, message: 0 };
     (globalThis as Record<string, unknown>).dialogCalls = calls;
-    dialog.showSaveDialog = (async () => (calls.save++, { canceled: savePath === undefined, filePath: savePath ?? "" })) as typeof dialog.showSaveDialog;
-    dialog.showOpenDialog = (async () => (calls.open++, { canceled: openPath === undefined, filePaths: openPath === undefined ? [] : [openPath] })) as typeof dialog.showOpenDialog;
+    dialog.showSaveDialog = (async (_window: unknown, options: unknown) => {
+      calls.save++;
+      calls.saveOptions = options;
+      return { canceled: savePath === undefined, filePath: savePath ?? "" };
+    }) as typeof dialog.showSaveDialog;
+    dialog.showOpenDialog = (async (_window: unknown, options: unknown) => {
+      calls.open++;
+      calls.openOptions = options;
+      return { canceled: openPath === undefined, filePaths: openPath === undefined ? [] : [openPath] };
+    }) as typeof dialog.showOpenDialog;
     dialog.showMessageBox = (async () => (calls.message++, { response: unsavedChoice ?? 2, checkboxChecked: false })) as typeof dialog.showMessageBox;
   }, answers);
 }
 
-export function dialogCalls(app: ElectronApplication): Promise<{ save: number; open: number; message: number }> {
-  return app.evaluate(() => (globalThis as Record<string, unknown>).dialogCalls as { save: number; open: number; message: number });
+export function dialogCalls(app: ElectronApplication): Promise<DialogCalls> {
+  return app.evaluate(() => (globalThis as Record<string, unknown>).dialogCalls as DialogCalls);
 }
 
 /** Clicks an item of the native application menu by its labels, for example `clickMenu(app, "File", "Save")`. */

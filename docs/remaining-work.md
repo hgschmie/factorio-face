@@ -4,9 +4,10 @@ Maintained by the coordinator. Scope reference: the milestones in `../../HANDOFF
 
 ## Milestone 1 (foundation and vertical slice)
 
-Done: simulation engine, desktop shell and workbench, session integration (single history, source patches, catalog picker and module settings, real simulation, project save/reopen).
+Done: simulation engine, desktop shell and workbench, session integration (single history, source patches, catalog picker and module settings, real simulation, project save/reopen), single-file `.faceproj` project format (zip).
 
 Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude desktop app, on top of the 40 Playwright Electron tests. Passed with the real pointer and keyboard: select, drag and delete a card; palette placement; wiring (click, click); typing in the source pane with the canvas and inspector following; inspector edits with the source following; signal picker with search; undo/redo across canvas and text; Run, Pause, Step, Reset; wheel zoom, pan, Fit; accelerators Cmd+Z, Shift+Cmd+Z, Cmd+1/3/0, Cmd+T, Cmd+R, Shift+Cmd+R, Shift+Cmd+S. Passed through the native menu: structure of File, Edit, View, Simulation, Window; Save As through the native panel; Save in place; Open Recent after quit and relaunch; Edit Delete and Select All; the unsaved-changes prompt with Cancel, Discard Changes and Save. Defects found are listed first under the workbench follow-ups.
+  The same day, after the change to `.faceproj` files: Save As through the native panel (extension appended to a bare name), quit, reopen from Open Recent, a project edited and re-zipped with the `zip` command line tool, and the error shown for a stale recent entry that points at an old project folder.
   To repeat: `FACE_USER_DATA=$PWD/.runtime/native/user-data FACE_PROJECTS_DIR=$PWD/release/native-check node scripts/run.mjs`. Pointer scenarios need full-screen control (background accessibility clicks do not reach the canvas). The tooling refuses to confirm a save panel that shows a hidden or an empty folder, hence the visible, git-ignored `release/native-check` with a placeholder file instead of `.runtime/native/`.
   Not covered natively: View Source, Zoom In, Zoom Out and Actual Size (menu and keys), New Project, Open Project through the native panel, Cmd+S as a key press (File Save was used through the menu), full screen.
 
@@ -26,6 +27,16 @@ Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude
 - `window.faceSession` test hook is present in production code.
 - The stock Electron development binary writes outside the workspace on every launch: `~/Library/Preferences/com.github.Electron.plist` and a `com.github.Electron.savedState` directory in the per-user macOS temp directory. Contain it (sandbox wrapper or renamed bundle) or accept it.
 - No packaging configuration; no single-instance lock.
+
+## Project file follow-ups
+
+- Custom icons: `assets/` entries must be read and preserved on save once they exist; today saving writes only `face.json` and the circuits, so any other entry of a hand-built archive is lost.
+- No CRC check on read (fflate does not verify it): a deflated entry that declares less than it holds is cut at the declared size instead of being refused. Needs own central-directory parsing or a different reader.
+- Archives made with Finder's Compress are refused (`__MACOSX/` entries, or everything below a top folder); so is any entry name containing `..`. Decide whether to ignore such entries instead.
+- No file association and no `open-file` handling for `.faceproj` (double-click in Finder) until packaging.
+- Stale entries stay in Open Recent after a failed load; with unsaved changes the Save/Discard prompt comes before the load fails. An error banner is not cleared by a later successful save.
+- Zip and unzip run synchronously in the main process; the write-side size limits have no test.
+- If projects should live in version control: a folder export/import.
 
 ## Language follow-ups (from the language package report)
 

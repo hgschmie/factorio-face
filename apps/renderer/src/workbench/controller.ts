@@ -51,7 +51,7 @@ export interface EntityMove {
 
 export interface ProjectView {
   readonly name: string;
-  /** Absolute project directory; null until the project was saved for the first time. */
+  /** Absolute path of the project file; null until the project was saved for the first time. */
   readonly path: string | null;
   /** Name of the circuit file shown in the editor. */
   readonly fileName: string;

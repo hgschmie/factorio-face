@@ -1,8 +1,9 @@
 // Validators for everything that crosses the IPC boundary or is read from disk. Pure: no Electron, no filesystem access.
-import { isAbsolute, normalize, resolve, sep } from "node:path";
+import { basename, isAbsolute, normalize } from "node:path";
 import {
   CIRCUIT_FILE_EXTENSION,
   LIMITS,
+  PROJECT_FILE_EXTENSION,
   PROJECT_FORMAT_VERSION,
   type CircuitFile,
   type CustomSignal,
@@ -48,20 +49,35 @@ function parseArray(value: unknown, what: string, maxLength: number): readonly u
   return value;
 }
 
-/** An absolute, already normalized directory path. Relative paths and paths with `..` or `.` segments are rejected, not repaired. */
-export function parseProjectPath(value: unknown): string {
+/** An absolute, already normalized path. Relative paths and paths with `..` or `.` segments are rejected, not repaired. */
+function parseAbsolutePath(value: unknown): string {
   if (typeof value !== "string" || value.length === 0) fail("Project path must be a non-empty string");
   if (value.length > LIMITS.pathLength) fail("Project path is too long");
   if (value.includes("\0")) fail("Project path contains a NUL character");
   if (!isAbsolute(value)) fail("Project path must be absolute");
-  const withoutTrailingSeparator = value.length > 1 && value.endsWith(sep) ? value.slice(0, -1) : value;
-  if (normalize(withoutTrailingSeparator) !== withoutTrailingSeparator) fail("Project path must be normalized");
-  return withoutTrailingSeparator;
+  if (normalize(value) !== value) fail("Project path must be normalized");
+  return value;
+}
+
+function hasProjectExtension(path: string): boolean {
+  return path.toLowerCase().endsWith(PROJECT_FILE_EXTENSION) && basename(path).length > PROJECT_FILE_EXTENSION.length;
+}
+
+/** The absolute, normalized path of a project file. The extension is required, so a caller cannot name an arbitrary file. */
+export function parseProjectPath(value: unknown): string {
+  const path = parseAbsolutePath(value);
+  if (!hasProjectExtension(path)) fail(`Not a face project file (the name must end in ${PROJECT_FILE_EXTENSION}): ${path}`);
+  return path;
+}
+
+/** Appends the project file extension unless the path already has it. */
+export function withProjectExtension(path: string): string {
+  return hasProjectExtension(path) ? path : path + PROJECT_FILE_EXTENSION;
 }
 
 const CIRCUIT_FILE_NAME = /^[A-Za-z0-9_][A-Za-z0-9 ._-]*$/;
 
-/** A plain `*.face` file name: project format v1 keeps circuit files directly in the project directory. */
+/** A plain `*.face` file name: project format v1 keeps circuit files at the root of the project file. */
 export function parseCircuitFileName(value: unknown): string {
   if (typeof value !== "string") fail("Circuit file name must be a string");
   if (value.length > LIMITS.circuitFileNameLength) fail("Circuit file name is too long");
@@ -70,13 +86,18 @@ export function parseCircuitFileName(value: unknown): string {
   return value;
 }
 
-/** Resolves a validated circuit file name and proves that the result is directly inside the project directory. */
-export function resolveInsideProject(projectPath: string, fileName: string): string {
-  const directory = parseProjectPath(projectPath);
-  const resolved = resolve(directory, parseCircuitFileName(fileName));
-  const prefix = directory.endsWith(sep) ? directory : directory + sep;
-  if (!resolved.startsWith(prefix) || resolved.slice(prefix.length).includes(sep)) fail("Circuit file is outside the project directory");
-  return resolved;
+const ASSETS_ENTRY_PREFIX = "assets/";
+
+/**
+ * Checks the name of an entry of a project file, which is untrusted. "root" entries sit directly in the archive; "assets"
+ * entries are tolerated below `assets/`. Anything that could name a place outside the archive root is rejected.
+ */
+export function parseArchiveEntryName(name: string): "root" | "assets" {
+  const unsafe = name.length === 0 || name.includes("\0") || name.includes("\\") || name.includes("..") || name.startsWith("/") || /^[A-Za-z]:/.test(name);
+  if (unsafe) fail(`The project file contains an entry with an unsafe name: ${JSON.stringify(name.slice(0, 80))}`);
+  if (!name.includes("/")) return "root";
+  if (!name.startsWith(ASSETS_ENTRY_PREFIX)) fail(`The project file contains an entry in a folder: ${JSON.stringify(name.slice(0, 80))}`);
+  return "assets";
 }
 
 function parseCustomSignal(value: unknown): CustomSignal {
@@ -191,7 +212,8 @@ export function parseRecentProjects(value: unknown): RecentProject[] {
     if (result.length >= LIMITS.recentProjects) break;
     try {
       if (!isRecord(entry)) continue;
-      const path = parseProjectPath(entry.path);
+      // Any absolute path is kept: an entry that is not a project file (any more) fails when it is opened, with a clear message.
+      const path = parseAbsolutePath(entry.path);
       const name = parseString(entry.name, "Project name", LIMITS.projectNameLength);
       const openedAt = parseString(entry.openedAt, "Timestamp", 40);
       if (Number.isNaN(Date.parse(openedAt)) || result.some((known) => known.path === path)) continue;

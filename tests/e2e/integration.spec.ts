@@ -2,9 +2,26 @@
 // Every test starts from a new project, which holds the example circuit of docs/dsl.md.
 import type { Page } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { canvasView, card, cardGrabPoint, clickMenu, closeApp, committedPositions, entityNames, expect, launchApp, newProjectPath, ROOT, selectEntity, sourceText, stubDialogs, test } from "./app.ts";
+import {
+  canvasView,
+  card,
+  cardGrabPoint,
+  clickMenu,
+  closeApp,
+  committedPositions,
+  entityNames,
+  expect,
+  launchApp,
+  newProjectPath,
+  readProjectEntries,
+  ROOT,
+  selectEntity,
+  sourceText,
+  stubDialogs,
+  test,
+  writeProjectEntries,
+} from "./app.ts";
 
 const HAS_CATALOG_ICONS = existsSync(resolve(ROOT, "packages/catalog/generated/icons/item/carbon-fiber.png"));
 
@@ -411,8 +428,10 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
     savedSource = await sourceText(page);
-    expect(await readFile(resolve(projectPath, "main.face"), "utf8")).toBe(savedSource);
-    expect(JSON.parse(await readFile(resolve(projectPath, "face.json"), "utf8"))).toEqual({ formatVersion: 1, name: "Round trip", gameVersion: "2.1.24", modules: ["base", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"] });
+    const saved = await readProjectEntries(projectPath);
+    expect(saved["main.face"]).toBe(savedSource);
+    const expectedManifest = { formatVersion: 1, name: "Round trip", gameVersion: "2.1.24", modules: ["base", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"] };
+    expect(JSON.parse(saved["face.json"]!)).toEqual(expectedManifest);
 
     // A settings change alone makes the project dirty again, and saving writes it.
     await page.getByRole("button", { name: "Settings" }).click();
@@ -420,15 +439,18 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
-    expect(JSON.parse(await readFile(resolve(projectPath, "face.json"), "utf8")).modules).toEqual(["base", "elevated-rails", "recycler"]);
+    expect(JSON.parse((await readProjectEntries(projectPath))["face.json"]!).modules).toEqual(["base", "elevated-rails", "recycler"]);
   } finally {
     await closeApp(first.app);
   }
 
-  // Something this version does not know about is added to the manifest by hand, as a newer version would.
-  const manifestPath = resolve(projectPath, "face.json");
-  const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  await writeFile(manifestPath, JSON.stringify({ ...manifest, viewState: { zoom: 1.25, pinned: ["gate"] }, customSignalGroups: [{ id: "g1", name: "Mine", enabled: true, signals: [{ name: "alpha", icon: "alpha.png" }] }] }, null, 2));
+  // Something this version does not know about is added to the manifest by hand, as a newer version would: the project file
+  // is unpacked, changed and packed again with an ordinary zip tool.
+  const unpacked = await readProjectEntries(projectPath);
+  const manifest = JSON.parse(unpacked["face.json"]!);
+  const customSignalGroups = [{ id: "g1", name: "Mine", enabled: true, signals: [{ name: "alpha", icon: "alpha.png" }] }];
+  const changed = { ...manifest, viewState: { zoom: 1.25, pinned: ["gate"] }, customSignalGroups };
+  await writeProjectEntries(projectPath, { ...unpacked, "face.json": JSON.stringify(changed, null, 2) });
 
   const second = await launchApp({ userData: first.userData });
   try {
@@ -457,7 +479,8 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     await settings.getByRole("button", { name: "Close project settings" }).click();
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
-    expect(JSON.parse(await readFile(manifestPath, "utf8"))).toEqual({
+    const resaved = await readProjectEntries(projectPath);
+    expect(JSON.parse(resaved["face.json"]!)).toEqual({
       formatVersion: 1,
       name: "Round trip",
       gameVersion: "2.1.24",
@@ -466,7 +489,7 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
       circuits: ["main.face"],
       viewState: { zoom: 1.25, pinned: ["gate"] },
     });
-    expect(await readFile(resolve(projectPath, "main.face"), "utf8")).toBe(savedSource);
+    expect(resaved["main.face"]).toBe(savedSource);
   } finally {
     await closeApp(second.app);
   }

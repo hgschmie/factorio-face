@@ -79,7 +79,7 @@ test("stays interactive with 1,000 entities", async ({ page }) => {
   // Loading: from the load command to the first frame that shows the circuit. This includes reading the project through
   // IPC, parsing and analyzing 136 kB of source, compiling the simulation and rendering the canvas.
   const source = gridSource(1000);
-  const directory = await writeProject({ name: "Grid of 1000", source });
+  const projectPath = await writeProject({ name: "Grid of 1000", source });
   results.sourceBytes = source.length;
   results.loadToFrameMs = await page.evaluate(async (path) => {
     await new Promise((done) => requestAnimationFrame(done));
@@ -87,7 +87,7 @@ test("stays interactive with 1,000 entities", async ({ page }) => {
     await window.faceSession!.commands.loadProject(path);
     await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
     return Math.round((performance.now() - start) * 10) / 10;
-  }, directory);
+  }, projectPath);
   expect(await page.evaluate(() => window.faceSession!.getState().editable)).toBe(true);
   await expect(page.locator(".canvas-heading .counts")).toContainText("1000 entities");
   await expect(page.locator(".canvas-heading .counts")).toContainText("999 connections");

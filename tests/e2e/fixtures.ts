@@ -42,12 +42,12 @@ export const FIVE_KINDS_SOURCE = `circuit "Feedback example" {
 
 export const FIVE_KINDS = ["source", "gate", "twice", "pick", "light"];
 
-/** Opens the five-kinds circuit as a saved project. Returns the project directory. */
+/** Opens the five-kinds circuit as a saved project. Returns the path of the project file. */
 export async function openFiveKinds(page: Page): Promise<string> {
-  const directory = await writeProject({ name: "Feedback example", source: FIVE_KINDS_SOURCE });
-  await openProject(page, directory);
+  const projectPath = await writeProject({ name: "Feedback example", source: FIVE_KINDS_SOURCE });
+  await openProject(page, projectPath);
   await page.locator("g.card").nth(4).waitFor();
-  return directory;
+  return projectPath;
 }
 
 /** A chain of `count` arithmetic combinators in rows of `columns`, each wired to the next with alternating colors. */

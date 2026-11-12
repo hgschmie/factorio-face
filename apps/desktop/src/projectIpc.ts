@@ -1,11 +1,12 @@
 // IPC handlers for project operations. Every argument is validated before it reaches the filesystem or a dialog.
-import { dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from "electron";
-import { join } from "node:path";
-import { CHANNELS, UNSAVED_CHOICES, type IpcResult, type LoadedProject, type ProjectData, type SavedProject, type UnsavedChoice } from "./ipc.ts";
+import { dialog, ipcMain, type BrowserWindow, type FileFilter, type IpcMainInvokeEvent } from "electron";
+import { existsSync } from "node:fs";
+import { basename, join } from "node:path";
+import { CHANNELS, PROJECT_FILE_EXTENSION, UNSAVED_CHOICES, type IpcResult, type LoadedProject, type ProjectData, type SavedProject, type UnsavedChoice } from "./ipc.ts";
 import { createEmptyProject, readProject, writeProject } from "./projectStore.ts";
 import { RENDERER_URL } from "./protocols.ts";
 import type { RecentProjects } from "./recentProjects.ts";
-import { parseProjectData, parseProjectPath, parseSaveProjectRequest, ValidationError } from "./validation.ts";
+import { parseProjectData, parseProjectPath, parseSaveProjectRequest, ValidationError, withProjectExtension } from "./validation.ts";
 
 export interface ProjectIpcContext {
   readonly window: BrowserWindow;
@@ -35,9 +36,11 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function suggestedDirectoryName(projectName: string): string {
+const PROJECT_FILE_FILTERS: FileFilter[] = [{ name: "face project", extensions: [PROJECT_FILE_EXTENSION.slice(1)] }];
+
+function suggestedFileName(projectName: string): string {
   const cleaned = projectName.replace(/[^A-Za-z0-9 ._-]+/g, " ").trim();
-  return cleaned.length > 0 ? cleaned : "face-project";
+  return withProjectExtension(cleaned.length > 0 ? cleaned : "face-project");
 }
 
 export function registerProjectIpc(context: ProjectIpcContext): void {
@@ -79,16 +82,21 @@ export function registerProjectIpc(context: ProjectIpcContext): void {
   };
 
   const saveWithDialog = async (data: ProjectData): Promise<SavedProject | null> => {
-    const name = suggestedDirectoryName(data.manifest.name);
+    const name = suggestedFileName(data.manifest.name);
     const result = await dialog.showSaveDialog(window, {
       title: "Save Project As",
-      message: "A face project is a folder. Choose its name and location.",
-      nameFieldLabel: "Project folder:",
+      message: "A face project is a single file. Choose its name and location.",
+      nameFieldLabel: "Project file:",
       buttonLabel: "Save Project",
       defaultPath: projectsDirectory === undefined ? name : join(projectsDirectory, name),
-      properties: ["createDirectory"],
+      filters: PROJECT_FILE_FILTERS,
+      properties: ["createDirectory", "showOverwriteConfirmation"],
     });
-    return result.canceled || !result.filePath ? null : save(parseProjectPath(result.filePath), data);
+    if (result.canceled || !result.filePath) return null;
+    const path = withProjectExtension(result.filePath);
+    // The panel asked about replacing the name it returned, not the one that only exists once the extension is appended.
+    if (path !== result.filePath && existsSync(path)) throw new ValidationError(`${basename(path)} already exists. Choose that file in the dialog to replace it.`);
+    return save(parseProjectPath(path), data);
   };
 
   handle(CHANNELS.newProject, async (): Promise<LoadedProject> => {
@@ -97,7 +105,7 @@ export function registerProjectIpc(context: ProjectIpcContext): void {
   });
 
   handle(CHANNELS.openProject, async (): Promise<LoadedProject | null> => {
-    const result = await dialog.showOpenDialog(window, { title: "Open Project", buttonLabel: "Open Project", defaultPath: projectsDirectory, properties: ["openDirectory"] });
+    const result = await dialog.showOpenDialog(window, { title: "Open Project", buttonLabel: "Open Project", defaultPath: projectsDirectory, filters: PROJECT_FILE_FILTERS, properties: ["openFile"] });
     const selected = result.filePaths[0];
     return result.canceled || selected === undefined ? null : load(parseProjectPath(selected));
   });

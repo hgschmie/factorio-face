@@ -1,9 +1,26 @@
 // Project persistence and the unsaved-changes handshake, starting from the example circuit of a new project.
 import type { ElectronApplication, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { readdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
-import { card, cardGrabPoint, clickMenu, closeApp, dialogCalls, entityNames, exitCodeOf, expect, launchApp, newProjectPath, PROJECTS_DIR, sourceText, stubDialogs, test } from "./app.ts";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
+import {
+  card,
+  cardGrabPoint,
+  clickMenu,
+  closeApp,
+  dialogCalls,
+  entityNames,
+  exitCodeOf,
+  expect,
+  launchApp,
+  newProjectPath,
+  PROJECT_FILE_EXTENSION,
+  PROJECTS_DIR,
+  readProjectEntries,
+  sourceText,
+  stubDialogs,
+  test,
+} from "./app.ts";
 
 async function deleteEntity(page: Page, name: string): Promise<void> {
   const point = await cardGrabPoint(page, name);
@@ -20,7 +37,7 @@ function isDocumentEdited(app: ElectronApplication): Promise<boolean> {
   return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isDocumentEdited());
 }
 
-test("saves a project directory atomically and reopens it in a new session", async () => {
+test("saves a project file atomically and reopens it in a new session", async () => {
   const projectPath = await newProjectPath("Feedback example");
   const first = await launchApp();
   let savedSource: string;
@@ -34,11 +51,17 @@ test("saves a project directory atomically and reopens it in a new session", asy
     // First save of an unsaved project asks for a location.
     await page.getByRole("button", { name: "Save", exact: true }).click();
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
-    expect(await dialogCalls(app)).toMatchObject({ save: 1 });
-    expect((await readdir(projectPath)).sort()).toEqual(["face.json", "main.face"]);
-    const manifest = JSON.parse(await readFile(resolve(projectPath, "face.json"), "utf8"));
+    // The dialog asks for one project file and suggests the project's name with the extension.
+    const calls = await dialogCalls(app);
+    expect(calls).toMatchObject({ save: 1, saveOptions: { filters: [{ name: "face project", extensions: ["faceproj"] }], nameFieldLabel: "Project file:" } });
+    expect(calls.saveOptions!.defaultPath).toMatch(/Feedback example\.faceproj$/);
+    // The project is that one file, a zip archive with the manifest and the circuit; nothing else is left next to it.
+    expect(await readdir(dirname(projectPath))).toEqual([basename(projectPath)]);
+    let entries = await readProjectEntries(projectPath);
+    expect(Object.keys(entries).sort()).toEqual(["face.json", "main.face"]);
+    const manifest = JSON.parse(entries["face.json"]!);
     expect(manifest).toEqual({ formatVersion: 1, gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], name: "Feedback example", circuits: ["main.face"] });
-    savedSource = await readFile(resolve(projectPath, "main.face"), "utf8");
+    savedSource = entries["main.face"]!;
     expect(savedSource).toContain("decider gate at (300, 80) {");
     expect(savedSource).not.toContain("lamp light");
     await expect.poll(() => isDocumentEdited(app)).toBe(false);
@@ -53,9 +76,11 @@ test("saves a project directory atomically and reopens it in a new session", asy
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
     expect(await dialogCalls(app)).toMatchObject({ save: 1 });
-    savedSource = await readFile(resolve(projectPath, "main.face"), "utf8");
+    entries = await readProjectEntries(projectPath);
+    savedSource = entries["main.face"]!;
     expect(savedSource).not.toContain("arithmetic twice");
-    expect((await readdir(projectPath)).sort()).toEqual(["face.json", "main.face"]);
+    expect(Object.keys(entries).sort()).toEqual(["face.json", "main.face"]);
+    expect(await readdir(dirname(projectPath))).toEqual([basename(projectPath)]);
   } finally {
     await closeApp(first.app);
   }
@@ -90,17 +115,19 @@ test("saves a project directory atomically and reopens it in a new session", asy
     await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
-    expect(await readFile(resolve(projectPath, "main.face"), "utf8")).toBe(savedSource + "// reopened");
+    expect((await readProjectEntries(projectPath))["main.face"]).toBe(savedSource + "// reopened");
   } finally {
     await closeApp(second.app);
   }
 });
 
-test("opens a project through File > Open and refuses directories that are not projects", async ({ app, page }) => {
+test("opens a project through File > Open and refuses directories and files that are not projects", async ({ app, page }) => {
   const projectPath = await newProjectPath("Opened");
-  await stubDialogs(app, { savePath: projectPath });
+  // A name without the extension, as a save panel may return it: the extension is appended.
+  await stubDialogs(app, { savePath: projectPath.slice(0, -PROJECT_FILE_EXTENSION.length) });
   await clickMenu(app, "File", "Save As...");
   await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
+  expect(await readdir(dirname(projectPath))).toEqual([basename(projectPath)]);
 
   await deleteEntity(page, "light");
   await clickMenu(app, "File", "Save");
@@ -120,21 +147,41 @@ test("opens a project through File > Open and refuses directories that are not p
   await expect(page.locator("g.card")).toHaveCount(3);
   expect(await entityNames(page)).toEqual(["source", "gate", "twice"]);
   expect(await sourceText(page)).toContain('circuit "Feedback example" {');
-  expect(await dialogCalls(app)).toMatchObject({ open: 1, message: 0 });
+  expect(await dialogCalls(app)).toMatchObject({ open: 1, message: 0, openOptions: { filters: [{ name: "face project", extensions: ["faceproj"] }], properties: ["openFile"] } });
 
-  // A directory without face.json is reported, and the open project stays.
-  await stubDialogs(app, { openPath: PROJECTS_DIR });
-  await clickMenu(app, "File", "Open Project...");
-  await expect(page.getByRole("alert")).toContainText("Not a face project");
-  await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
-  await page.getByRole("button", { name: "Dismiss message" }).click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  // Directories (the dropped project format, with or without the extension in the name) and files that are not zip archives
+  // are reported, and the open project stays.
+  const oldProject = await newProjectPath("Old format");
+  await mkdir(oldProject);
+  await writeFile(resolve(oldProject, "face.json"), JSON.stringify({ formatVersion: 1, name: "Old format", gameVersion: "2.1.24", modules: ["base"], circuits: ["main.face"] }));
+  await writeFile(resolve(oldProject, "main.face"), 'circuit "Old format" {\n}\n');
+  const notZip = await newProjectPath("Not a zip");
+  await writeFile(notZip, "this is not a zip archive\n");
+  for (const openPath of [PROJECTS_DIR, oldProject, notZip]) {
+    await stubDialogs(app, { openPath });
+    await clickMenu(app, "File", "Open Project...");
+    await expect(page.getByRole("alert")).toContainText("Not a face project file");
+    await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
+    await expect(page.locator("g.card")).toHaveCount(3);
+    await page.getByRole("button", { name: "Dismiss message" }).click();
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  }
 
-  // Saving into a foreign, non-empty directory is refused and writes nothing there.
-  await stubDialogs(app, { savePath: PROJECTS_DIR });
+  // Saving over a directory is refused and writes nothing into it or next to it.
+  await stubDialogs(app, { savePath: oldProject });
   await clickMenu(app, "File", "Save As...");
-  await expect(page.getByRole("alert")).toContainText("not empty");
-  expect(existsSync(resolve(PROJECTS_DIR, "face.json"))).toBe(false);
+  await expect(page.getByRole("alert")).toContainText("over a folder");
+  await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
+  expect((await readdir(oldProject)).sort()).toEqual(["face.json", "main.face"]);
+  expect(await readdir(dirname(oldProject))).toEqual([basename(oldProject)]);
+  await page.getByRole("button", { name: "Dismiss message" }).click();
+
+  // A name without the extension is not silently turned into an existing project file that the panel never asked about.
+  const before = await readFile(projectPath);
+  await stubDialogs(app, { savePath: projectPath.slice(0, -PROJECT_FILE_EXTENSION.length) });
+  await clickMenu(app, "File", "Save As...");
+  await expect(page.getByRole("alert")).toContainText("already exists");
+  expect((await readFile(projectPath)).equals(before)).toBe(true);
 });
 
 test("closes without asking when there are no unsaved changes", async () => {
@@ -190,8 +237,9 @@ test("Save in the close prompt writes the project, then closes; a cancelled loca
     const closed = app.waitForEvent("close");
     await requestClose(app);
     await closed;
-    expect(await readFile(resolve(projectPath, "main.face"), "utf8")).not.toContain("lamp light");
-    expect(JSON.parse(await readFile(resolve(projectPath, "face.json"), "utf8")).name).toBe("Feedback example");
+    const entries = await readProjectEntries(projectPath);
+    expect(entries["main.face"]).not.toContain("lamp light");
+    expect(JSON.parse(entries["face.json"]!).name).toBe("Feedback example");
   } finally {
     await closeApp(app);
   }

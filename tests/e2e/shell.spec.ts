@@ -132,17 +132,24 @@ test("rejects malformed IPC arguments in the main process", async ({ page }) => 
     const data = { manifest: { formatVersion: 1, name: "X", gameVersion: "2.1.24", modules: [], customSignalGroups: [], circuits: ["main.face"] }, files: [{ name: "main.face", source: "" }] };
     const evil = { manifest: { ...data.manifest, circuits: ["../escape.face"] }, files: [{ name: "../escape.face", source: "x" }] };
     return {
-      relativeLoad: await face.loadProject("relative/path"),
-      traversalLoad: await face.loadProject("/tmp/../etc"),
+      relativeLoad: await face.loadProject("relative/path.faceproj"),
+      traversalLoad: await face.loadProject("/tmp/../etc.faceproj"),
       nonString: await face.loadProject(42 as unknown as string),
-      relativeSave: await face.saveProject({ path: "relative", data } as never),
-      escapingFile: await face.saveProject({ path: "/nonexistent-face-test/project", data: evil } as never),
+      otherFileLoad: await face.loadProject("/etc/hosts"),
+      relativeSave: await face.saveProject({ path: "relative.faceproj", data } as never),
+      otherFileSave: await face.saveProject({ path: "/nonexistent-face-test/notes.txt", data } as never),
+      missingFolderSave: await face.saveProject({ path: "/nonexistent-face-test/project.faceproj", data } as never),
+      escapingFile: await face.saveProject({ path: "/nonexistent-face-test/project.faceproj", data: evil } as never),
       garbage: await face.saveProject("garbage" as never),
     };
   });
   for (const [name, result] of Object.entries(results)) expect(result.ok, name).toBe(false);
   expect(results.relativeLoad).toEqual({ ok: false, error: "Project path must be absolute" });
   expect(results.traversalLoad).toEqual({ ok: false, error: "Project path must be normalized" });
+  // Main reads and writes project files only: any other name is refused before the filesystem is touched.
+  expect(results.otherFileLoad).toEqual({ ok: false, error: "Not a face project file (the name must end in .faceproj): /etc/hosts" });
+  expect(results.otherFileSave).toEqual({ ok: false, error: "Not a face project file (the name must end in .faceproj): /nonexistent-face-test/notes.txt" });
+  expect(results.missingFolderSave).toEqual({ ok: false, error: "The folder for the project file does not exist: /nonexistent-face-test" });
   expect(existsSync("/nonexistent-face-test")).toBe(false);
 });
 

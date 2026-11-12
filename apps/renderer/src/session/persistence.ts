@@ -14,7 +14,7 @@ export interface ProjectSettings {
 }
 
 export interface ProjectFile {
-  /** Absolute project directory; null until the project was saved for the first time. */
+  /** Absolute path of the project file; null until the project was saved for the first time. */
   readonly path: string | null;
   /** The manifest as loaded; everything this version does not edit (custom signal groups, unknown fields) is written back from here. */
   readonly manifest: ProjectManifest;
