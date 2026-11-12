@@ -39,7 +39,7 @@ circuit "Feedback example" {
 - Comments: `// to end of line` and `/* block */`. Comments and whitespace are trivia and are preserved by every editor operation that does not rewrite the enclosing statement.
 - Identifier (entity names): `[A-Za-z_][A-Za-z0-9_]*`. Keywords are reserved and case-sensitive.
 - Integer: optional `-` followed by decimal digits, or `0x` hexadecimal; must fit signed 32 bit. A `-` directly followed by a digit after an operator or `=` is a sign. Decimal numbers (`1.5`, `-0.5`) are only legal in `tile (...)` and as a section `multiplier`.
-- String: double-quoted, escapes `\"`, `\\`, `\n`.
+- String: double-quoted, on one line. Escapes: `\"`, `\\`, `\n` (line break), `\t` (tab), `\r` (carriage return). The editor writes line breaks, tabs and carriage returns as escapes; a tab typed into a string is the same value as `\t`.
 - Signal literal: `kind:name` or `kind:name@quality`, written without spaces. `kind` is one of `item`, `fluid`, `virtual`, `entity`, `recipe`, `space-location`, `asteroid-chunk`, `quality`, `custom`. `name` and `quality` match `[A-Za-z0-9_][A-Za-z0-9_.-]*`; any other prototype name is written quoted: `item:"odd name"@"odd quality"`. Because names may contain `-`, the binary operators `-` and `+` must be surrounded by whitespace.
 - Wildcards are keywords, not signal literals: `each`, `anything`, `everything`. (`virtual:signal-each` etc. are accepted and normalized to the keyword form by the editor; they denote the same signals.)
 - Color literal: `#rrggbb`.
@@ -80,7 +80,17 @@ Entity names are unique within a circuit. Members may appear in any order; a wir
 
 ### Common property
 
-`description = "text"` is allowed in every entity (the in-game entity description).
+`description = "text"` is allowed in every entity. It is the free text of the game's "Add description" on a combinator; a text of several lines is written on one source line with `\n` between the lines:
+
+```
+decider gate at (300, 80) {
+    description = "Counts A up to ten,\nthen starts over."
+    when virtual:signal-A < 10
+    output virtual:signal-A = input
+}
+```
+
+The text is kept exactly as written, including blanks at either end. An empty description is the same as none: the editor removes the property instead of writing `description = ""` (one written by hand stays until it is changed). The description never affects the simulation. The game has it on the four combinators only (`player_description` in a blueprint); on a lamp it is a note of the project. No length limit is enforced: none is documented for the game (open; `docs/factorio-audit.md` 3.2 states none).
 
 ### constant
 

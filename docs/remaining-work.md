@@ -19,7 +19,7 @@ Requested by the user on 2026-11-11. In progress since the same day; the user as
 
 - Copy and paste for entities on the canvas: select, copy, paste gives a copy. The Edit menu has Cut, Copy and Paste, but they do nothing in the graphical editor. Open: what happens to wires between copied entities, naming of the copies, paste position, paste across projects.
 - Rotation of entities: the card text stays as it is, the connection pins move around the card. A step towards real graphical placement. The model already has `placement.direction`; the canvas has one function for pin positions (`pinPoint` in `apps/renderer/src/canvas/geometry.ts`) as the place to start. With the entity facing right, red is above green.
-- Description text for combinators, as the game's "Add description": a multi-line text box in the inspector, kept in the source (for example `comment "..."` with `\n` for line breaks) and later written into the blueprint. The model has `description` on every entity; check what the language does with it today.
+- Done: description text. A multi-line Description box in the inspector for every entity, written as one source line (`description = "..."` with `\n`, `\t`, `\r` escapes), a marker on the card and the text in its tooltip. Save also writes text that is still being typed. Open for the user: lamps get the box although the game has a description on combinators only (`docs/factorio-audit.md` 3.2); no length limit is enforced because the audit states none.
 - Done: the [R] and [G] boxes are grayed (dashed outline, no wire color, still operable) when no wire of that color is connected to the entity's input, as the game does.
 - Done: both [R] and [G] can be unchecked, as the game allows. The language writes it as `[none]` after a signal and `networks = none` for the lamp (`none` is not a reserved word); a signal read from no network counts as absent (rule N-NONE in `packages/simulation/CONFORMANCE.md`, assumed).
 - Card status: show input and output, not only the output, and split by red and green where possible. Today a card shows the first two output signals (`STATUS_SIGNALS` in `apps/renderer/src/session/simulationView.ts`); with icons the "+N more" marker of the text form is lost. The small gray square in front of the status is a leftover marker: it only changes for lamps (orange when lit, or the light's color) and means nothing on a combinator. Decide what replaces it.
@@ -33,7 +33,10 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 
 ## Workbench follow-ups (from the shell and integration reports)
 
-- To verify natively on macOS: Cmd+Z and Shift+Cmd+Z in an inspector field undo exactly one step; the View menu shows one full screen entry.
+- To verify natively on macOS: Cmd+Z and Shift+Cmd+Z in an inspector field undo exactly one step; the View menu shows one full screen entry. Also Cmd+Z, Cmd+Enter and Cmd+S as real key presses in the Description box.
+- Unwritten field text (name, description) is lost when a window without unsaved changes is closed, because the main process only asks for a dirty document.
+- The description marker on the card (glyph and place) is provisional until the card status rework.
+- `integration.spec.ts` accepts a completion with Enter right after the list appears; CodeMirror ignores Enter for 75 ms after opening the list, so that test can race.
 - Text fields outside the inspector (signal picker search, project name in the settings) have no undo of their own any more: the browser keeps one undo stack for all fields of the window, which let an undo there rewrite an inspector field. Undo from the toolbar button or with focus on the canvas does not discard a pending inspector draft.
 - A menu command (all accelerators travel main process, then IPC) can be overtaken by input that arrives while the window is busy for 50 ms or more. Handling the shortcuts in the renderer's keydown would remove that, but needs a native check that the accelerator does not fire twice.
 - Closing the signal picker with Escape leaves the focus on the body instead of the button that opened it.
@@ -88,7 +91,7 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 
 ## Later milestones (unchanged from the handoff)
 
-- Blueprint import/export (`packages/blueprints`), including the decision on 1.x strings.
+- Blueprint import/export (`packages/blueprints`), including the decision on 1.x strings. Descriptions: write `player_description` for the four combinator types only and omit it when empty; decide what happens to a lamp's description; check the game for a length limit and for tabs and `\r\n`.
 - Reusable components, library, instance identity across files, flattening.
 - Debugging: probes, traces for arbitrary signals, stop conditions, scenarios.
 - Packaging, recovery, accessibility and performance hardening; move parsing/simulation to a worker if measurements require it.

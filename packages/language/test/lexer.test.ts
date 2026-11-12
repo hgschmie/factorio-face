@@ -111,6 +111,19 @@ describe("literal decoding", () => {
     expect(decodeString('"open')).toBe("open");
   });
 
+  it("writes line breaks, carriage returns and tabs as escapes, so that a string stays on one line", () => {
+    expect(encodeString('one\ntwo\r\nthree\tend "q" \\')).toBe('"one\\ntwo\\r\\nthree\\tend \\"q\\" \\\\"');
+    for (const value of ["\n", "\r\n", "a\tb", "\\n is not a line break", "\\\n", "Grüße, 日本語 → 𝒜", "trailing break\n"]) {
+      const encoded = encodeString(value);
+      expect(encoded).not.toMatch(/[\n\r\t]/);
+      expect(lex(encoded)).toEqual({ tokens: [{ kind: "string", from: 0, to: encoded.length, text: encoded }], errors: [] });
+      expect(decodeString(encoded)).toBe(value);
+    }
+    // A tab typed into a string is the same value as the escape.
+    expect(decodeString('"a\tb"')).toBe(decodeString('"a\\tb"'));
+    expect(lex('"\\t\\r\\n"').errors).toEqual([]);
+  });
+
   it("decodes signals", () => {
     expect(decodeSignal("item:iron-plate")).toEqual({ signal: { kind: "item", name: "iron-plate" } });
     expect(decodeSignal("item:iron-plate@rare")).toEqual({ signal: { kind: "item", name: "iron-plate", quality: "rare" } });

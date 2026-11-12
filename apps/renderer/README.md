@@ -39,7 +39,7 @@ src/
   canvas/
     Canvas.tsx         SVG canvas: camera, gestures, pending wire, context menu; emits callbacks only
     Scene.tsx          memoized wires and cards, culled to the visible area
-    EntityCard.tsx     one memoized card (icon, name, summary, live status line, a red and a green pin per side in TERMINALS)
+    EntityCard.tsx     one memoized card (icon, name, summary, description marker, live status line, a red and a green pin per side in TERMINALS)
     ContextMenu.tsx    keyboard-navigable popup menu
     geometry.ts        card and pin geometry (`pinPoint`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
@@ -52,7 +52,7 @@ src/
     tokenHighlight.ts  viewport decorations from an external tokenizer
     tokens.ts          token kind to class mapping, minimal text diff  (pure)
   inspector/
-    Inspector.tsx      identity, rename + Delete at the top, draft hint, settings slot, connections; undo and redo from its fields
+    Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; undo and redo from its fields
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
     fields.tsx         text, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
@@ -116,6 +116,18 @@ has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line num
   values (`FieldTextEpochContext` invalidates the text they hold on their own; that update is rendered at once with `flushSync`, so
   that a key arriving right behind the command is typed into what the undo left). In a text field that is not part of the document
   (project name, signal search) undo and redo do nothing. The source editor keeps CodeMirror's handling.
+- **Description.** Every entity has a multi-line Description box under its name (`DescriptionField` in `Inspector.tsx`): one line
+  high while empty, as high as its text up to eight lines, then it scrolls. Return is a line break, so unlike the other fields the
+  text is not written while it is typed: it is written when the box is left or on Cmd/Ctrl+Return, as one `updateEntity` without a
+  `coalesce` key, which is one undo step. Until then the box carries `data-unwritten`; Escape drops the text, and so does the
+  first undo. Text of blanks only is written as no description, which removes the property from the source. The box edits the
+  pending draft like any settings field, so a description added to an incomplete edit waits with it. In the source the text is
+  one line, `description = "..."` with `\n` between the lines (`docs/dsl.md`). A card with a description shows the `note` glyph in
+  its top right corner (`g.card-note`) and the text in its tooltip. Lamps have no description in the game; the box says so in its
+  tooltip and the text stays in the project.
+- **Saving while a field holds unwritten text.** A name or a description is written when its field is left. Save and Save As
+  (menu, key, the close prompt) first leave and re-enter the focused field when it carries `data-unwritten` (`writeFocusedField`
+  in `Workbench.tsx`), so the saved file has the text and the caret stays where it was.
 - **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
   a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
   so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.

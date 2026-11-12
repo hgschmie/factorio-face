@@ -124,7 +124,7 @@ describe("simulation and the document", () => {
     session.dispose();
   });
 
-  it("a move, a rename and a comment do not reset the tick; a semantic edit does", () => {
+  it("a move, a rename, a description and a comment do not reset the tick; a semantic edit does", () => {
     const { session } = createSession(IRREGULAR);
     const gate = idOf(session, "gate");
     for (let tick = 0; tick < 4; tick++) session.commands.step();
@@ -134,6 +134,9 @@ describe("simulation and the document", () => {
     session.commands.moveEntities([{ id: gate, position: { x: 500, y: 300 } }]);
     expect(session.state.simulation.tick).toBe(4);
     session.commands.renameEntity(gate, "counter");
+    expect(session.state.simulation.tick).toBe(4);
+    session.commands.updateEntity({ ...entityNamed(session, "counter"), description: "counts\nto ten" });
+    expect(entityNamed(session, "counter").description).toBe("counts\nto ten");
     expect(session.state.simulation.tick).toBe(4);
     type(session, 0, "/* layout and names are not behaviour */\n");
     replaceText(session, "// limit", "// a different comment");

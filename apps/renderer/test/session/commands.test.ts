@@ -254,4 +254,55 @@ describe("graphical commands as source patches", () => {
     type(session, 0, "// more\n");
     expect(session.state.circuit).toBe(after);
   });
+
+  it("writes a description as one source line and one undo step, and removes it when it is emptied", () => {
+    const { session } = createSession(IRREGULAR);
+    const text = 'counts to ten\nthen "starts" over\\\n\ttab, Grüße 日本語\r\nwindows break';
+    const line = '\t\tdescription = "counts to ten\\nthen \\"starts\\" over\\\\\\n\\ttab, Grüße 日本語\\r\\nwindows break"\n';
+    const described = IRREGULAR.replace("\t\twhen virtual:signal-A < 10", `${line}\t\twhen virtual:signal-A < 10`);
+    session.commands.updateEntity({ ...entityNamed(session, "gate"), description: text });
+    // The document splits lines at carriage returns as well: the text must not bring any into the source.
+    expect(session.state.source).toBe(described);
+    expect(session.state.editable).toBe(true);
+    expect(entityNamed(session, "gate").description).toBe(text);
+
+    session.commands.updateEntity({ ...entityNamed(session, "gate"), description: "short" });
+    expect(session.state.source).toBe(IRREGULAR.replace("\t\twhen virtual:signal-A < 10", '\t\tdescription = "short"\n\t\twhen virtual:signal-A < 10'));
+    session.commands.undo();
+    expect(session.state.source).toBe(described);
+    session.commands.redo();
+
+    for (const none of ["", undefined]) {
+      session.commands.updateEntity({ ...entityNamed(session, "gate"), description: none });
+      expect(session.state.source).toBe(IRREGULAR);
+      expect(entityNamed(session, "gate").description).toBeUndefined();
+      session.commands.undo();
+      expect(entityNamed(session, "gate").description).toBe("short");
+    }
+    session.commands.undo();
+    session.commands.undo();
+    expect(session.state).toMatchObject({ source: IRREGULAR, canUndo: false, error: null });
+    // Nothing to remove is no edit.
+    session.commands.updateEntity({ ...entityNamed(session, "gate"), description: "" });
+    expect(session.state).toMatchObject({ source: IRREGULAR, canUndo: false, error: null, draft: null });
+  });
+
+  it("a description typed in the source arrives in the circuit, and one in an incomplete inspector edit waits with it", () => {
+    const { session } = createSession(IRREGULAR);
+    type(session, IRREGULAR.indexOf("when virtual:signal-A > 3"), 'description = "lit above three\\n(second line)" ');
+    expect(entityNamed(session, "light").description).toBe("lit above three\n(second line)");
+    expect(session.state.editable).toBe(true);
+
+    const gate = entityNamed(session, "gate");
+    if (gate.kind !== "decider") throw new Error("gate is a decider");
+    const source = session.state.source;
+    session.commands.select([gate.id]);
+    session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, first: undefined }] });
+    session.commands.updateEntity({ ...session.state.draft!.entity, description: "pending" });
+    expect(session.state.source).toBe(source);
+    expect(session.state.draft?.entity.description).toBe("pending");
+    session.commands.updateEntity({ ...gate, description: "pending" });
+    expect(session.state.draft).toBeNull();
+    expect(session.state.source).toBe(source.replace("\t\twhen virtual:signal-A < 10", '\t\tdescription = "pending"\n\t\twhen virtual:signal-A < 10'));
+  });
 });

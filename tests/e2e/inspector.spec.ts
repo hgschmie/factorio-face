@@ -1,7 +1,7 @@
 // Inspector: primary actions at the top, controlled settings forms for every kind.
-import type { Locator } from "@playwright/test";
-import { card, cardGrabPoint, CARET, clickMenu, entityNames, expect, selectEntity, sourceText, test } from "./app.ts";
-import { FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
+import type { Locator, Page } from "@playwright/test";
+import { card, cardGrabPoint, CARET, clickMenu, entityNames, expect, readProjectEntries, selectEntity, sourceText, test } from "./app.ts";
+import { FIVE_KINDS, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 test.beforeEach(async ({ page }) => {
   await openFiveKinds(page);
@@ -521,4 +521,189 @@ test("text fields outside the inspector have no undo of their own and leave the 
   await page.getByLabel("SPEED").focus();
   await clickMenu(app, "Edit", "Undo");
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+});
+
+const GATE_DESCRIPTION = 'counts up\nuntil "ten"\n\nthen again';
+/** The five-kinds source with a description on `gate`, as the editor writes it: one line at the top of the body. */
+function describedSource(description: string): string {
+  const literal = description.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n");
+  return FIVE_KINDS_SOURCE.replace("        when virtual:signal-A < 10\n", `        description = "${literal}"\n        when virtual:signal-A < 10\n`);
+}
+
+async function typeLines(page: Page, text: string): Promise<void> {
+  for (const [index, line] of text.split("\n").entries()) {
+    if (index > 0) await page.keyboard.press("Enter");
+    await page.keyboard.type(line);
+  }
+}
+
+test("the description box takes several lines and writes them as one source line, in one undo step", async ({ page, app }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  const box = inspector.getByLabel("Description", { exact: true });
+  const undo = page.getByRole("button", { name: "Undo" });
+  const redo = page.getByRole("button", { name: "Redo" });
+  const note = (name: string) => card(page, name).locator(".card-note");
+  const tooltip = (name: string) => card(page, name).locator(":scope > title").evaluate((title) => title.textContent);
+
+  // Every kind has the box, between the name and the settings, one line high while it is empty.
+  for (const name of FIVE_KINDS) {
+    await selectEntity(page, name);
+    await expect(inspector.getByLabel("Entity name")).toHaveValue(name);
+    await expect(box).toHaveValue("");
+    await expect(box).toHaveAttribute("placeholder", "Add description");
+  }
+  await selectEntity(page, "gate");
+  await expect(inspector.getByLabel("Entity name")).toHaveValue("gate");
+  const emptyBox = (await box.boundingBox())!;
+  expect(emptyBox.height).toBeLessThan(40);
+  expect(emptyBox.y).toBeGreaterThan((await inspector.getByLabel("Entity name").boundingBox())!.y);
+  expect(emptyBox.y + emptyBox.height).toBeLessThan((await inspector.locator(".inspector-settings").boundingBox())!.y);
+  await expect(note("gate")).toHaveCount(0);
+
+  // Return is a line break; nothing is written while the text is typed.
+  await box.click();
+  await typeLines(page, GATE_DESCRIPTION);
+  await expect(box).toHaveValue(GATE_DESCRIPTION);
+  await expect(box).toHaveAttribute("data-unwritten", "true");
+  expect((await box.boundingBox())!.height).toBeGreaterThan(emptyBox.height + 40);
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  await expect(undo).toBeDisabled();
+
+  // Cmd/Ctrl+Return writes it: one line in the source, a marker on the card, the text in the card's tooltip.
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect.poll(() => sourceText(page)).toBe(describedSource(GATE_DESCRIPTION));
+  await expect(box).toHaveValue(GATE_DESCRIPTION);
+  await expect(box).not.toHaveAttribute("data-unwritten");
+  await expect(box).toBeFocused();
+  await expect(note("gate")).toHaveCount(1);
+  await expect(note("twice")).toHaveCount(0);
+  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\n${GATE_DESCRIPTION}\nNow: no output`);
+
+  // The whole text is one step in the document history.
+  await clickMenu(app, "Edit", "Undo");
+  await expect(box).toHaveValue("");
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  await expect(undo).toBeDisabled();
+  await expect(note("gate")).toHaveCount(0);
+  await clickMenu(app, "Edit", "Redo");
+  await expect(box).toHaveValue(GATE_DESCRIPTION);
+  await expect.poll(() => sourceText(page)).toBe(describedSource(GATE_DESCRIPTION));
+  await expect(box).toBeFocused();
+
+  // Escape drops text that is not written.
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("something else");
+  await expect(box).toHaveValue("something else");
+  await page.keyboard.press("Escape");
+  await expect(box).toHaveValue(GATE_DESCRIPTION);
+  await expect(box).not.toHaveAttribute("data-unwritten");
+
+  // Undo first takes back only such text (from the menu and as the browser's own undo), then the step in the history.
+  for (const takeBack of [() => clickMenu(app, "Edit", "Undo"), () => page.keyboard.press(UNDO_KEY)]) {
+    await page.keyboard.press("ControlOrMeta+a");
+    await page.keyboard.type("not written");
+    await expect(box).toHaveAttribute("data-unwritten", "true");
+    await takeBack();
+    await expect(box).toHaveValue(GATE_DESCRIPTION);
+    await expect(box).not.toHaveAttribute("data-unwritten");
+    await expect(box).toBeFocused();
+    expect(await sourceText(page)).toBe(describedSource(GATE_DESCRIPTION));
+    await expect(redo).toBeDisabled();
+  }
+  await clickMenu(app, "Edit", "Undo");
+  await expect(box).toHaveValue("");
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  await clickMenu(app, "Edit", "Redo");
+  await expect(box).toHaveValue(GATE_DESCRIPTION);
+
+  // Leaving the box writes as well, here by selecting another card; each entity has its own text.
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("counts");
+  await selectEntity(page, "twice");
+  await expect(inspector.getByLabel("Entity name")).toHaveValue("twice");
+  await expect(box).toHaveValue("");
+  await expect.poll(() => sourceText(page)).toBe(describedSource("counts"));
+  await expect.poll(() => tooltip("gate")).toBe("Decider gate: A < 10 → A\ncounts\nNow: no output");
+
+  // Emptying the box removes the property and the marker; blanks alone are no description.
+  await selectEntity(page, "gate");
+  await expect(box).toHaveValue("counts");
+  await box.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await page.keyboard.type("  ");
+  await page.keyboard.press("Enter");
+  await inspector.getByLabel("Entity name").click();
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  await expect(box).toHaveValue("");
+  await expect(note("gate")).toHaveCount(0);
+  await expect.poll(() => tooltip("gate")).toBe("Decider gate: A < 10 → A\nNow: no output");
+});
+
+test("a description edited in the source shows in the box, and the other way round", async ({ page }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  const box = inspector.getByLabel("Description", { exact: true });
+  await page.getByRole("button", { name: "Split", exact: true }).click();
+  const editor = page.locator(".source-pane .cm-content");
+  await expect(editor).toBeVisible();
+
+  // Typed by hand below the lamp's condition; completion knows the property. The caret inside the declaration selects the lamp.
+  await page.locator(".source-pane .cm-line", { hasText: "when virtual:signal-B > 8" }).click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("desc");
+  // Accepted with the pointer: the editor ignores Return for a moment after the list has opened.
+  await page.locator(".cm-tooltip-autocomplete li", { hasText: "description" }).click();
+  await expect(page.locator(".source-pane .cm-line", { hasText: /^\s*description$/ })).toHaveCount(1);
+  await page.keyboard.type(' = "lit above eight\\n\\"B\\" is twice A"');
+  await expect(inspector.getByLabel("Entity name")).toHaveValue("light");
+  await expect(box).toHaveValue('lit above eight\n"B" is twice A');
+  await expect(box).toHaveAttribute("title", /no description in the game/);
+  await expect(card(page, "light").locator(".card-note")).toHaveCount(1);
+  const line = page.locator(".source-pane .cm-line", { hasText: "description =" });
+  await expect(line).toHaveCount(1);
+  await expect(line.locator(".face-tok-string")).toHaveText('"lit above eight\\n\\"B\\" is twice A"');
+  await expect(page.locator(".diagnostics li.severity-error")).toHaveCount(0);
+
+  // Changing the text in the source changes the box as it is typed.
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.type("!");
+  await expect(box).toHaveValue('lit above eight\n"B" is twice A!');
+
+  // The box rewrites that one line; the editor shows it.
+  await box.click();
+  await page.keyboard.press("ControlOrMeta+a");
+  await typeLines(page, "first\nsecond \\ third");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(line.locator(".face-tok-string")).toHaveText('"first\\nsecond \\\\ third"');
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("        when virtual:signal-B > 8\n", '        when virtual:signal-B > 8\n        description = "first\\nsecond \\\\ third"\n'));
+
+  // Removing the line in the source empties the box.
+  await page.evaluate((text) => window.faceSession!.commands.setSource(text), FIVE_KINDS_SOURCE);
+  await expect(box).toHaveValue("");
+  await expect(card(page, "light").locator(".card-note")).toHaveCount(0);
+});
+
+test("saving writes the description that is being typed, and the caret stays in the box", async ({ page, app }) => {
+  const projectPath = await openFiveKinds(page);
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  const box = inspector.getByLabel("Description", { exact: true });
+  await selectEntity(page, "gate");
+  await box.click();
+  await typeLines(page, "counts\nup");
+  await page.keyboard.press("ArrowLeft");
+  await expect(box).toHaveAttribute("data-unwritten", "true");
+
+  await clickMenu(app, "File", "Save");
+  await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
+  expect((await readProjectEntries(projectPath))["main.face"]).toBe(describedSource("counts\nup"));
+  await expect(box).toBeFocused();
+  await expect(box).not.toHaveAttribute("data-unwritten");
+
+  // Typing goes on where the caret was.
+  await page.keyboard.type("!");
+  await expect(box).toHaveValue("counts\nu!p");
+  await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect.poll(() => sourceText(page)).toBe(describedSource("counts\nu!p"));
+  await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
 });

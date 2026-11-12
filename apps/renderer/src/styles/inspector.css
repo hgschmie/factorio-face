@@ -62,8 +62,29 @@
   display: flex;
   align-items: flex-end;
   gap: 8px;
+  padding-bottom: 11px;
+}
+
+/* One line while empty, as high as its text up to eight lines, then it scrolls: the settings below move as little as possible. */
+.description-field {
   padding-bottom: 16px;
   border-bottom: 1px solid var(--border-subtle);
+}
+
+.description-field textarea {
+  display: block;
+  width: 100%;
+  min-height: 31px;
+  max-height: 152px;
+  field-sizing: content;
+  resize: none;
+  font-size: var(--text-md);
+  line-height: 17px;
+  overflow-wrap: anywhere;
+}
+
+.description-field textarea::placeholder {
+  color: var(--text-dim);
 }
 
 .inspector-primary .name-field {

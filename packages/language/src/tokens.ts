@@ -50,6 +50,10 @@ const isNamePart = (c: number) => isIdentPart(c) || c === 45 || c === 46;
 const isHexDigit = (c: number) => isDigit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102);
 const isSpace = (c: number) => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11 || c === 0xa0 || c === 0xfeff;
 
+/** The escapes besides `\"` and `\\`: the letter after the backslash and the character it stands for. A string is always written on one line. */
+const ESCAPE_LETTERS: ReadonlyMap<string, string> = new Map([["n", "\n"], ["t", "\t"], ["r", "\r"]]);
+const ESCAPED_LETTERS: ReadonlyMap<string, string> = new Map([...ESCAPE_LETTERS].map(([letter, character]) => [character, letter]));
+
 const QUOTE = 34, BACKSLASH = 92, NEWLINE = 10, SLASH = 47, STAR = 42, MINUS = 45, COLON = 58, AT = 64, HASH = 35, DOT = 46;
 
 const PUNCTUATION = "{}()[],;.";
@@ -91,7 +95,7 @@ export function lex(source: string): { tokens: Token[]; errors: LexError[] } {
       if (c === QUOTE) return j + 1;
       if (c === BACKSLASH && j + 1 < length && source.charCodeAt(j + 1) !== NEWLINE) {
         const escaped = source.charCodeAt(j + 1);
-        if (escaped !== QUOTE && escaped !== BACKSLASH && escaped !== 110) errors.push({ from: j, to: j + 2, message: `Invalid escape sequence '${source.slice(j, j + 2)}'; use \\", \\\\ or \\n` });
+        if (escaped !== QUOTE && escaped !== BACKSLASH && !ESCAPE_LETTERS.has(source[j + 1]!)) errors.push({ from: j, to: j + 2, message: `Invalid escape sequence '${source.slice(j, j + 2)}'; use \\", \\\\, \\n, \\t or \\r` });
         j += 2;
       } else j++;
     }
@@ -199,7 +203,7 @@ export function tokenize(source: string): Token[] {
 export function decodeString(text: string): string {
   const closed = text.length >= 2 && text.endsWith('"') && !endsWithEscape(text);
   const body = text.slice(1, closed ? -1 : undefined);
-  return body.replace(/\\(.)/g, (_, c: string) => (c === "n" ? "\n" : c));
+  return body.replace(/\\(.)/g, (_, c: string) => ESCAPE_LETTERS.get(c) ?? c);
 }
 
 function endsWithEscape(text: string): boolean {
@@ -209,7 +213,7 @@ function endsWithEscape(text: string): boolean {
 }
 
 export function encodeString(value: string): string {
-  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
+  return `"${value.replace(/[\\"\n\t\r]/g, (c) => `\\${ESCAPED_LETTERS.get(c) ?? c}`)}"`;
 }
 
 function isClosedString(text: string): boolean {

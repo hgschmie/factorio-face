@@ -28,6 +28,17 @@ export interface WorkbenchProps {
   readonly describeSignal?: SignalDescriber;
 }
 
+/**
+ * Text a field writes only when it is left (a name, a description) would be missing from a save made while the focus is still
+ * in it. The field is left and entered again, which writes the text; the caret stays where it is.
+ */
+function writeFocusedField(): void {
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement) || focused.dataset.unwritten === undefined) return;
+  focused.blur();
+  focused.focus();
+}
+
 export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
   const { circuit, selection, mode, tool, editable, simulation, project } = state;
@@ -54,6 +65,10 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   stateRef.current = state;
 
   const deleteSelection = useCallback(() => commands.deleteEntities(stateRef.current.selection), [commands]);
+  const save = useCallback(() => {
+    writeFocusedField();
+    return commands.save();
+  }, [commands]);
 
   // Undo and redo have one authority, the document history. From the inspector, whose fields write to the document, the request
   // goes through the inspector (it first takes back text that is not written). A text field that is not part of the document
@@ -82,7 +97,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
 
   // Dirty-state handshake: main asks before closing a window that reported unsaved changes.
   useEffect(() => api?.setDirty(project.dirty), [api, project.dirty]);
-  useEffect(() => api?.onSaveBeforeClose(() => commands.save()), [api, commands]);
+  useEffect(() => api?.onSaveBeforeClose(save), [api, save]);
 
   useEffect(() => {
     if (!api) return;
@@ -98,8 +113,9 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         case "file.openRecent":
           return void commands.loadProject(command.path);
         case "file.save":
-          return void commands.save();
+          return void save();
         case "file.saveAs":
+          writeFocusedField();
           return void commands.saveAs();
         case "edit.undo":
           return history("undo");
@@ -132,7 +148,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       }
     };
     return api.onMenuCommand(run);
-  }, [api, commands, history]);
+  }, [api, commands, history, save]);
 
   const errors = state.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warnings = state.diagnostics.length - errors;
@@ -153,7 +169,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         settingsOpen={settingsOpen}
         onFit={() => canvasRef.current?.fit()}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
-        onSave={() => void commands.save()}
+        onSave={() => void save()}
       />
       {settingsOpen && <ProjectSettings project={project} catalog={state.catalog} onRename={commands.setProjectName} onModuleChange={commands.setModuleEnabled} close={closeSettings} />}
 

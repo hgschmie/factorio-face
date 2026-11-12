@@ -121,6 +121,11 @@
   fill: var(--text-soft);
 }
 
+/* Marks a card whose entity has a description; the text itself is in the card's tooltip. */
+.card-note {
+  color: var(--text-muted);
+}
+
 .card-name {
   font-size: 15px;
   font-weight: 600;

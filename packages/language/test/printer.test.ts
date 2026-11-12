@@ -28,6 +28,19 @@ describe("canonical printer", () => {
     expect(printed).toContain("    selector selector1 at (720, 0) {\n        operation = select\n    }\n");
   });
 
+  it("prints a description of any content on one line, for every kind", () => {
+    const descriptions = ["plain", "first line\nsecond line\n\nfourth, after an empty one", 'say "hi" \\ back\\\\slash', "tab\there, windows\r\nbreak", "Grüße, 日本語 → 𝒜", "// no comment /* at all */", "trailing break\n", " padded "];
+    for (const description of descriptions) {
+      const entities = ENTITY_KINDS.map((kind, i) => ({ ...DEFAULT_ENTITY[kind], id: `i${i}`, name: `${kind}1`, position: { x: i * 240, y: 0 }, description }) as Entity);
+      const printed = expectRoundTrip({ name: "described", entities, wires: [] });
+      const lines = printed.split("\n").filter((line) => line.includes("description = "));
+      expect(lines).toHaveLength(ENTITY_KINDS.length);
+      for (const line of lines) expect(line).toMatch(/^ {8}description = ".*"$/);
+      expect(printed).not.toMatch(/[\r\t]/);
+    }
+    expect(printEntity({ ...DEFAULT_ENTITY.lamp, id: "x", name: "l", position: { x: 0, y: 0 }, description: 'a\n"b"\tc' })).toBe('lamp l at (0, 0) {\n    description = "a\\n\\"b\\"\\tc"\n}');
+  });
+
   it("prints one entity starting in column 0 with a configurable indent", () => {
     const lamp: Entity = { ...DEFAULT_ENTITY.lamp, id: "x", name: "l", position: { x: 0, y: -20 }, placement: { tile: { x: 1.5, y: 2 }, direction: "south" }, alwaysOn: true };
     expect(printEntity(lamp)).toBe("lamp l at (0, -20) tile (1.5, 2) facing south {\n    always-on = true\n}");

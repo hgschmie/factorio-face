@@ -56,6 +56,7 @@ const GLYPHS = {
       <circle cx="8.5" cy="17" r="2.5" />
     </>
   ),
+  note: <path d="M4 6h16M4 12h16M4 18h10" />,
   selectAll: (
     <>
       <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />
@@ -69,11 +70,14 @@ export type IconName = keyof typeof GLYPHS;
 export interface IconProps {
   readonly name: IconName;
   readonly size?: number;
+  /** Position inside an enclosing SVG, such as the canvas; without meaning in HTML. */
+  readonly x?: number;
+  readonly y?: number;
 }
 
-export function Icon({ name, size = 18 }: IconProps) {
+export function Icon({ name, size = 18, x, y }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg x={x} y={y} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       {GLYPHS[name]}
     </svg>
   );

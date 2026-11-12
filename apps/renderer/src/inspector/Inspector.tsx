@@ -1,5 +1,5 @@
-// Right panel: identity and primary actions of the selection (rename, delete) at the top, then the per-kind settings
-// form, then the connections. Presentational: every edit is emitted through a callback.
+// Right panel: identity and primary actions of the selection (rename, delete) at the top, then the description, the per-kind
+// settings form and the connections. Presentational: every edit is emitted through a callback.
 import { wireKey, type Circuit, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
@@ -91,6 +91,51 @@ function NameField({ entity, circuit, onRename }: { readonly entity: Entity; rea
   );
 }
 
+/** Lamps have no description in the game: theirs is a note of the project. */
+const LAMP_DESCRIPTION_NOTE = "Lamps have no description in the game. This text stays in the project.";
+
+/**
+ * The free text of an entity, as the game's "Add description". Return is a line break here, so the text is written when the
+ * field is left or on Cmd/Ctrl+Return, as one step; Escape drops what is not written. Text of blanks only is no description.
+ */
+function DescriptionField({ entity, onCommit }: { readonly entity: Entity; onCommit(description: string | undefined): void }) {
+  const id = useId();
+  const [draft, setDraft] = useFieldText();
+  const value = entity.description ?? "";
+  const unwritten = draft !== null && draft !== value;
+  const commit = (): void => {
+    if (unwritten) onCommit(draft.trim() === "" ? undefined : draft);
+    setDraft(null);
+  };
+  return (
+    <div className="field description-field">
+      <label className="field-label" htmlFor={id}>
+        Description
+      </label>
+      <textarea
+        id={id}
+        rows={1}
+        spellCheck={false}
+        placeholder="Add description"
+        title={entity.kind === "lamp" ? LAMP_DESCRIPTION_NOTE : undefined}
+        data-unwritten={unwritten || undefined}
+        value={draft ?? value}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape" && draft !== null) {
+            event.stopPropagation();
+            setDraft(null);
+          }
+        }}
+      />
+    </div>
+  );
+}
+
 function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly entity: Entity; readonly circuit: Circuit; onRemoveWire(wire: Wire): void; onSelect(ids: readonly EntityId[]): void }) {
   const names = new Map(circuit.entities.map((other) => [other.id, other.name]));
   const connected = circuit.wires.filter((wire) => wire.a.entity === entity.id || wire.b.entity === entity.id);
@@ -171,6 +216,8 @@ function EntityInspector(props: EntityInspectorProps) {
             Delete
           </button>
         </div>
+        {/* Not through `change`: the text is written once per stay, and that is a step of its own in the history. */}
+        <DescriptionField entity={shown} onCommit={(description) => props.onChange({ ...shown, description })} />
         {draft && (
           <div className="draft-hint" role="status">
             <span>

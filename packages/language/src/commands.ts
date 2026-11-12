@@ -593,7 +593,7 @@ function sameJson(a: unknown, b: unknown): boolean {
 /**
  * Rewrites entity `id` so that it equals `next` (same kind): name, position, placement and configuration. Statements whose meaning
  * is unchanged keep their text and trivia byte for byte; changed ones are replaced by canonical text, new ones are inserted in
- * canonical order and dropped ones are deleted.
+ * canonical order and dropped ones are deleted. An empty description removes the property.
  */
 export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): TextChange[] {
   const edit = new Edit(parse);
@@ -601,6 +601,8 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
   const current = edit.model(id);
   if (next.kind !== current.kind) throw new EditError("kind-mismatch", `Entity '${current.name}' is a ${current.kind}, not a ${next.kind}`);
   rename(edit, id, next.name);
+  // An empty description is no description: the property is removed, not written as "". Where the source says "" already, it stays.
+  if (next.description === "" && current.description !== "") next = { ...next, description: undefined };
   const check = checkEntity(next);
   if (!check.ok) throw new EditError(check.code, check.message);
 

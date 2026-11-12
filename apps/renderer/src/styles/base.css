@@ -81,7 +81,8 @@ button svg {
 }
 
 input,
-select {
+select,
+textarea {
   min-width: 0;
   padding: 7px 9px;
   border: 1px solid var(--border-input);
@@ -93,7 +94,8 @@ select {
 }
 
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--accent);
 }
 
@@ -117,6 +119,7 @@ input[type="checkbox"] {
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
+textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;

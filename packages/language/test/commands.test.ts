@@ -349,6 +349,76 @@ describe("executeCommand", () => {
   });
 });
 
+describe("updateEntity: description", () => {
+  const describeAs = (source: string, name: string, description: string | undefined): { changes: TextChange[]; result: string } => {
+    const parse = valid(source);
+    const current = entityOf<Entity>(parse, name);
+    const changes = updateEntity(parse, current.id, { ...current, description });
+    expectSorted(changes);
+    const result = applyChanges(source, changes);
+    expect(entityOf<Entity>(valid(result, parse), name).description).toBe(description || undefined);
+    return { changes, result };
+  };
+  const AWKWARD = 'first line\nsecond "quoted" \\ line\n\n\ttabbed, Grüße 日本語 → 𝒜\r\n// no comment';
+  const ENCODED = '"first line\\nsecond \\"quoted\\" \\\\ line\\n\\n\\ttabbed, Grüße 日本語 → 𝒜\\r\\n// no comment"';
+
+  it("adds the property as one line at the top of the body, for every kind", () => {
+    const statements = { constant: "item:a = 1", arithmetic: "item:a = item:b + 1", decider: "output item:a = 1", selector: "operation = count", lamp: "always-on = true" };
+    for (const kind of ENTITY_KINDS) {
+      const source = circuit(`    // above\n    ${kind} e at (0, 0) { // head\n        // inside\n        ${statements[kind]} // first\n    }\n    // below`);
+      const { changes, result } = describeAs(source, "e", AWKWARD);
+      const at = source.indexOf(`        ${statements[kind]}`);
+      expect(changes).toEqual([{ from: at, to: at, insert: `        description = ${ENCODED}\n` }]);
+      expect(result).toBe(source.replace(`        ${statements[kind]}`, `        description = ${ENCODED}\n        ${statements[kind]}`));
+      expect(result.split("\n")).toHaveLength(source.split("\n").length + 1);
+    }
+    const empty = circuit("    lamp l { // head\n        // inside\n    }");
+    expect(describeAs(empty, "l", "a\nb").result).toBe(empty.replace("// head\n", '// head\n        description = "a\\nb"\n'));
+    const oneLine = circuit("    lamp l { always-on = true }");
+    expect(describeAs(oneLine, "l", "a\nb").result).toBe(oneLine.replace("{ always-on", '{ description = "a\\nb" always-on'));
+    expect(describeAs(circuit("\tlamp l {}"), "l", "a\nb").result).toBe(circuit('\tlamp l {\n\t\tdescription = "a\\nb"\n\t}'));
+  });
+
+  it("changes only the statement and keeps the comments and the spacing around it", () => {
+    const { changes, result } = describeAs(comments, "twice", AWKWARD);
+    const from = comments.indexOf('description = "doubles A"');
+    expect(changes).toEqual([{ from, to: from + 'description = "doubles A"'.length, insert: `description = ${ENCODED}` }]);
+    expect(result).toBe(comments.replace('description = "doubles A" //', `description = ${ENCODED} //`));
+    // The same text again is no change, whatever the spelling in the source.
+    expect(describeAs(result, "twice", AWKWARD).changes).toEqual([]);
+    const spelled = circuit('    lamp l {\n        description   =   "a\tb" ; // raw tab\n    }');
+    expect(describeAs(spelled, "l", "a\tb").changes).toEqual([]);
+    expect(describeAs(spelled, "l", "a\tc").result).toBe(spelled.replace('description   =   "a\tb" ;', 'description = "a\\tc" ;'));
+  });
+
+  it("removes the property with its line, and leaves the rest of the body alone", () => {
+    const expected = comments.replace('        description = "doubles A" // deliberately noncanonical order\n', "");
+    for (const none of [undefined, ""]) {
+      const { changes, result } = describeAs(comments, "twice", none);
+      expect(changes).toHaveLength(1);
+      expect(result).toBe(expected);
+    }
+    const oneLine = circuit('    lamp l { /* a */ description = "x" /* b */ always-on = true }');
+    expect(describeAs(oneLine, "l", "").result).toBe(oneLine.replace('description = "x" ', ""));
+    const only = circuit('    lamp l {\n        // note\n\n        description = "x"\n    }');
+    expect(describeAs(only, "l", undefined).result).toBe(circuit("    lamp l {\n        // note\n    }"));
+  });
+
+  it("an empty description is none: nothing is written for it, and one written by hand stays until it changes", () => {
+    const plain = circuit("    lamp l {\n        always-on = true\n    }");
+    expect(describeAs(plain, "l", "").changes).toEqual([]);
+    expect(executeCommand(valid(plain), { type: "updateEntity", id: "e1", entity: { ...entityOf<Lamp>(valid(plain), "l"), description: "" } })).toEqual({ ok: true, changes: [] });
+    const written = circuit('    lamp l {\n        description = "" // empty\n        always-on = true\n    }');
+    const parse = valid(written);
+    const lamp = entityOf<Lamp>(parse, "l");
+    expect(lamp.description).toBe("");
+    expect(updateEntity(parse, lamp.id, lamp)).toEqual([]);
+    expect(applyChanges(written, updateEntity(parse, lamp.id, { ...lamp, alwaysOn: false }))).toBe(written.replace("always-on = true", "always-on = false"));
+    expect(applyChanges(written, updateEntity(parse, lamp.id, { ...lamp, description: undefined }))).toBe(plain);
+    expect(applyChanges(written, updateEntity(parse, lamp.id, { ...lamp, description: "x" }))).toBe(written.replace('description = ""', 'description = "x"'));
+  });
+});
+
 describe("updateEntity: statement-level minimal rewrite", () => {
   const update = (source: string, name: string, change: (entity: Entity) => Entity): string => {
     const parse = valid(source);
@@ -537,7 +607,8 @@ describe("updateEntity: statement-level minimal rewrite", () => {
       const source = parse.sourceMap.entities.get(target.id)!;
       for (const change of changes) expect(change.from >= source.range.from && change.to <= source.range.to).toBe(true);
       const after = valid(applyChanges(before, changes), parse);
-      expect(withoutId(entityOf(after, to.name))).toEqual(withoutId(to));
+      // An empty description is written as none, unless the source spells it out already.
+      expect(withoutId(entityOf(after, to.name))).toEqual(withoutId(to.description === "" && from.description !== "" ? { ...to, description: undefined } : to));
       expect(idOf(after, to.name)).toBe(target.id);
       expect(after.source.startsWith('circuit "r" {\n    // head\n    lamp pre { } // pre\n\n')).toBe(true);
       expect(after.source.endsWith("\n\n    lamp post { } // post\n    wire red pre.in <-> post.in\n}\n")).toBe(true);

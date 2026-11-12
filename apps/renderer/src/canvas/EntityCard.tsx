@@ -5,6 +5,7 @@ import { memo } from "react";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { entitySummary, truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
+import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
 import { CARD, PIN_RADIUS, PIN_SPACING, pinPoint } from "./geometry.ts";
@@ -33,6 +34,7 @@ const STATUS_MAX_CHARS = 24;
 const STATUS_X = 25;
 const STATUS_SLOT = 76;
 const STATUS_ICON = 14;
+const NOTE_ICON = 13;
 
 /** The status line: output signals as icon and value when the catalog has icons, otherwise the plain label. */
 function StatusLine({ status, describeSignal }: { readonly status: EntityStatus; readonly describeSignal?: SignalDescriber }) {
@@ -81,6 +83,7 @@ function Pin({ side, color, pending }: { readonly side: TerminalSide; readonly c
 export const EntityCard = memo(function EntityCard({ entity, x, y, selected, outline, shadow, pendingSide, pendingColor, status, describeSignal, resolveIcon }: EntityCardProps) {
   const info = KIND_INFO[entity.kind];
   const summary = entitySummary(entity);
+  const description = entity.description?.trim();
   const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}`;
   return (
     <g className={className} transform={`translate(${x},${y})`} data-entity-id={entity.id} data-entity-name={entity.name} data-kind={entity.kind} data-x={x} data-y={y} data-status={status?.label}>
@@ -91,6 +94,11 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
           <text className="card-kind" x="25" y="26">
             {info.label.toUpperCase()}
           </text>
+          {description && (
+            <g className="card-note">
+              <Icon name="note" size={NOTE_ICON} x={CARD.width - 13 - NOTE_ICON} y={16} />
+            </g>
+          )}
           <path className="card-divider" d={`M 10 45 H ${CARD.width - 10}`} />
           <EntityIconSvg kind={entity.kind} x={14} y={55} size={38} resolveIcon={resolveIcon} />
           <text className="card-name" x="62" y="70">
@@ -100,7 +108,7 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
             {truncate(summary, SUMMARY_MAX_CHARS)}
           </text>
           {status && <StatusLine status={status} describeSignal={describeSignal} />}
-          <title>{`${info.label} ${entity.name}: ${summary}${status ? `\nNow: ${status.label}` : ""}`}</title>
+          <title>{`${info.label} ${entity.name}: ${summary}${description ? `\n${description}` : ""}${status ? `\nNow: ${status.label}` : ""}`}</title>
         </>
       )}
       {TERMINALS[entity.kind].flatMap((side) =>
