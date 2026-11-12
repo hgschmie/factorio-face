@@ -2,7 +2,7 @@
 
 Maintained by the coordinator. Scope reference: the milestones in `../../HANDOFF.md`. Items move out of this file when they are done and verified.
 
-Milestone numbering: on 2026-11-11 the user inserted a usability milestone as Milestone 2. The handoff's milestones 2 to 4 (game-compatible editor, reusable project workbench, distributable release) are therefore Milestones 3 to 5 here.
+Milestone numbering: on 2026-11-11 the user inserted a usability milestone as Milestone 2. The handoff's milestones 2 to 4 (game-compatible editor, reusable project workbench, distributable release) are therefore Milestones 3 to 5 here. On 2026-11-12 the user inserted Milestone 3 (game-like placement, blueprint mode) and named blueprinting as the likely Milestone 4, so the handoff's milestones 2 to 4 are now Milestones 4 to 6.
 
 ## Milestone 1 (foundation and vertical slice)
 
@@ -91,13 +91,34 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 - Custom signals with uploaded icons, custom groups and their persistence in `face.json` (types are open for `origin: "custom"`, nothing implemented).
 - Asset redistribution rights for Wube icons before any public release.
 
-## Conformance (Milestone 3)
+## Milestone 3 (game-like placement, blueprint mode)
+
+Requested by the user on 2026-11-12: bring the graphical editor closer to how entities stand in the game, as the base for blueprinting. The user expects experiments; design points below marked "coordinator" were decided without the user and are open to change.
+
+Scope from the user:
+- Entities stand on the game's tile grid with their real size: constant combinator and lamp 1x1, arithmetic, decider and selector combinator 2x1. The combinators (the constant one too) rotate in four directions, the lamp does not. Sizes and rotation come from the game data (`docs/factorio-audit.md` 3.1 and 5.4); the user does not have to supply them.
+- The canvas gets two display modes. "Edit" is the canvas as it is (free cards, wiring). "Blueprint" is a rigid checkerboard on which entities take the space they take in the game and show compact information; the full information pops out as a bubble when an entity is selected.
+- An entity can be snapped to blueprint positions, so that the picture matches what the blueprint will look like.
+- The text popup of a card (the SVG tooltip that repeats the card) goes away.
+
+Design (coordinator):
+- Two positions per entity, as the model already has: `at` is the place in edit mode, `tile` the place in blueprint mode (the game's center position, as written to a blueprint later). Neither mode moves the other's position.
+- An entity without `tile` is shown in blueprint mode at a place derived from its edit position, marked as not placed, and nothing is written until the user snaps it (one entity, the selection or all) or drags it.
+- Blueprint mode: moves snap to whole tiles, two entities cannot share a tile, rotation turns the footprint of a 2x1 entity, wires are straight lines between the connection points as in the game.
+- Lamps no longer rotate anywhere (the user deferred this to this milestone on 2026-11-12).
+
+Open for the user:
+- Whether blueprint mode should draw the game's entity sprites instead of the item icons. Icons from the local installation are approved; sprites are the same kind of asset but were not asked about.
+- Whether wiring and placing new entities belong in blueprint mode too, or only arranging.
+- A warning for wires longer than the game's reach (9 tiles) is not built yet.
+
+## Conformance (Milestone 4)
 
 - A fixture for N-NONE (operand, decider output and lamp with both networks unchecked) is missing from the list below.
 - Game-driven fixtures F-01 to F-23 from `factorio-audit.md` section 6.8, reusing the sandboxed runner in `tools/catalog/lib`. F-01 (exported blueprint shapes) blocks the blueprint exporter; F-13/F-16 fix the signal order comparator.
 - Every assumption in `packages/simulation/CONFORMANCE.md` flips to verified or gets corrected.
 
-## Later milestones (unchanged from the handoff)
+## Later milestones (from the handoff; blueprints are the likely Milestone 4)
 
 - Blueprint import/export (`packages/blueprints`), including the decision on 1.x strings. Descriptions: write `player_description` for the four combinator types only and omit it when empty; a description on an entity without that field (the lamp) is not exported and stays in the project only (user, 2026-11-12); check the game for a length limit and for tabs and `\r\n`. Direction: absent `facing` means east in this editor while the game omits `direction` for north (2.x values: north 0, east 4, south 8, west 12; the audit verifies the input-to-output meaning for north only); the importer must write `facing north` for a missing direction. A lamp's `facing` is canvas-only and must not be exported. Rotating does not touch `tile`; the half-tile rule for 2x1 combinators depends on direction, so the exporter must check or recompute it.
 - Reusable components, library, instance identity across files, flattening.
