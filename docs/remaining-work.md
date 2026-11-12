@@ -7,7 +7,9 @@ Maintained by the coordinator. Scope reference: the milestones in `../../HANDOFF
 Done: simulation engine, desktop shell and workbench, session integration (single history, source patches, catalog picker and module settings, real simulation, project save/reopen).
 
 - [ ] Native (OS-level) UI check of the integrated app. Not done: the coordinating session had no OS-level input tooling. Covered so far by 40 Playwright Electron tests with real pointer and keyboard events and a launch/quit smoke test of `scripts/run.mjs`.
-  Plan: drive the app from the shell with `osascript` (System Events for the native menu and element positions, posted mouse and key events for clicks, drags and typing) and `screencapture` for evidence, using a throwaway profile and project under `.runtime/native/`. Prerequisite: the terminal app needs the macOS Accessibility and Screen Recording permissions (both were missing on 2026-11-11; Automation of System Events already works).
+  Preferred route: a session in the Claude desktop app with Computer use turned on (Settings, Capabilities), access requested for the Electron app only.
+  Scenarios: native menu bar (File, Edit, View, Simulation, Window) and its accelerators; select, drag and delete a card with the real pointer; wire two terminals; type in the source pane and see the canvas follow; undo/redo across text, canvas and inspector; signal picker; Run, Step, Reset; scroll and zoom; Save As through the native dialog into `.runtime/native/`, quit, reopen from Open Recent; the unsaved-changes prompt on quit. Launch with `FACE_USER_DATA=.runtime/native/user-data node scripts/run.mjs` and stop only that process.
+  Shell fallback: drive the app from the shell with `osascript` (System Events for the native menu and element positions, posted mouse and key events for clicks, drags and typing) and `screencapture` for evidence, using a throwaway profile and project under `.runtime/native/`. Prerequisite: the terminal app needs the macOS Accessibility and Screen Recording permissions (both were missing on 2026-11-11; Automation of System Events already works).
 
 ## Workbench follow-ups (from the shell and integration reports)
 
