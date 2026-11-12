@@ -6,7 +6,7 @@ Maintained by the coordinator. Scope reference: the milestones in `../../HANDOFF
 
 Done: simulation engine, desktop shell and workbench, session integration (single history, source patches, catalog picker and module settings, real simulation, project save/reopen).
 
-- [ ] Native (OS-level) UI check of the integrated app.
+- [ ] Native (OS-level) UI check of the integrated app. Not done: the coordinating session had no OS-level input tooling. Covered so far by 40 Playwright Electron tests with real pointer and keyboard events and a launch/quit smoke test of `scripts/run.mjs`.
 
 ## Workbench follow-ups (from the shell and integration reports)
 
@@ -17,7 +17,7 @@ Done: simulation engine, desktop shell and workbench, session integration (singl
 - No canvas clipboard (copy/paste), wires do not route around other cards, keyboard accessibility is basic (cards not focusable, no keyboard wiring).
 - Typing latency in a 1,000-entity document is not measured; analysis and simulation run on the main thread.
 - `window.faceSession` test hook is present in production code.
-- The stock Electron development binary writes `~/Library/Preferences/com.github.Electron.plist`; contain it or accept it.
+- The stock Electron development binary writes outside the workspace on every launch: `~/Library/Preferences/com.github.Electron.plist` and a `com.github.Electron.savedState` directory in the per-user macOS temp directory. Contain it (sandbox wrapper or renamed bundle) or accept it.
 - No packaging configuration; no single-instance lock.
 
 ## Language follow-ups (from the language package report)
