@@ -1,5 +1,6 @@
 // Inspector: primary actions at the top, controlled settings forms for every kind.
-import { card, cardGrabPoint, entityNames, expect, sourceText, test } from "./app.ts";
+import type { Locator } from "@playwright/test";
+import { card, cardGrabPoint, CARET, entityNames, expect, selectEntity, sourceText, test } from "./app.ts";
 import { FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 test.beforeEach(async ({ page }) => {
@@ -119,6 +120,71 @@ test("typing a value in an inspector field is one undo step", async ({ page }) =
   await page.getByRole("button", { name: "Undo" }).click();
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+});
+
+test("editing in the middle of an inspector field keeps the caret where the user put it", async ({ page }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  const summary = (name: string) => card(page, name).locator(".card-summary");
+  const caretInside = async (field: Locator, fromEnd: number) => {
+    await field.click();
+    await page.keyboard.press(CARET.end);
+    for (let i = 0; i < fromEnd; i++) await page.keyboard.press("ArrowLeft");
+  };
+  const expectText = async (field: Locator, text: string, caret: number) => {
+    await expect(field).toHaveValue(text);
+    await expect(field).toHaveJSProperty("selectionStart", caret);
+    await expect(field).toHaveJSProperty("selectionEnd", caret);
+  };
+
+  // The name is a local draft until Enter.
+  await selectEntity(page, "light");
+  const name = inspector.getByLabel("Entity name");
+  await caretInside(name, 3);
+  await page.keyboard.type("xy");
+  await expectText(name, "lixyght", 4);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Delete");
+  await expectText(name, "lixht", 3);
+  await page.keyboard.press("Escape");
+
+  // A number is written to the source on every key; the form rendered from the new circuit leaves the caret alone.
+  const number = inspector.getByLabel("Number", { exact: true });
+  await caretInside(number, 1);
+  await page.keyboard.type("12");
+  await expect(summary("light")).toHaveText("B > 128");
+  await expectText(number, "128", 2);
+  await page.keyboard.press("Delete");
+  await page.keyboard.type("3");
+  await expect(summary("light")).toHaveText("B > 123");
+  await expectText(number, "123", 3);
+  await page.keyboard.press(CARET.start);
+  await page.keyboard.type("4");
+  await expect(summary("light")).toHaveText("B > 4123");
+  await expectText(number, "4123", 1);
+
+  // A signal passes through a text that is not a signal on the way.
+  const signal = inspector.getByRole("textbox", { name: "Condition signal" });
+  await caretInside(signal, 8);
+  await page.keyboard.press("Backspace");
+  await expect(signal).toHaveAttribute("aria-invalid", "true");
+  await expectText(signal, "virtualsignal-B", 7);
+  await page.keyboard.type(":");
+  await expect(signal).toHaveAttribute("aria-invalid", "false");
+  await expectText(signal, "virtual:signal-B", 8);
+
+  // A plain text field has no draft of its own: every key goes through the source and comes back as the field's value.
+  await selectEntity(page, "source");
+  const group = inspector.getByLabel("Logistic group");
+  await group.click();
+  await page.keyboard.type("abcd");
+  await caretInside(group, 2);
+  await page.keyboard.type("xy");
+  await expect.poll(() => sourceText(page)).toContain('"abxycd"');
+  await expectText(group, "abxycd", 4);
+  await page.keyboard.press("Backspace");
+  await page.keyboard.press("Delete");
+  await expect.poll(() => sourceText(page)).toContain('"abxd"');
+  await expectText(group, "abxd", 3);
 });
 
 test("an incomplete inspector edit stays a draft with a hint and is written once it is complete", async ({ page }) => {

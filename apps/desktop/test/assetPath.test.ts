@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUNDLE_CONTENT_TYPES, IMAGE_CONTENT_TYPES, isInsideDirectory, resolveServedUrl, type ServedRoot } from "../src/assetPath.ts";
-import { profilePathsFromEnv, resolveAssetRoot } from "../src/paths.ts";
+import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot } from "../src/paths.ts";
 
 const ROOT = "/repo/packages/catalog/generated";
 const CATALOG: ServedRoot = { scheme: "face-asset", host: "catalog", directory: ROOT, contentTypes: IMAGE_CONTENT_TYPES };
@@ -82,6 +82,13 @@ describe("profile and asset locations", () => {
     expect(profilePathsFromEnv({})).toBeUndefined();
     expect(profilePathsFromEnv({ FACE_USER_DATA: "" })).toBeUndefined();
     expect(() => profilePathsFromEnv({ FACE_USER_DATA: ".runtime/user-data" })).toThrow(/absolute/);
+  });
+
+  it("takes the dialog start folder from FACE_PROJECTS_DIR and refuses relative paths", () => {
+    expect(projectsDirectoryFromEnv({ FACE_PROJECTS_DIR: "/repo/projects/" })).toBe("/repo/projects/");
+    expect(projectsDirectoryFromEnv({})).toBeUndefined();
+    expect(projectsDirectoryFromEnv({ FACE_PROJECTS_DIR: "" })).toBeUndefined();
+    expect(() => projectsDirectoryFromEnv({ FACE_PROJECTS_DIR: "projects" })).toThrow(/absolute/);
   });
 
   it("picks the asset root from the environment, the repository or the bundle", () => {

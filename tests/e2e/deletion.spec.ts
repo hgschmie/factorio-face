@@ -1,5 +1,5 @@
 // Deletion must be easy to find and must never fire while the user is typing.
-import { canvas, card, cardGrabPoint, clickCenter, entityNames, expect, sourceText, test, wires } from "./app.ts";
+import { canvas, card, cardGrabPoint, CARET, clickCenter, entityNames, expect, sourceText, test, wires } from "./app.ts";
 import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 test.beforeEach(async ({ page }) => {
@@ -104,9 +104,9 @@ test("Delete and Backspace edit text, not the circuit, while a text field has fo
   const name = page.getByLabel("Entity name");
   await name.click();
   await expect(name).toBeFocused();
-  await page.keyboard.press("End");
+  await page.keyboard.press(CARET.end);
   await page.keyboard.press("Backspace");
-  await page.keyboard.press("Home");
+  await page.keyboard.press(CARET.start);
   await page.keyboard.press("Delete");
   await expect(name).toHaveValue("igh");
   expect(await entityNames(page)).toEqual(ALL);
@@ -116,9 +116,10 @@ test("Delete and Backspace edit text, not the circuit, while a text field has fo
   // The same in a settings field of the inspector.
   const number = page.getByLabel("Number", { exact: true });
   await number.click();
-  await page.keyboard.press("End");
+  await page.keyboard.press(CARET.end);
   await page.keyboard.press("Backspace");
   await page.keyboard.press("Delete");
+  await expect(number).toHaveValue("");
   expect(await entityNames(page)).toEqual(ALL);
   await expect(card(page, "light")).toHaveClass(/selected/);
 });

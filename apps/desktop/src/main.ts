@@ -4,7 +4,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { APP_ID, APP_NAME, CHANNELS, type MenuCommand } from "./ipc.ts";
 import { buildMenuTemplate } from "./menu.ts";
-import { profilePathsFromEnv, resolveAssetRoot } from "./paths.ts";
+import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot } from "./paths.ts";
 import { askUnsavedChanges, registerProjectIpc } from "./projectIpc.ts";
 import { handleSchemes, registerSchemes, RENDERER_URL } from "./protocols.ts";
 import { RecentProjects } from "./recentProjects.ts";
@@ -95,6 +95,7 @@ async function start(): Promise<void> {
   registerProjectIpc({
     window,
     recentProjects,
+    projectsDirectory: projectsDirectoryFromEnv(process.env),
     onRecentProjectsChanged: () => void installMenu(),
     onProjectPathChanged: (path) => {
       if (process.platform === "darwin" && !window.isDestroyed()) window.setRepresentedFilename(path ?? "");

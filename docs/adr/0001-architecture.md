@@ -17,7 +17,7 @@ The user selected a custom React/Electron desktop application and approved the v
 7. **Catalog: generated from the local game.** The generator runs the game's own data dump in an isolated write directory and records provenance. Catalog JSON is committed; icons are Wube artwork, generated into a git-ignored directory and bundled in local builds only. Redistribution rights must be resolved before any public release.
 8. **Simulation: deterministic two-phase tick engine** over indexed red/green networks, independent of the UI, publishing immutable snapshots. It will move to a worker when measurements require it; the API is already message-friendly (plain data).
 9. **Security posture:** `contextIsolation` and sandbox on, Node integration off, restrictive CSP, a small validated IPC surface; the main process owns filesystem access and dialogs.
-10. **Containment during development:** `scripts/env.sh` redirects caches, temp files and app profiles into the repository; the app honours `FACE_USER_DATA` so development and test runs never touch the user's normal profile.
+10. **Containment during development:** `scripts/env.sh` redirects caches, temp files and app profiles into the repository; the app honours `FACE_USER_DATA` so development and test runs never touch the user's normal profile. `FACE_PROJECTS_DIR` sets the folder the open and save dialogs start in, so a development run can keep project files inside the repository too.
 11. **Toolchain pins:** the versions proven by the prototype (React 19.3.1, Electron 44.9.1, TypeScript 6.0.3, esbuild 0.28.2, CodeMirror 6) plus vitest 5.1.0, Playwright 1.65.0, fflate 0.8.3, electron-builder 26.18.0. Upgrades (Electron 45, TypeScript 7) are deliberate later steps.
 
 ## Open

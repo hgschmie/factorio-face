@@ -1,5 +1,6 @@
 // IPC handlers for project operations. Every argument is validated before it reaches the filesystem or a dialog.
 import { dialog, ipcMain, type BrowserWindow, type IpcMainInvokeEvent } from "electron";
+import { join } from "node:path";
 import { CHANNELS, UNSAVED_CHOICES, type IpcResult, type LoadedProject, type ProjectData, type SavedProject, type UnsavedChoice } from "./ipc.ts";
 import { createEmptyProject, readProject, writeProject } from "./projectStore.ts";
 import { RENDERER_URL } from "./protocols.ts";
@@ -9,6 +10,8 @@ import { parseProjectData, parseProjectPath, parseSaveProjectRequest, Validation
 export interface ProjectIpcContext {
   readonly window: BrowserWindow;
   readonly recentProjects: RecentProjects;
+  /** Folder the open and save dialogs start in; undefined leaves the choice to the operating system. */
+  readonly projectsDirectory?: string;
   onRecentProjectsChanged(): void;
   /** The window now shows the project at `path`; null for an unsaved project. */
   onProjectPathChanged(path: string | null): void;
@@ -38,7 +41,7 @@ function suggestedDirectoryName(projectName: string): string {
 }
 
 export function registerProjectIpc(context: ProjectIpcContext): void {
-  const { window, recentProjects } = context;
+  const { window, recentProjects, projectsDirectory } = context;
 
   // Only the main frame of our own window may call in; anything else is a bug or an attack.
   const assertTrustedSender = (event: IpcMainInvokeEvent): void => {
@@ -76,12 +79,13 @@ export function registerProjectIpc(context: ProjectIpcContext): void {
   };
 
   const saveWithDialog = async (data: ProjectData): Promise<SavedProject | null> => {
+    const name = suggestedDirectoryName(data.manifest.name);
     const result = await dialog.showSaveDialog(window, {
       title: "Save Project As",
       message: "A face project is a folder. Choose its name and location.",
       nameFieldLabel: "Project folder:",
       buttonLabel: "Save Project",
-      defaultPath: suggestedDirectoryName(data.manifest.name),
+      defaultPath: projectsDirectory === undefined ? name : join(projectsDirectory, name),
       properties: ["createDirectory"],
     });
     return result.canceled || !result.filePath ? null : save(parseProjectPath(result.filePath), data);
@@ -93,7 +97,7 @@ export function registerProjectIpc(context: ProjectIpcContext): void {
   });
 
   handle(CHANNELS.openProject, async (): Promise<LoadedProject | null> => {
-    const result = await dialog.showOpenDialog(window, { title: "Open Project", buttonLabel: "Open Project", properties: ["openDirectory"] });
+    const result = await dialog.showOpenDialog(window, { title: "Open Project", buttonLabel: "Open Project", defaultPath: projectsDirectory, properties: ["openDirectory"] });
     const selected = result.filePaths[0];
     return result.canceled || selected === undefined ? null : load(parseProjectPath(selected));
   });

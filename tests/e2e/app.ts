@@ -190,6 +190,12 @@ export async function clickCenter(page: Page, target: Locator, options: { button
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2, options);
 }
 
+/**
+ * Keys that put the caret at the start or end of a single-line field. On macOS these are not Home and End: the system binds those
+ * to scrolling, so inside a scrollable panel they scroll the panel and move the caret only once nothing is left to scroll.
+ */
+export const CARET = process.platform === "darwin" ? { start: "Meta+ArrowLeft", end: "Meta+ArrowRight" } : { start: "Home", end: "End" };
+
 /** A point on the card body that is clear of terminals, text hit areas do not matter. */
 export async function cardGrabPoint(page: Page, name: string): Promise<Point> {
   const position = await entityPosition(page, name);

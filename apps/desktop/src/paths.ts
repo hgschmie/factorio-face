@@ -17,6 +17,14 @@ export function profilePathsFromEnv(env: NodeJS.ProcessEnv): ProfilePaths | unde
   return { userData, sessionData: join(userData, "session"), logs: join(userData, "logs"), crashDumps: join(userData, "crashes") };
 }
 
+/** FACE_PROJECTS_DIR: the folder project dialogs start in. Unset, the operating system picks (usually the last folder used). */
+export function projectsDirectoryFromEnv(env: NodeJS.ProcessEnv): string | undefined {
+  const directory = env.FACE_PROJECTS_DIR;
+  if (directory === undefined || directory === "") return undefined;
+  if (!isAbsolute(directory)) throw new Error(`FACE_PROJECTS_DIR must be an absolute path: ${directory}`);
+  return normalize(directory);
+}
+
 export interface AssetRootOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly packaged: boolean;
