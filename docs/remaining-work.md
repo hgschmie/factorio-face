@@ -62,6 +62,7 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 - `window.faceSession` test hook is present in production code.
 - The stock Electron development binary writes outside the workspace on every launch: `~/Library/Preferences/com.github.Electron.plist` and a `com.github.Electron.savedState` directory in the per-user macOS temp directory. Contain it (sandbox wrapper or renamed bundle) or accept it.
 - No packaging configuration; no single-instance lock.
+- The development run (`make run`) starts a copy of the Electron bundle under the app's name (`scripts/run.mjs`, kept in `.cache/dev-app`), because macOS reads the menu bar and Dock name from the bundle. The bundle id and the icon are still Electron's; a packaged build gets all three from the packaging configuration. The end-to-end tests start the unrenamed download. "Toggle Developer Tools" and the developer tools themselves are already tied to `app.isPackaged`, so a packaged build has neither.
 
 ## Project file follow-ups
 
