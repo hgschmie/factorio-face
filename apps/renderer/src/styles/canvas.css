@@ -174,22 +174,52 @@
   fill: var(--text-soft);
 }
 
-.card-status {
+/* Status rows: what the entity reads on red and on green and what it emits, each behind a marker. */
+.card-row text {
   font-family: var(--font-mono);
   font-size: 9px;
-  fill: var(--text-label);
 }
 
-.card-status-dot {
+.row-value {
+  fill: var(--text-soft);
+}
+
+.row-more {
   fill: var(--text-muted);
 }
 
-.card.active .card-status {
-  fill: var(--accent-bright);
+.row-none {
+  fill: var(--text-dim);
 }
 
-.card.active .card-status-dot {
-  fill: var(--accent);
+.card-row.red .row-marker {
+  fill: var(--wire-red);
+}
+
+.card-row.green .row-marker {
+  fill: var(--wire-green);
+}
+
+/* No wire of this color on the input terminal. */
+.card-row.unwired .row-marker {
+  opacity: 0.3;
+}
+
+.card-row.out .row-marker {
+  fill: none;
+  stroke: var(--text-label);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.row-swatch {
+  stroke: var(--border-edge);
+  stroke-width: 1;
+}
+
+.card.active .card-row.lamp .row-value {
+  fill: var(--accent-bright);
 }
 
 /* Connection pins: one per wire color on every terminal side. */

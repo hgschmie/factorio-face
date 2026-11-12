@@ -1,44 +1,50 @@
 // Turns engine snapshots into what the dock and the cards show. Pure functions over snapshots and history.
-import { signalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
-import type { EntitySnapshot, History, SignalList, TickSnapshot } from "@face/simulation";
-import { shortSignal } from "../entities/signalText.ts";
+import { signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
+import type { CompiledCircuit, EntitySnapshot, History, SignalList, TerminalNetworks, TickSnapshot } from "@face/simulation";
+import { shortSignal, signalListText } from "../entities/signalText.ts";
 import type { EntityStatus, SignalTrace } from "../workbench/controller.ts";
 
 /** Entities traced when nothing is selected. */
 export const DEFAULT_TRACED_ENTITIES = 3;
 export const MAX_TRACED_ENTITIES = 6;
 export const MAX_SIGNALS_PER_ENTITY = 4;
-const STATUS_SIGNALS = 2;
+/** Output signals named in the plain-text label of a status. */
+const LABEL_SIGNALS = 2;
 
 export function colorHex({ r, g, b }: RgbColor): string {
   return "#" + [r, g, b].map((channel) => Math.max(0, Math.min(255, Math.round(channel))).toString(16).padStart(2, "0")).join("");
 }
 
 function listText(list: SignalList | undefined): string {
-  return list && list.length > 0 ? list.map((entry) => `${shortSignal(entry.signal)} ${entry.value}`).join(", ") : "nothing";
+  return signalListText(list ?? []) || "nothing";
 }
 
-function statusOf(snapshot: EntitySnapshot): EntityStatus {
+/** The status of one entity; `wires` are the networks on its input terminal (absent without any wire). */
+function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined): EntityStatus {
+  const input = snapshot.input && {
+    red: { wired: wires?.red !== undefined, signals: snapshot.input.red },
+    green: { wired: wires?.green !== undefined, signals: snapshot.input.green },
+  };
   if (snapshot.lamp) {
-    const color = snapshot.lamp.lit && snapshot.lamp.color ? colorHex(snapshot.lamp.color) : undefined;
-    return { label: snapshot.lamp.lit ? (color ? `lit ${color}` : "lit") : "off", active: snapshot.lamp.lit, color };
+    const { lit } = snapshot.lamp;
+    const color = lit && snapshot.lamp.color ? colorHex(snapshot.lamp.color) : undefined;
+    return { label: lit ? (color ? `lit ${color}` : "lit") : "off", active: lit, input, lamp: { lit, color } };
   }
   const output = snapshot.output ?? [];
-  if (output.length === 0) return { label: "no output", active: false };
-  const shown = output.slice(0, STATUS_SIGNALS);
-  const label = shown.map((entry) => `${shortSignal(entry.signal)} ${entry.value}`).join(", ") + (output.length > shown.length ? ` +${output.length - shown.length}` : "");
-  return { label, active: false, signals: shown.map((entry) => ({ signal: entry.signal, value: entry.value })) };
+  return { label: signalListText(output, LABEL_SIGNALS) || "no output", active: false, input, output };
 }
 
 /**
  * Card statuses for a snapshot. The engine shares unchanged entity records between ticks, so statuses are cached per record
- * and the whole map per entity table: cards and the scene only re-render for entities whose state changed.
+ * and the whole map per entity table: cards and the scene only re-render for entities whose state changed. A record changes
+ * exactly when what its entity reads, emits or lights changes, which is what a card shows.
  */
 export class StatusCache {
   private readonly statuses = new WeakMap<EntitySnapshot, EntityStatus>();
   private readonly maps = new WeakMap<TickSnapshot["entities"], ReadonlyMap<EntityId, EntityStatus>>();
 
-  of(snapshot: TickSnapshot): ReadonlyMap<EntityId, EntityStatus> {
+  /** `terminals` are those of the compiled circuit the snapshot was taken from. */
+  of(snapshot: TickSnapshot, terminals: CompiledCircuit["terminals"]): ReadonlyMap<EntityId, EntityStatus> {
     let map = this.maps.get(snapshot.entities);
     if (!map) {
       const built = new Map<EntityId, EntityStatus>();
@@ -46,7 +52,7 @@ export class StatusCache {
         const entity = snapshot.entities[id]!;
         let status = this.statuses.get(entity);
         if (!status) {
-          status = statusOf(entity);
+          status = statusOf(entity, entity.input && terminals[terminalKey({ entity: id, side: "in" })]);
           this.statuses.set(entity, status);
         }
         built.set(id, status);

@@ -80,22 +80,32 @@ export interface SignalTrace {
   readonly inputs: string;
 }
 
-/** A signal value shown on a card. */
+/** A signal value shown on a card. The engine's snapshot entries are passed through as they are. */
 export interface StatusSignal {
   readonly signal: SignalId;
   readonly value: number;
 }
 
-/** Per-entity runtime annotation drawn on its card. */
+/** What an entity reads on the network of one wire color. */
+export interface StatusInput {
+  /** False when no wire of the color is attached to the input terminal. */
+  readonly wired: boolean;
+  /** All signals on the network, in signal order. */
+  readonly signals: readonly StatusSignal[];
+}
+
+/** Per-entity runtime annotation drawn on its card: one row per input color, one for the output or the lamp. */
 export interface EntityStatus {
-  /** Plain-text status, for example `A 5, B 10`, `lit #ff0000` or `no output`. */
+  /** The output or the lamp state as plain text, for example `A 5, B 10 +3`, `lit #ff0000` or `no output`. */
   readonly label: string;
   /** Highlights the card, for example a lit lamp. */
   readonly active: boolean;
-  /** The first output signals, in signal order. */
-  readonly signals?: readonly StatusSignal[];
-  /** Lamps only: `#rrggbb` of the light while lit with a color. */
-  readonly color?: string;
+  /** Absent for entities without an input terminal (constant combinators). */
+  readonly input?: { readonly red: StatusInput; readonly green: StatusInput };
+  /** All emitted signals, in signal order; the same on both wire colors. Absent for lamps. */
+  readonly output?: readonly StatusSignal[];
+  /** Lamps only; `color` is the `#rrggbb` of the light while lit with a color. */
+  readonly lamp?: { readonly lit: boolean; readonly color?: string };
 }
 
 export interface SimulationView {

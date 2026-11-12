@@ -194,7 +194,7 @@ export class SimulationRunner {
       speedOptions: SPEED_OPTIONS,
       historyLength: HISTORY_TICKS,
       traces: this.circuit && latest ? buildTraces(this.history, tracedEntities(this.circuit, this.selection)) : NO_TRACES,
-      entityStatus: latest ? this.statuses.of(latest) : NO_STATUS,
+      entityStatus: latest && this.simulation ? this.statuses.of(latest, this.simulation.compiled.terminals) : NO_STATUS,
       notice: this.notice(),
     };
   }

@@ -14,12 +14,14 @@ import {
   expect,
   launchApp,
   newProjectPath,
+  openProject,
   readProjectEntries,
   ROOT,
   selectEntity,
   sourceText,
   stubDialogs,
   test,
+  writeProject,
   writeProjectEntries,
 } from "./app.ts";
 
@@ -218,12 +220,39 @@ test("invalid source shows diagnostics and blocks canvas edits; fixing it recove
   expect(await sourceText(page)).toBe(before.replace("when virtual:signal-A < 10", "when virtual:signal-A < 10 and virtual:signal-A > 0").replace("twice at (300, 240)", "twice at (360, 300)"));
 });
 
+/** Every card is 184 x 128 and its status rows stay clear of the pins on both edges, of the body above and of the lower edge. */
+async function expectRowsInsideCards(page: Page, cards: number): Promise<void> {
+  const extents = await page.locator("g.card").evaluateAll((elements) =>
+    elements.map((element) => {
+      const body = (element.querySelector(".card-body") as SVGGraphicsElement).getBBox();
+      const boxes = [...element.querySelectorAll<SVGGraphicsElement>("g.card-row")].map((group) => {
+        const box = group.getBBox();
+        // A row is positioned by a translation; its box is in its own coordinates.
+        const dy = group.transform.baseVal.consolidate()?.matrix.f ?? 0;
+        return { left: box.x, right: box.x + box.width, top: box.y + dy, bottom: box.y + box.height + dy };
+      });
+      return { name: element.getAttribute("data-entity-name"), width: body.width, height: body.height, rows: boxes.length, left: Math.min(...boxes.map((box) => box.left)), right: Math.max(...boxes.map((box) => box.right)), top: Math.min(...boxes.map((box) => box.top)), bottom: Math.max(...boxes.map((box) => box.bottom)) };
+    }),
+  );
+  expect(extents).toHaveLength(cards);
+  for (const extent of extents) {
+    expect(extent, extent.name ?? "").toMatchObject({ width: 184, height: 128 });
+    expect(extent.rows, extent.name ?? "").toBeGreaterThan(0);
+    expect(extent.left, extent.name ?? "").toBeGreaterThanOrEqual(13);
+    expect(extent.right, extent.name ?? "").toBeLessThanOrEqual(171);
+    expect(extent.top, extent.name ?? "").toBeGreaterThan(73);
+    expect(extent.bottom, extent.name ?? "").toBeLessThan(124);
+  }
+}
+
 test("stepping the example circuit shows the expected values tick by tick in dock and cards", async ({ page }) => {
   const step = page.getByRole("button", { name: "Step" });
   const counter = page.getByTestId("tick-counter");
   const status = (name: string) => card(page, name);
   const traceValue = (label: string) => page.locator(`.traces tr[data-trace="${label}"] .trace-value`);
   const document = await sourceText(page);
+  /** A network carries what its emitter puts out; one that carries nothing reads `nothing`. */
+  const carried = (output: string): string => (output === "no output" ? "nothing" : output);
 
   // Trace the three entities downstream of the constant.
   await selectEntity(page, "gate");
@@ -237,6 +266,12 @@ test("stepping the example circuit shows the expected values tick by tick in doc
   await expect(status("source")).toHaveAttribute("data-status", "A 1");
   await expect(status("gate")).toHaveAttribute("data-status", "no output");
   await expect(status("light")).toHaveAttribute("data-status", "off");
+  // What a card reads per wire color: the constant has no input, the gate sees the constant on red and its own (still empty)
+  // output on green, and an input without a wire of a color says so.
+  await expect(status("source")).not.toHaveAttribute("data-in-red");
+  await expect(status("gate")).toHaveAttribute("data-in-red", "A 1");
+  await expect(status("gate")).toHaveAttribute("data-in-green", "nothing");
+  await expect(status("twice")).toHaveAttribute("data-in-green", "no wire");
 
   // The gate adds the constant's 1 to its own output while the sum is below 10: 1, 2, ... 9. At 10 the condition fails,
   // the output clears for one tick and the count starts again. `twice` doubles it one tick later; the lamp needs B > 8.
@@ -258,6 +293,13 @@ test("stepping the example circuit shows the expected values tick by tick in doc
     await step.click();
     await expect(counter).toHaveText(String(index + 1).padStart(4, "0"));
     for (const [name, value] of Object.entries(values)) await expect(status(name), `${name} at tick ${index + 1}`).toHaveAttribute("data-status", value);
+    // Inputs per color: red of the gate is the constant, green its own output; `twice` reads the gate on red and the lamp
+    // reads `twice` on green. The other color of both has no wire.
+    const inputs = { gate: ["A 1", carried(values.gate)], twice: [carried(values.gate), "no wire"], light: ["no wire", carried(values.twice)] };
+    for (const [name, [red, green]] of Object.entries(inputs)) {
+      await expect(status(name), `${name} red at tick ${index + 1}`).toHaveAttribute("data-in-red", red!);
+      await expect(status(name), `${name} green at tick ${index + 1}`).toHaveAttribute("data-in-green", green!);
+    }
     // The dock shows the same numbers.
     if (values.gate !== "no output") await expect(traceValue("gate A")).toHaveText(values.gate.slice(2));
     if (index >= 1 && values.twice !== "no output") await expect(traceValue("twice B")).toHaveText(values.twice.slice(2));
@@ -267,6 +309,33 @@ test("stepping the example circuit shows the expected values tick by tick in doc
   // The feedback never lets the count reach 10, and the lamp was lit exactly while B exceeded 8.
   await expect(page.locator('.traces tr[data-trace="gate A"]')).toHaveAttribute("title", /Input red: A 1\nInput green: A 2\nInput sum: A 3/);
   if (HAS_CATALOG_ICONS) await expect(page.locator('.traces tr[data-trace="gate A"] img.trace-icon')).toHaveAttribute("src", /icons\/virtual\/signal-A\.png$/);
+
+
+  // The rows of the cards at tick 12: red in, green in and out on a combinator, the output alone on the constant, the two
+  // inputs and the light on the lamp. A signal is its icon and its value, or its short name and value without the artwork.
+  const rows = (name: string) => card(page, name).locator("g.card-row");
+  const row = (name: string, kind: string) => card(page, name).locator(`g.card-row[data-row="${kind}"]`);
+  const shown = (value: number) => (HAS_CATALOG_ICONS ? String(value) : `A ${value}`);
+  await expect.poll(() => rows("gate").evaluateAll((all) => all.map((element) => element.getAttribute("data-row")))).toEqual(["red", "green", "out"]);
+  await expect.poll(() => rows("source").evaluateAll((all) => all.map((element) => element.getAttribute("data-row")))).toEqual(["out"]);
+  await expect.poll(() => rows("light").evaluateAll((all) => all.map((element) => element.getAttribute("data-row")))).toEqual(["red", "green", "lamp"]);
+  await expect(row("gate", "red").locator("text")).toHaveText([shown(1)]);
+  await expect(row("gate", "green").locator("text")).toHaveText([shown(2)]);
+  await expect(row("gate", "out").locator("text")).toHaveText([shown(2)]);
+  await expect(row("source", "out").locator("text")).toHaveText([shown(1)]);
+  await expect(row("gate", "red").locator("image")).toHaveCount(HAS_CATALOG_ICONS ? 1 : 0);
+  if (HAS_CATALOG_ICONS) await expect(row("gate", "red").locator("image")).toHaveAttribute("href", /icons\/virtual\/signal-A\.png$/);
+  // A color without a wire is marked and shows a dash, like a network that carries nothing.
+  await expect(row("twice", "green")).toHaveClass(/unwired/);
+  await expect(row("twice", "green").locator("text")).toHaveText(["–"]);
+  await expect(row("twice", "red")).not.toHaveClass(/unwired/);
+  await expect(row("light", "red")).toHaveClass(/unwired/);
+  await expect(row("light", "lamp").locator("text")).toHaveText(["off"]);
+  await expect(card(page, "gate").locator(":scope > title")).toHaveText("Decider gate: A < 10 → A\nRed in: A 1\nGreen in: A 2\nOut: A 2");
+  await expect(card(page, "light").locator(":scope > title")).toHaveText("Lamp light: B > 8\nRed in: no wire\nGreen in: B 2\nLight: off");
+  await expect(card(page, "source").locator(":scope > title")).toHaveText("Constant source: A = 1\nOut: A 1");
+  // The card keeps its size, and no row reaches the pins on either edge or the lower edge.
+  await expectRowsInsideCards(page, 4);
 
   // None of this touched the document.
   expect(await sourceText(page)).toBe(document);
@@ -281,6 +350,81 @@ test("stepping the example circuit shows the expected values tick by tick in doc
   await expect(counter).toHaveText("0000");
   await step.click();
   await expect(status("gate")).toHaveAttribute("data-status", "A 2");
+});
+
+const ROWS_SOURCE = `circuit "Rows" {
+    constant many at (40, 40) {
+        virtual:signal-A = -2147483648
+        virtual:signal-B = 2500000
+        virtual:signal-C = 12345
+        virtual:signal-D = 9999
+        virtual:signal-E = 1
+        virtual:signal-F = 2
+        virtual:signal-G = 3
+        virtual:signal-H = 4
+        virtual:signal-I = 5
+        virtual:signal-J = 6
+        virtual:signal-K = 7
+        virtual:signal-L = 8
+    }
+
+    decider all at (300, 40) {
+        when anything != 0
+        output everything = input
+    }
+
+    lamp glow at (560, 40) {
+        when virtual:signal-E > 0
+        color = #ff8000
+    }
+
+    wire red many.out <-> all.in
+    wire green all.out <-> glow.in
+}
+`;
+
+test("a card row shows the signals that fit, abbreviates large values and counts the rest", async ({ page }) => {
+  const row = (name: string, kind: string) => card(page, name).locator(`g.card-row[data-row="${kind}"]`);
+  const exact = "A -2147483648, B 2500000, C 12345, D 9999, E 1, F 2, G 3, H 4, I 5, J 6, K 7, L 8";
+  await openProject(page, await writeProject({ name: "Rows", source: ROWS_SOURCE }));
+  await expect(page.locator("g.card")).toHaveCount(3);
+  await page.getByRole("button", { name: "Step" }).click();
+  await expect(page.getByTestId("tick-counter")).toHaveText("0001");
+
+  // Twelve signals on the red input: three fit with the marker for the other nine. Values of more than four digits are
+  // abbreviated on the card; the attribute and the tooltip have them exactly.
+  await expect(card(page, "all")).toHaveAttribute("data-in-red", exact);
+  await expect(card(page, "all")).toHaveAttribute("data-in-green", "no wire");
+  await expect(card(page, "all")).toHaveAttribute("data-status", "A -2147483648, B 2500000 +10");
+  const shown = HAS_CATALOG_ICONS ? ["-2.1G", "2.5M", "12k", "+9"] : ["A -2.1G", "B 2.5M", "C 12k", "+9"];
+  await expect(row("all", "red").locator("text")).toHaveText(shown);
+  await expect(row("all", "out").locator("text")).toHaveText(shown);
+  await expect(row("all", "red").locator("text").last()).toHaveClass("row-more");
+  await expect(row("all", "green").locator("text")).toHaveText(["–"]);
+  await expect(card(page, "all").locator(":scope > title")).toHaveText(`Decider all: anything ≠ 0 → everything\nRed in: ${exact}\nGreen in: no wire\nOut: ${exact}`);
+
+  // The constant has the three rows for its output: more signals than one row holds, none of them lost.
+  await expect(card(page, "many").locator("g.card-row")).toHaveCount(1);
+  await expect(card(page, "many")).not.toHaveAttribute("data-in-red");
+  await expect
+    .poll(async () => {
+      const texts = await row("many", "out").locator("text").allTextContents();
+      const values = texts.filter((text) => !text.startsWith("+"));
+      return { first: values[0], accounted: values.length + texts.filter((text) => text.startsWith("+")).reduce((sum, text) => sum + Number(text.slice(1)), 0), more: values.length > shown.length - 1 };
+    })
+    .toEqual({ first: shown[0], accounted: 12, more: true });
+  const lines = await row("many", "out").locator("text").evaluateAll((texts) => new Set(texts.map((text) => text.getAttribute("y"))).size);
+  expect(lines).toBeGreaterThan(1);
+
+  // The lamp is lit in its color: the state row has the swatch, the card is highlighted.
+  await expect(card(page, "glow")).toHaveAttribute("data-status", "lit #ff8000");
+  await expect(card(page, "glow")).toHaveAttribute("data-in-green", exact);
+  await expect(card(page, "glow")).toHaveClass(/active/);
+  await expect(row("glow", "lamp").locator("text")).toHaveText(["lit"]);
+  await expect(row("glow", "lamp").locator("rect.row-swatch")).toHaveCSS("fill", "rgb(255, 128, 0)");
+  await expect(row("glow", "red")).toHaveClass(/unwired/);
+  await expect(page.locator("rect.row-swatch")).toHaveCount(1);
+  await expectRowsInsideCards(page, 3);
 });
 
 test("Run and Pause advance and hold the ticks", async ({ page }) => {

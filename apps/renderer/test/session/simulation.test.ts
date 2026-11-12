@@ -46,11 +46,11 @@ describe("simulation of the example circuit", () => {
     // What an entity reads is available per wire color.
     expect(trace(traces, "gate A").inputs).toBe("Input red: A 1\nInput green: A 2\nInput sum: A 3");
     expect(trace(traces, "twice B").inputs).toBe("Input red: A 2\nInput green: nothing\nInput sum: A 2");
-    expect(session.state.simulation.entityStatus.get(gate!)).toMatchObject({ active: false, signals: [{ signal: { kind: "virtual", name: "signal-A" }, value: 2 }] });
+    expect(session.state.simulation.entityStatus.get(gate!)).toMatchObject({ active: false, output: [{ signal: { kind: "virtual", name: "signal-A" }, value: 2 }] });
 
     // Lit lamps are active; reset returns to tick 0.
     for (let tick = 13; tick <= 17; tick++) session.commands.step();
-    expect(session.state.simulation.entityStatus.get(light!)).toEqual({ label: "lit", active: true, color: undefined });
+    expect(session.state.simulation.entityStatus.get(light!)).toMatchObject({ label: "lit", active: true, lamp: { lit: true, color: undefined } });
     session.commands.resetSimulation();
     expect(session.state.simulation).toMatchObject({ tick: 0, running: false });
     expect(status(gate)).toBe("no output");
@@ -70,7 +70,7 @@ describe("simulation of the example circuit", () => {
 
   it("reports the color of a lamp that is lit with a color", () => {
     const { session } = createSession('circuit "c" {\n  constant c at (0, 0) { virtual:signal-A = 5 }\n  lamp l at (300, 0) { when virtual:signal-A > 1  color = #ff8000 }\n  wire red c.out <-> l.in\n}\n');
-    expect(session.state.simulation.entityStatus.get(idOf(session, "l"))).toEqual({ label: "lit #ff8000", active: true, color: "#ff8000" });
+    expect(session.state.simulation.entityStatus.get(idOf(session, "l"))).toMatchObject({ label: "lit #ff8000", active: true, lamp: { lit: true, color: "#ff8000" } });
     session.commands.select([idOf(session, "l")]);
     expect(session.state.simulation.traces[0]).toMatchObject({ current: "lit #ff8000", lamp: { lit: true, color: "#ff8000" }, values: [1] });
   });
@@ -193,5 +193,90 @@ describe("simulation and the document", () => {
     // The constant never changes; the gate does.
     expect(after.get(idOf(session, "source"))).toBe(before.get(idOf(session, "source")));
     expect(after.get(idOf(session, "gate"))).not.toBe(before.get(idOf(session, "gate")));
+    // Reading the view again builds nothing new, and a selection leaves every status as it is.
+    expect(session.state.simulation.entityStatus).toBe(after);
+    session.commands.select([idOf(session, "gate")]);
+    expect(session.state.simulation.entityStatus).toBe(after);
+  });
+});
+
+describe("card statuses", () => {
+  const A = { kind: "virtual", name: "signal-A" };
+  const B = { kind: "virtual", name: "signal-B" };
+  const C = { kind: "virtual", name: "signal-C" };
+  const SOURCE = `circuit "c" {
+  constant reds at (0, 0) { virtual:signal-A = 5  virtual:signal-B = -3  virtual:signal-C = 7 }
+  constant greens at (0, 200) { virtual:signal-A = 1 }
+  constant silent at (0, 400) { enabled = false  virtual:signal-A = 1 }
+  decider gate at (300, 0) { when virtual:signal-A > 0  output everything = input }
+  arithmetic alone at (300, 200) { virtual:signal-A = virtual:signal-A + 1 }
+  lamp glow at (600, 0) { when virtual:signal-A > 1  color = #ff8000 }
+  lamp idle at (600, 200) { when virtual:signal-A > 1 }
+  wire red reds.out <-> gate.in
+  wire green greens.out <-> gate.in
+  wire green silent.out <-> alone.in
+  wire red gate.out <-> glow.in
+}
+`;
+  const statusOf = (session: ReturnType<typeof createSession>["session"], name: string) => session.state.simulation.entityStatus.get(idOf(session, name))!;
+  const values = (signals: readonly { readonly signal: object; readonly value: number }[]) => signals.map((entry) => [entry.signal, entry.value]);
+
+  it("gives a combinator what it reads per wire color and everything it emits", () => {
+    const { session } = createSession(SOURCE);
+    // Tick 0: the networks carry the constants, the decider has not answered yet.
+    let gate = statusOf(session, "gate");
+    expect(gate).toMatchObject({ label: "no output", active: false, input: { red: { wired: true }, green: { wired: true } }, output: [] });
+    expect(values(gate.input!.red.signals)).toEqual([[A, 5], [B, -3], [C, 7]]);
+    expect(values(gate.input!.green.signals)).toEqual([[A, 1]]);
+    expect(gate.lamp).toBeUndefined();
+
+    session.commands.step();
+    gate = statusOf(session, "gate");
+    // The label names two signals and counts the rest; the rows get all of them.
+    expect(gate.label).toBe("A 6, B -3 +1");
+    expect(values(gate.output!)).toEqual([[A, 6], [B, -3], [C, 7]]);
+    expect(values(gate.input!.red.signals)).toEqual([[A, 5], [B, -3], [C, 7]]);
+  });
+
+  it("gives a constant combinator its output only", () => {
+    const { session } = createSession(SOURCE);
+    const reds = statusOf(session, "reds");
+    expect(reds).toMatchObject({ label: "A 5, B -3 +1", active: false });
+    expect(reds.input).toBeUndefined();
+    expect(reds.lamp).toBeUndefined();
+    expect(values(reds.output!)).toEqual([[A, 5], [B, -3], [C, 7]]);
+    expect(statusOf(session, "silent")).toEqual({ label: "no output", active: false, input: undefined, output: [] });
+  });
+
+  it("tells an input without a wire from a wire that carries nothing", () => {
+    const { session } = createSession(SOURCE);
+    // `alone` has a green wire to a constant that is switched off and no red wire.
+    expect(statusOf(session, "alone").input).toEqual({ red: { wired: false, signals: [] }, green: { wired: true, signals: [] } });
+    expect(statusOf(session, "idle").input).toEqual({ red: { wired: false, signals: [] }, green: { wired: false, signals: [] } });
+  });
+
+  it("gives a lamp its inputs and its light", () => {
+    const { session } = createSession(SOURCE);
+    expect(statusOf(session, "glow")).toMatchObject({ label: "off", active: false, lamp: { lit: false, color: undefined }, input: { red: { wired: true, signals: [] }, green: { wired: false, signals: [] } } });
+    session.commands.step();
+    const glow = statusOf(session, "glow");
+    expect(glow).toMatchObject({ label: "lit #ff8000", active: true, lamp: { lit: true, color: "#ff8000" } });
+    expect(values(glow.input!.red.signals)).toEqual([[A, 6], [B, -3], [C, 7]]);
+    expect(glow.output).toBeUndefined();
+    expect(statusOf(session, "idle")).toMatchObject({ label: "off", active: false, lamp: { lit: false } });
+  });
+
+  it("builds a new status exactly when something the card shows changed", () => {
+    const { session } = createSession(SOURCE);
+    session.commands.step();
+    const before = new Map(session.state.simulation.entityStatus);
+    session.commands.step();
+    const after = session.state.simulation.entityStatus;
+    // Nothing changes after the first tick in this circuit.
+    for (const [id, status] of after) expect(status, id).toBe(before.get(id));
+    // An added wire is a new circuit: the row of that color is wired afterwards.
+    session.commands.addWire({ color: "red", a: { entity: idOf(session, "greens"), side: "out" }, b: { entity: idOf(session, "alone"), side: "in" } });
+    expect(statusOf(session, "alone").input!.red).toMatchObject({ wired: true });
+    expect(values(statusOf(session, "alone").input!.red.signals)).toEqual([[A, 1]]);
   });
 });

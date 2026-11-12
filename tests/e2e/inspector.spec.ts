@@ -524,6 +524,8 @@ test("text fields outside the inspector have no undo of their own and leave the 
 });
 
 const GATE_DESCRIPTION = 'counts up\nuntil "ten"\n\nthen again';
+/** The status lines of the tooltip of `gate` before the first step: the constant on both colors, nothing emitted yet. */
+const GATE_STATUS = "Red in: A 1\nGreen in: A 1\nOut: nothing";
 /** The five-kinds source with a description on `gate`, as the editor writes it: one line at the top of the body. */
 function describedSource(description: string): string {
   const literal = description.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n");
@@ -577,7 +579,7 @@ test("the description box takes several lines and writes them as one source line
   await expect(box).toBeFocused();
   await expect(note("gate")).toHaveCount(1);
   await expect(note("twice")).toHaveCount(0);
-  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\n${GATE_DESCRIPTION}\nNow: no output`);
+  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\n${GATE_DESCRIPTION}\n${GATE_STATUS}`);
 
   // The whole text is one step in the document history.
   await clickMenu(app, "Edit", "Undo");
@@ -623,7 +625,7 @@ test("the description box takes several lines and writes them as one source line
   await expect(inspector.getByLabel("Entity name")).toHaveValue("twice");
   await expect(box).toHaveValue("");
   await expect.poll(() => sourceText(page)).toBe(describedSource("counts"));
-  await expect.poll(() => tooltip("gate")).toBe("Decider gate: A < 10 → A\ncounts\nNow: no output");
+  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\ncounts\n${GATE_STATUS}`);
 
   // Emptying the box removes the property and the marker; blanks alone are no description.
   await selectEntity(page, "gate");
@@ -636,7 +638,7 @@ test("the description box takes several lines and writes them as one source line
   await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(box).toHaveValue("");
   await expect(note("gate")).toHaveCount(0);
-  await expect.poll(() => tooltip("gate")).toBe("Decider gate: A < 10 → A\nNow: no output");
+  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\n${GATE_STATUS}`);
 });
 
 test("a description edited in the source shows in the box, and the other way round", async ({ page }) => {

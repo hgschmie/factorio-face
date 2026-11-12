@@ -41,7 +41,8 @@ src/
   canvas/
     Canvas.tsx         SVG canvas: camera, gestures, pending wire, context menu; emits callbacks only
     Scene.tsx          memoized wires (with their click target) and cards, culled to the visible area
-    EntityCard.tsx     one memoized card (icon, name, summary, description marker, live status line, a red and a green pin per side in TERMINALS)
+    EntityCard.tsx     one memoized card (kind, description marker, icon, name, summary, live status rows, a red and a green pin per side in TERMINALS)
+    statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text   (pure)
     ContextMenu.tsx    keyboard-navigable popup menu
     geometry.ts        card and pin geometry (`pinPoint`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
@@ -67,7 +68,7 @@ src/
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
-  entities/            kind labels, signal text forms, card summaries  (pure)
+  entities/            kind labels, signal text forms (short names, lists, compact numbers), card summaries  (pure)
   icons/               interface glyphs, entity icons, catalog icon resolvers (with probes for the git-ignored artwork)
   styles/              tokens.css and one stylesheet per area
 test/                  vitest: pure view modules
@@ -90,7 +91,7 @@ interface WorkbenchController {
 
 `WorkbenchState`: `project` (name, path, fileName, dirty, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
-(`SimulationView`: running, tick, speed, traces, per-entity status, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
+(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
 `WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `updateEntity`,
@@ -178,6 +179,13 @@ simulation (`run`, `pause`,
   document, so no simulation activity can create an edit. While the source has errors it is blocked with a notice and resumes afterwards.
   The dock traces every output signal of the selected entities (the first three entities when nothing is selected); lamps trace their
   lit state; what an entity reads per wire color is in the row's tooltip.
+- **Card statuses.** `StatusCache` (`simulationView.ts`) turns the latest snapshot into one `EntityStatus` per entity: `input`
+  (`red` and `green`, each `{ wired, signals }`; absent on a constant combinator), `output` (all emitted signals; absent on a
+  lamp), `lamp` (`{ lit, color }`), `active` (a lit lamp) and `label` (the output or the lamp state as text: the first two
+  signals, then `+N`). The signal lists are the engine's own, in its signal order, not copies. `wired` comes from the compiled
+  circuit (`CompiledCircuit.terminals`): the snapshot alone cannot tell an input without a wire from a wire that carries
+  nothing. A status is cached per entity record of the snapshot and the map per entity table. The engine replaces a record
+  exactly when what the entity reads, emits or lights changes, so a card gets a new status object, and renders, only then.
 - **Project files.** New project (the example circuit), open, save, save as and open recent go through `window.face`. Dirty means: the text
   or the settings (name, module set) differ from what was saved. Manifest fields this version does not edit (custom signal groups, unknown
   fields in `extras`, other circuit files) are written back as loaded.
@@ -219,6 +227,27 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
 
 ## Canvas behaviour worth knowing
 
+- Card layout (card units, `EntityCard.tsx`): margin 13 on both sides. Header band down to the divider at 26.5: kind accent
+  (3 x 13 at y 7), kind label (9px, baseline 17), description marker (13 at the top right). Body down to the divider at 72.5:
+  entity icon 34 at (13, 32), name (15px, baseline 46, 13 characters) and summary (12px monospace, baseline 63, 15 characters)
+  from x 56. Below it three status rows of 9px monospace text, centered at y 84, 100 and 116 (`STATUS_ROWS` in
+  `statusRows.ts`). Nothing but the pins lies outside x 13 to 171; the pins reach 7 units into the card.
+- Status rows, while the simulation has data: what the entity reads on red (a red bar in front), what it reads on green (a
+  green bar) and what it emits (an arrow; the same on both colors). A lamp has its state in the third row instead (`lit` or
+  `off`, and a swatch of the light's color when it has one). A constant combinator has no input rows; its output starts in
+  the first row and runs on into the other two. Each signal is its catalog icon (13 units) and its value; without an icon,
+  the short name (up to 12 characters) and the value. `layoutRow` places as many signals as fit and ends the row with `+N`
+  for the rest; it looks at no more signals than it places. Values of more than four digits are abbreviated the way the game
+  does (`compactNumber`: `12k`, `1.0M`, `2.1G`, cut off, never rounded up). A row without signals shows a dash; the bar of
+  an input without a wire of its color is dimmed (class `unwired`). The widths are computed from an assumed advance of
+  5.5 units per character (SF Mono and Menlo have 5.42), not measured.
+- The card's tooltip has the rows in full with exact values, one line each: `Red in:`, `Green in:`, `Out:` or `Light:`,
+  with `no wire` and `nothing` for the two empty cases, up to 32 signals per line and `+N` beyond.
+- Card status in the DOM: `g.card` carries `data-status` (the status label), `data-in-red` and `data-in-green` (the tooltip's
+  text of that input; absent on a constant), also on an outline. The rows are `g.card-row` with `data-row="red|green|out|lamp"`
+  and the classes `red`, `green`, `out`, `lamp` and `unwired`; inside them `.row-marker`, one `<image>` (with a catalog icon)
+  and one `text.row-value` per signal, `text.row-more` (`+N`), `text.row-none` (the dash, a lamp that is off) and
+  `rect.row-swatch`. Rows are memoized by their signal list, which the engine keeps while a network or an output is unchanged.
 - Grid 20 units; cards are 184 x 128. Every terminal side (`TERMINALS`: inputs on the left edge, outputs on the right) has one connection
   pin per wire color, red 60 and green 80 units below the top edge, so both sit on grid lines 20 units apart. `pinPoint(position, side,
   color)` in `geometry.ts` is the only place that knows this; a wire of a color starts and ends in the center of the pin of that color.

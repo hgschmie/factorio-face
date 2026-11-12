@@ -1,14 +1,15 @@
 // One entity drawn as a card. Purely presentational and memoized: pointer handling is delegated to the canvas through
 // the data-entity-id / data-terminal / data-wire-color attributes, so a card only re-renders when its own props change.
 import { TERMINALS, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
-import { memo } from "react";
+import { Fragment, memo } from "react";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { entitySummary, truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
-import type { EntityStatus } from "../workbench/controller.ts";
+import type { EntityStatus, StatusSignal } from "../workbench/controller.ts";
 import { CARD, PIN_RADIUS, PIN_SPACING, pinPoint } from "./geometry.ts";
+import { inputText, layoutRow, STATUS_ROWS, statusLines } from "./statusRows.ts";
 
 export interface EntityCardProps {
   readonly entity: Entity;
@@ -22,7 +23,7 @@ export interface EntityCardProps {
   /** Pin that started a pending wire, if it belongs to this entity. */
   readonly pendingSide?: TerminalSide;
   readonly pendingColor?: WireColor;
-  /** Live state from the simulation, shown on the bottom line. */
+  /** Live state from the simulation, shown in the status rows. */
   readonly status?: EntityStatus;
   readonly describeSignal?: SignalDescriber;
   readonly resolveIcon?: EntityIconResolver;
@@ -30,39 +31,69 @@ export interface EntityCardProps {
 
 const NAME_MAX_CHARS = 13;
 const SUMMARY_MAX_CHARS = 15;
-const STATUS_MAX_CHARS = 24;
-const STATUS_X = 25;
-const STATUS_SLOT = 76;
-const STATUS_ICON = 14;
 const NOTE_ICON = 13;
+const ENTITY_ICON = 34;
+/** Left edge of the header, the body and the row markers; the right margin is the same. */
+const MARGIN = STATUS_ROWS.markerX;
+const TEXT_X = MARGIN + ENTITY_ICON + 9;
+/** Baseline of the 9px row text below the center of its row. */
+const ROW_BASELINE = 3.2;
 
-/** The status line: output signals as icon and value when the catalog has icons, otherwise the plain label. */
-function StatusLine({ status, describeSignal }: { readonly status: EntityStatus; readonly describeSignal?: SignalDescriber }) {
-  const signals = status.signals ?? [];
-  const icons = signals.map((entry) => describeSignal?.(entry.signal).iconUrl);
-  const dot = <rect className="card-status-dot" x="13" y="108" width="5" height="5" rx="1" style={status.color ? { fill: status.color } : undefined} />;
-  if (signals.length === 0 || icons.some((url) => url === undefined)) {
-    return (
-      <>
-        {dot}
-        <text className="card-status" x={STATUS_X} y="114">
-          {truncate(status.label, STATUS_MAX_CHARS)}
-        </text>
-      </>
-    );
-  }
+interface StatusRowProps {
+  readonly kind: "red" | "green" | "out";
+  /** Rows below the first one. */
+  readonly line: number;
+  /** Rows the signals may run on into; 1 by default. */
+  readonly lines?: number;
+  readonly signals: readonly StatusSignal[];
+  /** An input without a wire of its color. */
+  readonly dimmed?: boolean;
+  readonly describeSignal?: SignalDescriber;
+}
+
+/**
+ * One status row: a marker, then the signals that fit as icon and value (short name and value without a catalog icon) and
+ * `+N` for the rest; an empty row shows a dash. Memoized: the engine keeps the list of a network or an output that did not
+ * change, so a tick only renders the rows whose content changed.
+ */
+const StatusRow = memo(function StatusRow({ kind, line, lines = 1, signals, dimmed, describeSignal }: StatusRowProps) {
+  const { items, more, moreX } = layoutRow(signals, describeSignal && ((signal) => describeSignal(signal).iconUrl), lines);
+  const { top, pitch, icon, markerX, contentX } = STATUS_ROWS;
+  const lastLine = items.at(-1)?.line ?? 0;
   return (
-    <>
-      {dot}
-      {signals.map((entry, index) => (
-        <g key={index}>
-          <image href={icons[index]} x={STATUS_X + index * STATUS_SLOT} y={104} width={STATUS_ICON} height={STATUS_ICON} />
-          <text className="card-status" x={STATUS_X + index * STATUS_SLOT + STATUS_ICON + 4} y="114">
-            {entry.value}
+    <g className={`card-row ${kind}${dimmed ? " unwired" : ""}`} data-row={kind} transform={`translate(0,${top + line * pitch})`}>
+      {kind === "out" ? <path className="row-marker" d={`M ${markerX} 0 h 6 m -2.6 -2.6 l 2.6 2.6 l -2.6 2.6`} /> : <rect className="row-marker" x={markerX} y={-5} width="3" height="10" rx="1.5" />}
+      {items.map((item, index) => (
+        <Fragment key={index}>
+          {item.iconUrl && <image href={item.iconUrl} x={item.x} y={item.line * pitch - icon / 2} width={icon} height={icon} />}
+          <text className="row-value" x={item.textX} y={item.line * pitch + ROW_BASELINE}>
+            {item.text}
           </text>
-        </g>
+        </Fragment>
       ))}
-    </>
+      {more > 0 && (
+        <text className="row-more" x={moreX} y={lastLine * pitch + ROW_BASELINE}>
+          +{more}
+        </text>
+      )}
+      {items.length === 0 && (
+        <text className="row-none" x={contentX} y={ROW_BASELINE}>
+          –
+        </text>
+      )}
+    </g>
+  );
+});
+
+/** The state of a lamp in the place of the output row; the swatch is the color of its light. */
+function LampRow({ lit, color }: { readonly lit: boolean; readonly color?: string }) {
+  return (
+    <g className="card-row lamp" data-row="lamp" transform={`translate(0,${STATUS_ROWS.top + 2 * STATUS_ROWS.pitch})`}>
+      {color && <rect className="row-swatch" x={STATUS_ROWS.markerX} y={-4} width="8" height="8" rx="1.5" style={{ fill: color }} />}
+      <text className={lit ? "row-value" : "row-none"} x={STATUS_ROWS.contentX} y={ROW_BASELINE}>
+        {lit ? "lit" : "off"}
+      </text>
+    </g>
   );
 }
 
@@ -86,29 +117,50 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
   const description = entity.description?.trim();
   const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}`;
   return (
-    <g className={className} transform={`translate(${x},${y})`} data-entity-id={entity.id} data-entity-name={entity.name} data-kind={entity.kind} data-x={x} data-y={y} data-status={status?.label}>
+    <g
+      className={className}
+      transform={`translate(${x},${y})`}
+      data-entity-id={entity.id}
+      data-entity-name={entity.name}
+      data-kind={entity.kind}
+      data-x={x}
+      data-y={y}
+      data-status={status?.label}
+      data-in-red={status?.input && inputText(status.input.red)}
+      data-in-green={status?.input && inputText(status.input.green)}
+    >
       <rect className="card-body" width={CARD.width} height={CARD.height} rx="9" filter={shadow ? "url(#card-shadow)" : undefined} />
-      <rect className="card-accent" x="13" y="14" width="3" height="17" rx="1.5" />
+      {/* The outline keeps the taller accent it always had; with text the accent is as high as the kind label's band. */}
+      <rect className="card-accent" x={MARGIN} y={outline ? 14 : 7} width="3" height={outline ? 17 : 13} rx="1.5" />
       {!outline && (
         <>
-          <text className="card-kind" x="25" y="26">
+          <text className="card-kind" x={MARGIN + 9} y="17">
             {info.label.toUpperCase()}
           </text>
           {description && (
             <g className="card-note">
-              <Icon name="note" size={NOTE_ICON} x={CARD.width - 13 - NOTE_ICON} y={16} />
+              <Icon name="note" size={NOTE_ICON} x={CARD.width - MARGIN - NOTE_ICON} y={7} />
             </g>
           )}
-          <path className="card-divider" d={`M 10 45 H ${CARD.width - 10}`} />
-          <EntityIconSvg kind={entity.kind} x={14} y={55} size={38} resolveIcon={resolveIcon} />
-          <text className="card-name" x="62" y="70">
+          <path className="card-divider" d={`M 10 26.5 H ${CARD.width - 10}`} />
+          <EntityIconSvg kind={entity.kind} x={MARGIN} y={32} size={ENTITY_ICON} resolveIcon={resolveIcon} />
+          <text className="card-name" x={TEXT_X} y="46">
             {truncate(entity.name, NAME_MAX_CHARS)}
           </text>
-          <text className="card-summary" x="62" y="92">
+          <text className="card-summary" x={TEXT_X} y="63">
             {truncate(summary, SUMMARY_MAX_CHARS)}
           </text>
-          {status && <StatusLine status={status} describeSignal={describeSignal} />}
-          <title>{`${info.label} ${entity.name}: ${summary}${description ? `\n${description}` : ""}${status ? `\nNow: ${status.label}` : ""}`}</title>
+          {status && (
+            <>
+              <path className="card-divider" d={`M 10 72.5 H ${CARD.width - 10}`} />
+              {status.input && <StatusRow kind="red" line={0} signals={status.input.red.signals} dimmed={!status.input.red.wired} describeSignal={describeSignal} />}
+              {status.input && <StatusRow kind="green" line={1} signals={status.input.green.signals} dimmed={!status.input.green.wired} describeSignal={describeSignal} />}
+              {/* Without input rows (a constant combinator) the output has all three. */}
+              {status.output && <StatusRow kind="out" line={status.input ? 2 : 0} lines={status.input ? 1 : 3} signals={status.output} describeSignal={describeSignal} />}
+              {status.lamp && <LampRow lit={status.lamp.lit} color={status.lamp.color} />}
+            </>
+          )}
+          <title>{[`${info.label} ${entity.name}: ${summary}`, ...(description ? [description] : []), ...(status ? statusLines(status) : [])].join("\n")}</title>
         </>
       )}
       {TERMINALS[entity.kind].flatMap((side) =>
