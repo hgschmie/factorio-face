@@ -1,6 +1,6 @@
 import type { Point } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { CARD, cardRect, wireAnchor, type Rect } from "../src/canvas/geometry.ts";
+import { CARD, cardRect, PIN_SPACING, pinPoint, type Rect } from "../src/canvas/geometry.ts";
 import { FEEDBACK_CLEARANCE, offsetPolyline, routeBounds, routePath, routeWire, sampleRoute, type WireRoute } from "../src/canvas/wireRouting.ts";
 
 const A: Point = { x: 40, y: 80 };
@@ -21,26 +21,49 @@ function minimumDistance(a: readonly Point[], b: readonly Point[]): number {
   return minimum;
 }
 
+/** Width of the dark casing a wire is drawn with: two wires closer than this touch. */
+const CASING_WIDTH = 7;
+
 describe("wires between two entities", () => {
-  it("attaches red above and green below the terminal center", () => {
-    expect(wireAnchor(A, "out", "red")).toEqual({ x: A.x + CARD.width, y: A.y + CARD.terminalY - CARD.wireOffset });
-    expect(wireAnchor(A, "out", "green")).toEqual({ x: A.x + CARD.width, y: A.y + CARD.terminalY + CARD.wireOffset });
-    expect(wireAnchor(A, "in", "red").x).toBe(A.x);
+  it("starts and ends every route in the pins of its color", () => {
+    const targets = [B, { x: 300, y: 260 }, { x: 40, y: 300 }, { x: -300, y: -260 }, A];
+    for (const color of ["red", "green"] as const) {
+      for (const target of targets) {
+        const points = sampleRoute(routeWire(color, { position: A, side: "out" }, { position: target, side: "in" }, target === A));
+        expect(points[0]).toEqual(pinPoint(A, "out", color));
+        expect(points.at(-1)).toEqual(pinPoint(target, "in", color));
+      }
+      const outputs = sampleRoute(routeWire(color, { position: A, side: "out" }, { position: B, side: "out" }, false));
+      expect([outputs[0], outputs.at(-1)]).toEqual([pinPoint(A, "out", color), pinPoint(B, "out", color)]);
+    }
   });
 
-  it("keeps red and green apart along the whole route when both connect the same pair", () => {
+  it("keeps red and green a pin spacing apart along the whole route when both connect the same pair", () => {
     const red = routeWire("red", { position: A, side: "out" }, { position: B, side: "in" }, false);
     const green = routeWire("green", { position: A, side: "out" }, { position: B, side: "in" }, false);
     expect(routePath(red)).not.toBe(routePath(green));
-    expect(minimumDistance(sampleRoute(red, 60), sampleRoute(green, 60))).toBeGreaterThanOrEqual(2 * CARD.wireOffset - 0.01);
+    expect(minimumDistance(sampleRoute(red, 60), sampleRoute(green, 60))).toBeCloseTo(PIN_SPACING, 6);
   });
 
   it("keeps the colors apart on steep curves, where a plain vertical shift would make them coincide", () => {
-    for (const target of [{ x: 300, y: 260 }, { x: 240, y: 400 }, { x: 200, y: 600 }, { x: 400, y: -500 }, { x: 600, y: 140 }]) {
+    for (const target of [{ x: 300, y: 260 }, { x: 240, y: 400 }, { x: 240, y: -100 }, { x: 400, y: -500 }, { x: 600, y: 140 }]) {
       const red = sampleRoute(routeWire("red", { position: A, side: "out" }, { position: target, side: "in" }, false), 200);
       const green = sampleRoute(routeWire("green", { position: A, side: "out" }, { position: target, side: "in" }, false), 200);
-      expect(minimumDistance(red, green)).toBeGreaterThan(4.5);
+      expect(minimumDistance(red, green)).toBeGreaterThan(PIN_SPACING / 2);
     }
+  });
+
+  it("never lets the colors of a forward pair touch, however the two cards are placed on the grid", () => {
+    let closest = Infinity;
+    for (let x = A.x + 200; x <= A.x + 900; x += 100) {
+      for (let y = A.y - 800; y <= A.y + 800; y += 100) {
+        const red = routeWire("red", { position: A, side: "out" }, { position: { x, y }, side: "in" }, false);
+        const green = routeWire("green", { position: A, side: "out" }, { position: { x, y }, side: "in" }, false);
+        expect(red.kind).toBe("curve");
+        closest = Math.min(closest, minimumDistance(sampleRoute(red, 100), sampleRoute(green, 100)));
+      }
+    }
+    expect(closest).toBeGreaterThan(CASING_WIDTH);
   });
 
   it("leaves each terminal on its outward side", () => {
@@ -85,12 +108,12 @@ describe("wires that double back", () => {
     it(`routes around both cards with parallel colors: ${name}`, () => {
       const red = routeWire("red", { position: A, side: "out" }, { position: target, side: "in" }, false);
       const green = routeWire("green", { position: A, side: "out" }, { position: target, side: "in" }, false);
-      expect(polyline(red)[0]).toEqual(wireAnchor(A, "out", "red"));
-      expect(polyline(red).at(-1)).toEqual(wireAnchor(target, "in", "red"));
-      expect(polyline(green)[0]).toEqual(wireAnchor(A, "out", "green"));
-      expect(polyline(green).at(-1)).toEqual(wireAnchor(target, "in", "green"));
-      // Exactly parallel: the colors are 10 units apart everywhere and never cross.
-      expect(minimumDistance(sampleRoute(red, 40), sampleRoute(green, 40))).toBeCloseTo(2 * CARD.wireOffset, 6);
+      expect(polyline(red)[0]).toEqual(pinPoint(A, "out", "red"));
+      expect(polyline(red).at(-1)).toEqual(pinPoint(target, "in", "red"));
+      expect(polyline(green)[0]).toEqual(pinPoint(A, "out", "green"));
+      expect(polyline(green).at(-1)).toEqual(pinPoint(target, "in", "green"));
+      // Exactly parallel: the colors are one pin spacing apart everywhere and never cross.
+      expect(minimumDistance(sampleRoute(red, 40), sampleRoute(green, 40))).toBeCloseTo(PIN_SPACING, 6);
       for (const route of [red, green]) {
         const inside = sampleRoute(route, 40).filter((point) => strictlyInside(cardRect(A), point) || strictlyInside(cardRect(target), point));
         expect(inside).toEqual([]);
@@ -128,10 +151,10 @@ describe("feedback wires on one entity", () => {
     }
   });
 
-  it("starts at the output anchor and ends at the input anchor, whichever end the gesture started from", () => {
+  it("starts at the output pin and ends at the input pin, whichever end the gesture started from", () => {
     for (const [route, color] of [[red, "red"], [green, "green"]] as const) {
-      expect(polyline(route)[0]).toEqual(wireAnchor(B, "out", color));
-      expect(polyline(route).at(-1)).toEqual(wireAnchor(B, "in", color));
+      expect(polyline(route)[0]).toEqual(pinPoint(B, "out", color));
+      expect(polyline(route).at(-1)).toEqual(pinPoint(B, "in", color));
     }
   });
 
@@ -142,11 +165,20 @@ describe("feedback wires on one entity", () => {
     expect(greenBounds.y).toBe(card.y - FEEDBACK_CLEARANCE.green);
     expect(redBounds.x).toBe(card.x - FEEDBACK_CLEARANCE.red);
     expect(greenBounds.x + greenBounds.width).toBe(card.x + card.width + FEEDBACK_CLEARANCE.green);
-    expect(FEEDBACK_CLEARANCE.green - FEEDBACK_CLEARANCE.red).toBeGreaterThanOrEqual(10);
+    expect(FEEDBACK_CLEARANCE.green - FEEDBACK_CLEARANCE.red).toBe(PIN_SPACING);
   });
 
-  it("keeps the two loops of one card apart", () => {
-    expect(minimumDistance(sampleRoute(red, 20), sampleRoute(green, 20))).toBeGreaterThanOrEqual(2 * CARD.wireOffset - 0.01);
+  it("nests the two loops of one card a pin spacing apart", () => {
+    expect(minimumDistance(sampleRoute(red, 20), sampleRoute(green, 20))).toBeCloseTo(PIN_SPACING, 6);
+  });
+
+  it("runs loops and doubling-back wires beside one card on separate lines", () => {
+    for (const target of [{ x: B.x, y: B.y - 300 }, { x: B.x, y: B.y + 300 }]) {
+      const detours = (["red", "green"] as const).map((color) => routeWire(color, { position: B, side: "out" }, { position: target, side: "in" }, false));
+      // Distance of each vertical run from the output side of the card.
+      const runs = [red, green, ...detours].map((route) => polyline(route)[1]!.x - (card.x + card.width));
+      expect(runs.sort((a, b) => a - b)).toEqual([10, 20, 30, 40]);
+    }
   });
 
   it("draws rounded corners without leaving the loop's bounds", () => {
@@ -161,6 +193,27 @@ describe("feedback wires on one entity", () => {
       expect(numbers[i + 1]!).toBeGreaterThanOrEqual(bounds.y);
       expect(numbers[i + 1]!).toBeLessThanOrEqual(bounds.y + bounds.height);
     }
+  });
+
+  it("crosses the colors between two terminals of the same side once instead of running them on top of each other", () => {
+    const below = { x: 40, y: 300 };
+    const placements = [below, { x: 300, y: 260 }, { x: 300, y: -260 }, { x: -200, y: 400 }, { x: -200, y: -400 }];
+    for (const side of ["in", "out"] as const) {
+      for (const target of placements) {
+        const redPoints = sampleRoute(routeWire("red", { position: A, side }, { position: target, side }, false), 200);
+        const greenPoints = sampleRoute(routeWire("green", { position: A, side }, { position: target, side }, false), 200);
+        const touching = redPoints.filter((point) => minimumDistance([point], greenPoints) < CASING_WIDTH);
+        expect(touching.length).toBeGreaterThan(0);
+        expect(touching.length / redPoints.length).toBeLessThan(0.15);
+      }
+    }
+    // The same route whichever end the gesture started from.
+    const forward = sampleRoute(routeWire("green", { position: A, side: "out" }, { position: below, side: "out" }, false));
+    const backward = sampleRoute(routeWire("green", { position: below, side: "out" }, { position: A, side: "out" }, false));
+    backward.reverse().forEach((point, index) => {
+      expect(point.x).toBeCloseTo(forward[index]!.x, 9);
+      expect(point.y).toBeCloseTo(forward[index]!.y, 9);
+    });
   });
 
   it("routes two terminals of the same side as a curve that leaves and arrives on that side", () => {

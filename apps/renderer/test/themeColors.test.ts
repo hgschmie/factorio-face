@@ -34,7 +34,7 @@ const CHROMATIC_TOKENS: ReadonlySet<string> = new Set([
   "--card-lit", "--status-warning", "--notice-surface", "--notice-border", "--notice-text",
   // red: wire, errors, delete
   "--wire-red", "--wire-red-ui", "--wire-red-surface", "--wire-red-border", "--status-error",
-  "--danger", "--danger-text", "--danger-muted", "--danger-surface", "--danger-surface-hover", "--danger-border",
+  "--danger", "--danger-text", "--danger-surface", "--danger-surface-hover", "--danger-border",
   // green: see GREEN_TOKENS
   "--confirm", "--confirm-bright", "--confirm-edge", "--wire-green", "--wire-green-ui", "--wire-green-surface", "--wire-green-border",
   // entity kinds, traces and syntax

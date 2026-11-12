@@ -43,10 +43,6 @@
   --card-border-hover: var(--gray-control);
   --card-divider: var(--gray-edge);
   --card-lit: #5e4522;
-  --terminal-fill: var(--gray-edge);
-  --terminal-border: var(--gray-control);
-  --terminal-in: #c8c8c8;
-  --terminal-out: var(--accent);
 
   /* Borders: dark edges between panels and around wells, lighter outlines on raised controls */
   --border-edge: var(--gray-edge);
@@ -102,7 +98,6 @@
   --status-error: #f4776d;
   --danger: #e8635a;
   --danger-text: #f8d0cb;
-  --danger-muted: #cf9a94;
   --danger-surface: #4f2927;
   --danger-surface-hover: #643230;
   --danger-border: #96443e;

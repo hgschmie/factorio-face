@@ -1,6 +1,6 @@
 // The circuit itself: wires below, cards above. Memoized as a whole, so camera changes that stay inside the current
 // culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved cards and wires.
-import { terminalKey, wireKey, type Circuit, type Entity, type EntityId, type Point, type TerminalRef, type Wire } from "@face/model";
+import { terminalKey, wireKey, type Circuit, type Entity, type EntityId, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
@@ -20,7 +20,9 @@ export interface SceneProps {
   /** Only elements intersecting this rectangle are rendered. */
   readonly visible: Rect;
   readonly outline: boolean;
+  /** Terminal and color of the pin that started a pending wire. */
   readonly pendingTerminal: TerminalRef | null;
+  readonly pendingColor?: WireColor;
   readonly entityStatus?: ReadonlyMap<EntityId, EntityStatus>;
   readonly describeSignal?: SignalDescriber;
   readonly resolveIcon?: EntityIconResolver;
@@ -56,7 +58,7 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, posit
   return routed;
 }
 
-export const Scene = memo(function Scene({ circuit, previewPositions, selection, visible, outline, pendingTerminal, entityStatus, describeSignal, resolveIcon }: SceneProps) {
+export const Scene = memo(function Scene({ circuit, previewPositions, selection, visible, outline, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon }: SceneProps) {
   const byId = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
   const wires = useMemo(() => routeWires(circuit, byId, (entity) => previewPositions?.get(entity.id) ?? entity.position), [circuit, byId, previewPositions]);
 
@@ -74,6 +76,7 @@ export const Scene = memo(function Scene({ circuit, previewPositions, selection,
       <g className="cards">
         {visibleEntities.map((entity) => {
           const position = previewPositions?.get(entity.id) ?? entity.position;
+          const pending = pendingTerminal?.entity === entity.id;
           return (
             <EntityCard
               key={entity.id}
@@ -83,7 +86,8 @@ export const Scene = memo(function Scene({ circuit, previewPositions, selection,
               selected={selection.has(entity.id)}
               outline={outline}
               shadow={shadow}
-              pendingSide={pendingTerminal?.entity === entity.id ? pendingTerminal.side : undefined}
+              pendingSide={pending ? pendingTerminal.side : undefined}
+              pendingColor={pending ? pendingColor : undefined}
               status={entityStatus?.get(entity.id)}
               describeSignal={describeSignal}
               resolveIcon={resolveIcon}

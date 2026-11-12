@@ -1,7 +1,7 @@
 // Reference screenshots of the workbench for visual review, written to .runtime/screenshots/.
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, test } from "./app.ts";
+import { card, cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, test } from "./app.ts";
 
 test("captures the workbench in its main states", async ({ page }) => {
   // The game's icons are generated locally and git-ignored; without them the inline placeholders are shown.
@@ -12,7 +12,7 @@ test("captures the workbench in its main states", async ({ page }) => {
 
   const gate = await cardGrabPoint(page, "gate");
   await page.mouse.click(gate.x, gate.y);
-  await expect(page.getByRole("toolbar", { name: "Selection actions" })).toBeVisible();
+  await expect(card(page, "gate")).toHaveClass(/selected/);
   await page.getByRole("button", { name: "Step" }).click({ clickCount: 30 });
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-selection.png") });
 

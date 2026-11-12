@@ -37,11 +37,11 @@ src/
     Palette.tsx        tools (select, red wire, green wire), the five building blocks, entity list
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
-    Canvas.tsx         SVG canvas: camera, gestures, pending wire, selection toolbar, context menu; emits callbacks only
+    Canvas.tsx         SVG canvas: camera, gestures, pending wire, context menu; emits callbacks only
     Scene.tsx          memoized wires and cards, culled to the visible area
-    EntityCard.tsx     one memoized card (icon, name, summary, live status line, terminals per TERMINALS)
+    EntityCard.tsx     one memoized card (icon, name, summary, live status line, a red and a green pin per side in TERMINALS)
     ContextMenu.tsx    keyboard-navigable popup menu
-    geometry.ts        card and terminal geometry, rectangles          (pure)
+    geometry.ts        card and pin geometry (`pinPoint`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
     drag.ts            snap, drag threshold, group drag, placement     (pure)
     wireRouting.ts     wire routes and SVG path data                   (pure)
@@ -152,7 +152,7 @@ green wire tokens, every `var()` resolves, the window background of the main pro
 | --- | --- |
 | Reference grays | `--gray-shadow`, `-edge`, `-well`, `-frame`, `-divider`, `-card`, `-tab`, `-control` |
 | Surfaces | `--surface-window`, `-titlebar`, `-projectbar`, `-palette`, `-inspector`, `-dock`, `-statusbar`, `-popover` (frame); `-editor`, `-inset`, `-well` (wells); `-raised`, `-raised-hover`, `-active`, `-control`, `-hover` |
-| Canvas | `--canvas-center` / `-mid` / `-edge`, `--canvas-dot`, `--card-top` / `-bottom` / `-border` / `-divider` / `-lit`, `--terminal-*` |
+| Canvas | `--canvas-center` / `-mid` / `-edge`, `--canvas-dot`, `--card-top` / `-bottom` / `-border` / `-divider` / `-lit` |
 | Borders | `--border-edge`, `--border-subtle`, `--border`, `--border-strong`, `--border-input`, `--border-popover` |
 | Text | `--text`, `--text-strong` (cream), `--text-soft`, `--text-label`, `--text-muted`, `--text-dim`, `--text-faint`, `--ink` (dark, on filled controls) |
 | Accent | `--accent`, `--accent-fill`, `--accent-bright`, `--accent-border`, `--focus-ring` |
@@ -169,15 +169,23 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
 
 ## Canvas behaviour worth knowing
 
-- Grid 20 units; cards are 184 x 128 with both terminals 80 units below the top edge. Red attaches 5 units above the terminal center,
-  green 5 below.
+- Grid 20 units; cards are 184 x 128. Every terminal side (`TERMINALS`: inputs on the left edge, outputs on the right) has one connection
+  pin per wire color, red 60 and green 80 units below the top edge, so both sit on grid lines 20 units apart. `pinPoint(position, side,
+  color)` in `geometry.ts` is the only place that knows this; a wire of a color starts and ends in the center of the pin of that color.
+- Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out"`, `data-wire-color="red|green"` and a `<title>` such as "Red
+  input". Pins are drawn in the wire color tokens. A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color
+  are targets (highlight, click, pending state, start of the rubber band), the others are dimmed and ignored. The model is unchanged: a
+  wire is a color plus two terminals, and the tool decides the color.
 - Routes (`wireRouting.ts`): output to an input on its right is a bezier whose control points are shifted so the two colors stay apart on
-  steep stretches; an input that is not to the right gets an orthogonal detour with exactly parallel colors; a feedback wire loops over
-  the top of its own card with 30 (red) and 48 (green) units of clearance. Routes do not avoid other cards.
+  steep stretches; an input that is not to the right gets an orthogonal detour with exactly parallel colors, 10 and 30 units from the
+  card sides; a feedback wire loops over the top of its own card with 20 (red, inside) and 40 (green, outside) units of clearance;
+  between two inputs or two outputs the colors have to cross once, and the outer color reaches further so they cross at an angle.
+  Routes do not avoid other cards.
 - A drop is computed from the press and release coordinates of the pointer, not from the rendered preview.
 - The wheel listener is registered non-passive on the canvas container and cancels scrolling.
-- Deletion: toolbar attached to the selection, context menu, Delete / Backspace while focus is inside the canvas, Edit > Delete, and the
-  Delete button at the top of the inspector. Keys never delete while a text control or the source editor has focus.
+- Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
+  while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
+  control or the source editor has focus.
 - Rendering: the scene is memoized against a culling rectangle snapped to a 400 unit lattice, cards and wires are memoized individually,
   cards become outlines below 30 % zoom, and the drop shadow is skipped above 60 visible cards.
 

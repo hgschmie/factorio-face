@@ -1,13 +1,13 @@
 // One entity drawn as a card. Purely presentational and memoized: pointer handling is delegated to the canvas through
-// the data-entity-id / data-terminal attributes, so a card only re-renders when its own props change.
-import { hasTerminal, type Entity, type TerminalSide } from "@face/model";
+// the data-entity-id / data-terminal / data-wire-color attributes, so a card only re-renders when its own props change.
+import { TERMINALS, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
 import { memo } from "react";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { entitySummary, truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
-import { CARD } from "./geometry.ts";
+import { CARD, PIN_RADIUS, PIN_SPACING, pinPoint } from "./geometry.ts";
 
 export interface EntityCardProps {
   readonly entity: Entity;
@@ -15,11 +15,12 @@ export interface EntityCardProps {
   readonly x: number;
   readonly y: number;
   readonly selected: boolean;
-  /** Draw only the body and terminals; used when zoomed out too far for text to be legible. */
+  /** Draw only the body and pins; used when zoomed out too far for text to be legible. */
   readonly outline: boolean;
   readonly shadow: boolean;
-  /** Terminal that started a pending wire, if it belongs to this entity. */
+  /** Pin that started a pending wire, if it belongs to this entity. */
   readonly pendingSide?: TerminalSide;
+  readonly pendingColor?: WireColor;
   /** Live state from the simulation, shown on the bottom line. */
   readonly status?: EntityStatus;
   readonly describeSignal?: SignalDescriber;
@@ -63,19 +64,21 @@ function StatusLine({ status, describeSignal }: { readonly status: EntityStatus;
   );
 }
 
-function Terminal({ side, pending }: { readonly side: TerminalSide; readonly pending: boolean }) {
-  const cx = side === "out" ? CARD.width : 0;
+const ORIGIN = { x: 0, y: 0 };
+
+/** One connection pin: the place where wires of its color attach. The hit areas of the two pins of a terminal touch but do not overlap. */
+function Pin({ side, color, pending }: { readonly side: TerminalSide; readonly color: WireColor; readonly pending: boolean }) {
+  const { x, y } = pinPoint(ORIGIN, side, color);
   return (
-    <g className={`terminal ${side}${pending ? " pending" : ""}`} data-terminal={side}>
-      <circle className="terminal-hit" cx={cx} cy={CARD.terminalY} r="13" />
-      <circle className="terminal-ring" cx={cx} cy={CARD.terminalY} r="8" />
-      <circle className="terminal-core" cx={cx} cy={CARD.terminalY} r="3" />
-      <title>{side === "out" ? "Output terminal" : "Input terminal"}</title>
+    <g className={`pin ${color} ${side}${pending ? " pending" : ""}`} data-terminal={side} data-wire-color={color}>
+      <circle className="pin-hit" cx={x} cy={y} r={PIN_SPACING / 2} />
+      <circle className="pin-dot" cx={x} cy={y} r={PIN_RADIUS} />
+      <title>{`${color === "red" ? "Red" : "Green"} ${side === "out" ? "output" : "input"}`}</title>
     </g>
   );
 }
 
-export const EntityCard = memo(function EntityCard({ entity, x, y, selected, outline, shadow, pendingSide, status, describeSignal, resolveIcon }: EntityCardProps) {
+export const EntityCard = memo(function EntityCard({ entity, x, y, selected, outline, shadow, pendingSide, pendingColor, status, describeSignal, resolveIcon }: EntityCardProps) {
   const info = KIND_INFO[entity.kind];
   const summary = entitySummary(entity);
   const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}`;
@@ -100,8 +103,9 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
           <title>{`${info.label} ${entity.name}: ${summary}${status ? `\nNow: ${status.label}` : ""}`}</title>
         </>
       )}
-      {hasTerminal(entity.kind, "in") && <Terminal side="in" pending={pendingSide === "in"} />}
-      {hasTerminal(entity.kind, "out") && <Terminal side="out" pending={pendingSide === "out"} />}
+      {TERMINALS[entity.kind].flatMap((side) =>
+        WIRE_COLORS.map((color) => <Pin key={`${side}-${color}`} side={side} color={color} pending={pendingSide === side && pendingColor === color} />),
+      )}
     </g>
   );
 });

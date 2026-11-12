@@ -1,6 +1,6 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import type { Circuit, Entity, EntityId, EntityKind, Point, TerminalRef, Wire } from "@face/model";
+import type { Circuit, EntityId, EntityKind, Point, TerminalRef, Wire, WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -10,9 +10,9 @@ import { isTextEntryTarget, SHORTCUT } from "../platform.ts";
 import { SELECT_TOOL, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
 import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, worldDelta, type EntityPosition } from "./drag.ts";
-import { boundsOfPoints, CARD, cardRect, entitiesBounds, expandRect, GRID, rectFromPoints, rectsIntersect, wireAnchor, type Rect } from "./geometry.ts";
+import { cardRect, entitiesBounds, expandRect, GRID, pinPoint, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
 import { Scene } from "./Scene.tsx";
-import { cameraFor, cullingRect, DEFAULT_CAMERA, fitCamera, panFrom, screenToWorld, viewOf, visibleWorldRect, wheelZoomFactor, worldToScreen, ZOOM_STEP, zoomAround, type Camera, type CanvasView, type Size } from "./viewport.ts";
+import { cameraFor, cullingRect, DEFAULT_CAMERA, fitCamera, panFrom, screenToWorld, viewOf, visibleWorldRect, wheelZoomFactor, ZOOM_STEP, zoomAround, type Camera, type CanvasView, type Size } from "./viewport.ts";
 import { FEEDBACK_CLEARANCE } from "./wireRouting.ts";
 
 export interface CanvasHandle {
@@ -40,7 +40,7 @@ export interface CanvasProps {
   onToolChange(tool: Tool): void;
   onPlaceEntity(kind: EntityKind, position: Point): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
-  /** A wire gesture was completed between two different terminals: connect them, or disconnect them if this wire exists. */
+  /** A wire gesture was completed between the pins of two different terminals: connect them, or disconnect them if this wire exists. */
   onToggleWire(wire: Wire): void;
   onDeleteSelection(): void;
 }
@@ -68,10 +68,13 @@ function clientPoint(event: { readonly clientX: number; readonly clientY: number
   return { x: event.clientX, y: event.clientY };
 }
 
-function terminalAt(target: Element): TerminalRef | null {
-  const side = target.closest("[data-terminal]")?.getAttribute("data-terminal");
+/** The connection pin under the pointer: its terminal and the wire color it accepts. */
+function pinAt(target: Element): { readonly terminal: TerminalRef; readonly color: WireColor } | null {
+  const pin = target.closest("[data-terminal]");
+  const side = pin?.getAttribute("data-terminal");
+  const color = pin?.getAttribute("data-wire-color");
   const entity = target.closest("[data-entity-id]")?.getAttribute("data-entity-id");
-  return entity && (side === "in" || side === "out") ? { entity, side } : null;
+  return entity && (side === "in" || side === "out") && (color === "red" || color === "green") ? { terminal: { entity, side }, color } : null;
 }
 
 function entityIdAt(target: Element): EntityId | null {
@@ -81,7 +84,8 @@ function entityIdAt(target: Element): EntityId | null {
 function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean): string {
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
   if (tool.type === "place") return `Click the canvas (or press Enter on it) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
-  if (tool.type === "wire") return pending ? `Click a second terminal to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.` : `Click an input or output terminal to start a ${tool.color} wire.`;
+  if (tool.type === "wire" && pending) return `Click a second ${tool.color} pin to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.`;
+  if (tool.type === "wire") return `Click a ${tool.color} pin of an input or output to start a ${tool.color} wire.`;
   return "Drag to arrange. Drag empty space to pan, Shift-drag to select an area, scroll to zoom.";
 }
 
@@ -215,8 +219,9 @@ export function Canvas(props: CanvasProps) {
 
     const entityId = entityIdAt(target);
     if (tool.type === "wire") {
-      const terminal = terminalAt(target);
-      if (terminal && editable) clickTerminal(terminal);
+      // Only the pins of the tool's color are targets.
+      const pin = pinAt(target);
+      if (pin && pin.color === tool.color && editable) clickTerminal(pin.terminal);
       else if (!entityId) beginGesture(event, pan);
       return;
     }
@@ -351,13 +356,10 @@ export function Canvas(props: CanvasProps) {
   const cullRect = cullingRect(camera, size, CULL_MARGIN, CULL_CELL);
   const stableCullRect = useMemo<Rect>(() => ({ x: cullRect.x, y: cullRect.y, width: cullRect.width, height: cullRect.height }), [cullRect.x, cullRect.y, cullRect.width, cullRect.height]);
 
-  // Feedback loops pass over the top of their card; the toolbar moves above them instead of covering them.
-  const loopClearance = Math.max(0, ...circuit.wires.filter((wire) => wire.a.entity === wire.b.entity && selectionSet.has(wire.a.entity)).map((wire) => FEEDBACK_CLEARANCE[wire.color]));
-  const toolbarAnchor = selectionToolbarAnchor(selectedEntities, loopClearance, previewPositions, camera, size);
   const pendingEntity = pendingWire ? entityById.get(pendingWire.entity) : undefined;
 
   return (
-    <div ref={containerRef} className={`canvas tool-${tool.type}${panning ? " panning" : ""}`} onKeyDown={onKeyDown} data-zoom={camera.zoom}>
+    <div ref={containerRef} className={`canvas tool-${tool.type}${tool.type === "wire" ? ` wire-${tool.color}` : ""}${panning ? " panning" : ""}`} onKeyDown={onKeyDown} data-zoom={camera.zoom}>
       <svg
         ref={svgRef}
         className="canvas-svg"
@@ -391,11 +393,12 @@ export function Canvas(props: CanvasProps) {
           visible={stableCullRect}
           outline={camera.zoom < OUTLINE_ZOOM}
           pendingTerminal={pendingWire}
+          pendingColor={pendingWire && tool.type === "wire" ? tool.color : undefined}
           entityStatus={props.entityStatus}
           describeSignal={props.describeSignal}
           resolveIcon={props.resolveEntityIcon}
         />
-        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={wireAnchor(pendingEntity.position, pendingWire.side, tool.color)} to={pointerWorld} />}
+        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={pinPoint(pendingEntity.position, pendingWire.side, tool.color)} to={pointerWorld} />}
         {marquee && <rect className="marquee" x={marquee.x} y={marquee.y} width={marquee.width} height={marquee.height} />}
       </svg>
 
@@ -413,17 +416,6 @@ export function Canvas(props: CanvasProps) {
           <Icon name="grid" size={38} />
           <h2>Start with a signal.</h2>
           <p>Choose a component on the left, then click here to place it.</p>
-        </div>
-      )}
-
-      {toolbarAnchor && !menu && (
-        <div className="selection-toolbar" role="toolbar" aria-label="Selection actions" style={{ left: toolbarAnchor.x, top: toolbarAnchor.y }}>
-          {selection.length > 1 && <span className="selection-count">{selection.length} selected</span>}
-          <button type="button" className="danger-button" disabled={!editable} onClick={deleteSelection} aria-label={selection.length > 1 ? `Delete ${selection.length} selected entities` : "Delete selected entity"}>
-            <Icon name="trash" size={14} />
-            Delete
-            <kbd>{SHORTCUT.delete}</kbd>
-          </button>
         </div>
       )}
 
@@ -453,15 +445,4 @@ export function Canvas(props: CanvasProps) {
 
 function PendingWire({ color, from, to }: { readonly color: string; readonly from: Point; readonly to: Point }) {
   return <path className={`wire-preview ${color}`} d={`M ${from.x} ${from.y} L ${to.x} ${to.y}`} />;
-}
-
-/** Screen position of the selection toolbar: just above the top-right corner of the selection, kept inside the canvas. */
-function selectionToolbarAnchor(selected: readonly Entity[], clearance: number, previewPositions: ReadonlyMap<EntityId, Point> | null, camera: Camera, size: Size): Point | null {
-  // Hidden while dragging: the toolbar would chase the pointer and cover the drop target.
-  if (selected.length === 0 || previewPositions) return null;
-  const bounds = boundsOfPoints(selected.flatMap(({ position }) => [position, { x: position.x + CARD.width, y: position.y + CARD.height }]));
-  const corner = worldToScreen(camera, { x: bounds.x + bounds.width, y: bounds.y - clearance });
-  const bottomLeft = worldToScreen(camera, { x: bounds.x, y: bounds.y + bounds.height });
-  if (corner.x < 0 || bottomLeft.x > size.width || bottomLeft.y < 0 || corner.y > size.height) return null;
-  return { x: Math.min(Math.max(corner.x, 130), size.width - 6), y: Math.min(Math.max(corner.y - 8, 40), size.height - 6) };
 }

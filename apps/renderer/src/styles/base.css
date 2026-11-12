@@ -69,6 +69,17 @@ button svg {
   flex-shrink: 0;
 }
 
+.danger-button {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+  background: var(--danger-surface);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: var(--danger);
+  background: var(--danger-surface-hover);
+}
+
 input,
 select {
   min-width: 0;

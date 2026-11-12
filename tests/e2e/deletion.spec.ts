@@ -6,35 +6,39 @@ test.beforeEach(async ({ page }) => {
   await openFiveKinds(page);
 });
 
-test("deletes through the toolbar attached to the selected card", async ({ page }) => {
-  await expect(page.locator(".selection-toolbar")).toHaveCount(0);
-  const light = await cardGrabPoint(page, "light");
-  await page.mouse.click(light.x, light.y);
-
-  // The action is visible next to the selected card, labelled, with its shortcut.
-  const toolbar = page.getByRole("toolbar", { name: "Selection actions" });
-  const remove = toolbar.getByRole("button", { name: "Delete selected entity" });
-  await expect(remove).toBeVisible();
-  await expect(remove).toContainText("Delete");
-  const cardBox = (await card(page, "light").locator(".card-body").boundingBox())!;
-  const buttonBox = (await remove.boundingBox())!;
-  expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(cardBox.y);
-  expect(cardBox.y - (buttonBox.y + buttonBox.height)).toBeLessThan(30);
-  expect(buttonBox.x + buttonBox.width).toBeLessThanOrEqual(cardBox.x + cardBox.width + 8);
-  expect(buttonBox.x).toBeGreaterThan(cardBox.x);
-
-  // On a card with feedback wires the toolbar sits above the loops instead of covering them.
+test("a selection shows no floating toolbar; on the canvas the context menu deletes", async ({ page }) => {
+  const floatingDelete = page.locator(".canvas").getByRole("button", { name: /Delete/ });
   const gate = await cardGrabPoint(page, "gate");
   await page.mouse.click(gate.x, gate.y);
-  const loopTop = (await page.locator('g.wire[data-wire="green|e2.in|e2.out"] path.wire-core').boundingBox())!.y;
-  const gateButton = (await remove.boundingBox())!;
-  expect(gateButton.y + gateButton.height).toBeLessThanOrEqual(loopTop + 2);
+  await expect(card(page, "gate")).toHaveClass(/selected/);
+  await expect(page.getByRole("toolbar", { name: "Selection actions" })).toHaveCount(0);
+  await expect(floatingDelete).toHaveCount(0);
 
-  await clickCenter(page, remove);
+  // Several cards: still nothing over the canvas; the inspector names the selection and the menu counts it.
+  const light = await cardGrabPoint(page, "light");
+  await page.keyboard.down("Shift");
+  await page.mouse.click(light.x, light.y);
+  await page.keyboard.up("Shift");
+  await expect(page.locator("g.card.selected")).toHaveCount(2);
+  await expect(page.getByRole("complementary", { name: "Inspector" }).getByRole("heading", { name: "2 entities selected" })).toBeVisible();
+  await expect(floatingDelete).toHaveCount(0);
+  const menu = page.getByRole("menu", { name: "Canvas actions" });
+  await page.mouse.click(light.x, light.y, { button: "right" });
+  await expect(menu.getByRole("menuitem")).toHaveText([/Delete 2 entities/]);
+  await page.keyboard.press("Escape");
+  expect(await entityNames(page)).toEqual(ALL);
+
+  // A right click on a card outside the selection selects it alone and deletes only it.
+  const twice = await cardGrabPoint(page, "twice");
+  await page.mouse.click(twice.x, twice.y);
+  await page.mouse.click(gate.x, gate.y, { button: "right" });
+  await expect(page.locator("g.card.selected")).toHaveCount(1);
+  await expect(card(page, "gate")).toHaveClass(/selected/);
+  await clickCenter(page, menu.getByRole("menuitem", { name: "Delete" }));
   expect(await entityNames(page)).toEqual(["source", "twice", "pick", "light"]);
   // The entity's five wires went with it, and the whole deletion is one undo step that restores the text exactly.
   await expect(wires(page)).toHaveCount(2);
-  await expect(page.locator(".selection-toolbar")).toHaveCount(0);
+  await expect(page.locator("g.card.selected")).toHaveCount(0);
   expect(await sourceText(page)).not.toContain("gate");
   await page.getByRole("button", { name: "Undo" }).click();
   expect(await entityNames(page)).toEqual(ALL);

@@ -1,4 +1,4 @@
-// Card and terminal geometry in canvas (world) units. Pure.
+// Card and pin geometry in canvas (world) units. Pure.
 import type { Entity, Point, TerminalSide, WireColor } from "@face/model";
 
 export const GRID = 20;
@@ -6,11 +6,13 @@ export const GRID = 20;
 export const CARD = {
   width: 184,
   height: 128,
-  /** Vertical position of both terminals, measured from the top of the card. */
-  terminalY: 80,
-  /** Red and green wires attach this far above and below the terminal center, so parallel wires never overlap. */
-  wireOffset: 5,
+  /** Vertical position of the connection pins, measured from the top of the card: red above green, both on the grid. */
+  pinY: { red: 60, green: 80 },
 } as const;
+
+/** Distance between the red and the green pin of one terminal. */
+export const PIN_SPACING = CARD.pinY.green - CARD.pinY.red;
+export const PIN_RADIUS = 6;
 
 export interface Rect {
   readonly x: number;
@@ -23,14 +25,12 @@ export function cardRect(position: Point): Rect {
   return { x: position.x, y: position.y, width: CARD.width, height: CARD.height };
 }
 
-export function terminalPoint(position: Point, side: TerminalSide): Point {
-  return { x: position.x + (side === "out" ? CARD.width : 0), y: position.y + CARD.terminalY };
-}
-
-/** Where a wire of the given color meets the terminal. */
-export function wireAnchor(position: Point, side: TerminalSide, color: WireColor): Point {
-  const terminal = terminalPoint(position, side);
-  return { x: terminal.x, y: terminal.y + (color === "red" ? -CARD.wireOffset : CARD.wireOffset) };
+/**
+ * Center of the connection pin for one wire color on one terminal side; a wire of that color starts and ends exactly here.
+ * Every entity faces right: inputs on the left edge, outputs on the right, red above green. Entity rotation hooks in here.
+ */
+export function pinPoint(position: Point, side: TerminalSide, color: WireColor): Point {
+  return { x: position.x + (side === "out" ? CARD.width : 0), y: position.y + CARD.pinY[color] };
 }
 
 export function rectFromPoints(a: Point, b: Point): Rect {

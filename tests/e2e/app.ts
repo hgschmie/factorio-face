@@ -105,8 +105,9 @@ export function card(page: Page, name: string): Locator {
   return page.locator(`g.card[data-entity-name="${name}"]`);
 }
 
-export function terminal(page: Page, name: string, side: "in" | "out"): Locator {
-  return card(page, name).locator(`[data-terminal="${side}"]`);
+/** The connection pin of one wire color on one terminal side of an entity. */
+export function pin(page: Page, name: string, side: "in" | "out", color: "red" | "green"): Locator {
+  return card(page, name).locator(`[data-terminal="${side}"][data-wire-color="${color}"]`);
 }
 
 export function wires(page: Page): Locator {
@@ -208,7 +209,7 @@ export async function clickCenter(page: Page, target: Locator, options: { button
  */
 export const CARET = process.platform === "darwin" ? { start: "Meta+ArrowLeft", end: "Meta+ArrowRight" } : { start: "Home", end: "End" };
 
-/** A point on the card body that is clear of terminals, text hit areas do not matter. */
+/** A point on the card body that is clear of the pins, text hit areas do not matter. */
 export async function cardGrabPoint(page: Page, name: string): Promise<Point> {
   const position = await entityPosition(page, name);
   return clientPointOf(page, { x: position.x + 92, y: position.y + 30 });

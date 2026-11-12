@@ -1,4 +1,4 @@
-/* Circuit canvas: SVG scene plus HTML overlays (heading, hint, zoom controls, selection toolbar, context menu). */
+/* Circuit canvas: SVG scene plus HTML overlays (heading, hint, zoom controls, context menu). */
 .canvas {
   position: relative;
   width: 100%;
@@ -152,41 +152,59 @@
   fill: var(--accent);
 }
 
-.terminal {
+/* Connection pins: one per wire color on every terminal side. */
+.pin {
   cursor: default;
 }
 
-.terminal-ring {
-  fill: var(--terminal-fill);
-  stroke: var(--terminal-border);
-  stroke-width: 1.5;
+.pin.red {
+  --pin-color: var(--wire-red);
+  --pin-highlight: var(--wire-red-ui);
 }
 
-.terminal-hit {
+.pin.green {
+  --pin-color: var(--wire-green);
+  --pin-highlight: var(--wire-green-ui);
+}
+
+.pin-hit {
   fill: transparent;
 }
 
-.terminal.in .terminal-core {
-  fill: var(--terminal-in);
+.pin-dot {
+  fill: var(--pin-color);
+  stroke: var(--wire-casing);
+  stroke-width: 1.5;
 }
 
-.terminal.out .terminal-core {
-  fill: var(--terminal-out);
+/* A wire tool turns the pins of its color into targets; the pins of the other color step back and do not react. */
+.canvas.wire-red .pin.green,
+.canvas.wire-green .pin.red {
+  opacity: 0.3;
 }
 
-.canvas.tool-wire .terminal {
+.canvas.wire-red .pin.red,
+.canvas.wire-green .pin.green {
   cursor: crosshair;
 }
 
-.canvas.tool-wire .terminal-ring {
-  stroke: var(--accent-border);
+.canvas.wire-red .pin.red .pin-dot,
+.canvas.wire-green .pin.green .pin-dot {
+  stroke: var(--pin-highlight);
   stroke-width: 2;
 }
 
-.canvas.tool-wire .terminal:hover .terminal-ring,
-.terminal.pending .terminal-ring {
-  stroke: var(--accent);
-  stroke-width: 3;
+.canvas.wire-red .pin.red:hover .pin-hit,
+.canvas.wire-green .pin.green:hover .pin-hit,
+.pin.pending .pin-hit {
+  fill: color-mix(in srgb, var(--pin-color) 40%, transparent);
+}
+
+.canvas.wire-red .pin.red:hover .pin-dot,
+.canvas.wire-green .pin.green:hover .pin-dot,
+.pin.pending .pin-dot {
+  stroke: var(--text-strong);
+  stroke-width: 2;
 }
 
 .marquee {
@@ -289,49 +307,6 @@
   font-size: 19px;
   font-weight: 500;
   color: var(--text-strong);
-}
-
-/* Toolbar attached to the selected card: the visible home of Delete. */
-.selection-toolbar {
-  position: absolute;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px;
-  border: 1px solid var(--accent-border);
-  border-radius: 6px;
-  background: var(--surface-popover);
-  box-shadow: 0 4px 14px rgb(0 0 0 / 35%);
-  transform: translate(-100%, -100%);
-}
-
-.selection-toolbar .selection-count {
-  padding: 0 7px 0 8px;
-  font-size: var(--text-md);
-  color: var(--text-soft);
-}
-
-.selection-toolbar button {
-  gap: 6px;
-  height: 26px;
-  padding: 0 9px;
-  font-size: var(--text-md);
-}
-
-.danger-button {
-  border-color: var(--danger-border);
-  color: var(--danger-text);
-  background: var(--danger-surface);
-}
-
-.danger-button:hover:not(:disabled) {
-  border-color: var(--danger);
-  background: var(--danger-surface-hover);
-}
-
-.danger-button kbd {
-  color: var(--danger-muted);
 }
 
 .context-menu {

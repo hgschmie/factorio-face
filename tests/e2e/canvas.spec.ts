@@ -1,6 +1,6 @@
 // Canvas gestures with real pointer input: placing, dragging, wiring, zooming, panning.
 import type { Page } from "@playwright/test";
-import { canvas, canvasView, card, cardGrabPoint, clickCenter, clientPointOf, committedPositions, entityNames, entityPosition, expect, sourceText, terminal, test, wires } from "./app.ts";
+import { canvas, canvasView, card, cardGrabPoint, clickCenter, clientPointOf, committedPositions, entityNames, entityPosition, expect, pin, sourceText, test, wires } from "./app.ts";
 import { FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 // Every kind and every wire shape on one screen, opened as a project from disk.
@@ -42,11 +42,23 @@ test("places each of the five kinds from the palette", async ({ page }) => {
   }
   expect(await entityNames(page)).toEqual(["source", "gate", "twice", "pick", "light", "constant1", "arithmetic1", "decider1", "selector1", "lamp1"]);
   expect((await committedPositions(page)).selector1).toEqual({ x: 720, y: 500 });
-  // Terminals follow the kind: a constant only has an output, a lamp only an input.
-  await expect(card(page, "constant1").locator("[data-terminal]")).toHaveCount(1);
-  await expect(terminal(page, "constant1", "out")).toHaveCount(1);
-  await expect(terminal(page, "lamp1", "in")).toHaveCount(1);
-  await expect(card(page, "selector1").locator("[data-terminal]")).toHaveCount(2);
+  // Pins follow the kind: a constant only has an output, a lamp only an input; each side has a red and a green pin.
+  await expect(card(page, "constant1").locator("[data-terminal]")).toHaveCount(2);
+  await expect(card(page, "lamp1").locator("[data-terminal]")).toHaveCount(2);
+  await expect(card(page, "selector1").locator("[data-terminal]")).toHaveCount(4);
+  for (const color of ["red", "green"] as const) {
+    await expect(pin(page, "constant1", "out", color)).toHaveCount(1);
+    await expect(pin(page, "lamp1", "in", color)).toHaveCount(1);
+    await expect(pin(page, "selector1", "in", color)).toHaveCount(1);
+    await expect(pin(page, "selector1", "out", color)).toHaveCount(1);
+  }
+  await expect(pin(page, "selector1", "in", "red").locator("title")).toHaveText("Red input");
+  await expect(pin(page, "selector1", "out", "green").locator("title")).toHaveText("Green output");
+  // Red sits above green, and the two dots do not touch.
+  const redBox = (await pin(page, "selector1", "out", "red").locator(".pin-dot").boundingBox())!;
+  const greenBox = (await pin(page, "selector1", "out", "green").locator(".pin-dot").boundingBox())!;
+  expect(redBox.x).toBeCloseTo(greenBox.x, 1);
+  expect(greenBox.y).toBeGreaterThan(redBox.y + redBox.height);
   await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
   // Each placement is a declaration appended to the source; what was there is untouched.
   const source = await sourceText(page);
@@ -74,9 +86,11 @@ test("drags an entity and commits the snapped position of the pointer release", 
   await expect(card(page, "source")).toHaveAttribute("data-x", "-20");
   expect(await entityPosition(page, "source")).toEqual({ x: -20, y: 180 });
   expect((await committedPositions(page)).source).toEqual({ x: -20, y: 180 });
-  // Wires follow: the wire from source.out starts at the moved terminal.
-  const path = await page.locator('g.wire[data-wire="red|e1.out|e2.in"] path.wire-core').getAttribute("d");
-  expect(path?.startsWith("M 164 255 ")).toBe(true);
+  // Wires follow: each wire from source.out starts in the moved pin of its color.
+  const redPath = await page.locator('g.wire[data-wire="red|e1.out|e2.in"] path.wire-core').getAttribute("d");
+  const greenPath = await page.locator('g.wire[data-wire="green|e1.out|e2.in"] path.wire-core').getAttribute("d");
+  expect(redPath?.startsWith("M 164 240 ")).toBe(true);
+  expect(greenPath?.startsWith("M 164 260 ")).toBe(true);
 
   // The move is a patch of the two numbers in the source.
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("constant source at (40, 80)", "constant source at (-20, 180)"));
@@ -101,7 +115,11 @@ test("a click without movement selects and does not move; shift-click extends th
   await page.mouse.click(light.x, light.y);
   await page.keyboard.up("Shift");
   await expect(page.locator("g.card.selected")).toHaveCount(2);
-  await expect(page.locator(".selection-toolbar")).toContainText("2 selected");
+  // The inspector is the place that names a multi-selection; nothing floats over the canvas.
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await expect(inspector.getByRole("heading", { name: "2 entities selected" })).toBeVisible();
+  await expect(inspector.locator(".inspector-multi .muted-note")).toHaveText("gate, light");
+  await expect(page.locator(".canvas").getByRole("button", { name: /Delete/ })).toHaveCount(0);
 
   // Dragging one member moves the whole selection by the same amount.
   const { zoom } = await canvasView(page);
@@ -126,27 +144,44 @@ test("wires input-first and output-first in both colors, including feedback", as
   // Red, input first: light.in then pick.out.
   await tool(page, "Red wire").click();
   await expect(tool(page, "Red wire")).toHaveAttribute("aria-pressed", "true");
-  await clickCenter(page, terminal(page, "light", "in"));
-  await expect(terminal(page, "light", "in")).toHaveClass(/pending/);
-  await expect(page.locator(".canvas-hint")).toContainText("second terminal");
-  await clickCenter(page, terminal(page, "pick", "out"));
+  await expect(page.locator(".canvas-hint")).toContainText("Click a red pin");
+  await clickCenter(page, pin(page, "light", "in", "red"));
+  await expect(pin(page, "light", "in", "red")).toHaveClass(/pending/);
+  await expect(page.locator(".pin.pending")).toHaveCount(1);
+  await expect(page.locator(".canvas-hint")).toContainText("second red pin");
+  await clickCenter(page, pin(page, "pick", "out", "red"));
   await expect(page.locator('g.wire[data-wire="red|e4.out|e5.in"]')).toHaveAttribute("data-color", "red");
 
   // Green, output first, between the same pair: a second, separate route.
   await tool(page, "Green wire").click();
-  await clickCenter(page, terminal(page, "pick", "out"));
-  await clickCenter(page, terminal(page, "light", "in"));
+  await clickCenter(page, pin(page, "pick", "out", "green"));
+  await clickCenter(page, pin(page, "light", "in", "green"));
   await expect(page.locator('g.wire[data-wire="green|e4.out|e5.in"]')).toHaveAttribute("data-color", "green");
   const redPath = await page.locator('g.wire[data-wire="red|e4.out|e5.in"] path.wire-core').getAttribute("d");
   const greenPath = await page.locator('g.wire[data-wire="green|e4.out|e5.in"] path.wire-core').getAttribute("d");
   expect(redPath).not.toBe(greenPath);
+  // Each wire starts and ends in the center of the pins of its color (window coordinates, within half a pixel).
+  for (const color of ["red", "green"] as const) {
+    const ends = await page.locator(`g.wire[data-wire="${color}|e4.out|e5.in"] path.wire-core`).evaluate((path: SVGPathElement) => {
+      const onScreen = (length: number) => path.getPointAtLength(length).matrixTransform(path.getScreenCTM()!);
+      const [start, end] = [onScreen(0), onScreen(path.getTotalLength())];
+      return { start: { x: start.x, y: start.y }, end: { x: end.x, y: end.y } };
+    });
+    const center = async (name: string, side: "in" | "out") => {
+      const box = (await pin(page, name, side, color).locator(".pin-dot").boundingBox())!;
+      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    };
+    const [out, input] = [await center("pick", "out"), await center("light", "in")];
+    expect(Math.hypot(ends.start.x - out.x, ends.start.y - out.y)).toBeLessThan(0.5);
+    expect(Math.hypot(ends.end.x - input.x, ends.end.y - input.y)).toBeLessThan(0.5);
+  }
 
   // Feedback on one entity: green output first, then red input first.
-  await clickCenter(page, terminal(page, "twice", "out"));
-  await clickCenter(page, terminal(page, "twice", "in"));
+  await clickCenter(page, pin(page, "twice", "out", "green"));
+  await clickCenter(page, pin(page, "twice", "in", "green"));
   await tool(page, "Red wire").click();
-  await clickCenter(page, terminal(page, "twice", "in"));
-  await clickCenter(page, terminal(page, "twice", "out"));
+  await clickCenter(page, pin(page, "twice", "in", "red"));
+  await clickCenter(page, pin(page, "twice", "out", "red"));
   await expect(page.locator('g.wire[data-wire="green|e3.in|e3.out"]')).toHaveCount(1);
   await expect(page.locator('g.wire[data-wire="red|e3.in|e3.out"]')).toHaveCount(1);
 
@@ -173,8 +208,8 @@ test("wires input-first and output-first in both colors, including feedback", as
   const sourceWithFour = await sourceText(page);
   expect(sourceWithFour).toContain("wire red light.in <-> pick.out");
   expect(sourceWithFour).toContain("wire green twice.out <-> twice.in");
-  await clickCenter(page, terminal(page, "pick", "out"));
-  await clickCenter(page, terminal(page, "light", "in"));
+  await clickCenter(page, pin(page, "pick", "out", "red"));
+  await clickCenter(page, pin(page, "light", "in", "red"));
   await expect(wires(page)).toHaveCount(10);
   expect(await sourceText(page)).not.toContain("wire red light.in <-> pick.out");
   await page.getByRole("button", { name: "Undo" }).click();
@@ -182,11 +217,11 @@ test("wires input-first and output-first in both colors, including feedback", as
   expect(await sourceText(page)).toBe(sourceWithFour);
 
   // Escape cancels a pending wire; a second Escape returns to the select tool.
-  await clickCenter(page, terminal(page, "pick", "in"));
-  await expect(terminal(page, "pick", "in")).toHaveClass(/pending/);
+  await clickCenter(page, pin(page, "pick", "in", "red"));
+  await expect(pin(page, "pick", "in", "red")).toHaveClass(/pending/);
   await page.keyboard.press("Escape");
-  await expect(page.locator(".terminal.pending")).toHaveCount(0);
-  await clickCenter(page, terminal(page, "gate", "out"));
+  await expect(page.locator(".pin.pending")).toHaveCount(0);
+  await clickCenter(page, pin(page, "gate", "out", "red"));
   await page.keyboard.press("Escape");
   expect(await wireKeys(page)).toEqual(afterFour);
   await expect(tool(page, "Red wire")).toHaveAttribute("aria-pressed", "true");
@@ -200,6 +235,56 @@ test("wires input-first and output-first in both colors, including feedback", as
   await page.getByRole("button", { name: "Remove green wire from in to pick.out" }).click();
   await expect(page.locator('g.wire[data-wire="green|e4.out|e5.in"]')).toHaveCount(0);
   await expect(page.locator(".connection")).toHaveCount(2);
+});
+
+test("a wire tool only works on the pins of its color", async ({ page }) => {
+  const before = await wireKeys(page);
+  const canvasElement = page.locator(".canvas");
+  const dimmed = (name: string, side: "in" | "out", color: "red" | "green") => pin(page, name, side, color).evaluate((element) => Number(getComputedStyle(element).opacity) < 0.5);
+
+  // Select tool: no pin is dimmed.
+  expect(await dimmed("pick", "out", "red")).toBe(false);
+  expect(await dimmed("pick", "out", "green")).toBe(false);
+
+  // Red tool: green pins are dimmed and neither start nor finish a wire.
+  await tool(page, "Red wire").click();
+  await expect(canvasElement).toHaveClass(/wire-red/);
+  expect(await dimmed("pick", "out", "green")).toBe(true);
+  expect(await dimmed("pick", "out", "red")).toBe(false);
+  await clickCenter(page, pin(page, "pick", "out", "green"));
+  await expect(page.locator(".pin.pending")).toHaveCount(0);
+  await expect(page.locator(".wire-preview")).toHaveCount(0);
+  await expect(page.locator(".canvas-hint")).toContainText("to start a red wire");
+
+  await clickCenter(page, pin(page, "pick", "out", "red"));
+  await expect(pin(page, "pick", "out", "red")).toHaveClass(/pending/);
+  await expect(pin(page, "pick", "out", "green")).not.toHaveClass(/pending/);
+  await clickCenter(page, pin(page, "light", "in", "green"));
+  // The wire is still pending: the rubber band starts in the center of the red pin.
+  await expect(pin(page, "pick", "out", "red")).toHaveClass(/pending/);
+  expect(await wireKeys(page)).toEqual(before);
+  const pick = await entityPosition(page, "pick");
+  expect(await page.locator(".wire-preview.red").getAttribute("d")).toMatch(new RegExp(`^M ${pick.x + 184} ${pick.y + 60} L `));
+  await clickCenter(page, pin(page, "light", "in", "red"));
+  await expect(page.locator('g.wire[data-wire="red|e4.out|e5.in"]')).toHaveCount(1);
+  expect(await wireKeys(page)).toHaveLength(before.length + 1);
+
+  // Green tool: the same green pins now start and finish a green wire, and the red ones are out of reach.
+  await tool(page, "Green wire").click();
+  await expect(canvasElement).toHaveClass(/wire-green/);
+  expect(await dimmed("pick", "out", "red")).toBe(true);
+  expect(await dimmed("pick", "out", "green")).toBe(false);
+  await clickCenter(page, pin(page, "pick", "out", "red"));
+  await expect(page.locator(".pin.pending")).toHaveCount(0);
+  await clickCenter(page, pin(page, "pick", "out", "green"));
+  await expect(pin(page, "pick", "out", "green")).toHaveClass(/pending/);
+  const aside = await clientPointOf(page, { x: pick.x + 100, y: pick.y - 60 });
+  await page.mouse.move(aside.x, aside.y);
+  expect(await page.locator(".wire-preview.green").getAttribute("d")).toMatch(new RegExp(`^M ${pick.x + 184} ${pick.y + 80} L `));
+  await clickCenter(page, pin(page, "light", "in", "green"));
+  await expect(page.locator('g.wire[data-wire="green|e4.out|e5.in"]')).toHaveCount(1);
+  expect(await sourceText(page)).toContain("wire green pick.out <-> light.in");
+  expect(await sourceText(page)).toContain("wire red pick.out <-> light.in");
 });
 
 test("the wheel zooms around the pointer and cancels default scrolling", async ({ page }) => {
