@@ -1,18 +1,5 @@
-// Platform-dependent labels for keyboard shortcuts shown in the UI.
+// The platform, and where keyboard input belongs. The shortcuts themselves are in shortcuts/shortcuts.ts.
 export const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.platform);
-
-export const SHORTCUT = {
-  delete: IS_MAC ? "⌫" : "Del",
-  selectAll: IS_MAC ? "⌘A" : "Ctrl+A",
-  cut: IS_MAC ? "⌘X" : "Ctrl+X",
-  copy: IS_MAC ? "⌘C" : "Ctrl+C",
-  undo: IS_MAC ? "⌘Z" : "Ctrl+Z",
-  redo: IS_MAC ? "⇧⌘Z" : "Ctrl+Y",
-  save: IS_MAC ? "⌘S" : "Ctrl+S",
-  fit: IS_MAC ? "⌘0" : "Ctrl+0",
-  rotate: "R",
-  rotateBack: IS_MAC ? "⇧R" : "Shift+R",
-} as const;
 
 /** True for an input or text area that holds text the user types (not the source editor, which is no form control). */
 export function isTextField(target: EventTarget | null): boolean {
@@ -25,4 +12,12 @@ export function isTextEntryTarget(target: EventTarget | null): boolean {
   if (target.isContentEditable || target.closest(".cm-editor")) return true;
   if (target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement) return true;
   return target instanceof HTMLInputElement && !["checkbox", "radio", "button", "range", "color"].includes(target.type);
+}
+
+const ARROW_KEY_ROLES = '[role="radiogroup"], [role="listbox"], [role="tablist"], [role="menu"], [role="menubar"], [role="tree"], [role="grid"], [role="slider"], [role="spinbutton"], [role="combobox"]';
+
+/** True when the arrow keys mean something to the control with the focus: text, a select, a slider, a radio group, a list, a menu. */
+export function usesArrowKeys(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return isTextEntryTarget(target) || (target instanceof HTMLInputElement && ["radio", "range"].includes(target.type)) || target.closest(ARROW_KEY_ROLES) !== null;
 }

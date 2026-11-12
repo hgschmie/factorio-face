@@ -1,5 +1,6 @@
 // Native application menu. Items that belong to the document forward a command to the renderer instead of acting in main.
 import type { MenuItemConstructorOptions } from "electron";
+import { menuAccelerator } from "./accelerators.ts";
 import { APP_NAME, type MenuCommand, type RecentProject, type SimpleMenuCommandId } from "./ipc.ts";
 
 export interface MenuOptions {
@@ -13,7 +14,8 @@ export interface MenuOptions {
 export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOptions[] {
   const { platform, recentProjects, send } = options;
   const isMac = platform === "darwin";
-  const command = (label: string, id: SimpleMenuCommandId, accelerator?: string): MenuItemConstructorOptions => ({ label, accelerator, click: () => send({ id }) });
+  // The keys are in accelerators.ts, which the shortcut overview of the renderer reads as well.
+  const command = (label: string, id: SimpleMenuCommandId): MenuItemConstructorOptions => ({ label, accelerator: menuAccelerator(id, isMac), click: () => send({ id }) });
   const separator: MenuItemConstructorOptions = { type: "separator" };
 
   const recentItems: MenuItemConstructorOptions[] =
@@ -26,14 +28,14 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
     : [];
 
   const viewItems: MenuItemConstructorOptions[] = [
-    command("Circuit", "view.circuit", "CmdOrCtrl+1"),
-    command("Source", "view.source", "CmdOrCtrl+2"),
-    command("Split", "view.split", "CmdOrCtrl+3"),
+    command("Circuit", "view.circuit"),
+    command("Source", "view.source"),
+    command("Split", "view.split"),
     separator,
-    command("Zoom In", "view.zoomIn", "CmdOrCtrl+Plus"),
-    command("Zoom Out", "view.zoomOut", "CmdOrCtrl+-"),
+    command("Zoom In", "view.zoomIn"),
+    command("Zoom Out", "view.zoomOut"),
     command("Actual Size", "view.zoomReset"),
-    command("Fit to Content", "view.fit", "CmdOrCtrl+0"),
+    command("Fit to Content", "view.fit"),
   ];
   // macOS adds its own Enter Full Screen item, with the system shortcut, to a menu titled View. Electron's role item does not use
   // the standard action, so the system does not recognize it as that item and both would be shown.
@@ -45,12 +47,12 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
     {
       label: "File",
       submenu: [
-        command("New Project", "file.new", "CmdOrCtrl+N"),
-        command("Open Project...", "file.open", "CmdOrCtrl+O"),
+        command("New Project", "file.new"),
+        command("Open Project...", "file.open"),
         { label: "Open Recent", submenu: recentItems },
         separator,
-        command("Save", "file.save", "CmdOrCtrl+S"),
-        command("Save As...", "file.saveAs", "CmdOrCtrl+Shift+S"),
+        command("Save", "file.save"),
+        command("Save As...", "file.saveAs"),
         separator,
         isMac ? { role: "close" } : { role: "quit" },
       ],
@@ -59,22 +61,23 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
       label: "Edit",
       submenu: [
         // Undo, Redo, Delete and Select All act on the document or on a focused text field; the renderer decides which.
-        command("Undo", "edit.undo", "CmdOrCtrl+Z"),
-        command("Redo", "edit.redo", isMac ? "Shift+Cmd+Z" : "Ctrl+Y"),
+        command("Undo", "edit.undo"),
+        command("Redo", "edit.redo"),
         separator,
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
         // No accelerator: a registered Delete or Backspace key would be taken away from text fields.
         command("Delete", "edit.delete"),
-        command("Select All", "edit.selectAll", "CmdOrCtrl+A"),
+        command("Select All", "edit.selectAll"),
       ],
     },
     { label: "View", submenu: viewItems },
     {
       label: "Simulation",
-      submenu: [command("Run / Pause", "simulation.toggleRun", "CmdOrCtrl+R"), command("Step", "simulation.step", "CmdOrCtrl+T"), command("Reset", "simulation.reset", "CmdOrCtrl+Shift+R")],
+      submenu: [command("Run / Pause", "simulation.toggleRun"), command("Step", "simulation.step"), command("Reset", "simulation.reset")],
     },
     { role: "windowMenu" },
+    { label: "Help", role: "help", submenu: [command("Keyboard Shortcuts", "help.shortcuts")] },
   ];
 }

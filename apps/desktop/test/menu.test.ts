@@ -1,6 +1,7 @@
 import type { MenuItemConstructorOptions } from "electron";
 import { describe, expect, it } from "vitest";
-import { APP_NAME, type MenuCommand } from "../src/ipc.ts";
+import { menuAccelerator } from "../src/accelerators.ts";
+import { APP_NAME, type MenuCommand, type SimpleMenuCommandId } from "../src/ipc.ts";
 import { buildMenuTemplate, type MenuOptions } from "../src/menu.ts";
 
 function build(options: Partial<MenuOptions> = {}): { readonly template: MenuItemConstructorOptions[]; readonly sent: MenuCommand[]; readonly cleared: () => number } {
@@ -19,8 +20,8 @@ const click = (item: MenuItemConstructorOptions): void => (item.click as () => v
 
 describe("application menu", () => {
   it("has the application menu first on macOS only", () => {
-    expect(names(build({ platform: "darwin" }).template)).toEqual([APP_NAME, "File", "Edit", "View", "Simulation", "role:windowMenu"]);
-    for (const platform of ["linux", "win32"] as const) expect(names(build({ platform }).template)).toEqual(["File", "Edit", "View", "Simulation", "role:windowMenu"]);
+    expect(names(build({ platform: "darwin" }).template)).toEqual([APP_NAME, "File", "Edit", "View", "Simulation", "role:windowMenu", "Help"]);
+    for (const platform of ["linux", "win32"] as const) expect(names(build({ platform }).template)).toEqual(["File", "Edit", "View", "Simulation", "role:windowMenu", "Help"]);
   });
 
   it("has the required items in the File, Edit and Simulation menus", () => {
@@ -28,6 +29,9 @@ describe("application menu", () => {
     expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "-", "Save", "Save As...", "-", "role:close"]);
     expect(names(menu(template, "Edit"))).toEqual(["Undo", "Redo", "-", "role:cut", "role:copy", "role:paste", "Delete", "Select All"]);
     expect(names(menu(template, "Simulation"))).toEqual(["Run / Pause", "Step", "Reset"]);
+    // The system adds its search field to the menu with the help role.
+    expect(template.find((item) => item.label === "Help")?.role).toBe("help");
+    expect(menu(template, "Help").map((item) => [item.label, item.accelerator])).toEqual([["Keyboard Shortcuts", undefined]]);
     expect(names(menu(build({ platform: "linux" }).template, "File")).at(-1)).toBe("role:quit");
   });
 
@@ -72,7 +76,24 @@ describe("application menu", () => {
       "edit.undo", "edit.redo", "edit.delete", "edit.selectAll",
       "view.circuit", "view.source", "view.split", "view.zoomIn", "view.zoomOut", "view.zoomReset", "view.fit",
       "simulation.toggleRun", "simulation.step", "simulation.reset",
+      "help.shortcuts",
     ]);
+  });
+
+  it("takes the keys of its commands from the accelerator table", () => {
+    for (const platform of ["darwin", "linux", "win32"] as const) {
+      const { template, sent } = build({ platform });
+      const mac = platform === "darwin";
+      for (const item of flatten(template)) {
+        if (!item.click) continue;
+        click(item);
+        expect(item.accelerator, `${platform} ${item.label}`).toBe(menuAccelerator(sent.at(-1)!.id as SimpleMenuCommandId, mac));
+      }
+      expect(menu(template, "File").find((item) => item.label === "Save As...")?.accelerator).toBe("CmdOrCtrl+Shift+S");
+      expect(menu(template, "View").find((item) => item.label === "Actual Size")?.accelerator).toBeUndefined();
+    }
+    // No letter of a menu title is a mnemonic, so Alt with a letter (the wire tools) opens no menu on Windows and Linux.
+    for (const item of flatten(build({ platform: "win32" }).template)) expect(item.label ?? "").not.toContain("&");
   });
 
   it("leaves undo and redo to the renderer, which knows where the focus is", () => {

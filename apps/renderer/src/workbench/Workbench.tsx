@@ -10,10 +10,12 @@ import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspector/Inspector.tsx";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
-import { isTextEntryTarget, isTextField } from "../platform.ts";
+import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
+import { ShortcutOverview } from "../shortcuts/ShortcutOverview.tsx";
+import { nudgeDelta, shortcutFor } from "../shortcuts/shortcuts.ts";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
-import type { Diagnostic, WorkbenchController } from "./controller.ts";
+import { SELECT_TOOL, type Diagnostic, type WorkbenchController } from "./controller.ts";
 import { selectedItems, selectionStatus } from "./selectionText.ts";
 import { Palette, type WireIconResolver } from "./Palette.tsx";
 import { SourcePane } from "./SourcePane.tsx";
@@ -47,6 +49,11 @@ function focusIsOnText(): boolean {
   return isTextEntryTarget(focused) || focused?.closest('[role="dialog"]') != null;
 }
 
+/** True when a key pressed there is no shortcut of the circuit: it is text, or it belongs to a dialog or to an open menu. */
+function keyIsTaken(target: EventTarget | null): boolean {
+  return isTextEntryTarget(target) || (target instanceof Element && target.closest('[role="dialog"], [role="menu"]') !== null);
+}
+
 /** True when text of the page itself, such as a message, is selected. A selection left behind in the source editor does not count. */
 function pageTextIsSelected(): boolean {
   const selection = document.getSelection();
@@ -63,6 +70,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   const inspectorRef = useRef<InspectorHandle>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const revealDiagnostic = useCallback((diagnostic: Diagnostic) => editorRef.current?.reveal(diagnostic.from, diagnostic.to), []);
   // The canvas unmounts in Source mode; its view is kept here so that coming back does not reset it.
   const viewRef = useRef<CanvasView | undefined>(undefined);
@@ -140,15 +149,48 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
     };
   }, [commands]);
 
-  // R and Shift+R turn the selected entities, as in the game. They belong to the circuit wherever the focus is while the canvas
-  // is shown, except where a key is text or moves through a list: a text control, the source editor, a dialog, a menu.
+  // The keys of the shortcut table that do not need the focus in the canvas: tools, rotation as in the game (R, Shift+R), moving
+  // with the arrows, duplicating, the overview. They belong to the circuit wherever the focus is while the canvas is shown,
+  // except where a key is text or moves through a list: a text control, the source editor, a dialog, a menu. Only the arrows repeat.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key.toLowerCase() !== "r" || event.metaKey || event.ctrlKey || event.altKey || event.repeat || event.isComposing || event.defaultPrevented) return;
-      const { selection, editable, mode } = stateRef.current;
-      if (mode === "source" || !editable || selection.length === 0 || focusIsOnText() || document.activeElement?.closest('[role="menu"]')) return;
+      if (event.isComposing || event.defaultPrevented) return;
+      const shortcut = shortcutFor(event);
+      if (!shortcut || shortcut.scope === "canvas" || (event.repeat && !shortcut.repeats) || keyIsTaken(event.target)) return;
+      const { selection, editable, mode, tool } = stateRef.current;
+      if (shortcut.scope === "circuit" && mode === "source") return;
+      const editing = editable && selection.length > 0;
+      switch (shortcut.id) {
+        case "view.shortcuts":
+          setShortcutsOpen(true);
+          break;
+        case "tool.cancel":
+          // Inside the canvas the key is the canvas's own. From elsewhere it ends what is pending there: the wire, then the tool.
+          if (event.target instanceof Element && event.target.closest(".canvas") !== null) return;
+          if (canvasRef.current?.cancelPendingWire()) break;
+          if (tool.type === "select") return;
+          commands.setTool(SELECT_TOOL);
+          break;
+        case "edit.rotate":
+        case "edit.rotateBack":
+          if (!editing) return;
+          commands.rotateEntities(selection, shortcut.id === "edit.rotate" ? "clockwise" : "counterclockwise");
+          break;
+        case "edit.nudge":
+        case "edit.nudgeFar":
+          if (!editing || usesArrowKeys(event.target)) return;
+          commands.nudgeSelection(nudgeDelta(event.key, shortcut.id === "edit.nudgeFar"));
+          break;
+        case "edit.duplicate":
+          if (!editing) return;
+          commands.duplicateSelection();
+          break;
+        default:
+          // The tools. Those that change the circuit are off while it cannot be edited, like their buttons.
+          if (!shortcut.tool || (shortcut.tool.type !== "select" && !editable)) return;
+          commands.setTool(shortcut.tool);
+      }
       event.preventDefault();
-      commands.rotateEntities(selection, event.shiftKey ? "counterclockwise" : "clockwise");
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -210,6 +252,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           return commands.step();
         case "simulation.reset":
           return commands.resetSimulation();
+        case "help.shortcuts":
+          return setShortcutsOpen(true);
       }
     };
     return api.onMenuCommand(run);
@@ -325,6 +369,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         </span>
         <span>FActorio Circuit Editor</span>
       </footer>
+
+      {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
 
       {state.error && (
         <div className="toast" role="alert">

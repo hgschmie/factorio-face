@@ -136,6 +136,7 @@ export const SIMPLE_MENU_COMMANDS = [
   "simulation.toggleRun",
   "simulation.step",
   "simulation.reset",
+  "help.shortcuts",
 ] as const;
 export type SimpleMenuCommandId = (typeof SIMPLE_MENU_COMMANDS)[number];
 

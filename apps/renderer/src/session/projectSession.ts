@@ -377,6 +377,14 @@ export class ProjectSession {
       }),
       copyEntities: (ids) => clipboardText(this.analysis.circuit, ids),
       pasteEntities: changing((text, corner) => this.pasteEntities(text, corner)),
+      nudgeSelection: changing((delta) => {
+        const moves = this.selection.flatMap((id) => this.entity(id) ?? []).map(({ id, position }) => ({ id, position: { x: position.x + delta.x, y: position.y + delta.y } }));
+        if (moves.length > 0) this.perform({ type: "moveEntities", moves });
+      }),
+      duplicateSelection: changing(() => {
+        const text = clipboardText(this.analysis.circuit, this.selection);
+        if (text !== "") this.pasteEntities(text);
+      }),
       addWire: changing((wire) => void this.perform({ type: "addWire", color: wire.color, a: wire.a, b: wire.b })),
       removeWire: changing((wire) => {
         const key = wireKey(wire);

@@ -3,6 +3,7 @@ import { ENTITY_KINDS, type Entity, type EntityId, type WireColor } from "@face/
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
+import { shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
 import { sameTool, SELECT_TOOL, type Tool } from "./controller.ts";
 
 /** Returns the image URL of the game's icon for the wire tool of that color, or undefined to use the line pictogram. */
@@ -40,13 +41,13 @@ export function Palette({ tool, editable, entities, selection, resolveEntityIcon
 
       <div className="section-label">Tools</div>
       <div className="tool-row" role="group" aria-label="Canvas tools">
-        <button type="button" className="tool-button" aria-pressed={tool.type === "select"} aria-label="Select and move" title="Select and move" onClick={() => onToolChange(SELECT_TOOL)}>
+        <button type="button" className="tool-button" aria-pressed={tool.type === "select"} aria-label="Select and move" title={withShortcut("Select and move", "tool.select")} onClick={() => onToolChange(SELECT_TOOL)}>
           <Icon name="cursor" size={16} />
         </button>
-        <button type="button" className="tool-button wire-red" aria-pressed={sameTool(tool, RED_WIRE)} aria-label="Red wire" title="Red wire" disabled={!editable} onClick={() => toggle(RED_WIRE)}>
+        <button type="button" className="tool-button wire-red" aria-pressed={sameTool(tool, RED_WIRE)} aria-label="Red wire" title={withShortcut("Red wire", "tool.wireRed")} disabled={!editable} onClick={() => toggle(RED_WIRE)}>
           <WireIcon color="red" resolveIcon={resolveWireIcon} />
         </button>
-        <button type="button" className="tool-button wire-green" aria-pressed={sameTool(tool, GREEN_WIRE)} aria-label="Green wire" title="Green wire" disabled={!editable} onClick={() => toggle(GREEN_WIRE)}>
+        <button type="button" className="tool-button wire-green" aria-pressed={sameTool(tool, GREEN_WIRE)} aria-label="Green wire" title={withShortcut("Green wire", "tool.wireGreen")} disabled={!editable} onClick={() => toggle(GREEN_WIRE)}>
           <WireIcon color="green" resolveIcon={resolveWireIcon} />
         </button>
       </div>
@@ -56,10 +57,16 @@ export function Palette({ tool, editable, entities, selection, resolveEntityIcon
         {ENTITY_KINDS.map((kind) => {
           const place: Tool = { type: "place", kind };
           return (
-            <button key={kind} type="button" className="palette-item" data-kind={kind} aria-pressed={sameTool(tool, place)} disabled={!editable} onClick={() => toggle(place)}>
+            <button key={kind} type="button" className="palette-item" data-kind={kind} title={withShortcut(`Place: ${KIND_INFO[kind].label}`, `tool.place.${kind}`)} aria-pressed={sameTool(tool, place)} disabled={!editable} onClick={() => toggle(place)}>
               <EntityIcon kind={kind} size={34} resolveIcon={resolveEntityIcon} />
               <span className="palette-item-text">
-                <strong>{KIND_INFO[kind].label}</strong>
+                <span className="palette-item-title">
+                  <strong>{KIND_INFO[kind].label}</strong>
+                  {/* For the eye only: the tooltip already says the key, and a screen reader takes it from there. */}
+                  <kbd className="key-hint" aria-hidden="true">
+                    {shortcutLabel(`tool.place.${kind}`)}
+                  </kbd>
+                </span>
                 <small>{KIND_INFO[kind].description}</small>
               </span>
               <Icon name="plus" size={15} />

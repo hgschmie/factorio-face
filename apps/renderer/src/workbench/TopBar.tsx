@@ -1,6 +1,6 @@
 // Title bar (brand, mode switch) and project bar (project name, save state, document actions).
 import { Icon, type IconName } from "../icons/Icon.tsx";
-import { SHORTCUT } from "../platform.ts";
+import { withShortcut } from "../shortcuts/shortcuts.ts";
 import { WORKBENCH_MODES, type ProjectView, type WorkbenchMode } from "./controller.ts";
 
 export interface TopBarProps {
@@ -71,14 +71,14 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
           </div>
         </div>
         <div className="project-actions">
-          <button type="button" className="icon-button" title={`Undo (${SHORTCUT.undo})`} aria-label="Undo" disabled={!canUndo} onClick={onUndo}>
+          <button type="button" className="icon-button" title={withShortcut("Undo", "edit.undo")} aria-label="Undo" disabled={!canUndo} onClick={onUndo}>
             <Icon name="undo" />
           </button>
-          <button type="button" className="icon-button" title={`Redo (${SHORTCUT.redo})`} aria-label="Redo" disabled={!canRedo} onClick={onRedo}>
+          <button type="button" className="icon-button" title={withShortcut("Redo", "edit.redo")} aria-label="Redo" disabled={!canRedo} onClick={onRedo}>
             <Icon name="redo" />
           </button>
           <span className="action-divider" />
-          <button type="button" className="labelled-button" title={`Fit the circuit into view (${SHORTCUT.fit})`} disabled={!canFit} onClick={onFit}>
+          <button type="button" className="labelled-button" title={withShortcut("Fit the circuit into view", "view.fit")} disabled={!canFit} onClick={onFit}>
             <Icon name="fit" size={16} />
             Fit
           </button>
@@ -87,7 +87,7 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
             Settings
           </button>
           <span className="action-divider" />
-          <button type="button" className={`save-button${project.dirty ? " unsaved" : ""}`} title={`Save (${SHORTCUT.save})`} onClick={onSave}>
+          <button type="button" className={`save-button${project.dirty ? " unsaved" : ""}`} title={withShortcut("Save", "file.save")} onClick={onSave}>
             <Icon name="save" size={16} />
             Save
           </button>

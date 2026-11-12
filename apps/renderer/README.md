@@ -16,6 +16,7 @@ Two layers:
 src/
   App.tsx              composition root: session hook, catalog icons, signal picker and signal descriptions for the views
   main.tsx, index.html entry point; index.html carries the Content-Security-Policy
+  platform.ts          the platform, and where keyboard input belongs (text controls, controls that use the arrow keys)
   session/
     projectSession.ts  ProjectSession: implements WorkbenchController, wires the parts below, batches change notifications
     document.ts        SourceDocument: the CodeMirror EditorState (text, history, selection) with or without a mounted view
@@ -66,6 +67,9 @@ src/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
   settings/
     ProjectSettings.tsx  project name and the five standard modules as signal groups
+  shortcuts/
+    shortcuts.ts       the shortcut table: every key of the app, key matching, labels per platform, the arrow distance   (pure)
+    ShortcutOverview.tsx  the modal overview of all shortcuts
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
@@ -97,7 +101,8 @@ has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `too
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
 `WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
-`discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`),
+`discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
+`toggleWire`, `setSource`, `undo`, `redo`),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
 `loadProject`, `save`, `saveAs`).
@@ -159,6 +164,12 @@ simulation (`run`, `pause`,
   (40, 40) until none of its entities sits exactly on an existing one. A copy pasted into its own circuit so lands 40 units right
   of and below the original, the next one 80, and a group that was cut comes back in place. Cut is `copyEntities` plus
   `deleteEntities`, the deletion being the undo step.
+- **Moving and duplicating the selection.** `nudgeSelection(delta)` moves the selected entities by a distance in canvas units
+  (the language command `moveEntities`): one undo step per call, the selection stays, an entity that is off the grid stays off
+  it by the same amount. `duplicateSelection()` is `copyEntities` of the selection followed by `pasteEntities` without a corner,
+  inside the session: the same text, the same names (`gate2`), the same place (40 units right of and below the original, further
+  on while that is taken), one undo step, the copies are the selection and the select tool is active. No clipboard is involved.
+  With no entity selected, and while the source has errors, both do nothing and report nothing.
 - **Analysis.** Every document change bumps a version and runs `analyze(source, previous, { signals, version })` synchronously.
   `Analysis.accept` only takes the result of the latest request, so the same code path works when the analysis moves to a worker;
   `ProjectSession.acceptAnalysis` is the entry point for that. With errors, `editable` is false, the last valid circuit stays, and
@@ -284,10 +295,8 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color are targets (highlight, click, pending state,
   start of the rubber band), the others are dimmed and ignored, whatever edge they are on. The model is unchanged: a wire is a
   color plus two terminals, and the tool decides the color.
-- Rotating: `R` turns the selected entities a quarter turn clockwise, `Shift+R` counter-clockwise, as in the game. The keys are
-  handled by `Workbench` on the document, so they work wherever the focus is while the canvas is shown (canvas, palette,
-  inspector buttons, dock), except where a key is text or moves through a list: a text control, a select, the source editor, a
-  dialog, an open menu. A held key does not repeat. The context menu of a card has "Rotate clockwise" and "Rotate
+- Rotating: `R` turns the selected entities a quarter turn clockwise, `Shift+R` counter-clockwise, as in the game (see
+  "Keyboard shortcuts" for where the keys act). A held key does not repeat. The context menu of a card has "Rotate clockwise" and "Rotate
   counter-clockwise" with the keys, and the inspector of a single entity has the Facing control (`.facing-toggle`, a group named
   "Facing" with four buttons `data-direction`, `aria-pressed` on the current one). Every entity of a selection turns in place, each
   from its own direction; the selection is not turned as a group. One rotation of a selection is one undo step. While the source
@@ -371,6 +380,66 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   (`.status-selection`) names up to four entities or a single wire and counts anything else.
 - Rendering: the scene is memoized against a culling rectangle snapped to a 400 unit lattice, cards and wires are memoized individually,
   cards become outlines below 30 % zoom, and the drop shadow is skipped above 60 visible cards.
+
+## Keyboard shortcuts
+
+`shortcuts/shortcuts.ts` holds every shortcut of the app in one table (`SHORTCUTS`): id, group, description, who acts on the key
+(`scope`) and either the key the renderer matches (`chord`) or the accelerator of the native menu. The key handlers
+(`shortcutFor(event)`), the tooltips and context menu labels (`shortcutLabel(id)`, `withShortcut(text, id)`) and the overview
+(`shortcutKeys`) all read it. The accelerators of the native menu are data in `apps/desktop/src/accelerators.ts`
+(`MENU_ACCELERATORS`): `menu.ts` registers them and the table lists them, so this is the one module of the main process the
+renderer imports at runtime (it has no Node or Electron imports). `test/shortcuts.test.ts` fails when an accelerator has no row,
+when two rows share a key on a platform or when one key event matches two rows.
+
+| Action | macOS | Elsewhere | Scope |
+| --- | --- | --- | --- |
+| Select tool | `Q` | `Q` | circuit |
+| Red wire, green wire tool | `⌥R`, `⌥G` | `Alt+R`, `Alt+G` | circuit |
+| Building block to place: Constant, Arithmetic, Decider, Selector, Lamp | `1` ... `5` | `1` ... `5` | circuit |
+| Place the block in the middle of the view | `↩` | `Enter` | canvas (focus on the canvas itself) |
+| Cancel: the pending wire, then the tool, then (in the canvas) the selection | `Esc` | `Esc` | circuit, canvas |
+| Rotate clockwise, counter-clockwise | `R`, `⇧R` | `R`, `Shift+R` | circuit |
+| Move the selection one grid step, five grid steps | arrows, `⇧` arrows | arrows, `Shift` arrows | circuit |
+| Duplicate the selection | `⌘D` | `Ctrl+D` | circuit |
+| Delete the selection | `⌫` or Delete | `Del` or Backspace | canvas |
+| Cut, Copy, Paste | `⌘X`, `⌘C`, `⌘V` | `Ctrl+X`, `Ctrl+C`, `Ctrl+V` | clipboard events |
+| Keyboard shortcuts (the overview) | `?` | `?` | window |
+| Undo, Redo, Select All | `⌘Z`, `⇧⌘Z`, `⌘A` | `Ctrl+Z`, `Ctrl+Y`, `Ctrl+A` | menu |
+| Circuit, Source, Split | `⌘1`, `⌘2`, `⌘3` | `Ctrl+1`, `Ctrl+2`, `Ctrl+3` | menu |
+| Zoom In, Zoom Out, Fit to Content | `⌘+`, `⌘-`, `⌘0` | `Ctrl++`, `Ctrl+-`, `Ctrl+0` | menu |
+| Run / Pause, Step, Reset | `⌘R`, `⌘T`, `⇧⌘R` | `Ctrl+R`, `Ctrl+T`, `Ctrl+Shift+R` | menu |
+| New, Open, Save, Save As | `⌘N`, `⌘O`, `⌘S`, `⇧⌘S` | `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S` | menu |
+
+- **Scopes.** `circuit`: handled by `Workbench` with one `keydown` listener on the document, wherever the focus is while the
+  canvas is shown (canvas, palette, buttons of the inspector and the dock, nothing focused), but never where the key means
+  something else: a text control, a select, the source editor, a dialog, an open menu (`keyIsTaken`, judged by the target of the
+  event), and not in Source mode. `window`: the same in every view mode. `canvas`: handled by `Canvas` while the focus is
+  inside it, as before the table existed. Escape is both: inside the canvas it drops a pending wire, then returns to the
+  select tool, then clears the selection; from anywhere else it drops the pending wire (`CanvasHandle.cancelPendingWire`),
+  then returns to the select tool, and leaves the selection alone. `menu`: an accelerator; the command arrives over IPC.
+  `clipboard`: the browser's cut, copy and paste events.
+- **Matching.** A chord names every modifier it wants; any other modifier that is held makes it no match (`Cmd/Ctrl+R` is Run,
+  never a rotation; `AltGr`, which arrives as Ctrl+Alt on Windows, matches nothing). Letters, the arrows and the named keys are
+  compared with `event.key` without case, so they follow the keyboard layout. `Alt+R` and `Alt+G` are compared with
+  `event.code` (`KeyR`, `KeyG`), because Option changes the character on macOS; the digits with `Digit1` ... `Digit5`, because
+  some layouts (AZERTY) have the digits behind Shift. Both are therefore the physical keys of a US layout, and the numeric
+  keypad picks no building block. `?` is the character, whatever Shift it takes. A composing input method and an event that
+  something else has cancelled are left alone. A held key repeats only for the arrows.
+- **What the keys do.** The tool keys set the tool (pressed again they keep it; the buttons toggle). `1` to `5` follow the order
+  of the palette (`ENTITY_KINDS`). The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), unless the
+  focused control uses the arrows itself (`usesArrowKeys` in `platform.ts`: text, selects, sliders, radio groups, lists, tabs,
+  menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. While the source has errors the
+  keys that edit (rotation, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
+  buttons) do nothing; `Q`, Escape and `?` work.
+- **Discoverability.** The three tool buttons and the five building blocks name their key in the tooltip (`title`); the building
+  blocks also show it as a key cap next to their name (`kbd.key-hint`). The cap is `aria-hidden` and the buttons carry no
+  `aria-keyshortcuts`: the tooltip is the accessible description of the button, so a screen reader hears the key once, also
+  VoiceOver, which does not announce `aria-keyshortcuts`. Context menu items show their keys as before.
+- **Overview.** `ShortcutOverview` lists the table in its groups (Tools, Editing, View, Simulation, File) with the key names of
+  the platform, one key cap per key. It opens with `?` and with Help > Keyboard Shortcuts (menu command `help.shortcuts`). It is
+  a modal dialog (`role="dialog"`, `aria-modal`, labelled by its heading): the focus goes to its Close button, Tab stays inside,
+  a click on its text focuses the dialog itself, so no key reaches the circuit behind it. Escape, Close and a press beside the
+  dialog close it and give the focus back to where it was. Escape closes the dialog only; a tool picked before stays picked.
 
 ## Icons
 

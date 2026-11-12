@@ -269,6 +269,13 @@ export interface WorkbenchCommands {
    * and is reported.
    */
   pasteEntities(text: string, corner?: Point): void;
+  /** Moves the selected entities by `delta` (canvas units) as one step. The selection stays; selected wires follow their entities. */
+  nudgeSelection(delta: Point): void;
+  /**
+   * Copies the selected entities and the wires between them into the circuit and selects the copies: what `copyEntities` and
+   * `pasteEntities` without a corner do, as one step and without a clipboard. Nothing happens with no entity selected.
+   */
+  duplicateSelection(): void;
   /** Adding a wire that already exists (in either direction) is a no-op without an undo entry. */
   addWire(wire: Wire): void;
   removeWire(wire: Wire): void;

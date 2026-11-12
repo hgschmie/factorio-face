@@ -7,7 +7,8 @@ import { KIND_INFO } from "../entities/kindInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
-import { isTextEntryTarget, SHORTCUT } from "../platform.ts";
+import { isTextEntryTarget } from "../platform.ts";
+import { shortcutFor, shortcutLabel } from "../shortcuts/shortcuts.ts";
 import { SELECT_TOOL, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
 import { countLabel } from "../workbench/selectionText.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
@@ -24,6 +25,8 @@ export interface CanvasHandle {
   focus(): void;
   /** Where a paste puts the top-left corner of its group: the grid point under the pointer while that is over the canvas. */
   pasteCorner(): Point | undefined;
+  /** Drops a wire that was started and not finished. False when there was none. */
+  cancelPendingWire(): boolean;
 }
 
 export interface CanvasProps {
@@ -76,7 +79,6 @@ const OUTLINE_ZOOM = 0.3;
 const FIT_PADDING = 70;
 /** Room kept for the context menu, so that it opens inside the canvas. */
 const MENU_SIZE = { width: 250, height: 215 };
-const NUDGE_KEYS: Readonly<Record<string, Point>> = { ArrowLeft: { x: -GRID, y: 0 }, ArrowRight: { x: GRID, y: 0 }, ArrowUp: { x: 0, y: -GRID }, ArrowDown: { x: 0, y: GRID } };
 
 function clientPoint(event: { readonly clientX: number; readonly clientY: number }): Point {
   return { x: event.clientX, y: event.clientY };
@@ -166,8 +168,12 @@ export function Canvas(props: CanvasProps) {
       resetZoom: () => zoomBy(1 / cameraRef.current.zoom),
       focus: () => svgRef.current?.focus(),
       pasteCorner: () => (pointerRef.current && svgRef.current ? snapPoint(worldPoint(pointerRef.current)) : undefined),
+      cancelPendingWire: () => {
+        setPendingWire(null);
+        return pendingWire !== null;
+      },
     }),
-    [fit, zoomBy],
+    [fit, zoomBy, pendingWire],
   );
 
   // Measured before the first paint, so the scene is never drawn against a canvas of unknown size.
@@ -360,27 +366,25 @@ export function Canvas(props: CanvasProps) {
     svgRef.current?.focus();
   };
 
+  // The keys that need the focus inside the canvas. The others of the shortcut table are handled by the workbench.
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (isTextEntryTarget(event.target)) return;
-    const nudge = NUDGE_KEYS[event.key];
-    if (event.key === "Delete" || event.key === "Backspace") {
+    const shortcut = shortcutFor(event.nativeEvent)?.id;
+    if (shortcut === "edit.delete") {
       if (selectedCount === 0) return;
       event.preventDefault();
       deleteSelection();
-    } else if (event.key === "Escape") {
+    } else if (shortcut === "tool.cancel") {
       if (pendingWire) setPendingWire(null);
       else if (tool.type !== "select") onToolChange(SELECT_TOOL);
       else if (selectedCount > 0) onSelect([]);
-    } else if (event.key === "Enter" && tool.type === "place" && editable && event.target === svgRef.current) {
+    } else if (shortcut === "tool.placeAtCenter" && tool.type === "place" && editable && event.target === svgRef.current) {
       // Keyboard placement: the new card goes to the middle of the view.
       event.preventDefault();
       props.onPlaceEntity(tool.kind, placementPosition(screenToWorld(cameraRef.current, { x: size.width / 2, y: size.height / 2 })));
     } else if (event.key.toLowerCase() === "a" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       onSelect(circuit.entities.map((entity) => entity.id));
-    } else if (nudge && editable && selectedEntities.length > 0) {
-      event.preventDefault();
-      props.onMoveEntities(selectedEntities.map(({ id, position }) => ({ id, position: { x: position.x + nudge.x, y: position.y + nudge.y } })));
     }
   };
 
@@ -394,8 +398,8 @@ export function Canvas(props: CanvasProps) {
   // A right click on empty canvas clears the selection, so the actions on it are only offered on a card or a wire. Cut, copy
   // and the rotations take the selected entities; a selection of wires alone has none of them.
   const clipboardItems: ContextMenuItem[] = [
-    { id: "cut", label: "Cut", icon: "cut", shortcut: SHORTCUT.cut, disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
-    { id: "copy", label: "Copy", icon: "copy", shortcut: SHORTCUT.copy, disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
+    { id: "cut", label: "Cut", icon: "cut", shortcut: shortcutLabel("edit.cut"), disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
+    { id: "copy", label: "Copy", icon: "copy", shortcut: shortcutLabel("edit.copy"), disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
   ];
   // Each selected entity turns in place. The focus goes back to the canvas, so that the keys work afterwards.
   const rotate = (turn: RotationTurn) => (): void => {
@@ -403,18 +407,18 @@ export function Canvas(props: CanvasProps) {
     props.onRotate?.(turn);
   };
   const rotateItems: ContextMenuItem[] = [
-    { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: SHORTCUT.rotate, disabled: !editable || !props.onRotate, separatorBefore: true, onSelect: rotate("clockwise") },
-    { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: SHORTCUT.rotateBack, disabled: !editable || !props.onRotate, onSelect: rotate("counterclockwise") },
+    { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: shortcutLabel("edit.rotate"), disabled: !editable || !props.onRotate, separatorBefore: true, onSelect: rotate("clockwise") },
+    { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: shortcutLabel("edit.rotateBack"), disabled: !editable || !props.onRotate, onSelect: rotate("counterclockwise") },
   ];
   const withEntities = selection.length > 0;
   const menuItems: ContextMenuItem[] = menu && menu.on !== "canvas"
     ? [
         ...(withEntities ? [...clipboardItems, ...rotateItems] : []),
-        { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, separatorBefore: withEntities, onSelect: deleteSelection },
+        { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: shortcutLabel("edit.delete"), danger: true, disabled: !editable, separatorBefore: withEntities, onSelect: deleteSelection },
       ]
     : [
-        { id: "select-all", label: "Select all", icon: "selectAll", shortcut: SHORTCUT.selectAll, disabled: circuit.entities.length === 0, onSelect: selectAll },
-        { id: "fit", label: "Fit to content", icon: "fit", shortcut: SHORTCUT.fit, onSelect: fit },
+        { id: "select-all", label: "Select all", icon: "selectAll", shortcut: shortcutLabel("edit.selectAll"), disabled: circuit.entities.length === 0, onSelect: selectAll },
+        { id: "fit", label: "Fit to content", icon: "fit", shortcut: shortcutLabel("view.fit"), onSelect: fit },
       ];
 
   const visibleRect = visibleWorldRect(camera, size);

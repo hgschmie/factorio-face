@@ -120,6 +120,27 @@
   color: var(--ink);
 }
 
+.palette-item-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.palette-item .key-hint {
+  font-size: var(--text-sm);
+}
+
+.palette-item[aria-pressed="true"] .key-hint {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: none;
+}
+
+.palette-item:disabled .key-hint {
+  opacity: 0.5;
+}
+
 .palette-item-text {
   flex: 1;
   min-width: 0;
