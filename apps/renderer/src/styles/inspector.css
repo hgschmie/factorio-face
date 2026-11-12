@@ -131,44 +131,6 @@
   grid-column: span 2;
 }
 
-/* Type selector, value, and (for signals) the network toggle. */
-.operand-field {
-  display: grid;
-  grid-template-columns: 116px minmax(0, 1fr) auto;
-  gap: 6px;
-  align-items: end;
-}
-
-.operand-field .field-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* A signal needs the full width to show `kind:name@quality` next to its icon and the picker button, so in the three
-   layouts below the signal field gets a row of its own and the smaller controls share another. */
-.operand-field > .field:has(.signal-input) {
-  grid-row: 2;
-  grid-column: 1 / -1;
-}
-
-.operand-field > .network-toggle {
-  grid-row: 1;
-  grid-column: 2 / -1;
-  justify-self: start;
-}
-
-.signal-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 6px;
-  justify-items: start;
-}
-
-.signal-row > .field {
-  justify-self: stretch;
-}
-
 .filter-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -178,18 +140,32 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+/* A signal needs the full width to show `kind:name@quality`, so it gets a row of its own above the count. */
 .filter-row > .field:has(.signal-input) {
   grid-column: 1 / -1;
 }
 
+/* One row per signal: icon, name, picker button and, where the signal has one, its network selection. The row is tight so that
+   a name like `virtual:signal-A` stays readable in a list item at the default window size. */
 .signal-input {
   display: flex;
   align-items: stretch;
-  gap: 4px;
+  gap: 3px;
 }
 
 .signal-input input {
   min-width: 0;
+  padding-inline: 6px;
+  text-overflow: ellipsis;
+}
+
+.signal-input .network-toggle {
+  gap: 2px;
+}
+
+.signal-input .network-toggle button {
+  width: 20px;
+  height: auto;
 }
 
 .signal-icon {
@@ -201,11 +177,6 @@
   font-size: var(--text-sm);
   line-height: 1.4;
   color: var(--status-warning);
-}
-
-/* The selector index has no network selection in the language. */
-.operand-field.no-networks {
-  grid-template-columns: 116px minmax(0, 1fr);
 }
 
 /* An inspector edit that the source cannot hold yet. */
@@ -239,7 +210,7 @@
 
 .signal-picker-button {
   flex-shrink: 0;
-  width: 28px;
+  width: 24px;
   border-color: var(--border-input);
   background: var(--surface-inset);
 }
@@ -262,6 +233,7 @@
 
 .network-toggle {
   display: inline-flex;
+  flex-shrink: 0;
   gap: 3px;
 }
 

@@ -43,11 +43,13 @@ export interface SignalFieldProps {
   /** Wildcards (`each`, `anything`, `everything`) this slot accepts; none by default. */
   readonly wildcards?: readonly Wildcard[];
   readonly wide?: boolean;
+  /** Controls that belong to the signal, such as its network selection; placed at the end of the signal's row. */
+  readonly trailing?: ReactNode;
   readonly renderPicker?: SignalPickerRenderer;
   onChange(value: SignalId | undefined): void;
 }
 
-export function SignalField({ label, ariaLabel = label, value, required = false, wildcards = NO_WILDCARDS, wide, renderPicker, onChange }: SignalFieldProps) {
+export function SignalField({ label, ariaLabel = label, value, required = false, wildcards = NO_WILDCARDS, wide, trailing, renderPicker, onChange }: SignalFieldProps) {
   const id = useId();
   const contextPicker = useContext(SignalPickerContext);
   const describe = useContext(SignalInfoContext);
@@ -85,6 +87,7 @@ export function SignalField({ label, ariaLabel = label, value, required = false,
             ...
           </button>
         )}
+        {trailing}
       </span>
       {!draft.error && info?.warning && (
         <small className="field-warning" role="note">

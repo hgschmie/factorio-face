@@ -50,8 +50,9 @@ const OPERAND_TYPES: readonly SelectOption<Operand["type"]>[] = [
 ];
 
 /**
- * A signal (with input network selection) or a constant. `label` heads the type selector and names the value control.
- * `wildcards` are the wildcards the slot accepts; `networks` is false where the language has no network selection.
+ * A signal or a constant, for a two-column field grid: the type selector on one row, the value on the next. `label` heads the type
+ * selector and names the value control. `wildcards` are the wildcards the slot accepts; a signal carries its input network selection
+ * at the end of its row unless `networks` is false (where the language has none).
  */
 export function OperandField({ label, value, wildcards, networks = true, onChange }: { readonly label: string; readonly value: Operand; readonly wildcards: readonly Wildcard[]; readonly networks?: boolean; onChange(value: Operand): void }) {
   const setType = (type: Operand["type"]): void => {
@@ -59,16 +60,22 @@ export function OperandField({ label, value, wildcards, networks = true, onChang
     onChange(type === "constant" ? { type: "constant", value: 0 } : { type: "signal", signal: DEFAULT_SIGNAL, networks: BOTH_NETWORKS });
   };
   return (
-    <div className={`operand-field wide${networks ? "" : " no-networks"}`}>
-      <SelectField label={label} ariaLabel={`${label} type`} value={value.type} options={OPERAND_TYPES} onChange={setType} />
+    <>
+      <SelectField label={label} ariaLabel={`${label} type`} wide value={value.type} options={OPERAND_TYPES} onChange={setType} />
       {value.type === "constant" ? (
-        <IntField label="Number" ariaLabel={label} value={value.value} onChange={(next) => onChange({ type: "constant", value: next })} />
+        <IntField label="Number" ariaLabel={label} wide value={value.value} onChange={(next) => onChange({ type: "constant", value: next })} />
       ) : (
-        <>
-          <SignalField label="Signal" ariaLabel={label} value={value.signal} required wildcards={wildcards} onChange={(next) => next && onChange({ ...value, signal: next })} />
-          {networks && <NetworkToggle label={`${label} networks`} value={value.networks} onChange={(selection) => onChange({ ...value, networks: selection })} />}
-        </>
+        <SignalField
+          label="Signal"
+          ariaLabel={label}
+          wide
+          value={value.signal}
+          required
+          wildcards={wildcards}
+          trailing={networks && <NetworkToggle label={`${label} networks`} value={value.networks} onChange={(selection) => onChange({ ...value, networks: selection })} />}
+          onChange={(next) => next && onChange({ ...value, signal: next })}
+        />
       )}
-    </div>
+    </>
   );
 }

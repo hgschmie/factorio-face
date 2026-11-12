@@ -22,10 +22,15 @@ function ConditionEditor({ condition, index, onChange, onRemove }: { readonly co
   return (
     <ListItem title={title} removeLabel={`Remove ${title.toLowerCase()}`} onRemove={onRemove}>
       {index > 0 && <SelectField label="Combine with previous" wide value={condition.join} options={JOIN_OPTIONS} onChange={(join) => onChange({ ...condition, join })} />}
-      <div className="signal-row wide">
-        <SignalField label="Signal" ariaLabel={`${title} signal`} wildcards={SIGNAL_SLOTS["decider.condition"]} value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
-        <NetworkToggle label="Signal networks" value={condition.firstNetworks} onChange={(firstNetworks) => onChange({ ...condition, firstNetworks })} />
-      </div>
+      <SignalField
+        label="Signal"
+        ariaLabel={`${title} signal`}
+        wide
+        wildcards={SIGNAL_SLOTS["decider.condition"]}
+        value={condition.first}
+        trailing={<NetworkToggle label="Signal networks" value={condition.firstNetworks} onChange={(firstNetworks) => onChange({ ...condition, firstNetworks })} />}
+        onChange={(first) => onChange(setOptional(condition, "first", first))}
+      />
       <SelectField label="Comparator" wide value={condition.comparator} options={COMPARATOR_OPTIONS} onChange={(comparator) => onChange({ ...condition, comparator })} />
       <OperandField label="Compare to" wildcards={SIGNAL_SLOTS["decider.operand"]} value={condition.second} onChange={(second) => onChange({ ...condition, second })} />
     </ListItem>
