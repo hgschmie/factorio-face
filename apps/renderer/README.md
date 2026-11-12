@@ -176,11 +176,21 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   input". Pins are drawn in the wire color tokens. A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color
   are targets (highlight, click, pending state, start of the rubber band), the others are dimmed and ignored. The model is unchanged: a
   wire is a color plus two terminals, and the tool decides the color.
-- Routes (`wireRouting.ts`): output to an input on its right is a bezier whose control points are shifted so the two colors stay apart on
-  steep stretches; an input that is not to the right gets an orthogonal detour with exactly parallel colors, 10 and 30 units from the
-  card sides; a feedback wire loops over the top of its own card with 20 (red, inside) and 40 (green, outside) units of clearance;
-  between two inputs or two outputs the colors have to cross once, and the outer color reaches further so they cross at an angle.
-  Routes do not avoid other cards.
+- Routes (`wireRouting.ts`): every wire is a line of horizontal and vertical segments from pin to pin, drawn with rounded corners
+  (radius 14; a corner next to a shorter segment gets what fits: the whole first or last segment, half of one between two corners).
+  There are no curves. Red and green between the same two terminals run as parallels one pin spacing (20) apart and never touch,
+  except in a narrow gap and at the one crossing described below.
+  - Output to an input at least 16 units to its right: out, one vertical leg midway between the two cards, in; a straight line when
+    the pins are level. The color on the outside of the first bend takes the far leg. In a gap below 26 units (cards one grid step
+    apart leave 16) the two legs move together, down to 10 apart and 3 from the cards.
+  - Output to an input that is not to its right: a detour out to the right, across between the two cards (below both when they are
+    less than 40 apart vertically, then also around the lower one) and into the input from the left, 10 and 30 units from the cards.
+  - Output to input of one card: a loop over the top with 20 (red, inside) and 40 (green, outside) units of clearance.
+  - Two inputs or two outputs: out, a leg 10 (green) and 30 (red) units beyond the terminal further out, back in. The colors have to
+    cross once, at a right angle: here where red returns into the lower terminal. When the card of the outer terminal is in the way
+    of the other one (cards side by side), the wire first passes 10 and 30 units below that card, or above it when the other terminal
+    is higher (green is then outside); the crossing is at the far corner of that lane.
+  Routes do not avoid other cards, and wires of different connections may share a line.
 - A drop is computed from the press and release coordinates of the pointer, not from the rendered preview.
 - The wheel listener is registered non-passive on the canvas container and cancels scrolling.
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace

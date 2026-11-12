@@ -22,6 +22,11 @@ async function wireKeys(page: Page): Promise<string[]> {
   return wires(page).evaluateAll((elements) => elements.map((element) => element.getAttribute("data-wire") ?? ""));
 }
 
+/** Path data of every wire on the canvas. */
+async function wirePaths(page: Page): Promise<string[]> {
+  return page.locator("g.wire path.wire-core").evaluateAll((paths) => paths.map((path) => path.getAttribute("d") ?? ""));
+}
+
 test("places each of the five kinds from the palette", async ({ page }) => {
   await zoomOut(page, 2);
   for (const [index, kind] of KINDS.entries()) {
@@ -89,8 +94,9 @@ test("drags an entity and commits the snapped position of the pointer release", 
   // Wires follow: each wire from source.out starts in the moved pin of its color.
   const redPath = await page.locator('g.wire[data-wire="red|e1.out|e2.in"] path.wire-core').getAttribute("d");
   const greenPath = await page.locator('g.wire[data-wire="green|e1.out|e2.in"] path.wire-core').getAttribute("d");
-  expect(redPath?.startsWith("M 164 240 ")).toBe(true);
-  expect(greenPath?.startsWith("M 164 260 ")).toBe(true);
+  // Out of the pin, one vertical leg midway to the gate (red inside the bend, green a pin spacing outside), into the pin of the same color.
+  expect(redPath).toBe("M 164 240 L 208 240 Q 222 240 222 226 L 222 154 Q 222 140 236 140 L 300 140");
+  expect(greenPath).toBe("M 164 260 L 228 260 Q 242 260 242 246 L 242 174 Q 242 160 256 160 L 300 160");
 
   // The move is a patch of the two numbers in the source.
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("constant source at (40, 80)", "constant source at (-20, 180)"));
@@ -201,6 +207,16 @@ test("wires input-first and output-first in both colors, including feedback", as
   }
   expect(loops.red.top - loops.green.top).toBeGreaterThanOrEqual(10);
   expect(loops.red.left - loops.green.left).toBeGreaterThanOrEqual(10);
+
+  // Every wire, whatever its shape, is drawn with horizontal and vertical segments and rounded corners.
+  const paths = await wirePaths(page);
+  expect(paths).toHaveLength(11);
+  for (const path of paths) {
+    expect(path).toMatch(/^M [-\d.]+ [-\d.]+( L [-\d.]+ [-\d.]+ Q [-\d.]+ [-\d.]+ [-\d.]+ [-\d.]+)* L [-\d.]+ [-\d.]+$/);
+    // The start, the control point of every corner and the end.
+    const corners = [...path.matchAll(/(?:^M|Q|L(?=[^LQ]*$)) (-?[\d.]+) (-?[\d.]+)/g)].map(([, x, y]) => ({ x: Number(x), y: Number(y) }));
+    corners.slice(1).forEach((corner, index) => expect(corner.x === corners[index]!.x).not.toBe(corner.y === corners[index]!.y));
+  }
 
   // As in the game, repeating an existing connection (here in the other direction) removes it; one undo brings it back.
   const afterFour = await wireKeys(page);
