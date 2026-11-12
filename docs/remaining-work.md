@@ -15,7 +15,7 @@ Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude
 
 ## Milestone 2 (usability)
 
-Requested by the user on 2026-11-11 as brainstorming; recorded, not started. Scope and order are still to be agreed.
+Requested by the user on 2026-11-11. In progress since the same day; the user asked for the whole list to be built while away, so open points are decided by the coordinator and reported.
 
 - Copy and paste for entities on the canvas: select, copy, paste gives a copy. The Edit menu has Cut, Copy and Paste, but they do nothing in the graphical editor. Open: what happens to wires between copied entities, naming of the copies, paste position, paste across projects.
 - Rotation of entities: the card text stays as it is, the connection pins move around the card. A step towards real graphical placement. The model already has `placement.direction`; the canvas has one function for pin positions (`pinPoint` in `apps/renderer/src/canvas/geometry.ts`) as the place to start. With the entity facing right, red is above green.
@@ -27,6 +27,7 @@ Requested by the user on 2026-11-11 as brainstorming; recorded, not started. Sco
 
 - Wire selection on the canvas, to build: a click on a wire selects it, and it can then be deleted like an entity (added by the user on 2026-11-11). Details under the workbench follow-ups. Open: what the inspector shows for a selected wire, and whether a marquee selects wires.
 - Undo in inspector fields, to fix: Cmd+Z while a field has focus must undo through the shared history instead of the field's own undo (added by the user on 2026-11-11). Details under the workbench follow-ups.
+- Keyboard shortcuts for the most common canvas operations: select tool, wire tools, rotate, delete and the like (added by the user on 2026-11-11 while the milestone was being built). Built as its own step after rotation, so the keys can be chosen together.
 
 Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wires, and Home and End moving the caret in inspector fields. Both stay in the workbench follow-ups.
 
