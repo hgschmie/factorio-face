@@ -115,15 +115,19 @@ Progress:
 - Done (package C): editing on the board. Drag one entity or a selection with tile snapping (one undo step, an entity without a tile gets one by being dragged), arrow keys one tile and Shift five; R, Shift+R, the context menu and the Facing control turn entities; a "Snap all N" button in the header and the context menu items "Snap to tile grid" and "Release from tile grid"; the palette places new entities on the tile under the pointer (Enter: the free tile nearest the middle of the view); the wire tools work as on the edit canvas with a straight pending wire. The inspector footer shows the tile. Rules, all pure functions in `canvas/board.ts`: only an entity with a `tile` takes tiles, one without gives way; a move onto tiles of a placed entity that is not moved is blocked as a whole and changes nothing; a turn keeps the top-left tile and is refused for the whole selection, with a message, when it would newly cover a tile of another placed entity; `at` is never touched except for a new entity. Session commands `setTiles`, `nudgeTiles`, `snapToTiles`, `clearTiles`, `placeEntityOnTile`. The context menu now measures itself to stay inside the canvas, in both modes.
 - Follow-ups from package C: paste and duplicate are off on the board; a blocked arrow-key move gives no feedback; a new entity always faces east and R while a place tool is active turns the selection, not the footprint; the context menu can cover the hint line near the bottom; `Canvas.tsx` is large and a hook for board editing would help; on the edit canvas a turn that makes two tiles overlap is not refused (the `tile-overlap` warning appears instead).
 - Native check of the board, done on 2026-11-12 with the user's go-ahead (computer use, real pointer, synthesized keys, separate instance). Passed: B switches the mode and back; a drag places an entity on whole tiles; a drag onto a placed entity shows red and the drop changes nothing; arrow and Shift+arrow keys; R on a 2x1 entity through east, south and west with the top-left tile kept; a refused turn with its message; "Snap all"; "Release from tile grid" from the context menu and its undo; placing a decider from the palette with the footprint outline under the pointer; a red wire drawn between two entities with the wire tool; the source shows the written `tile` clauses and the edit positions are unchanged. Not run: group drag, Enter placement, the "Snap to tile grid" menu item, taking the board to its zoom limits.
-- Found in the native check: a click or right click on an entity lands on a wire wherever one crosses it, which is often on the board (being fixed: the entity wins inside its footprint). The refusal message stays on screen after later successful actions until it is dismissed. Wires drawn over entities cover icons and names when several cross. The bubble covers neighbors on its side. An unplaced entity jumps to another place when a placed one is dragged onto it (by the rule that it gives way).
+- Found in the native check: a click or right click on an entity lands on a wire wherever one crosses it, which is often on the board. The user decided that this stays: the wire is on top and takes the click. The refusal message stays on screen after later successful actions until it is dismissed. Wires drawn over entities cover icons and names when several cross. The bubble covers neighbors on its side. An unplaced entity jumps to another place when a placed one is dragged onto it (by the rule that it gives way).
+
+Decided by the user on 2026-11-12:
+- Paste and duplicate on the board leave the copies unplaced ("leave them unplaced").
+- A new entity can be rotated before it is placed, as in the game ("yes").
+- A click where a wire crosses an entity selects the wire ("it's on top"); the entity does not win inside its footprint.
+- The board keeps rectangles with the item icons; no entity sprites.
 
 Open for the user:
-- What paste and duplicate should do on the board: copies on the nearest free tiles, or copies without a tile.
 - Whether the labels "Snap all", "Snap to tile grid" and "Release from tile grid" are right, and whether any gets a shortcut.
-- Whether a new entity should be rotatable before it is placed, as in the game.
-- Whether blueprint mode should draw the game's entity sprites instead of the item icons. Icons from the local installation are approved; sprites are the same kind of asset but were not asked about.
 - Wiring and placing new entities work in blueprint mode; say if that mode should only arrange.
 - A warning for wires longer than the game's reach (9 tiles) is not built yet.
+- Whether the derived layout of unplaced entities (92 edit units per tile) and the bubble size (a card at 100 %) are right.
 
 ## Conformance (Milestone 4)
 
