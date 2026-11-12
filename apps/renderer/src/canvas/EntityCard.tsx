@@ -1,8 +1,7 @@
 // One entity drawn as a card. Purely presentational and memoized: pointer handling is delegated to the canvas through
 // the data-entity-id / data-terminal / data-wire-color attributes, so a card only re-renders when its own props change.
-import { TERMINALS, WIRE_COLORS, type Direction, type Entity, type TerminalSide, type WireColor } from "@face/model";
+import { facingOf, TERMINALS, WIRE_COLORS, type Direction, type Entity, type TerminalSide, type WireColor } from "@face/model";
 import { Fragment, memo } from "react";
-import { facingOf } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { entitySummary, truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -10,7 +9,7 @@ import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus, StatusSignal } from "../workbench/controller.ts";
 import { CARD, PIN_RADIUS, PIN_SPACING, pinEdge, pinPoint } from "./geometry.ts";
-import { inputText, layoutRow, rowPlacement, STATUS_ROWS, statusLines } from "./statusRows.ts";
+import { inputText, layoutRow, rowPlacement, STATUS_ROWS } from "./statusRows.ts";
 
 export interface EntityCardProps {
   readonly entity: Entity;
@@ -174,7 +173,6 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
               {status.lamp && <LampRow y={rowY(2)} lit={status.lamp.lit} color={status.lamp.color} />}
             </>
           )}
-          <title>{[`${info.label} ${entity.name}: ${summary}`, ...(description ? [description] : []), ...(status ? statusLines(status) : [])].join("\n")}</title>
         </>
       )}
       {TERMINALS[entity.kind].flatMap((side) =>

@@ -1,8 +1,8 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import type { Circuit, EntityId, EntityKind, Point, TerminalRef, Wire, WireColor } from "@face/model";
+import { canRotate, facingOf, type Circuit, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
-import { facingOf, type RotationTurn } from "../entities/facing.ts";
+import type { RotationTurn } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
@@ -416,9 +416,12 @@ export function Canvas(props: CanvasProps) {
     svgRef.current?.focus();
     props.onRotate?.(turn);
   };
+  // A lamp does not rotate; with nothing else selected the two items are off. Only looked at while the menu is open.
+  const canTurn = menu !== null && circuit.entities.some((entity) => selectionSet.has(entity.id) && canRotate(entity.kind));
+  const noRotation = !editable || !props.onRotate || !canTurn;
   const rotateItems: ContextMenuItem[] = [
-    { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: shortcutLabel("edit.rotate"), disabled: !editable || !props.onRotate, separatorBefore: true, onSelect: rotate("clockwise") },
-    { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: shortcutLabel("edit.rotateBack"), disabled: !editable || !props.onRotate, onSelect: rotate("counterclockwise") },
+    { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: shortcutLabel("edit.rotate"), disabled: noRotation, separatorBefore: true, onSelect: rotate("clockwise") },
+    { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: shortcutLabel("edit.rotateBack"), disabled: noRotation, onSelect: rotate("counterclockwise") },
   ];
   const withEntities = selection.length > 0;
   const menuItems: ContextMenuItem[] = menu && menu.on !== "canvas"

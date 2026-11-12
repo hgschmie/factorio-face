@@ -1,7 +1,8 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, COMPARATORS, DEFAULT_ENTITY, hasTerminal, isInt32, normalizeWire, signalKey, wildcardOf, wildcardSignal, WILDCARDS, wireKey,
+  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, facingOf, findTileOverlaps, hasTerminal, isInt32, isTileCenter, normalizeWire, signalKey, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal,
+  WILDCARDS, wireKey,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
   type Entity, type EntityId, type EntityKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type RgbColor, type SelectorMode,
   type SelectorOperation, type SignalId, type TerminalSide, type Wildcard, type Wire, type WireColor,
@@ -794,6 +795,48 @@ function analyzeMembers(members: readonly CstMember[], analyzer: Analyzer, previ
   return { entityNodes, entities, wires: [...wires.values()].map((w) => w.wire), sources, match };
 }
 
+/** Entities named in one overlap warning; the rest is counted. */
+const MAX_OVERLAP_NAMES = 3;
+
+/**
+ * Warnings about the in-game placement, none of which touches the simulation: a `tile` that is not on the grid for the kind and
+ * direction of its entity, entities standing on the same tile, and `facing` on an entity that cannot rotate. For a circuit only:
+ * a fragment loses its tiles when it is pasted.
+ */
+function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[], analyzer: Analyzer): void {
+  const nodeOf = new Map(entities.map((entity, i) => [entity.id, nodes[i]!]));
+  for (const entity of entities) {
+    const node = nodeOf.get(entity.id)!;
+    if (node.facing?.direction && !canRotate(entity.kind)) analyzer.report(node.facing, "unused-facing", `A ${KIND_LABEL[entity.kind]} cannot be rotated; 'facing' is ignored`);
+    const tile = entity.placement?.tile;
+    const facing = facingOf(entity);
+    if (!node.tile || !tile || isTileCenter(entity.kind, facing, tile)) continue;
+    const { width, height } = tileSize(entity.kind, facing);
+    const nearest = tileCenter(entity.kind, facing, tileOrigin(entity.kind, facing, tile));
+    const rule = width > 1 ? "a whole x and a y ending in .5" : height > 1 ? "an x ending in .5 and a whole y" : "x and y ending in .5";
+    const turned = width + height > 2 ? `facing ${facing}, ` : "";
+    analyzer.report(node.tile, "tile-off-grid", `Not on the tile grid: ${turned}the center of this ${KIND_LABEL[entity.kind]} needs ${rule}; the nearest is (${nearest.x}, ${nearest.y})`);
+  }
+
+  const others = new Map<EntityId, Set<EntityId>>();
+  const crowded = new Set<EntityId>();
+  for (const { entities: sharing } of findTileOverlaps(entities)) {
+    // Only the first few of a tile are named, so that a pile of entities on one tile stays linear.
+    const named = sharing.slice(0, MAX_OVERLAP_NAMES + 1);
+    for (const id of sharing) {
+      const set = others.get(id) ?? new Set<EntityId>();
+      others.set(id, set);
+      for (const other of named) if (other !== id && set.size < MAX_OVERLAP_NAMES) set.add(other);
+      if (sharing.length > MAX_OVERLAP_NAMES + 1) crowded.add(id);
+    }
+  }
+  for (const [id, set] of others) {
+    const names = [...set].map((other) => `'${nodeOf.get(other)!.name?.text ?? ""}'`);
+    const list = crowded.has(id) ? `${names.join(", ")} and others` : names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : names[0];
+    analyzer.report(nodeOf.get(id)!.tile!, "tile-overlap", `Stands on a tile that ${list} ${names.length > 1 || crowded.has(id) ? "stand" : "stands"} on as well; in the game two entities cannot share a tile`);
+  }
+}
+
 function sortDiagnostics(...lists: readonly (readonly Diagnostic[])[]): Diagnostic[] {
   return lists.flat().sort((x, y) => x.from - y.from || x.to - y.to);
 }
@@ -806,6 +849,7 @@ export function analyze(source: string, previous?: ParseResult, options: Analyze
   const syntax = parse(source);
   const analyzer = new Analyzer(options.signals);
   const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], analyzer, previous?.identity);
+  checkPlacement(entityNodes, entities, analyzer);
 
   const diagnostics = sortDiagnostics(syntax.diagnostics, analyzer.diagnostics);
   const hasErrors = diagnostics.some((d) => d.severity === "error");

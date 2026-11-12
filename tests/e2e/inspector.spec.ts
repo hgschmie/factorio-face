@@ -530,8 +530,6 @@ test("text fields outside the inspector have no undo of their own and leave the 
 });
 
 const GATE_DESCRIPTION = 'counts up\nuntil "ten"\n\nthen again';
-/** The status lines of the tooltip of `gate` before the first step: the constant on both colors, nothing emitted yet. */
-const GATE_STATUS = "Red in: A 1\nGreen in: A 1\nOut: nothing";
 /** The five-kinds source with a description on `gate`, as the editor writes it: one line at the top of the body. */
 function describedSource(description: string): string {
   const literal = description.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n");
@@ -551,7 +549,6 @@ test("the description box takes several lines and writes them as one source line
   const undo = page.getByRole("button", { name: "Undo" });
   const redo = page.getByRole("button", { name: "Redo" });
   const note = (name: string) => card(page, name).locator(".card-note");
-  const tooltip = (name: string) => card(page, name).locator(":scope > title").evaluate((title) => title.textContent);
 
   // Every kind has the box, between the name and the settings, one line high while it is empty.
   for (const name of FIVE_KINDS) {
@@ -577,7 +574,7 @@ test("the description box takes several lines and writes them as one source line
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(undo).toBeDisabled();
 
-  // Cmd/Ctrl+Return writes it: one line in the source, a marker on the card, the text in the card's tooltip.
+  // Cmd/Ctrl+Return writes it: one line in the source and a marker on the card, which has no text popup.
   await page.keyboard.press("ControlOrMeta+Enter");
   await expect.poll(() => sourceText(page)).toBe(describedSource(GATE_DESCRIPTION));
   await expect(box).toHaveValue(GATE_DESCRIPTION);
@@ -585,7 +582,7 @@ test("the description box takes several lines and writes them as one source line
   await expect(box).toBeFocused();
   await expect(note("gate")).toHaveCount(1);
   await expect(note("twice")).toHaveCount(0);
-  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\n${GATE_DESCRIPTION}\n${GATE_STATUS}`);
+  await expect(card(page, "gate").locator(":scope > title")).toHaveCount(0);
 
   // The whole text is one step in the document history.
   await clickMenu(app, "Edit", "Undo");
@@ -631,7 +628,7 @@ test("the description box takes several lines and writes them as one source line
   await expect(inspector.getByLabel("Entity name")).toHaveValue("twice");
   await expect(box).toHaveValue("");
   await expect.poll(() => sourceText(page)).toBe(describedSource("counts"));
-  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\ncounts\n${GATE_STATUS}`);
+  await expect(note("gate")).toHaveCount(1);
 
   // Emptying the box removes the property and the marker; blanks alone are no description.
   await selectEntity(page, "gate");
@@ -644,7 +641,6 @@ test("the description box takes several lines and writes them as one source line
   await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(box).toHaveValue("");
   await expect(note("gate")).toHaveCount(0);
-  await expect.poll(() => tooltip("gate")).toBe(`Decider gate: A < 10 → A\n${GATE_STATUS}`);
 });
 
 test("a description edited in the source shows in the box, and the other way round", async ({ page }) => {

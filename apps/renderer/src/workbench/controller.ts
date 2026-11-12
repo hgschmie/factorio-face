@@ -241,9 +241,12 @@ export interface WorkbenchCommands {
   /** Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units). */
   placeEntity(kind: EntityKind, position: Point): void;
   moveEntities(moves: readonly EntityMove[]): void;
-  /** Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included. */
+  /**
+   * Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included.
+   * An entity that cannot rotate (a lamp) is left alone; the `tile` of one that has it follows the turn (`rotateTile`).
+   */
   rotateEntities(ids: readonly EntityId[], turn: RotationTurn): void;
-  /** Makes the entities face `direction`, as one step. An entity that faces it already is left alone. */
+  /** Makes the entities face `direction`, as one step, under the same rules. An entity that faces it already is left alone. */
   faceEntities(ids: readonly EntityId[], direction: Direction): void;
   /**
    * Replaces the configuration of the entity with `next.id`. Name and position changes go through their own commands.

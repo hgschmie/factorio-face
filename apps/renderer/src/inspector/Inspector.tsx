@@ -1,10 +1,9 @@
 // Right panel: identity and primary actions of the selection (rename, delete) at the top, then the description, the per-kind
 // settings form and the connections. A selected wire shows its color and its two ends; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
-import { DIRECTIONS, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
+import { canRotate, DIRECTIONS, facingOf, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
-import { facingOf } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon, type IconName } from "../icons/Icon.tsx";
@@ -44,7 +43,7 @@ export interface InspectorProps {
   readonly renderSettings?: (entity: Entity, onChange: (next: Entity) => void) => ReactNode;
   onRename(id: EntityId, name: string): void;
   onChange(next: Entity, options?: UpdateOptions): void;
-  /** Makes the entities face a direction; without it the inspector shows no Facing control. */
+  /** Makes the entities face a direction; without it, and for an entity that cannot rotate (a lamp), the inspector shows no Facing control. */
   onFace?(ids: readonly EntityId[], direction: Direction): void;
   onDiscardDraft?(): void;
   onDelete(ids: readonly EntityId[]): void;
@@ -292,7 +291,7 @@ function EntityInspector(props: EntityInspectorProps) {
             Delete
           </button>
         </div>
-        {props.onFace && <FacingField entity={entity} onFace={(direction) => props.onFace?.([entity.id], direction)} />}
+        {props.onFace && canRotate(entity.kind) && <FacingField entity={entity} onFace={(direction) => props.onFace?.([entity.id], direction)} />}
         {/* Not through `change`: the text is written once per stay, and that is a step of its own in the history. */}
         <DescriptionField entity={shown} onCommit={(description) => props.onChange({ ...shown, description })} />
         {draft && (

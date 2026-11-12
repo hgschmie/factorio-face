@@ -107,6 +107,10 @@ Design (coordinator):
 - Blueprint mode: moves snap to whole tiles, two entities cannot share a tile, rotation turns the footprint of a 2x1 entity, wires are straight lines between the connection points as in the game.
 - Lamps no longer rotate anywhere (the user deferred this to this milestone on 2026-11-12).
 
+Progress:
+- Done (package A): footprints and tile geometry in the model (`packages/model/src/footprint.ts`: sizes, rotatable, center and origin, occupied tiles, input and output half, overlaps); the language command `setTiles` (several entities, one undo step, refuses a center that is off the grid); rotation writes the corrected `tile` together with `facing`; warnings `tile-off-grid`, `tile-overlap` and `unused-facing` (a lamp's `facing`); lamps no longer rotate (command, inspector, context menu, drawing); the card's text popup is removed. The exact output values of a card are no longer in the DOM (`data-status` has the first two signals).
+- Follow-ups from package A: no quick fix for `tile-off-grid` and `unused-facing`; typing a different `facing` word by hand does not correct `tile` (the warning names the nearest fit); the overlap warning names at most three other entities.
+
 Open for the user:
 - Whether blueprint mode should draw the game's entity sprites instead of the item icons. Icons from the local installation are approved; sprites are the same kind of asset but were not asked about.
 - Whether wiring and placing new entities belong in blueprint mode too, or only arranging.

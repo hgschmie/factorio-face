@@ -156,7 +156,7 @@
   fill: var(--text-soft);
 }
 
-/* Marks a card whose entity has a description; the text itself is in the card's tooltip. */
+/* Marks a card whose entity has a description; the text itself is in the inspector. */
 .card-note {
   color: var(--text-muted);
 }

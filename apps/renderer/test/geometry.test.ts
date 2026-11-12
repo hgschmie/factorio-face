@@ -1,8 +1,7 @@
-import { DEFAULT_FACING } from "@face/language";
-import { DIRECTIONS, ENTITY_KINDS, TERMINAL_SIDES, TERMINALS, WIRE_COLORS, type Direction } from "@face/model";
+import { DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, TERMINAL_SIDES, TERMINALS, WIRE_COLORS, type Direction } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
-import { CLOCKWISE, facingOf, opposite, rotated } from "../src/entities/facing.ts";
+import { CLOCKWISE, opposite, rotated } from "../src/entities/facing.ts";
 
 describe("connection pins", () => {
   const position = { x: 40, y: 80 };
@@ -67,9 +66,11 @@ describe("connection pins of rotated entities", () => {
   it("faces east when no direction is given, exactly as before entities could be rotated", () => {
     expect(DEFAULT_FACING).toBe("east");
     for (const side of TERMINAL_SIDES) for (const color of WIRE_COLORS) expect(pinPoint(position, side, color)).toEqual(pinPoint(position, side, color, "east"));
-    expect(facingOf({})).toBe("east");
-    expect(facingOf({ placement: { tile: { x: 1, y: 2 } } })).toBe("east");
-    expect(facingOf({ placement: { direction: "north" } })).toBe("north");
+    expect(facingOf({ kind: "decider" })).toBe("east");
+    expect(facingOf({ kind: "decider", placement: { tile: { x: 1, y: 2.5 } } })).toBe("east");
+    expect(facingOf({ kind: "decider", placement: { direction: "north" } })).toBe("north");
+    // A lamp does not rotate: its pins stay where an east-facing card has them, whatever its declaration says.
+    expect(facingOf({ kind: "lamp", placement: { direction: "north" } })).toBe("east");
   });
 
   it("puts the output on the edge the entity faces and the input on the opposite edge, for the one terminal a constant or a lamp has as well", () => {

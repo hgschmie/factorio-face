@@ -1,7 +1,10 @@
 // Graphical edits as source patches: pure functions from (parse result, command) to minimal text changes.
 // Unrelated text, comments, spacing and declaration order are never touched.
 
-import { DEFAULT_ENTITY, DIRECTIONS, hasTerminal, isInt32, NORMAL_QUALITY, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type TerminalRef, type WireColor } from "@face/model";
+import {
+  canRotate, DEFAULT_ENTITY, DIRECTIONS, facingOf, hasTerminal, isInt32, isTileCenter, NORMAL_QUALITY, rotateTile, wireKey,
+  type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type TerminalRef, type WireColor,
+} from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
 import type { CstBlock, CstMember, CstSection, CstStatement } from "./cst.ts";
 import { uniqueNames, type Fragment } from "./fragment.ts";
@@ -42,12 +45,15 @@ export interface EntityMove {
   readonly position: Point;
 }
 
-/** The direction an entity without a `facing` clause faces. */
-export const DEFAULT_FACING: Direction = "east";
-
 export interface EntityFacing {
   readonly id: EntityId;
   readonly direction: Direction;
+}
+
+export interface EntityTile {
+  readonly id: EntityId;
+  /** The game's center position of the entity (`placement.tile`); `undefined` removes the clause. */
+  readonly tile: Point | undefined;
 }
 
 /** Applies sorted, non-overlapping changes. */
@@ -347,20 +353,55 @@ export function moveEntity(parse: ParseResult, id: EntityId, position: Point): T
   return moveEntities(parse, [{ id, position }]);
 }
 
+/** Patches the numbers inside `tile (...)`, inserts the clause behind `at` or the name, or removes it with the blanks before it. */
+function writeTile(edit: Edit, id: EntityId, tile: Point | undefined): void {
+  const { node, atInsert } = edit.entity(id);
+  const current = edit.model(id).placement?.tile;
+  const clause = node.tile;
+  if (!tile) {
+    if (clause) edit.change(edit.text.skipBack(clause.from), clause.to, "");
+  } else if (clause?.x && clause.y && current) {
+    if (tile.x !== current.x) edit.change(clause.x.from, clause.x.to, printNumber(tile.x));
+    if (tile.y !== current.y) edit.change(clause.y.from, clause.y.to, printNumber(tile.y));
+  } else {
+    const behind = node.at?.to ?? atInsert;
+    edit.change(behind, behind, ` tile (${printNumber(tile.x)}, ${printNumber(tile.y)})`);
+  }
+}
+
+/**
+ * Sets, moves or removes the `tile` clause of each entity, as one change set. A tile has to be on the game's grid for the kind and
+ * the direction of its entity (`isTileCenter`); whether two entities then share a tile is not checked here, the analysis warns.
+ */
+export function setTiles(parse: ParseResult, tiles: readonly EntityTile[]): TextChange[] {
+  const edit = new Edit(parse);
+  for (const [id, tile] of new Map(tiles.map((t) => [t.id, t.tile]))) {
+    const { name, kind } = edit.entity(id);
+    if (tile && !isTileCenter(kind, facingOf(edit.model(id)), tile)) throw new EditError("invalid-position", `tile (${tile.x}, ${tile.y}) is not on the tile grid for '${name}'`);
+    writeTile(edit, id, tile);
+  }
+  return edit.finish();
+}
+
 /**
  * Patches the direction word of the `facing` clause, or inserts the clause behind `tile`, `at` or the name when the entity has
- * none. An entity that faces the wanted direction already (east without a clause) is left alone; a clause is never removed.
+ * none. An entity that faces the wanted direction already (east without a clause) is left alone, and so is one that cannot
+ * rotate (a lamp); a clause is never removed. An entity with a `tile` gets the tile that `rotateTile` gives for the turn.
  */
 export function faceEntities(parse: ParseResult, facings: readonly EntityFacing[]): TextChange[] {
   const edit = new Edit(parse);
   for (const [id, direction] of new Map(facings.map((f) => [f.id, f.direction]))) {
     const { node, atInsert } = edit.entity(id);
     if (!DIRECTIONS.includes(direction)) throw new EditError("invalid-entity", `'${String(direction)}' is not a direction; use ${DIRECTIONS.join(", ")}`);
-    if ((edit.model(id).placement?.direction ?? DEFAULT_FACING) === direction) continue;
+    const entity = edit.model(id);
+    const facing = facingOf(entity);
+    if (!canRotate(entity.kind) || facing === direction) continue;
     const word = node.facing?.direction;
     const behind = Math.max(atInsert, node.at?.to ?? 0, node.tile?.to ?? 0);
     if (word) edit.change(word.from, word.to, direction);
     else edit.change(behind, behind, ` facing ${direction}`);
+    const tile = entity.placement?.tile;
+    if (tile) writeTile(edit, id, rotateTile(entity.kind, tile, facing, direction));
   }
   return edit.finish();
 }
@@ -658,10 +699,6 @@ function diffSection(edit: Edit, statement: CstSection, kind: EntityKind, curren
   diffBlock(edit, statement.body!, kind, current.section!.items, next.section!.items, ownerIndent);
 }
 
-function sameJson(a: unknown, b: unknown): boolean {
-  return JSON.stringify(canonical(a, false)) === JSON.stringify(canonical(b, false));
-}
-
 /**
  * Rewrites entity `id` so that it equals `next` (same kind): name, position, placement and configuration. Statements whose meaning
  * is unchanged keep their text and trivia byte for byte; changed ones are replaced by canonical text, new ones are inserted in
@@ -686,17 +723,14 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
       if (next.position.y !== current.position.y) edit.change(source.at.y.from, source.at.y.to, String(next.position.y));
     }
   }
-  const clause = (existing: Range | undefined, was: unknown, wanted: unknown, printed: string | undefined, insertAt: number) => {
-    if (sameJson(was, wanted)) return;
-    if (existing && printed) edit.change(existing.from, existing.to, printed);
-    else if (existing) edit.change(edit.text.skipBack(existing.from), existing.to, "");
-    else if (printed) edit.change(insertAt, insertAt, ` ${printed}`);
-  };
-  const tile = next.placement?.tile;
-  const afterAt = node.at?.to ?? source.atInsert;
-  clause(node.tile, current.placement?.tile, tile, tile && `tile (${printNumber(tile.x)}, ${printNumber(tile.y)})`, afterAt);
+  writeTile(edit, id, next.placement?.tile);
   const direction = next.placement?.direction;
-  clause(node.facing, current.placement?.direction, direction, direction && `facing ${direction}`, Math.max(afterAt, node.tile?.to ?? 0));
+  if (direction !== current.placement?.direction) {
+    const behind = Math.max(node.at?.to ?? source.atInsert, node.tile?.to ?? 0);
+    if (node.facing && direction) edit.change(node.facing.from, node.facing.to, `facing ${direction}`);
+    else if (node.facing) edit.change(edit.text.skipBack(node.facing.from), node.facing.to, "");
+    else if (direction) edit.change(behind, behind, ` facing ${direction}`);
+  }
 
   const options = { unit: edit.style.unit, sections: node.body!.statements.some((s) => s.type === "section") };
   const ownerIndent = edit.text.indentOf(node.from);
@@ -710,6 +744,7 @@ export type EditCommand =
   | { readonly type: "addEntity"; readonly kind: EntityKind; readonly position: Point; readonly name?: string }
   | { readonly type: "moveEntities"; readonly moves: readonly EntityMove[] }
   | { readonly type: "faceEntities"; readonly facings: readonly EntityFacing[] }
+  | { readonly type: "setTiles"; readonly tiles: readonly EntityTile[] }
   | { readonly type: "renameEntity"; readonly id: EntityId; readonly name: string }
   | { readonly type: "deleteEntities"; readonly ids: readonly EntityId[]; /** Connections to remove in the same edit, as `wireKey`s. */ readonly wires?: readonly string[] }
   | { readonly type: "addWire"; readonly color: WireColor; readonly a: TerminalRef; readonly b: TerminalRef }
@@ -735,6 +770,7 @@ export function executeCommand(parse: ParseResult, command: EditCommand): EditRe
       case "addEntity": return { ok: true, ...addEntity(parse, command.kind, command.position, command.name) };
       case "moveEntities": return { ok: true, changes: moveEntities(parse, command.moves) };
       case "faceEntities": return { ok: true, changes: faceEntities(parse, command.facings) };
+      case "setTiles": return { ok: true, changes: setTiles(parse, command.tiles) };
       case "renameEntity": return { ok: true, changes: renameEntity(parse, command.id, command.name) };
       case "deleteEntities": return { ok: true, changes: deleteEntities(parse, command.ids, command.wires) };
       case "addWire": return { ok: true, changes: addWire(parse, command.color, command.a, command.b) };

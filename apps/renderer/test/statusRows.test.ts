@@ -1,7 +1,7 @@
 import { signal, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { CARD, PIN_RADIUS } from "../src/canvas/geometry.ts";
-import { inputText, layoutRow, outputText, RAISED_ROWS, rowPlacement, STATUS_ROWS, statusLines, TEXT_SIGNALS } from "../src/canvas/statusRows.ts";
+import { inputText, layoutRow, RAISED_ROWS, rowPlacement, STATUS_ROWS, TEXT_SIGNALS } from "../src/canvas/statusRows.ts";
 import { compactNumber, signalListText } from "../src/entities/signalText.ts";
 import type { StatusSignal } from "../src/workbench/controller.ts";
 
@@ -147,26 +147,17 @@ describe("rows of a card with pins on its bottom edge", () => {
   });
 });
 
-describe("rows as text", () => {
+describe("an input row as text", () => {
   const signals = [{ signal: A, value: 5 }, { signal: PLATE, value: -2_147_483_648 }];
 
   it("names an input without a wire, an empty network and the signals", () => {
     expect(inputText({ wired: false, signals: [] })).toBe("no wire");
     expect(inputText({ wired: true, signals: [] })).toBe("nothing");
     expect(inputText({ wired: true, signals })).toBe("A 5, iron-plate -2147483648");
-    expect(outputText([])).toBe("nothing");
-    expect(outputText(signals)).toBe("A 5, iron-plate -2147483648");
   });
 
   it("bounds the text of a network with very many signals", () => {
-    expect(outputText(entries(TEXT_SIGNALS))).not.toContain("+");
-    expect(outputText(entries(TEXT_SIGNALS + 5)).endsWith(` +5`)).toBe(true);
-  });
-
-  it("lists red in, green in and out for the tooltip", () => {
-    const input = { red: { wired: true, signals }, green: { wired: false, signals: [] } };
-    expect(statusLines({ label: "A 5", active: false, input, output: [{ signal: A, value: 5 }] })).toEqual(["Red in: A 5, iron-plate -2147483648", "Green in: no wire", "Out: A 5"]);
-    expect(statusLines({ label: "no output", active: false, output: [] })).toEqual(["Out: nothing"]);
-    expect(statusLines({ label: "lit #ff8000", active: true, input, lamp: { lit: true, color: "#ff8000" } })).toEqual(["Red in: A 5, iron-plate -2147483648", "Green in: no wire", "Light: lit #ff8000"]);
+    expect(inputText({ wired: true, signals: entries(TEXT_SIGNALS) })).not.toContain("+");
+    expect(inputText({ wired: true, signals: entries(TEXT_SIGNALS + 5) }).endsWith(` +5`)).toBe(true);
   });
 });

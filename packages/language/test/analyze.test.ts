@@ -1,6 +1,6 @@
 import { BOTH_NETWORKS, DEFAULT_ENTITY, SELECTOR_OPERATIONS, wildcardSignal, wireKey, type Entity, type SelectorCombinator, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { analyze, DIAGNOSTIC_SEVERITY, type DiagnosticCode, type SignalResolver } from "../src/index.ts";
+import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type DiagnosticCode, type SignalResolver } from "../src/index.ts";
 import { circuit, codes, fixture, idOf, valid } from "./helpers.ts";
 
 const RED = { red: true, green: false };
@@ -436,6 +436,65 @@ describe("diagnostics", () => {
   it("unused-else-output", () => {
     expectCodes(circuit("decider d { else output virtual:signal-A = 1 }"), ["unconfigured", "unused-else-output"]);
     expect(codes(circuit("decider d { when each > 1 else output virtual:signal-A = 1 }"))).toEqual([]);
+  });
+
+  it("tile-off-grid", () => {
+    // 1x1: both coordinates end in .5, whatever the direction.
+    expectCodes(circuit("constant c tile (0.5, -1.5) { item:a = 1 }\nconstant d tile (2.5, 0.5) facing north { item:a = 1 }\nlamp l tile (-3.5, 7.5) { }"), []);
+    expect(report(circuit("lamp l tile (1, 2.5) { }\nconstant c tile (4.5, 0.25) facing south { item:a = 1 }"))).toEqual([["tile-off-grid", "tile (1, 2.5)"], ["tile-off-grid", "tile (4.5, 0.25)"]]);
+    // 2x1: the half moves to the other axis with the direction; without a clause the entity faces east.
+    const long = (header: string) => circuit(`decider d ${header} { when each > 1 output each = 1 }`);
+    for (const header of ["tile (1, 0.5)", "tile (1, 0.5) facing east", "tile (-3, 0.5) facing west", "tile (0.5, 1) facing north", "tile (6.5, -21) facing south"]) expectCodes(long(header), []);
+    for (const header of ["tile (0.5, 1)", "tile (0.5, 0.5) facing east", "tile (1, 0.5) facing north", "tile (1, 1) facing south", "tile (1.5, 0.5) facing west"]) expectCodes(long(header), ["tile-off-grid"]);
+    for (const kind of ["arithmetic", "selector"]) expect(codes(circuit(`${kind} x tile (0.5, 0.5) { }`))).toContain("tile-off-grid");
+    // The message says what the kind and direction need and where the nearest place is.
+    const message = (source: string) => analyze(source).diagnostics.find((d) => d.code === "tile-off-grid")!.message;
+    expect(message(long("tile (0.5, 1)"))).toBe("Not on the tile grid: facing east, the center of this decider combinator needs a whole x and a y ending in .5; the nearest is (1, 1.5)");
+    expect(message(long("tile (1, 0.5) facing north"))).toBe("Not on the tile grid: facing north, the center of this decider combinator needs an x ending in .5 and a whole y; the nearest is (1.5, 1)");
+    expect(message(circuit("lamp l tile (1, 2.25) { }"))).toBe("Not on the tile grid: the center of this lamp needs x and y ending in .5; the nearest is (1.5, 2.5)");
+    for (const name of ["example.face", "comments.face", "all-kinds.face"]) expect(codes(fixture(name)).filter((code) => code.startsWith("tile-"))).toEqual([]);
+    // A warning: the circuit is there and the tile is kept as written.
+    expect(valid(long("tile (0.5, 1)")).circuit.entities[0]!.placement).toEqual({ tile: { x: 0.5, y: 1 } });
+  });
+
+  it("tile-overlap", () => {
+    const two = circuit("lamp a tile (0.5, 0.5) { }\ndecider gate tile (1, 0.5) { when each > 1 output each = 1 }\nlamp free tile (2.5, 0.5) { }\nlamp none { }");
+    expect(report(two)).toEqual([["tile-overlap", "tile (0.5, 0.5)"], ["tile-overlap", "tile (1, 0.5)"]]);
+    expect(analyze(two).diagnostics.map((d) => d.message)).toEqual([
+      "Stands on a tile that 'gate' stands on as well; in the game two entities cannot share a tile",
+      "Stands on a tile that 'a' stands on as well; in the game two entities cannot share a tile",
+    ]);
+    expectCodes(two, ["tile-overlap", "tile-overlap"]);
+    // Next to each other, and a 2x1 entity turned away, is no overlap.
+    expectCodes(circuit("lamp a tile (0.5, 0.5) { }\nlamp b tile (1.5, 0.5) { }\nselector s tile (0.5, 2) facing south { }\nselector t tile (1.5, 2) facing north { }"), []);
+    // One warning per entity, also when it shares both of its tiles or shares with several.
+    const several = circuit("selector s tile (1, 0.5) { }\nselector t tile (1, 0.5) facing west { }\nlamp l tile (1.5, 0.5) { }");
+    expect(analyze(several).diagnostics.map((d) => d.message.replace(/ as well.*/, ""))).toEqual(["Stands on a tile that 't' and 'l' stand on", "Stands on a tile that 's' and 'l' stand on", "Stands on a tile that 's' and 't' stand on"]);
+    // A tile off the grid counts where its nearest footprint is.
+    expect(codes(circuit("lamp a tile (0.5, 0.5) { }\nlamp b tile (0.4, 0.4) { }"))).toEqual(["tile-overlap", "tile-off-grid", "tile-overlap"]);
+  });
+
+  it("names a few entities of a pile on one tile and stays fast", () => {
+    const pile = circuit(Array.from({ length: 3000 }, (_, i) => `lamp l${i} tile (0.5, 0.5) { }`).join("\n"));
+    const started = performance.now();
+    const result = analyze(pile);
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(result.diagnostics).toHaveLength(3000);
+    expect(result.diagnostics[0]!.message).toContain("that 'l1', 'l2', 'l3' and others stand on");
+    expect(result.diagnostics[2999]!.message).toContain("that 'l0', 'l1', 'l2' and others stand on");
+  });
+
+  it("unused-facing", () => {
+    expect(report(circuit("lamp l facing south { }\nlamp m at (0, 0) tile (0.5, 0.5) facing east { }\nlamp n { }"))).toEqual([["unused-facing", "facing south"], ["unused-facing", "facing east"]]);
+    expectCodes(circuit("lamp l facing north { }"), ["unused-facing"]);
+    expect(analyze(circuit("lamp l facing north { }")).diagnostics[0]!.message).toBe("A lamp cannot be rotated; 'facing' is ignored");
+    // The clause is kept in the model, so that the text round-trips; every combinator may have one.
+    expect(valid(circuit("lamp l facing north { }")).circuit.entities[0]!.placement).toEqual({ direction: "north" });
+    expectCodes(circuit("constant c facing north { item:a = 1 }\nselector s facing west { }"), []);
+  });
+
+  it("checks the placement of a circuit only: a fragment loses its tiles when it is pasted", () => {
+    expect(analyzeFragment("lamp a tile (0, 0) facing north { }\nlamp b tile (0, 0) { }").diagnostics).toEqual([]);
   });
 
   it("has a test for every diagnostic code", () => {

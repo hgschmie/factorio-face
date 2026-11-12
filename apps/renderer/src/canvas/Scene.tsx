@@ -1,13 +1,12 @@
 // The circuit itself: wires below, cards above. Memoized as a whole, so camera changes that stay inside the current
 // culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved cards and wires
 // and a selection only the cards and wires whose state changed. Hovering a wire is CSS only.
-import { terminalKey, wireKey, type Circuit, type Entity, type EntityId, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { facingOf, terminalKey, wireKey, type Circuit, type Entity, type EntityId, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
 import { EntityCard } from "./EntityCard.tsx";
-import { facingOf } from "../entities/facing.ts";
 import { cardRect, rectsIntersect, type Rect } from "./geometry.ts";
 import { routeBounds, routePath, routeWire } from "./wireRouting.ts";
 

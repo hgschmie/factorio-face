@@ -9,10 +9,10 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point } from "@face/model";
+import { facingOf, wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { editorChrome } from "../editor/extensions.ts";
-import { facingOf, rotated } from "../entities/facing.ts";
+import { rotated } from "../entities/facing.ts";
 import {
   sameTool, SELECT_TOOL, type Diagnostic, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands, type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
@@ -322,7 +322,7 @@ export class ProjectSession {
     if (result.changes.length > 0) this.coalesce = options.coalesce === undefined ? undefined : { key: options.coalesce, version: this.document.version };
   }
 
-  /** Writes the direction `directionOf` gives for each of the entities that exist, as one step. */
+  /** Writes the direction `directionOf` gives for each of the entities that exist, as one step. The language command leaves lamps out and moves a `tile` with the turn. */
   private faceEntities(ids: readonly EntityId[], directionOf: (entity: Entity) => Direction): void {
     const entities = [...new Set(ids)].map((id) => this.entity(id)).filter((entity) => entity !== undefined);
     if (entities.length > 0) this.perform({ type: "faceEntities", facings: entities.map((entity) => ({ id: entity.id, direction: directionOf(entity) })) });

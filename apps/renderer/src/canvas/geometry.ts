@@ -1,6 +1,5 @@
 // Card and pin geometry in canvas (world) units. Pure.
-import { DEFAULT_FACING } from "@face/language";
-import type { Direction, Entity, Point, TerminalSide, WireColor } from "@face/model";
+import { DEFAULT_FACING, type Direction, type Entity, type Point, type TerminalSide, type WireColor } from "@face/model";
 import { opposite } from "../entities/facing.ts";
 
 export const GRID = 20;

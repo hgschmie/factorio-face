@@ -1,6 +1,6 @@
-// Rotating entities: the `facing` clause is the only thing that changes, a selection turns as one undo step.
+// Rotating entities: the `facing` clause changes (and the `tile` of a 2x1 entity that has one), a selection turns as one undo step.
+import { facingOf } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { facingOf } from "../../src/entities/facing.ts";
 import { STARTER_SOURCE } from "../../src/session/starter.ts";
 import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, replaceText } from "./helpers.ts";
 
@@ -25,22 +25,22 @@ describe("rotating entities", () => {
 
   it("turns counter-clockwise from east to north", () => {
     const { session } = createSession(IRREGULAR);
-    session.commands.rotateEntities([idOf(session, "light")], "counterclockwise");
-    expect(session.state.source).toBe(IRREGULAR.replace("light at (560,   80)", "light at (560,   80) facing north"));
-    expect(entityNamed(session, "light").placement).toEqual({ direction: "north" });
-    session.commands.rotateEntities([idOf(session, "light")], "counterclockwise");
-    expect(facingOf(entityNamed(session, "light"))).toBe("west");
+    session.commands.rotateEntities([idOf(session, "src")], "counterclockwise");
+    expect(session.state.source).toBe(IRREGULAR.replace("at ( 40 ,80 )", "at ( 40 ,80 ) facing north"));
+    expect(entityNamed(session, "src").placement).toEqual({ direction: "north" });
+    session.commands.rotateEntities([idOf(session, "src")], "counterclockwise");
+    expect(facingOf(entityNamed(session, "src"))).toBe("west");
   });
 
-  it("turns every entity of a selection in place, each from its own direction, as one undo step", () => {
+  it("turns every entity of a selection in place, each from its own direction, as one undo step, and leaves a lamp as it is", () => {
     const start = IRREGULAR.replace("gate at (300, 80)", "gate at (300, 80) facing north");
     const { session } = createSession(start);
     const ids = ["src", "gate", "light"].map((name) => idOf(session, name));
     const positions = session.state.circuit.entities.map((entity) => entity.position);
     session.commands.select(ids);
     session.commands.rotateEntities(ids, "clockwise");
-    expect(session.state.source).toBe(start.replace("at ( 40 ,80 )", "at ( 40 ,80 ) facing south").replace("facing north", "facing east").replace("at (560,   80)", "at (560,   80) facing south"));
-    expect(session.state.circuit.entities.map(facingOf)).toEqual(["south", "east", "south"]);
+    expect(session.state.source).toBe(start.replace("at ( 40 ,80 )", "at ( 40 ,80 ) facing south").replace("facing north", "facing east"));
+    expect(session.state.circuit.entities.map(facingOf)).toEqual(["south", "east", "east"]);
     // In place: no position changes, the wires and the selection stay, the comments too.
     expect(session.state.circuit.entities.map((entity) => entity.position)).toEqual(positions);
     expect(session.state.circuit.wires).toHaveLength(3);
@@ -51,8 +51,45 @@ describe("rotating entities", () => {
     expect(session.state.canUndo).toBe(false);
     expect(session.state.selection).toEqual(ids);
     session.commands.redo();
-    expect(session.state.circuit.entities.map(facingOf)).toEqual(["south", "east", "south"]);
+    expect(session.state.circuit.entities.map(facingOf)).toEqual(["south", "east", "east"]);
     expect(session.state.canRedo).toBe(false);
+  });
+
+  it("does not rotate a lamp: no change, no undo step and no error, also when its source says a direction", () => {
+    const { session, notifications } = createSession(IRREGULAR);
+    const lamp = idOf(session, "light");
+    session.commands.select([lamp]);
+    const before = notifications();
+    session.commands.rotateEntities([lamp], "clockwise");
+    session.commands.rotateEntities([lamp], "counterclockwise");
+    session.commands.faceEntities([lamp], "north");
+    expect(session.state).toMatchObject({ source: IRREGULAR, canUndo: false, error: null });
+    expect(notifications()).toBe(before);
+
+    replaceText(session, "light at (560,   80)", "light at (560,   80) facing south");
+    expect(entityNamed(session, "light").placement).toEqual({ direction: "south" });
+    expect(facingOf(entityNamed(session, "light"))).toBe("east");
+    expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toContain("unused-facing");
+    const typed = session.state.source;
+    session.commands.rotateEntities([idOf(session, "light")], "clockwise");
+    session.commands.faceEntities([idOf(session, "light")], "east");
+    expect(session.state.source).toBe(typed);
+  });
+
+  it("moves the tile of a 2x1 entity with the turn, around its input half, in the same undo step", () => {
+    const start = IRREGULAR.replace("gate at (300, 80)", "gate at (300, 80) tile (1, 0.5)").replace("at ( 40 ,80 )", "at ( 40 ,80 ) tile (-0.5, 0.5)");
+    const { session } = createSession(start);
+    const ids = ["src", "gate"].map((name) => idOf(session, name));
+    session.commands.rotateEntities(ids, "clockwise");
+    // The input half of the gate is tile (0, 0); facing south its output half is the tile below. A 1x1 entity keeps its tile.
+    expect(session.state.source).toBe(start.replace("tile (1, 0.5)", "tile (0.5, 1) facing south").replace("tile (-0.5, 0.5)", "tile (-0.5, 0.5) facing south"));
+    expect(entityNamed(session, "gate").placement).toEqual({ tile: { x: 0.5, y: 1 }, direction: "south" });
+    expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["duplicate-wire"]);
+    session.commands.faceEntities(ids, "west");
+    expect(entityNamed(session, "gate").placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "west" });
+    session.commands.undo();
+    session.commands.undo();
+    expect(session.state).toMatchObject({ source: start, canUndo: false });
   });
 
   it("makes entities face a direction, leaves those alone that face it already and makes no step out of nothing", () => {
@@ -62,7 +99,7 @@ describe("rotating entities", () => {
     expect(session.state).toMatchObject({ source: IRREGULAR, canUndo: false, error: null });
     session.commands.faceEntities([ids[0]!], "west");
     session.commands.faceEntities(ids, "west");
-    expect(session.state.circuit.entities.map(facingOf)).toEqual(["west", "west", "west"]);
+    expect(session.state.circuit.entities.map(facingOf)).toEqual(["west", "west", "east"]);
     session.commands.undo();
     expect(session.state.circuit.entities.map(facingOf)).toEqual(["west", "east", "east"]);
     session.commands.faceEntities([ids[0]!], "east");

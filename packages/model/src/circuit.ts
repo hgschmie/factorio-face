@@ -31,7 +31,10 @@ export interface Point {
 export const DIRECTIONS = ["north", "east", "south", "west"] as const;
 export type Direction = (typeof DIRECTIONS)[number];
 
-/** Optional in-game placement, kept for blueprint round trips. Schematic layout (`position`) is independent of it. */
+/**
+ * In-game placement: `tile` is the game's center position (see `footprint.ts`), `direction` the way the output points (absent: east,
+ * `facingOf`). The direction also turns the entity on the editor canvas; the schematic position (`position`) is independent of both.
+ */
 export interface Placement {
   readonly tile?: Point;
   readonly direction?: Direction;

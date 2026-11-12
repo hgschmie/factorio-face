@@ -76,9 +76,21 @@ A network selection says which of the two input networks a signal is read from: 
 
 Entity names are unique within a circuit. Members may appear in any order; a wire may precede the entities it references. Statement order inside an entity is preserved; order is semantically relevant only for decider outputs, constant filters and sections.
 
-`at (x, y)` is the schematic position on the editor canvas (integers, canvas units, 20-unit grid). If absent, the editor auto-places the entity and writes the clause on first move. `tile (x, y)` is the optional in-game position kept for blueprint round trips.
+`at (x, y)` is the schematic position on the editor canvas (integers, canvas units, 20-unit grid). If absent, the editor auto-places the entity and writes the clause on first move.
 
-`facing <direction>` is the direction the entity faces: the direction its output points to, seen from its input, as in the game. Without the clause an entity faces east. On the editor canvas the direction decides which edges of the card carry the connection pins; the card and its text do not turn. Facing east, the inputs are on the left edge and the outputs on the right edge, red above green. The pins turn with the direction as one figure: facing south the outputs are on the bottom edge and the inputs on the top edge, red right of green; facing west the outputs are on the left and the inputs on the right, red below green; facing north the outputs are on the top and the inputs on the bottom, red left of green. A constant combinator and a lamp follow the same rule with the one terminal they have. The editor writes the clause when an entity is rotated and from then on keeps it, also as `facing east`. `facing` is also the in-game direction kept for blueprint round trips. Neither `tile` nor `facing` ever affects simulation.
+`tile (x, y)` is the optional position of the entity in the game, as a blueprint has it: the center of the entity in tiles, x growing to the east and y to the south, relative to an origin that is free to choose. It is independent of `at`; an entity without the clause has no place in the game yet. A tile is one unit square between whole coordinates, so a center has to fit the tiles the entity covers (`docs/factorio-audit.md` 3.1 and 5.4):
+
+| Entity | Covers | Center |
+| --- | --- | --- |
+| `constant`, `lamp` | 1 tile | x and y end in .5: `tile (2.5, -0.5)` |
+| `arithmetic`, `decider`, `selector` facing east or west (also without `facing`) | 2 tiles side by side | a whole x, y ends in .5: `tile (3, 0.5)` covers the tiles from x = 2 to 4 |
+| `arithmetic`, `decider`, `selector` facing north or south | 2 tiles, one above the other | x ends in .5, a whole y: `tile (6.5, -21)` covers the tiles from y = -22 to -20 |
+
+Of the two tiles of a combinator the one `facing` points to carries the output and the other the input. A `tile` that does not fit this grid is kept as written and gets the warning `tile-off-grid`, which names the nearest center that fits. Two entities whose tiles overlap get the warning `tile-overlap` each, naming the other; the game cannot place them like that. For the overlap, a tile off the grid counts as the nearest footprint on it.
+
+`facing <direction>` is the direction the entity faces: the direction its output points to, seen from its input, as in the game. Without the clause an entity faces east. On the editor canvas the direction decides which edges of the card carry the connection pins; the card and its text do not turn. Facing east, the inputs are on the left edge and the outputs on the right edge, red above green. The pins turn with the direction as one figure: facing south the outputs are on the bottom edge and the inputs on the top edge, red right of green; facing west the outputs are on the left and the inputs on the right, red below green; facing north the outputs are on the top and the inputs on the bottom, red left of green. A constant combinator follows the same rule with the one terminal it has; a lamp does not rotate and always has its input on the left edge. The editor writes the clause when an entity is rotated and from then on keeps it, also as `facing east`. `facing` is also the in-game direction kept for blueprint round trips. Neither `tile` nor `facing` ever affects simulation.
+
+The four combinators can be turned; a lamp cannot, in the game as in the editor. `facing` on a lamp is legal and kept, has no effect (the lamp is drawn as if it faced east, and the clause is not meant for a blueprint) and gets the warning `unused-facing`. When the editor turns a combinator that has a `tile`, it corrects the tile in the same edit, because the half tile moves to the other axis: the tile of the input half stays where it is and the output half swings around it. `decider d tile (1, 0.5)` (input on the tile at x 0 to 1, output east of it) becomes `tile (0.5, 1) facing south`, `tile (0, 0.5) facing west` and `tile (0.5, 0) facing north`. A half turn therefore moves the entity by one tile, as two quarter turns do. A tile that was off the grid is first moved to the nearest place on it. A constant combinator keeps its tile as it is. Changing the word by hand does not touch `tile`; the warning then says what fits.
 
 ### Common property
 
@@ -187,13 +199,14 @@ between the braces of a circuit in a text editor; names then stay as they are an
 
 Errors (block simulation and graphical edits until fixed; the last valid graph stays visible): syntax errors, duplicate entity names, unknown entity or terminal in a wire, a terminal the entity kind does not have (`constant.in`, `lamp.out`), a wire from a terminal to itself, integers outside int32, illegal wildcard use, duplicate or contradictory statements (two `when`, two expressions), unknown property or enum value.
 
-Warnings (do not block): duplicate or reversed declarations of the same wire (rendered and simulated once), signals unknown to the enabled catalog or belonging to a disabled module/group, unconfigured combinators, unused `else output` without `when`.
+Warnings (do not block): duplicate or reversed declarations of the same wire (rendered and simulated once), signals unknown to the enabled catalog or belonging to a disabled module/group, unconfigured combinators, unused `else output` without `when`, a `tile` that is not on the tile grid for the kind and direction of its entity (`tile-off-grid`), entities whose tiles overlap (`tile-overlap`, on each of them), `facing` on a lamp (`unused-facing`). The three placement warnings are given for a circuit, not for a fragment.
 
 Every diagnostic carries a source range, a severity, a stable code and a message.
 
 ## Identity and editing rules
 
 - Source text identifies entities by name. The language session assigns each entity a stable `id` that survives renames (by command or by typing) so that selection, simulation probes and layout stay attached.
+- Setting, moving and removing `tile` (`setTiles`, for any number of entities in one transaction) patches the numbers inside the clause, inserts ` tile (x, y)` behind `at` (or the name) or removes the clause; a tile that is off the grid for its entity is refused. Rotating (`faceEntities`) leaves lamps alone and writes the corrected `tile` together with `facing`.
 - Graphical commands are source patches: the smallest set of text changes that performs the operation, applied as one undoable transaction. Unrelated text, comments, spacing and declaration order are never touched. Configuration changes replace only the affected statements; untouched statements keep their trivia.
 - Rename rewrites the declaration and every wire reference. Delete removes the entity, every incident wire declaration (including duplicates and reversed forms) and their own-line comments stay with whatever they were attached to unless they are trailing comments of a removed line.
 - Adding a wire that already exists (in either direction) is a no-op with no undo entry.

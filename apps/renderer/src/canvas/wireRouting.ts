@@ -1,6 +1,5 @@
 // Wire routes. Pure geometry; rendering turns a route into SVG path data.
-import { DEFAULT_FACING } from "@face/language";
-import type { Direction, Point, TerminalSide, WireColor } from "@face/model";
+import { DEFAULT_FACING, type Direction, type Point, type TerminalSide, type WireColor } from "@face/model";
 import { CLOCKWISE } from "../entities/facing.ts";
 import { boundsOfPoints, CARD, cardRect, DIRECTION_VECTOR, expandRect, GRID, PIN_SPACING, pinHeading, pinPoint, type Rect } from "./geometry.ts";
 

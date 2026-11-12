@@ -11,7 +11,7 @@ circuit "All kinds \"quoted\" \\ name" {
         custom:my.signal-1 = 0
     }
 
-    constant grouped at (240, 0) tile (1.5, -2) facing east {
+    constant grouped at (240, 0) tile (1.5, -2.5) facing east {
         section "Ore" {
             active = false
             multiplier = -0.5
@@ -25,7 +25,7 @@ circuit "All kinds \"quoted\" \\ name" {
     }
 
     arithmetic each_op at (0, 160) { each = each[red] * virtual:signal-A[green] }
-    arithmetic shift tile (3, 4) { virtual:signal-B = 1 << item:iron-plate }
+    arithmetic shift tile (3, 4.5) { virtual:signal-B = 1 << item:iron-plate }
     arithmetic logic facing south at (480, 160) { quality:legendary = virtual:signal-A XOR -1 }
     arithmetic blank { }
 

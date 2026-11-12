@@ -73,8 +73,8 @@ src/
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
-  entities/            kind labels, signal text forms (short names, lists, compact numbers), card summaries, the direction an entity
-                       faces and its quarter turns (`facing.ts`)  (pure)
+  entities/            kind labels, signal text forms (short names, lists, compact numbers), card summaries, the quarter turns of
+                       the direction an entity faces (`facing.ts`)  (pure)
   icons/               interface glyphs, entity icons, catalog icon resolvers (with probes for the git-ignored artwork)
   styles/              tokens.css and one stylesheet per area
 test/                  vitest: pure view modules
@@ -135,19 +135,23 @@ simulation (`run`, `pause`,
   first undo. Text of blanks only is written as no description, which removes the property from the source. The box edits the
   pending draft like any settings field, so a description added to an incomplete edit waits with it. In the source the text is
   one line, `description = "..."` with `\n` between the lines (`docs/dsl.md`). A card with a description shows the `note` glyph in
-  its top right corner (`g.card-note`) and the text in its tooltip. Lamps have no description in the game; the box says so in its
-  tooltip and the text stays in the project.
+  its top right corner (`g.card-note`); the text itself is in the inspector only. Lamps have no description in the game; the box
+  says so in its tooltip and the text stays in the project.
 - **Saving while a field holds unwritten text.** A name or a description is written when its field is left. Save and Save As
   (menu, key, the close prompt) first leave and re-enter the focused field when it carries `data-unwritten` (`writeFocusedField`
   in `Workbench.tsx`), so the saved file has the text and the caret stays where it was.
 - **Rotation.** `facing` in the entity header is the direction the output points to; without the clause an entity faces east
-  (`DEFAULT_FACING` of `@face/language`, `facingOf` in `entities/facing.ts`). `rotateEntities(ids, turn)` turns each of the
+  (`DEFAULT_FACING` and `facingOf` of `@face/model`). `rotateEntities(ids, turn)` turns each of the
   entities a quarter turn in place (clockwise: east, south, west, north), `faceEntities(ids, direction)` sets a direction. Both
   run the language command `faceEntities`, which patches the direction word of the clause or inserts ` facing <direction>`
   behind `tile`, `at` or the name and never removes a clause: one transaction for all entities, one undo step, nothing for an
   entity that faces the direction already. A rotation therefore always leaves an explicit clause, `facing east` included. Name,
   position and settings edits keep the direction (`updateEntity` takes the placement from the document). The simulation does
   not see it: `semanticFingerprint` is unchanged, so a running engine, its tick and its history stay. Copy and paste keep it.
+  Every combinator rotates; a lamp does not, as in the game (`canRotate` of `@face/model`). The language command leaves lamps
+  out, so a selection of lamps alone is no step and a mixed one turns the others; `facingOf` is east for a lamp whatever its
+  source says, so its pins never move (a `facing` clause typed on a lamp gets the warning `unused-facing`). An entity with a
+  `tile` gets its tile corrected in the same transaction: a 2x1 combinator turns around its input half (`rotateTile`).
 - **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
   a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
   so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.
@@ -267,10 +271,10 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   does (`compactNumber`: `12k`, `1.0M`, `2.1G`, cut off, never rounded up). A row without signals shows a dash; the bar of
   an input without a wire of its color is dimmed (class `unwired`). The widths are computed from an assumed advance of
   5.5 units per character (SF Mono and Menlo have 5.42), not measured.
-- The card's tooltip has the rows in full with exact values, one line each: `Red in:`, `Green in:`, `Out:` or `Light:`,
-  with `no wire` and `nothing` for the two empty cases, up to 32 signals per line and `+N` beyond.
-- Card status in the DOM: `g.card` carries `data-status` (the status label), `data-in-red` and `data-in-green` (the tooltip's
-  text of that input; absent on a constant), also on an outline. The rows are `g.card-row` with `data-row="red|green|out|lamp"`
+- A card has no tooltip (no SVG `<title>` of its own; removed on 2026-11-12 because it repeated the card). The pins keep theirs.
+- Card status in the DOM: `g.card` carries `data-status` (the status label), `data-in-red` and `data-in-green` (what that input
+  reads as exact text, `inputText`: up to 32 signals and `+N` beyond, `no wire` and `nothing` for the two empty cases; absent on
+  a constant), also on an outline. The rows are `g.card-row` with `data-row="red|green|out|lamp"`
   and the classes `red`, `green`, `out`, `lamp` and `unwired`; inside them `.row-marker`, one `<image>` (with a catalog icon)
   and one `text.row-value` per signal, `text.row-more` (`+N`), `text.row-none` (the dash, a lamp that is off) and
   `rect.row-swatch`. Rows are memoized by their signal list, which the engine keeps while a network or an output is unchanged.
@@ -287,7 +291,7 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   | north | top edge | bottom edge | (80, 0), (100, 0) | (80, 128), (100, 128) | left of green |
 
   All pins are on grid lines, 20 units apart; those on the top and bottom edge sit around the middle of the card (92). A constant
-  and a lamp have the pins of their one terminal. `pinPoint(position, side, color, facing)` in `geometry.ts` is the only place that
+  and a lamp have the pins of their one terminal; a lamp does not rotate, so its input pins are always on the left edge. `pinPoint(position, side, color, facing)` in `geometry.ts` is the only place that
   knows the positions (`pinEdge` and `pinHeading` name the edge and the direction a wire leaves in); a wire of a color starts and
   ends in the center of the pin of that color, and the rubber band of a pending wire starts there too.
 - Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out"`, `data-wire-color="red|green"`, `data-edge="left|right|top|
@@ -300,7 +304,8 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   counter-clockwise" with the keys, and the inspector of a single entity has the Facing control (`.facing-toggle`, a group named
   "Facing" with four buttons `data-direction`, `aria-pressed` on the current one). Every entity of a selection turns in place, each
   from its own direction; the selection is not turned as a group. One rotation of a selection is one undo step. While the source
-  has errors all three are off.
+  has errors all three are off. A lamp does not rotate: its inspector has no Facing control, the keys skip it, and the two menu
+  items are disabled while the selection holds nothing that can rotate.
 - Routes (`wireRouting.ts`): every wire is a line of horizontal and vertical segments from pin to pin, drawn with rounded corners
   (radius 14; a corner next to a shorter segment gets what fits: the whole first or last segment, half of one between two corners).
   There are no curves. A wire leaves and enters a pin at a right angle to its edge. Red and green between the same two terminals

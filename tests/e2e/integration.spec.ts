@@ -335,9 +335,16 @@ test("stepping the example circuit shows the expected values tick by tick in doc
   await expect(row("twice", "red")).not.toHaveClass(/unwired/);
   await expect(row("light", "red")).toHaveClass(/unwired/);
   await expect(row("light", "lamp").locator("text")).toHaveText(["off"]);
-  await expect(card(page, "gate").locator(":scope > title")).toHaveText("Decider gate: A < 10 → A\nRed in: A 1\nGreen in: A 2\nOut: A 2");
-  await expect(card(page, "light").locator(":scope > title")).toHaveText("Lamp light: B > 8\nRed in: no wire\nGreen in: B 2\nLight: off");
-  await expect(card(page, "source").locator(":scope > title")).toHaveText("Constant source: A = 1\nOut: A 1");
+  // The same in the card's attributes, exactly; the card has no text popup that would repeat it.
+  for (const [name, summary, red, green, status] of [["gate", "A < 10 → A", "A 1", "A 2", "A 2"], ["light", "B > 8", "no wire", "B 2", "off"], ["source", "A = 1", null, null, "A 1"]] as const) {
+    await expect(card(page, name).locator(".card-summary")).toHaveText(summary);
+    await expect(card(page, name)).toHaveAttribute("data-status", status);
+    if (red === null) await expect(card(page, name)).not.toHaveAttribute("data-in-red");
+    else await expect(card(page, name)).toHaveAttribute("data-in-red", red);
+    if (green !== null) await expect(card(page, name)).toHaveAttribute("data-in-green", green);
+    await expect(card(page, name).locator(":scope > title")).toHaveCount(0);
+  }
+  await expect(card(page, "gate").locator("title")).toHaveText(["Red input", "Green input", "Red output", "Green output"]);
   // The card keeps its size, and no row reaches the pins on either edge or the lower edge.
   await expectRowsInsideCards(page, 4);
 
@@ -396,7 +403,7 @@ test("a card row shows the signals that fit, abbreviates large values and counts
   await expect(page.getByTestId("tick-counter")).toHaveText("0001");
 
   // Twelve signals on the red input: three fit with the marker for the other nine. Values of more than four digits are
-  // abbreviated on the card; the attribute and the tooltip have them exactly.
+  // abbreviated on the card; the attributes have them exactly, the output where it arrives at the lamp.
   await expect(card(page, "all")).toHaveAttribute("data-in-red", exact);
   await expect(card(page, "all")).toHaveAttribute("data-in-green", "no wire");
   await expect(card(page, "all")).toHaveAttribute("data-status", "A -2147483648, B 2500000 +10");
@@ -405,7 +412,8 @@ test("a card row shows the signals that fit, abbreviates large values and counts
   await expect(row("all", "out").locator("text")).toHaveText(shown);
   await expect(row("all", "red").locator("text").last()).toHaveClass("row-more");
   await expect(row("all", "green").locator("text")).toHaveText(["–"]);
-  await expect(card(page, "all").locator(":scope > title")).toHaveText(`Decider all: anything ≠ 0 → everything\nRed in: ${exact}\nGreen in: no wire\nOut: ${exact}`);
+  await expect(card(page, "all").locator(".card-summary")).toHaveText(/^anything ≠ 0/);
+  await expect(card(page, "glow")).toHaveAttribute("data-in-green", exact);
 
   // The constant has the three rows for its output: more signals than one row holds, none of them lost.
   await expect(card(page, "many").locator("g.card-row")).toHaveCount(1);

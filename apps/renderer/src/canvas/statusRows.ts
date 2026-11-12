@@ -1,8 +1,8 @@
-// The status rows of a card: which signals of a row fit, where they go, and the rows as plain text. Pure.
+// The status rows of a card: which signals of a row fit, where they go, and an input row as plain text. Pure.
 import type { SignalId } from "@face/model";
 import { compactNumber, shortSignal, signalListText } from "../entities/signalText.ts";
 import { truncate } from "../entities/summary.ts";
-import type { EntityStatus, StatusInput, StatusSignal } from "../workbench/controller.ts";
+import type { StatusInput, StatusSignal } from "../workbench/controller.ts";
 import { CARD } from "./geometry.ts";
 
 /**
@@ -38,7 +38,7 @@ export function rowPlacement(pinsBelow: boolean): { readonly top: number; readon
   return pinsBelow ? RAISED_ROWS : STATUS_ROWS;
 }
 
-/** Signals named per row in the tooltip and in the card's data attributes; a network can carry thousands. */
+/** Signals named per input row in the card's data attributes; a network can carry thousands. */
 export const TEXT_SIGNALS = 32;
 
 export interface RowItem {
@@ -97,18 +97,4 @@ export function layoutRow(signals: readonly StatusSignal[], iconOf?: (signal: Si
 export function inputText(input: StatusInput): string {
   if (!input.wired) return "no wire";
   return signalListText(input.signals, TEXT_SIGNALS) || "nothing";
-}
-
-/** What an entity emits, as exact text. */
-export function outputText(output: readonly StatusSignal[]): string {
-  return signalListText(output, TEXT_SIGNALS) || "nothing";
-}
-
-/** The rows in full for the card's tooltip, one line each. */
-export function statusLines(status: EntityStatus): string[] {
-  const lines: string[] = [];
-  if (status.input) lines.push(`Red in: ${inputText(status.input.red)}`, `Green in: ${inputText(status.input.green)}`);
-  if (status.output) lines.push(`Out: ${outputText(status.output)}`);
-  if (status.lamp) lines.push(`Light: ${status.label}`);
-  return lines;
 }

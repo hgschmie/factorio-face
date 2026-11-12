@@ -1,5 +1,5 @@
 // Rotating entities: R and Shift+R, the context menu, the Facing control of the inspector and the source. The card stays as it
-// is; the pins move to the edges the direction gives them and the wires follow.
+// is; the pins move to the edges the direction gives them and the wires follow. Every combinator rotates, a lamp does not.
 import type { Page } from "@playwright/test";
 import { canvas, card, cardGrabPoint, clickCenter, clientPointOf, entityPosition, expect, openProject, pin, readProjectEntries, selectEntity, sourceText, test, wire, wires, writeProject, type Point } from "./app.ts";
 import { FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
@@ -85,16 +85,63 @@ test("R turns the selected entity clockwise and Shift+R back, the card stays and
   await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
 });
 
-test("a constant and a lamp turn the one terminal they have", async ({ page }) => {
+test("a constant turns the one terminal it has", async ({ page }) => {
   await selectEntity(page, "source");
   await page.keyboard.press("r");
   await expect.poll(() => pinOffsets(page, "source")).toEqual(expectedPins("south", ["out"]));
+  await expect(pin(page, "source", "out", "red")).toHaveAttribute("data-edge", "bottom");
+  await expect(pin(page, "source", "out", "red").locator("title")).toHaveText("Red output");
+  await expect.poll(() => sourceText(page)).toBe(facingSource({ source: "south" }));
+});
+
+test("a lamp does not rotate: the keys, the menu and the inspector leave it alone, and a direction in its source is ignored", async ({ page }) => {
   await selectEntity(page, "light");
+  await expect(inspector(page).getByLabel("Entity name")).toHaveValue("light");
+  await expect(facing(page)).toHaveCount(0);
+  await page.keyboard.press("r");
   await page.keyboard.press("Shift+KeyR");
-  await expect.poll(() => pinOffsets(page, "light")).toEqual(expectedPins("north", ["in"]));
-  await expect(pin(page, "light", "in", "red")).toHaveAttribute("data-edge", "bottom");
-  await expect(pin(page, "light", "in", "red").locator("title")).toHaveText("Red input");
-  await expect.poll(() => sourceText(page)).toBe(facingSource({ source: "south", light: "north" }));
+  const light = await cardGrabPoint(page, "light");
+  await page.mouse.click(light.x, light.y, { button: "right" });
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
+  for (const item of [/Rotate clockwise/, /Rotate counter-clockwise/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeDisabled();
+  await expect(menu(page).getByRole("menuitem", { name: /Copy/ })).toBeEnabled();
+  await page.keyboard.press("Escape");
+  await expect(menu(page)).toHaveCount(0);
+  await canvas(page).focus();
+
+  // A key that does act, to know the ones before it were handled: the lamp is still as it was, and nothing was written.
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("light at (560, 80)", "light at (580, 80)"));
+  await undo(page).click();
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  await expect(undo(page)).toBeDisabled();
+  await expect(card(page, "light")).toHaveAttribute("data-facing", "east");
+  await expect.poll(() => pinOffsets(page, "light")).toEqual(expectedPins("east", ["in"]));
+
+  // With something else selected as well the items are on, and the lamp stays out of the turn.
+  const pick = await cardGrabPoint(page, "pick");
+  await page.keyboard.down("Shift");
+  await page.mouse.click(pick.x, pick.y);
+  await page.keyboard.up("Shift");
+  await expect(page.locator("g.card.selected")).toHaveCount(2);
+  await page.mouse.click(light.x, light.y, { button: "right" });
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: /Rotate clockwise/ }));
+  await expect.poll(() => sourceText(page)).toBe(facingSource({ pick: "south" }));
+  await undo(page).click();
+  await expect(undo(page)).toBeDisabled();
+
+  // A clause typed into the source stays there, is reported and changes nothing on the canvas.
+  const typed = facingSource({ light: "south" });
+  await page.evaluate((text) => window.faceSession!.commands.setSource(text), typed);
+  await expect.poll(() => page.evaluate(() => window.faceSession!.getState().diagnostics.map((diagnostic) => diagnostic.code))).toEqual(["unused-facing"]);
+  await expect(card(page, "light")).toHaveAttribute("data-facing", "east");
+  await expect(pin(page, "light", "in", "red")).toHaveAttribute("data-edge", "left");
+  await expect.poll(() => pinOffsets(page, "light")).toEqual(expectedPins("east", ["in"]));
+  await selectEntity(page, "light");
+  await expect(facing(page)).toHaveCount(0);
+  await page.keyboard.press("r");
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => sourceText(page)).toBe(typed.replace("light at (560, 80)", "light at (580, 80)"));
 });
 
 test("wires stay attached and are routed again, as horizontal and vertical lines between the pins of their color", async ({ page }) => {
@@ -143,10 +190,12 @@ test("a selection of several entities turns in place as one undo step, and redo 
   await expect(page.locator("g.card.selected")).toHaveCount(5);
   const positions = await page.locator("g.card").evaluateAll((cards) => cards.map((element) => [element.getAttribute("data-x"), element.getAttribute("data-y")]));
   await page.keyboard.press("r");
-  const after = FIVE_KINDS_SOURCE.replace("gate at (300, 80)", "gate at (300, 80) facing west").replace(/( (?:source|twice|pick|light) at \([-\d]+, [-\d]+\))/g, "$1 facing south");
+  // The lamp is selected with the others and stays as it is.
+  const after = FIVE_KINDS_SOURCE.replace("gate at (300, 80)", "gate at (300, 80) facing west").replace(/( (?:source|twice|pick) at \([-\d]+, [-\d]+\))/g, "$1 facing south");
   await expect.poll(() => sourceText(page)).toBe(after);
-  await expect(page.locator('g.card[data-facing="south"]')).toHaveCount(4);
+  await expect(page.locator('g.card[data-facing="south"]')).toHaveCount(3);
   await expect(card(page, "gate")).toHaveAttribute("data-facing", "west");
+  await expect(card(page, "light")).toHaveAttribute("data-facing", "east");
   // Each one turned where it stands: no card moved, and all of them are still selected.
   expect(await page.locator("g.card").evaluateAll((cards) => cards.map((element) => [element.getAttribute("data-x"), element.getAttribute("data-y")]))).toEqual(positions);
   await expect(page.locator("g.card.selected")).toHaveCount(5);
@@ -264,7 +313,7 @@ test("R is text in a field and in the source editor, and nothing happens without
   await expect(page.locator("g.card.selected")).toHaveCount(5);
   expect(await sourceText(page)).toBe(before);
   await page.keyboard.press("r");
-  await expect(page.locator('g.card[data-facing="south"]')).toHaveCount(5);
+  await expect(page.locator('g.card[data-facing="south"]')).toHaveCount(4);
 });
 
 test("typing a direction in the source moves the pins", async ({ page }) => {
