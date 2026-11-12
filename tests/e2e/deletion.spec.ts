@@ -1,7 +1,10 @@
 // Deletion must be easy to find and must never fire while the user is typing.
-import { canvas, card, cardGrabPoint, clickCenter, entityNames, expect, test, wires } from "./app.ts";
+import { canvas, card, cardGrabPoint, clickCenter, entityNames, expect, sourceText, test, wires } from "./app.ts";
+import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
-const ALL = ["source", "gate", "twice", "pick", "light"];
+test.beforeEach(async ({ page }) => {
+  await openFiveKinds(page);
+});
 
 test("deletes through the toolbar attached to the selected card", async ({ page }) => {
   await expect(page.locator(".selection-toolbar")).toHaveCount(0);
@@ -29,12 +32,14 @@ test("deletes through the toolbar attached to the selected card", async ({ page 
 
   await clickCenter(page, remove);
   expect(await entityNames(page)).toEqual(["source", "twice", "pick", "light"]);
-  // The entity's five wires went with it, and the whole deletion is one undo step.
+  // The entity's five wires went with it, and the whole deletion is one undo step that restores the text exactly.
   await expect(wires(page)).toHaveCount(2);
   await expect(page.locator(".selection-toolbar")).toHaveCount(0);
+  expect(await sourceText(page)).not.toContain("gate");
   await page.getByRole("button", { name: "Undo" }).click();
   expect(await entityNames(page)).toEqual(ALL);
   await expect(wires(page)).toHaveCount(7);
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 });
 
@@ -120,6 +125,9 @@ test("Delete and Backspace edit text, not the circuit, while a text field has fo
 
 test("Delete and Backspace do not delete entities while the source editor has focus", async ({ page }) => {
   await page.getByRole("button", { name: "Split", exact: true }).click();
+  await expect(page.locator(".source-pane .cm-content")).toBeVisible();
+  // The canvas is narrower now; bring the whole circuit back into view before aiming at a card.
+  await page.getByRole("button", { name: "Fit", exact: true }).click();
   const gate = await cardGrabPoint(page, "gate");
   await page.mouse.click(gate.x, gate.y);
   await expect(card(page, "gate")).toHaveClass(/selected/);
@@ -127,13 +135,14 @@ test("Delete and Backspace do not delete entities while the source editor has fo
   const content = page.locator(".source-pane .cm-content");
   await content.click();
   await expect(content).toBeFocused();
-  const before = await content.innerText();
+  // The caret now sits in some declaration, and that entity is the selection.
+  await expect(page.locator("g.card.selected")).toHaveCount(1);
   await page.keyboard.press("Delete");
   await page.keyboard.press("Backspace");
   expect(await entityNames(page)).toEqual(ALL);
-  await expect(card(page, "gate")).toHaveClass(/selected/);
-  // The keys did reach the editor.
-  expect(await content.innerText()).not.toBe(before);
+  await expect(page.locator("g.card.selected")).toHaveCount(1);
+  // The keys did reach the editor: two characters are gone from the text, no entity from the circuit.
+  expect((await sourceText(page)).length).toBe(FIVE_KINDS_SOURCE.length - 2);
 
   // The Edit > Delete menu command follows the same rule.
   await page.evaluate(() => (document.activeElement as HTMLElement).blur());

@@ -149,13 +149,34 @@
 }
 
 .trace th {
-  width: 120px;
+  width: 190px;
   overflow: hidden;
   font-weight: 400;
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: #b3c2a4;
+}
+
+.trace-entity {
+  color: #8f9f80;
+}
+
+.trace-icon {
+  margin: 0 5px 0 8px;
+  vertical-align: -3px;
+}
+
+.trace-signal {
+  margin-left: 8px;
+}
+
+.trace-icon + .trace-signal {
+  margin-left: 0;
+}
+
+.trace.lit .trace-value {
+  color: var(--amber-bright);
 }
 
 .trace-dot {
@@ -209,8 +230,9 @@
 }
 
 .trace-value {
-  width: 76px;
+  width: 96px;
   text-align: right;
+  white-space: nowrap;
 }
 
 .tick-display {

@@ -1,8 +1,8 @@
-// CodeMirror extension that colors the document with tokens from an external tokenizer.
-import { RangeSetBuilder, StateField, type Extension } from "@codemirror/state";
-import { Decoration, EditorView, type DecorationSet } from "@codemirror/view";
+// CodeMirror extension that colors the visible part of the document with tokens from an external tokenizer.
+import { RangeSetBuilder, type Extension, type Text } from "@codemirror/state";
+import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from "@codemirror/view";
 import type { Tokenizer } from "../workbench/controller.ts";
-import { highlightRanges } from "./tokens.ts";
+import { highlightRanges, type HighlightRange } from "./tokens.ts";
 
 const marks = new Map<string, Decoration>();
 
@@ -15,23 +15,57 @@ function markFor(className: string): Decoration {
   return mark;
 }
 
-function decorate(tokenize: Tokenizer, source: string, classes?: Readonly<Record<string, string>>): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  try {
-    for (const range of highlightRanges(tokenize(source), source.length, classes)) builder.add(range.from, range.to, markFor(range.className));
-  } catch (error) {
-    // A failing tokenizer must not take the editor down; the text simply stays unstyled.
-    console.error("[face] tokenizer failed:", error);
-    return Decoration.none;
+/** Index of the first range that ends after `offset`. */
+export function firstRangeAfter(ranges: readonly HighlightRange[], offset: number): number {
+  let low = 0;
+  let high = ranges.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (ranges[middle]!.to <= offset) low = middle + 1;
+    else high = middle;
   }
-  return builder.finish();
+  return low;
 }
 
-/** Re-tokenizes the whole document on every change. Tokenizing is linear and cheap next to parsing the same text. */
+/**
+ * The document is tokenized once per change (the tokenizer is linear, and the session serves tokens it already has);
+ * decorations are only built for the lines in view, so the cost of an edit does not grow with the document.
+ */
 export function tokenHighlighting(tokenize: Tokenizer, classes?: Readonly<Record<string, string>>): Extension {
-  return StateField.define<DecorationSet>({
-    create: (state) => decorate(tokenize, state.doc.toString(), classes),
-    update: (decorations, transaction) => (transaction.docChanged ? decorate(tokenize, transaction.newDoc.toString(), classes) : decorations),
-    provide: (field) => EditorView.decorations.from(field),
-  });
+  let cache: { readonly doc: Text; readonly ranges: readonly HighlightRange[] } | undefined;
+  const rangesOf = (doc: Text): readonly HighlightRange[] => {
+    if (cache?.doc !== doc) {
+      try {
+        cache = { doc, ranges: highlightRanges(tokenize(doc.toString()), doc.length, classes) };
+      } catch (error) {
+        // A failing tokenizer must not take the editor down; the text simply stays unstyled.
+        console.error("[face] tokenizer failed:", error);
+        cache = { doc, ranges: [] };
+      }
+    }
+    return cache.ranges;
+  };
+  const decorate = (view: EditorView): DecorationSet => {
+    const ranges = rangesOf(view.state.doc);
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const visible of view.visibleRanges) {
+      for (let index = firstRangeAfter(ranges, visible.from); index < ranges.length && ranges[index]!.from < visible.to; index++) {
+        const range = ranges[index]!;
+        builder.add(Math.max(range.from, visible.from), Math.min(range.to, visible.to), markFor(range.className));
+      }
+    }
+    return builder.finish();
+  };
+  return ViewPlugin.fromClass(
+    class {
+      decorations: DecorationSet;
+      constructor(view: EditorView) {
+        this.decorations = decorate(view);
+      }
+      update(update: ViewUpdate): void {
+        if (update.docChanged || update.viewportChanged) this.decorations = decorate(update.view);
+      }
+    },
+    { decorations: (plugin) => plugin.decorations },
+  );
 }

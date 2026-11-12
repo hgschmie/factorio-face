@@ -1,0 +1,28 @@
+// The circuit a new project starts with: the example of docs/dsl.md, verbatim.
+export const STARTER_PROJECT_NAME = "Feedback example";
+
+export const STARTER_SOURCE = `// A counter that lights a lamp.
+circuit "Feedback example" {
+    constant source at (40, 80) {
+        virtual:signal-A = 1
+    }
+
+    decider gate at (300, 80) {
+        when virtual:signal-A < 10
+        output virtual:signal-A = input
+    }
+
+    arithmetic twice at (300, 240) {
+        virtual:signal-B = virtual:signal-A[red] * 2
+    }
+
+    lamp light at (560, 80) {
+        when virtual:signal-B > 8
+    }
+
+    wire red source.out <-> gate.in
+    wire green gate.out <-> gate.in      // feedback
+    wire red gate.out <-> twice.in
+    wire green twice.out <-> light.in
+}
+`;

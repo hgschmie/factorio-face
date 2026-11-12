@@ -1,10 +1,14 @@
 // Bottom dock: playback controls, signal traces, tick counter. Presentational; all data arrives as plain props.
+import { shortSignal } from "../entities/signalText.ts";
 import { Icon } from "../icons/Icon.tsx";
+import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { SignalTrace, SimulationView } from "../workbench/controller.ts";
 import { sparkline } from "./sparkline.ts";
 
 export interface SimulationDockProps {
   readonly simulation: SimulationView;
+  /** Catalog icons and names for the traced signals. */
+  readonly describeSignal?: SignalDescriber;
   onRun(): void;
   onPause(): void;
   onStep(): void;
@@ -15,13 +19,17 @@ export interface SimulationDockProps {
 const TRACE_WIDTH = 500;
 const TRACE_HEIGHT = 26;
 
-function TraceRow({ trace, index, capacity }: { readonly trace: SignalTrace; readonly index: number; readonly capacity: number }) {
+function TraceRow({ trace, index, capacity, describeSignal }: { readonly trace: SignalTrace; readonly index: number; readonly capacity: number; readonly describeSignal?: SignalDescriber }) {
   const geometry = sparkline(trace.values, capacity, TRACE_WIDTH, TRACE_HEIGHT);
+  const info = trace.signal && describeSignal?.(trace.signal);
+  const what = trace.signal ? shortSignal(trace.signal) : trace.lamp ? "light" : "";
   return (
-    <tr className={`trace trace-${index % 3}`}>
+    <tr className={`trace trace-${index % 3}${trace.lamp?.lit ? " lit" : ""}`} data-trace={trace.label} title={`${trace.label}${info?.displayName ? ` (${info.displayName})` : ""}\n${trace.inputs}`}>
       <th scope="row">
-        <span className="trace-dot" />
-        {trace.label}
+        <span className="trace-dot" style={trace.lamp?.color ? { background: trace.lamp.color } : undefined} />
+        <span className="trace-entity">{trace.entityName}</span>
+        {info?.iconUrl && <img className="trace-icon" src={info.iconUrl} width={14} height={14} alt="" draggable={false} />}
+        <span className="trace-signal">{what}</span>
       </th>
       <td className="trace-plot">
         <svg viewBox={`0 0 ${TRACE_WIDTH} ${TRACE_HEIGHT}`} preserveAspectRatio="none" role="img" aria-label={`${trace.label} history`}>
@@ -34,7 +42,7 @@ function TraceRow({ trace, index, capacity }: { readonly trace: SignalTrace; rea
   );
 }
 
-export function SimulationDock({ simulation, onRun, onPause, onStep, onReset, onSpeedChange }: SimulationDockProps) {
+export function SimulationDock({ simulation, describeSignal, onRun, onPause, onStep, onReset, onSpeedChange }: SimulationDockProps) {
   const { running, available, tick, traces } = simulation;
   return (
     <section className="simulation" aria-label="Simulation">
@@ -73,7 +81,11 @@ export function SimulationDock({ simulation, onRun, onPause, onStep, onReset, on
         <div className="history-title">
           <span>
             SIGNAL HISTORY
-            {simulation.notice && <small>{simulation.notice}</small>}
+            {simulation.notice && (
+              <small role="status" data-testid="simulation-notice">
+                {simulation.notice}
+              </small>
+            )}
           </span>
           <span>LAST {simulation.historyLength} TICKS</span>
         </div>
@@ -83,7 +95,7 @@ export function SimulationDock({ simulation, onRun, onPause, onStep, onReset, on
           <table className="traces">
             <tbody>
               {traces.map((trace, index) => (
-                <TraceRow key={trace.id} trace={trace} index={index} capacity={simulation.historyLength} />
+                <TraceRow key={trace.id} trace={trace} index={index} capacity={simulation.historyLength} describeSignal={describeSignal} />
               ))}
             </tbody>
           </table>
@@ -93,7 +105,7 @@ export function SimulationDock({ simulation, onRun, onPause, onStep, onReset, on
       <div className="tick-display">
         <span>CURRENT TICK</span>
         <strong data-testid="tick-counter">{String(tick).padStart(4, "0")}</strong>
-        <small>{tick === 0 ? "Ready when you are" : running ? "Following the signals" : "One step at a time"}</small>
+        <small>{!available ? "Waiting for a valid source" : tick === 0 ? "Ready when you are" : running ? "Following the signals" : "One step at a time"}</small>
       </div>
     </section>
   );

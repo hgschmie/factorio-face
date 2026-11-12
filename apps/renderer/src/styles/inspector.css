@@ -133,7 +133,7 @@
 /* Type selector, value, and (for signals) the network toggle. */
 .operand-field {
   display: grid;
-  grid-template-columns: 94px minmax(0, 1fr) auto;
+  grid-template-columns: 116px minmax(0, 1fr) auto;
   gap: 6px;
   align-items: end;
 }
@@ -144,23 +144,96 @@
   white-space: nowrap;
 }
 
+/* A signal needs the full width to show `kind:name@quality` next to its icon and the picker button, so in the three
+   layouts below the signal field gets a row of its own and the smaller controls share another. */
+.operand-field > .field:has(.signal-input) {
+  grid-row: 2;
+  grid-column: 1 / -1;
+}
+
+.operand-field > .network-toggle {
+  grid-row: 1;
+  grid-column: 2 / -1;
+  justify-self: start;
+}
+
 .signal-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   gap: 6px;
-  align-items: end;
+  justify-items: start;
+}
+
+.signal-row > .field {
+  justify-self: stretch;
 }
 
 .filter-row {
   display: grid;
-  grid-template-columns: 1fr 64px auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px;
   align-items: end;
+  padding-top: 9px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.filter-row > .field:has(.signal-input) {
+  grid-column: 1 / -1;
 }
 
 .signal-input {
   display: flex;
+  align-items: stretch;
   gap: 4px;
+}
+
+.signal-input input {
+  min-width: 0;
+}
+
+.signal-icon {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.field-warning {
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--status-warning);
+}
+
+/* The selector index has no network selection in the language. */
+.operand-field.no-networks {
+  grid-template-columns: 116px minmax(0, 1fr);
+}
+
+/* An inspector edit that the source cannot hold yet. */
+.draft-hint {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin: 0 0 14px;
+  padding: 9px 10px;
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--notice-text);
+  background: var(--notice-surface);
+}
+
+.draft-hint b {
+  display: block;
+  font-weight: 600;
+}
+
+.draft-hint button {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-color: var(--notice-border);
+  font-size: var(--text-sm);
+  color: var(--notice-text);
 }
 
 .signal-picker-button {

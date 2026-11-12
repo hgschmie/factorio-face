@@ -2,6 +2,7 @@
 import { _electron, test as base, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import type { ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 export const ROOT = resolve(import.meta.dirname, "../..");
@@ -134,13 +135,52 @@ export async function entityPosition(page: Page, name: string): Promise<Point> {
   return { x: Number(await element.getAttribute("data-x")), y: Number(await element.getAttribute("data-y")) };
 }
 
-/** Positions as the controller holds them, independent of what is rendered. */
+/** Positions as the session holds them, independent of what is rendered. */
 export async function committedPositions(page: Page): Promise<Record<string, Point>> {
-  return page.evaluate(() => Object.fromEntries(window.faceDemo!.getCircuit().entities.map((entity) => [entity.name, { x: entity.position.x, y: entity.position.y }])));
+  return page.evaluate(() => Object.fromEntries(window.faceSession!.getState().circuit.entities.map((entity) => [entity.name, { x: entity.position.x, y: entity.position.y }])));
 }
 
 export async function entityNames(page: Page): Promise<string[]> {
-  return page.evaluate(() => window.faceDemo!.getCircuit().entities.map((entity) => entity.name));
+  return page.evaluate(() => window.faceSession!.getState().circuit.entities.map((entity) => entity.name));
+}
+
+/** The source document as the session holds it (the editor only renders the lines in view). */
+export async function sourceText(page: Page): Promise<string> {
+  return page.evaluate(() => window.faceSession!.getState().source);
+}
+
+// Projects on disk
+
+let projectCount = 0;
+
+/** A fresh path under .runtime/e2e-projects; the directory itself does not exist yet. */
+export async function newProjectPath(name: string): Promise<string> {
+  const parent = resolve(PROJECTS_DIR, `project-${process.pid}-${++projectCount}`);
+  await mkdir(parent, { recursive: true });
+  return resolve(parent, name);
+}
+
+export interface ProjectFiles {
+  readonly name: string;
+  readonly source: string;
+  /** Overrides and additions for face.json. */
+  readonly manifest?: Readonly<Record<string, unknown>>;
+}
+
+/** Writes a project directory the way the app would, and returns its path. */
+export async function writeProject({ name, source, manifest }: ProjectFiles): Promise<string> {
+  const directory = await newProjectPath(name);
+  await mkdir(directory);
+  await writeFile(resolve(directory, "main.face"), source);
+  const content = { formatVersion: 1, name, gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"], ...manifest };
+  await writeFile(resolve(directory, "face.json"), JSON.stringify(content, null, 2) + "\n");
+  return directory;
+}
+
+/** Opens a project directory through the session's own load command (the path File > Open Recent takes) and waits for it. */
+export async function openProject(page: Page, directory: string): Promise<void> {
+  await page.evaluate((path) => window.faceSession!.commands.loadProject(path), directory);
+  await page.locator(".project-meta .path", { hasText: directory }).waitFor();
 }
 
 /** Clicks the middle of an element with real mouse input. */
@@ -154,4 +194,50 @@ export async function clickCenter(page: Page, target: Locator, options: { button
 export async function cardGrabPoint(page: Page, name: string): Promise<Point> {
   const position = await entityPosition(page, name);
   return clientPointOf(page, { x: position.x + 92, y: position.y + 30 });
+}
+
+// Native dialogs and menus. Dialogs cannot be driven, so the main process's dialog functions are replaced through
+// Playwright; everything behind them (validation, atomic writes, menu, IPC) is real.
+
+export interface DialogAnswers {
+  readonly savePath?: string;
+  readonly openPath?: string;
+  /** Button index of the unsaved-changes prompt: 0 Save, 1 Discard, 2 Cancel (the default). */
+  readonly unsavedChoice?: number;
+}
+
+/** Makes the dialogs answer as given and counts how often each one was shown. */
+export async function stubDialogs(app: ElectronApplication, answers: DialogAnswers): Promise<void> {
+  await app.evaluate(({ dialog }, { savePath, openPath, unsavedChoice }) => {
+    const calls = { save: 0, open: 0, message: 0 };
+    (globalThis as Record<string, unknown>).dialogCalls = calls;
+    dialog.showSaveDialog = (async () => (calls.save++, { canceled: savePath === undefined, filePath: savePath ?? "" })) as typeof dialog.showSaveDialog;
+    dialog.showOpenDialog = (async () => (calls.open++, { canceled: openPath === undefined, filePaths: openPath === undefined ? [] : [openPath] })) as typeof dialog.showOpenDialog;
+    dialog.showMessageBox = (async () => (calls.message++, { response: unsavedChoice ?? 2, checkboxChecked: false })) as typeof dialog.showMessageBox;
+  }, answers);
+}
+
+export function dialogCalls(app: ElectronApplication): Promise<{ save: number; open: number; message: number }> {
+  return app.evaluate(() => (globalThis as Record<string, unknown>).dialogCalls as { save: number; open: number; message: number });
+}
+
+/** Clicks an item of the native application menu by its labels, for example `clickMenu(app, "File", "Save")`. */
+export async function clickMenu(app: ElectronApplication, ...path: string[]): Promise<void> {
+  await app.evaluate(({ Menu, BrowserWindow }, labels) => {
+    let items = Menu.getApplicationMenu()!.items;
+    let found: Electron.MenuItem | undefined;
+    for (const label of labels) {
+      found = items.find((item) => item.label === label || item.label.startsWith(label));
+      if (!found) throw new Error(`No menu item "${label}" among: ${items.map((item) => item.label).join(", ")}`);
+      items = found.submenu?.items ?? [];
+    }
+    found!.click(undefined, BrowserWindow.getAllWindows()[0], undefined);
+  }, path);
+}
+
+/** Selects an entity by clicking its card. */
+export async function selectEntity(page: Page, name: string): Promise<void> {
+  const point = await cardGrabPoint(page, name);
+  await page.mouse.click(point.x, point.y);
+  await card(page, name).and(page.locator(".selected")).waitFor();
 }

@@ -1,12 +1,13 @@
 // Right panel: identity and primary actions of the selection (rename, delete) at the top, then the per-kind settings
 // form, then the connections. Presentational: every edit is emitted through a callback.
 import { wireKey, type Circuit, type Entity, type EntityId, type Wire } from "@face/model";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
-import { SignalPickerContext, type SignalPickerRenderer } from "./SignalField.tsx";
+import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
+import { SignalInfoContext, SignalPickerContext, type SignalDescriber, type SignalPickerRenderer } from "./SignalField.tsx";
 import { entityNameError } from "./validation.ts";
 
 export interface InspectorProps {
@@ -17,10 +18,15 @@ export interface InspectorProps {
   readonly resolveEntityIcon?: EntityIconResolver;
   /** Catalog-backed signal picker for all signal fields; without it they are validated text inputs. */
   readonly renderSignalPicker?: SignalPickerRenderer;
+  /** Catalog names and icons for the signals shown in the forms. */
+  readonly describeSignal?: SignalDescriber;
+  /** An edit of the selected entity that is not written to the source yet; the form shows it in place of the entity. */
+  readonly draft?: InspectorDraft | null;
   /** Slot for the settings form. Defaults to the built-in forms for the five entity kinds. */
   readonly renderSettings?: (entity: Entity, onChange: (next: Entity) => void) => ReactNode;
   onRename(id: EntityId, name: string): void;
-  onChange(next: Entity): void;
+  onChange(next: Entity, options?: UpdateOptions): void;
+  onDiscardDraft?(): void;
   onDelete(ids: readonly EntityId[]): void;
   onRemoveWire(wire: Wire): void;
   onSelect(ids: readonly EntityId[]): void;
@@ -107,9 +113,19 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
   );
 }
 
+/** Controls whose edits arrive as a stream of intermediate values: typing in a text field, dragging in the color dialog. */
+function editsContinuously(target: EventTarget): boolean {
+  return target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio";
+}
+
 function EntityInspector(props: InspectorProps & { readonly entity: Entity }) {
-  const { entity, circuit, editable } = props;
+  const { entity, circuit, editable, draft } = props;
   const info = KIND_INFO[entity.kind];
+  // One key per stay in such a control: the session merges the edits made during it into a single undo step.
+  const focusCount = useRef(0);
+  const editKey = useRef<string | undefined>(undefined);
+  const change = (next: Entity): void => props.onChange(next, editKey.current === undefined ? undefined : { coalesce: editKey.current });
+  const shown = draft?.entity ?? entity;
   return (
     <>
       <header className="inspector-identity">
@@ -130,7 +146,27 @@ function EntityInspector(props: InspectorProps & { readonly entity: Entity }) {
             Delete
           </button>
         </div>
-        <div className="inspector-settings">{props.renderSettings ? props.renderSettings(entity, props.onChange) : <EntitySettingsForm entity={entity} onChange={props.onChange} />}</div>
+        {draft && (
+          <div className="draft-hint" role="status">
+            <span>
+              <b>Not written to the source yet.</b> {draft.message}
+            </span>
+            <button type="button" onClick={props.onDiscardDraft} title="Drop this change and show the entity as it is in the source">
+              Discard
+            </button>
+          </div>
+        )}
+        <div
+          className="inspector-settings"
+          onFocus={(event) => {
+            editKey.current = editsContinuously(event.target) ? `${entity.id}:${++focusCount.current}` : undefined;
+          }}
+          onBlur={() => {
+            editKey.current = undefined;
+          }}
+        >
+          {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} onChange={change} />}
+        </div>
         <Connections entity={entity} circuit={circuit} onRemoveWire={props.onRemoveWire} onSelect={props.onSelect} />
       </fieldset>
       <footer className="inspector-footer">
@@ -152,6 +188,7 @@ export function Inspector(props: InspectorProps) {
         <span>INSPECTOR</span>
         {selected.length > 0 && <span className="count-badge">{String(selected.length).padStart(2, "0")}</span>}
       </div>
+      <SignalInfoContext value={props.describeSignal}>
       <SignalPickerContext value={props.renderSignalPicker}>
         {single && <EntityInspector key={single.id} {...props} entity={single} />}
         {selected.length > 1 && (
@@ -176,6 +213,7 @@ export function Inspector(props: InspectorProps) {
           </div>
         )}
       </SignalPickerContext>
+      </SignalInfoContext>
     </aside>
   );
 }

@@ -1,0 +1,140 @@
+/* Signal picker: a popover beside the inspector with group tabs, subgroup rows and an optional quality row. */
+.signal-picker {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  width: 432px;
+  max-height: min(520px, calc(100vh - 16px));
+  border: 1px solid #555c50;
+  border-radius: 7px;
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-popover);
+}
+
+.picker-search {
+  display: flex;
+  gap: 6px;
+  padding: 9px 9px 7px;
+}
+
+.picker-search input {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-base);
+}
+
+.picker-search .icon-button {
+  width: 28px;
+  height: 28px;
+}
+
+.picker-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  padding: 0 9px 7px;
+  border-bottom: 1px solid #454c3f;
+}
+
+.picker-tabs button {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 3px;
+  border-color: #474e41;
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+  background: var(--surface-inset);
+}
+
+.picker-tabs button[aria-selected="true"] {
+  border-color: var(--amber-border);
+  background: var(--amber-surface);
+}
+
+.picker-tabs button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.picker-signals {
+  flex: 1;
+  min-height: 120px;
+  padding: 8px 9px;
+  overflow: hidden auto;
+}
+
+.picker-signals h3 {
+  margin: 8px 0 5px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.picker-signals section:first-child h3 {
+  margin-top: 0;
+}
+
+.picker-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.picker-signal {
+  width: 36px;
+  height: 36px;
+  border-color: #454c40;
+  background: #262c25;
+}
+
+.picker-signal.text {
+  width: auto;
+  padding: 0 7px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.picker-signal:hover:not(:disabled) {
+  border-color: var(--card-border-hover);
+  background: var(--surface-raised);
+}
+
+.picker-signal.current {
+  border-color: var(--amber);
+  background: var(--amber-surface);
+}
+
+.picker-qualities {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 7px 9px 9px;
+  border-top: 1px solid #454c3f;
+}
+
+.picker-qualities .field-label {
+  margin-right: 6px;
+}
+
+.picker-qualities button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 5px;
+  border: 1px solid #454c40;
+  border-bottom-width: 3px;
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+  background: #262c25;
+}
+
+.picker-qualities button[aria-checked="true"] {
+  border-top-color: var(--amber);
+  border-right-color: var(--amber);
+  border-left-color: var(--amber);
+  background: var(--amber-surface);
+}

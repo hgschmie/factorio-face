@@ -34,6 +34,18 @@ describe("project directory", () => {
     expect(await readProject(directory)).toEqual({ path: directory, data: project });
   });
 
+  it("keeps unknown manifest fields across read and write", async () => {
+    const directory = join(scratch, "unknown-fields");
+    await writeProject(directory, project);
+    const onDisk = { ...project.manifest, editor: { theme: "dusk" }, revision: 7 };
+    await writeFile(join(directory, "face.json"), JSON.stringify(onDisk));
+    const loaded = await readProject(directory);
+    expect(loaded.data.manifest.extras).toEqual({ editor: { theme: "dusk" }, revision: 7 });
+    // Saved again with changed settings, as the renderer does: the unknown fields are still top-level fields of the file.
+    await writeProject(directory, parseProjectData({ ...loaded.data, manifest: { ...loaded.data.manifest, modules: ["base", "quality"] } }));
+    expect(JSON.parse(await readFile(join(directory, "face.json"), "utf8"))).toEqual({ ...onDisk, modules: ["base", "quality"] });
+  });
+
   it("replaces files atomically and leaves no temporary files behind", async () => {
     const directory = join(scratch, "overwrite");
     await writeProject(directory, project);

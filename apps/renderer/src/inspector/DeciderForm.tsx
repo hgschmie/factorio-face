@@ -1,3 +1,4 @@
+import { SIGNAL_SLOTS } from "@face/language";
 import { BOTH_NETWORKS, type DeciderCombinator, type DeciderCondition, type DeciderOutput } from "@face/model";
 import { COMPARATOR_OPTIONS, IntField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
 import { AddButton, DEFAULT_SIGNAL, FormSection, ListItem, OperandField } from "./formParts.tsx";
@@ -22,11 +23,11 @@ function ConditionEditor({ condition, index, onChange, onRemove }: { readonly co
     <ListItem title={title} removeLabel={`Remove ${title.toLowerCase()}`} onRemove={onRemove}>
       {index > 0 && <SelectField label="Combine with previous" wide value={condition.join} options={JOIN_OPTIONS} onChange={(join) => onChange({ ...condition, join })} />}
       <div className="signal-row wide">
-        <SignalField label="Signal" value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
+        <SignalField label="Signal" ariaLabel={`${title} signal`} wildcards={SIGNAL_SLOTS["decider.condition"]} value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
         <NetworkToggle label="Signal networks" value={condition.firstNetworks} onChange={(firstNetworks) => onChange({ ...condition, firstNetworks })} />
       </div>
       <SelectField label="Comparator" wide value={condition.comparator} options={COMPARATOR_OPTIONS} onChange={(comparator) => onChange({ ...condition, comparator })} />
-      <OperandField label="Compare to" value={condition.second} onChange={(second) => onChange({ ...condition, second })} />
+      <OperandField label="Compare to" wildcards={SIGNAL_SLOTS["decider.operand"]} value={condition.second} onChange={(second) => onChange({ ...condition, second })} />
     </ListItem>
   );
 }
@@ -39,7 +40,7 @@ function OutputList({ title, itemTitle, outputs, onChange }: { readonly title: s
         const set = (next: DeciderOutput): void => onChange(replaceAt(outputs, index, next));
         return (
           <ListItem key={index} title={label} removeLabel={`Remove ${label.toLowerCase()}`} onRemove={() => onChange(removeAt(outputs, index))}>
-            <SignalField label="Signal" wide value={output.signal} required onChange={(next) => next && set({ ...output, signal: next })} />
+            <SignalField label="Signal" ariaLabel={`${label} signal`} wide wildcards={SIGNAL_SLOTS["decider.output"]} value={output.signal} required onChange={(next) => next && set({ ...output, signal: next })} />
             <SelectField label="Count" value={output.copyCountFromInput ? "input" : "constant"} options={COUNT_OPTIONS} onChange={(mode) => set({ ...output, copyCountFromInput: mode === "input" })} />
             {output.copyCountFromInput ? (
               <div className="field">

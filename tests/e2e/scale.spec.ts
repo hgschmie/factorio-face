@@ -1,9 +1,11 @@
-// Scale check: 1,000 entities and 999 wires must stay interactive. The measurements are written to
-// .runtime/measurements/scale-1000.json; the assertions only guard against gross regressions.
+// Scale check on the real session: a project with 1,000 entities and 999 wires is opened from disk, parsed, compiled and
+// must stay interactive. The measurements are written to .runtime/measurements/scale-1000.json; the assertions only guard
+// against gross regressions.
 import type { Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { canvasView, clientPointOf, committedPositions, expect, MEASUREMENT_DIR, SCREENSHOT_DIR, test } from "./app.ts";
+import { canvasView, card, clientPointOf, committedPositions, expect, MEASUREMENT_DIR, SCREENSHOT_DIR, sourceText, test, writeProject } from "./app.ts";
+import { gridSource } from "./fixtures.ts";
 
 interface FrameStats {
   readonly frames: number;
@@ -74,14 +76,19 @@ test("stays interactive with 1,000 entities", async ({ page }) => {
   test.setTimeout(180_000);
   const results: Record<string, unknown> = {};
 
-  // Loading: the demo hook replaces the circuit; no CSP exemption is needed because nothing is evaluated from a string.
-  results.loadToFrameMs = await page.evaluate(async () => {
+  // Loading: from the load command to the first frame that shows the circuit. This includes reading the project through
+  // IPC, parsing and analyzing 136 kB of source, compiling the simulation and rendering the canvas.
+  const source = gridSource(1000);
+  const directory = await writeProject({ name: "Grid of 1000", source });
+  results.sourceBytes = source.length;
+  results.loadToFrameMs = await page.evaluate(async (path) => {
     await new Promise((done) => requestAnimationFrame(done));
     const start = performance.now();
-    window.faceDemo!.loadGrid(1000);
+    await window.faceSession!.commands.loadProject(path);
     await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
     return Math.round((performance.now() - start) * 10) / 10;
-  });
+  }, directory);
+  expect(await page.evaluate(() => window.faceSession!.getState().editable)).toBe(true);
   await expect(page.locator(".canvas-heading .counts")).toContainText("1000 entities");
   await expect(page.locator(".canvas-heading .counts")).toContainText("999 connections");
 
@@ -133,22 +140,71 @@ test("stays interactive with 1,000 entities", async ({ page }) => {
   results.normalDragEntity = await measureFrames(page, () => dragBy(page, grab, 200, 120, 90));
   expect((await committedPositions(page))[cardName]).toEqual({ x: before.x + 200, y: before.y + 120 });
 
-  // Whole-circuit updates.
-  await page.getByRole("button", { name: "Fit", exact: true }).click();
+  // One inspector edit of a number: from the input event to the next frame. Behind it: the language command, one editor
+  // transaction, a full re-analysis of the document and a fingerprint check of the simulation.
+  await page.mouse.click(grab.x + 200, grab.y + 120);
+  await expect(card(page, cardName)).toHaveClass(/selected/);
+  await expect(page.getByLabel("Second operand", { exact: true })).toHaveValue("1");
+  const editSamples: { syncMs: number; toFrameMs: number }[] = [];
+  for (const value of ["2", "3", "4", "5", "6", "7"]) {
+    editSamples.push(
+      await page.evaluate(async (text) => {
+        const input = document.querySelector<HTMLInputElement>('input[aria-label="Second operand"]')!;
+        input.focus();
+        await new Promise((done) => requestAnimationFrame(done));
+        const start = performance.now();
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, text);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        const sync = performance.now();
+        await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
+        return { syncMs: Math.round((sync - start) * 10) / 10, toFrameMs: Math.round((performance.now() - start) * 10) / 10 };
+      }, value),
+    );
+  }
+  const median = (values: number[]): number => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
+  results.inspectorNumericEdit = { firstToFrameMs: editSamples[0]!.toFrameMs, medianSyncMs: median(editSamples.map((sample) => sample.syncMs)), medianToFrameMs: median(editSamples.map((sample) => sample.toFrameMs)), samples: editSamples.length };
+  expect(await sourceText(page)).toContain("virtual:signal-A = virtual:signal-A + 7");
+
+  // Drag commit: from the pointer release to the next frame (command, transaction, re-analysis, render of the moved card).
+  const moved = (await committedPositions(page))[cardName]!;
+  const regrab = await clientPointOf(page, { x: moved.x + 92, y: moved.y + 30 });
+  await page.mouse.move(regrab.x, regrab.y);
+  await page.mouse.down();
+  await page.mouse.move(regrab.x + 60, regrab.y + 40, { steps: 6 });
+  await page.evaluate(() => {
+    const probe = window as unknown as { dragCommit?: Promise<number> };
+    probe.dragCommit = new Promise((done) => {
+      window.addEventListener("pointerup", () => {
+        const start = performance.now();
+        requestAnimationFrame(() => setTimeout(() => done(Math.round((performance.now() - start) * 10) / 10), 0));
+      }, { capture: true, once: true });
+    });
+  });
+  await page.mouse.up();
+  results.dragCommitToFrameMs = await page.evaluate(() => (window as unknown as { dragCommit: Promise<number> }).dragCommit);
+  expect((await committedPositions(page))[cardName]).toEqual({ x: moved.x + 60, y: moved.y + 40 });
+
+  // Simulation: one step to the next frame, and the engine plus view model alone over 200 steps.
   await page.locator("svg.canvas-svg").focus();
-  results.selectAllToFrameMs = await page.evaluate(async () => {
+  await page.keyboard.press("Escape");
+  results.step = await page.evaluate(async () => {
+    const { commands, getState } = window.faceSession!;
     await new Promise((done) => requestAnimationFrame(done));
     const start = performance.now();
-    document.querySelector("svg.canvas-svg")!.dispatchEvent(new KeyboardEvent("keydown", { key: "a", metaKey: true, ctrlKey: true, bubbles: true }));
+    commands.step();
+    const sync = performance.now();
     await new Promise((done) => requestAnimationFrame(() => setTimeout(done, 0)));
-    return Math.round((performance.now() - start) * 10) / 10;
+    const toFrame = performance.now();
+    const batchStart = performance.now();
+    for (let i = 0; i < 200; i++) commands.step();
+    const batch = performance.now() - batchStart;
+    const round = (value: number): number => Math.round(value * 100) / 100;
+    return { firstSyncMs: round(sync - start), firstToFrameMs: round(toFrame - start), meanSyncMsOver200: round(batch / 200), tick: getState().simulation.tick };
   });
-  await expect(page.locator("g.card.selected")).toHaveCount(1000);
-  await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "Split", exact: true }).click();
-  await expect(page.locator(".source-pane .cm-content")).toContainText('circuit "Grid of 1000" {');
-  await page.getByRole("button", { name: "Circuit", exact: true }).click();
+  expect((results.step as { tick: number }).tick).toBe(201);
+  await expect(page.getByTestId("tick-counter")).toHaveText("0201");
 
+  // Whole-circuit updates.
   await mkdir(MEASUREMENT_DIR, { recursive: true });
   await writeFile(resolve(MEASUREMENT_DIR, "scale-1000.json"), JSON.stringify(results, null, 2) + "\n");
   console.log("scale-1000", JSON.stringify(results));
@@ -162,4 +218,7 @@ test("stays interactive with 1,000 entities", async ({ page }) => {
   }
   expect((results.normalPan as FrameStats).cards).toBeLessThan(120);
   expect(results.loadToFrameMs as number).toBeLessThan(3000);
+  expect((results.inspectorNumericEdit as { medianToFrameMs: number }).medianToFrameMs).toBeLessThan(500);
+  expect(results.dragCommitToFrameMs as number).toBeLessThan(500);
+  expect((results.step as { meanSyncMsOver200: number }).meanSyncMsOver200).toBeLessThan(50);
 });

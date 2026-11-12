@@ -10,10 +10,12 @@ export interface TopBarProps {
   readonly canRedo: boolean;
   /** False when no canvas is shown, so there is nothing to fit. */
   readonly canFit: boolean;
+  readonly settingsOpen: boolean;
   onModeChange(mode: WorkbenchMode): void;
   onUndo(): void;
   onRedo(): void;
   onFit(): void;
+  onToggleSettings(): void;
   onSave(): void;
 }
 
@@ -23,7 +25,7 @@ const MODES: Readonly<Record<WorkbenchMode, { readonly label: string; readonly i
   split: { label: "Split", icon: "split" },
 };
 
-export function TopBar({ project, mode, canUndo, canRedo, canFit, onModeChange, onUndo, onRedo, onFit, onSave }: TopBarProps) {
+export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, onModeChange, onUndo, onRedo, onFit, onToggleSettings, onSave }: TopBarProps) {
   return (
     <>
       <header className="titlebar">
@@ -79,6 +81,10 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, onModeChange, 
           <button type="button" className="labelled-button" title={`Fit the circuit into view (${SHORTCUT.fit})`} disabled={!canFit} onClick={onFit}>
             <Icon name="fit" size={16} />
             Fit
+          </button>
+          <button type="button" className="labelled-button" data-settings-toggle title="Project name and signal groups" aria-expanded={settingsOpen} onClick={onToggleSettings}>
+            <Icon name="settings" size={16} />
+            Settings
           </button>
           <span className="action-divider" />
           <button type="button" className="save-button" title={`Save (${SHORTCUT.save})`} onClick={onSave}>

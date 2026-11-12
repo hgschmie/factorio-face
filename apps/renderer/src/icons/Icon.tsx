@@ -49,6 +49,13 @@ const GLYPHS = {
   close: <path d="m6 6 12 12M6 18 18 6" />,
   bolt: <path d="m13 2-9 12h7l-1 8 10-13h-8z" />,
   arrow: <path d="M4 12h16m-6-6 6 6-6 6" />,
+  settings: (
+    <>
+      <path d="M4 7h9m5 0h2M4 17h2m5 0h9" />
+      <circle cx="15.5" cy="7" r="2.5" />
+      <circle cx="8.5" cy="17" r="2.5" />
+    </>
+  ),
   selectAll: (
     <>
       <rect x="4" y="4" width="16" height="16" rx="2" strokeDasharray="3 3" />

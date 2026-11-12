@@ -32,34 +32,115 @@
   height: 100%;
 }
 
+/* Problems list below the editor: compact, errors first, each row jumps to its range. */
 .diagnostics {
   flex-shrink: 0;
-  max-height: 110px;
-  margin: 0;
-  padding: 7px;
+  max-height: 124px;
   overflow: auto;
-  border-top: 1px solid #7e6540;
-  list-style: none;
-  background: #3b2f24;
+  border-top: 1px solid #5e5136;
+  background: #2a2a21;
 }
 
-.diagnostics button {
+.diagnostics-heading {
+  position: sticky;
+  top: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 14px 5px;
+  font-size: var(--text-xs);
+  letter-spacing: 1.1px;
+  color: #a9a07f;
+  background: #2f2e24;
+}
+
+.diagnostics-heading > span:last-child {
+  letter-spacing: 0;
+  color: var(--status-warning);
+}
+
+.diagnostics ul {
+  margin: 0;
+  padding: 3px 7px 6px;
+  list-style: none;
+}
+
+.diagnostics li button {
   justify-content: flex-start;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  padding: 4px;
+  padding: 3px 7px;
+  border-radius: var(--radius-sm);
   font-size: var(--text-md);
   text-align: left;
   white-space: normal;
-  color: #e2bf8c;
+  color: #dcc79b;
+}
+
+.diagnostic-dot {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-warning);
+}
+
+.diagnostic-line {
+  flex-shrink: 0;
+  min-width: 42px;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: #8f937c;
+}
+
+.diagnostics .severity-error button {
+  color: #f0b19c;
+}
+
+.diagnostics .severity-error .diagnostic-dot {
+  background: var(--status-error);
 }
 
 .diagnostics .severity-info button {
   color: #b9c3ac;
 }
 
-.diagnostics .severity-error button {
-  color: #f0b19c;
+.diagnostics-more {
+  padding: 0 14px 7px 36px;
+  font-size: var(--text-sm);
+  color: #8f937c;
+}
+
+/* Diagnostics inside the editor (lint extension): underline in the status colors instead of the library's defaults. */
+.source-editor .cm-lintRange-error {
+  background-image: none;
+  text-decoration: underline wavy var(--status-error);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.source-editor .cm-lintRange-warning {
+  background-image: none;
+  text-decoration: underline wavy var(--status-warning);
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.source-editor .cm-tooltip-lint {
+  padding: 2px 0;
+}
+
+.source-editor .cm-tooltip-autocomplete ul li {
+  padding: 2px 8px;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+
+.source-editor .cm-completionDetail {
+  margin-left: 12px;
+  font-family: var(--font-ui);
+  font-style: normal;
+  color: var(--text-muted);
 }
 
 /* Token classes produced by the tokenize prop (see editor/tokenHighlight.ts). */

@@ -3,7 +3,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, open, readdir, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { DEFAULT_CIRCUIT_FILE, LIMITS, MANIFEST_FILE_NAME, PROJECT_FORMAT_VERSION, type LoadedProject, type ProjectData } from "./ipc.ts";
-import { parseManifest, resolveInsideProject, ValidationError } from "./validation.ts";
+import { manifestFileContent, parseManifestFile, resolveInsideProject, ValidationError } from "./validation.ts";
 
 export const DEFAULT_GAME_VERSION = "2.1.24";
 export const DEFAULT_MODULES = ["base", "space-age", "quality", "recycler", "elevated-rails"] as const;
@@ -54,7 +54,7 @@ export async function readProject(directory: string): Promise<LoadedProject> {
   } catch {
     throw new ValidationError(`${MANIFEST_FILE_NAME} is not valid JSON`);
   }
-  const manifest = parseManifest(manifestJson);
+  const manifest = parseManifestFile(manifestJson);
   // A UTF-8 file can need up to three bytes per UTF-16 code unit.
   const files = await Promise.all(manifest.circuits.map(async (name) => ({ name, source: await readBoundedFile(resolveInsideProject(directory, name), LIMITS.circuitSourceLength * 3) })));
   return { path: directory, data: { manifest, files } };
@@ -77,5 +77,5 @@ export async function writeProject(directory: string, data: ProjectData): Promis
   await mkdir(directory, { recursive: true });
   // Sources first: the manifest only ever lists files that are completely written.
   for (const file of data.files) await writeFileAtomic(resolveInsideProject(directory, file.name), file.source);
-  await writeFileAtomic(join(directory, MANIFEST_FILE_NAME), JSON.stringify(data.manifest, null, 2) + "\n");
+  await writeFileAtomic(join(directory, MANIFEST_FILE_NAME), JSON.stringify(manifestFileContent(data.manifest), null, 2) + "\n");
 }

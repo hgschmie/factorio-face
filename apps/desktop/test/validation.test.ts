@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { LIMITS, type ProjectData } from "../src/ipc.ts";
-import { parseBoolean, parseCircuitFileName, parseManifest, parseProjectData, parseProjectPath, parseRecentProjects, parseSaveProjectRequest, resolveInsideProject, ValidationError } from "../src/validation.ts";
+import { manifestFileContent, parseBoolean, parseCircuitFileName, parseManifest, parseManifestFile, parseProjectData, parseProjectPath, parseRecentProjects, parseSaveProjectRequest, resolveInsideProject, ValidationError } from "../src/validation.ts";
 
 const manifest = { formatVersion: 1, name: "Demo", gameVersion: "2.1.24", modules: ["base", "space-age"], customSignalGroups: [], circuits: ["main.face"] };
 const data: ProjectData = { manifest: { ...manifest, formatVersion: 1 }, files: [{ name: "main.face", source: 'circuit "Demo" {\n}\n' }] };
@@ -37,8 +37,48 @@ describe("circuit file names", () => {
 });
 
 describe("manifest", () => {
-  it("accepts a valid manifest and drops unknown fields", () => {
+  it("accepts a valid manifest and drops unknown fields that arrive over IPC", () => {
     expect(parseManifest({ ...manifest, extra: "ignored" })).toEqual(manifest);
+    expect(parseManifest({ ...manifest, extras: {} })).toEqual(manifest);
+  });
+
+  it("keeps unknown top-level fields of face.json in extras and writes them back at the top level", () => {
+    const onDisk = { ...manifest, layout: { zoom: 1.5, panels: ["dock", null] }, futureFlag: true, extras: "a field that happens to be called extras" };
+    const parsed = parseManifestFile(onDisk);
+    expect(parsed).toEqual({ ...manifest, extras: { layout: { zoom: 1.5, panels: ["dock", null] }, futureFlag: true, extras: "a field that happens to be called extras" } });
+    expect(manifestFileContent(parsed)).toEqual(onDisk);
+    // The in-memory form survives the IPC validation unchanged, and a file without unknown fields has no extras.
+    expect(parseManifest(parsed)).toEqual(parsed);
+    expect(parseManifestFile(manifest)).toEqual(manifest);
+    expect(Object.keys(manifestFileContent(parsed)).slice(0, 6)).toEqual(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits"]);
+  });
+
+  it("keeps a __proto__ field as data without touching any prototype", () => {
+    const parsed = parseManifestFile(JSON.parse(`{ "formatVersion": 1, "name": "Demo", "gameVersion": "2.1.24", "modules": [], "circuits": ["main.face"], "__proto__": { "polluted": true }, "nested": { "__proto__": { "polluted": true } } }`));
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+    expect((parsed as unknown as Record<string, unknown>).polluted).toBeUndefined();
+    expect(Object.keys(parsed.extras!)).toEqual(["__proto__", "nested"]);
+    expect(JSON.stringify(manifestFileContent(parsed))).toContain('"__proto__":{"polluted":true}');
+  });
+
+  it("validates known fields of face.json as strictly as before", () => {
+    expect(() => parseManifestFile({ ...manifest, circuits: ["../main.face"], note: "x" })).toThrow(ValidationError);
+    expect(() => parseManifestFile({ ...manifest, formatVersion: 2 })).toThrow(ValidationError);
+    expect(() => parseManifestFile([])).toThrow(ValidationError);
+  });
+
+  it.each([
+    ["extras that are not an object", { ...manifest, extras: ["x"] }],
+    ["extras that redefine a known field", { ...manifest, extras: { name: "Other" } }],
+    ["extras with a function", { ...manifest, extras: { run: () => 1 } }],
+    ["extras with a non-finite number", { ...manifest, extras: { value: Number.POSITIVE_INFINITY } }],
+    ["extras with a class instance", { ...manifest, extras: { when: new Date(0) } }],
+    ["extras with an empty field name", { ...manifest, extras: { "": 1 } }],
+    ["extras with a control character in a field name", { ...manifest, extras: { "a\u0000b": 1 } }],
+    ["extras nested too deeply", { ...manifest, extras: { deep: Array.from({ length: LIMITS.manifestExtrasDepth + 2 }).reduce<unknown>((inner) => [inner], 1) } }],
+    ["oversized extras", { ...manifest, extras: { blob: "x".repeat(LIMITS.manifestBytes) } }],
+  ])("rejects %s", (_name, value) => {
+    expect(() => parseManifest(value)).toThrow(ValidationError);
   });
 
   it("accepts custom signal groups", () => {

@@ -25,6 +25,8 @@ export const LIMITS = {
   /** UTF-16 code units of one circuit source. */
   circuitSourceLength: 5_000_000,
   manifestBytes: 1_000_000,
+  /** Nesting depth of unknown manifest fields. */
+  manifestExtrasDepth: 32,
   modules: 64,
   customSignalGroups: 256,
   customSignalsPerGroup: 4096,
@@ -47,6 +49,8 @@ export interface CustomSignalGroup {
   readonly signals: readonly CustomSignal[];
 }
 
+export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
+
 export interface ProjectManifest {
   readonly formatVersion: typeof PROJECT_FORMAT_VERSION;
   readonly name: string;
@@ -56,6 +60,11 @@ export interface ProjectManifest {
   readonly customSignalGroups: readonly CustomSignalGroup[];
   /** Circuit source file names, relative to the project directory. */
   readonly circuits: readonly string[];
+  /**
+   * Top-level fields of face.json that this version does not know. They are read into this record and written back as
+   * top-level fields, so a project touched by a newer version survives a save. Absent when there are none.
+   */
+  readonly extras?: Readonly<Record<string, JsonValue>>;
 }
 
 export interface CircuitFile {

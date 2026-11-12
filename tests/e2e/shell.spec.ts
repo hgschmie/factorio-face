@@ -49,7 +49,7 @@ test("switches between Circuit, Source and Split", async ({ page }) => {
 
   await mode("Circuit").click();
   await expect(editor).toBeHidden();
-  await expect(page.locator("g.card")).toHaveCount(5);
+  await expect(page.locator("g.card")).toHaveCount(4);
 });
 
 test("the mode switch and the palette are reachable by keyboard", async ({ page }) => {
@@ -123,7 +123,7 @@ test("runs the renderer sandboxed, isolated and without remote or dynamic code",
     const contents = BrowserWindow.getAllWindows()[0]!.webContents;
     return { url: contents.getURL(), alive: (await contents.executeJavaScript("document.querySelectorAll('g.card').length")) as number, windows: BrowserWindow.getAllWindows().length };
   });
-  expect(after).toEqual({ url: "face-app://bundle/index.html", alive: 5, windows: 1 });
+  expect(after).toEqual({ url: "face-app://bundle/index.html", alive: 4, windows: 1 });
 });
 
 test("rejects malformed IPC arguments in the main process", async ({ page }) => {

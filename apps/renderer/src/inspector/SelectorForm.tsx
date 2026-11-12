@@ -1,4 +1,4 @@
-import { SELECTOR_OPERATIONS, type SelectorCombinator, type SelectorMode, type SelectorOperation } from "@face/model";
+import { SELECTOR_OPERATIONS, type SelectorCombinator, type SelectorMode, type SelectorOperation, type Wildcard } from "@face/model";
 import { COMPARATOR_OPTIONS, IntField, SelectField, TextField, type SelectOption } from "./fields.tsx";
 import { FormSection, OperandField } from "./formParts.tsx";
 import { setOptional } from "./immutable.ts";
@@ -24,11 +24,15 @@ const DEFAULT_MODES: { readonly [K in SelectorOperation]: Extract<SelectorMode, 
   random: { operation: "random", interval: 0 },
   "stack-size": { operation: "stack-size" },
   "rocket-capacity": { operation: "rocket-capacity" },
-  "quality-filter": { operation: "quality-filter" },
+  "quality-filter": { operation: "quality-filter", comparator: "=" },
   "quality-select": { operation: "quality-select", highest: true },
   "quality-transfer": { operation: "quality-transfer", source: { type: "signal" } },
   time: { operation: "time" },
 };
+
+const NO_WILDCARDS: readonly Wildcard[] = [];
+/** The quality transfer destination is the one selector slot that accepts a wildcard (see ENTITY_PROPERTIES in @face/language). */
+const DESTINATION_WILDCARDS: readonly Wildcard[] = ["each"];
 
 const SORT_OPTIONS: readonly SelectOption<"max" | "min">[] = [
   { value: "max", label: "Descending (max first)" },
@@ -49,12 +53,12 @@ function ModeFields({ mode, onChange }: { readonly mode: SelectorMode; onChange(
       return (
         <>
           <SelectField label="Order" wide value={mode.max ? "max" : "min"} options={SORT_OPTIONS} onChange={(order) => onChange({ ...mode, max: order === "max" })} />
-          <OperandField label="Index" allowWildcards={false} value={mode.index} onChange={(index) => onChange({ ...mode, index })} />
+          <OperandField label="Index" wildcards={NO_WILDCARDS} networks={false} value={mode.index} onChange={(index) => onChange({ ...mode, index })} />
           <SelectField label="Index comparator" wide value={mode.indexComparator} options={COMPARATOR_OPTIONS} onChange={(indexComparator) => onChange({ ...mode, indexComparator })} />
         </>
       );
     case "count":
-      return <SignalField label="Output signal" wide allowWildcards={false} value={mode.output} onChange={(output) => onChange(setOptional(mode, "output", output))} />;
+      return <SignalField label="Output signal" wide value={mode.output} onChange={(output) => onChange(setOptional(mode, "output", output))} />;
     case "random":
       return <IntField label="Update interval (ticks)" wide value={mode.interval} onChange={(interval) => onChange({ ...mode, interval })} />;
     case "quality-filter":
@@ -82,16 +86,16 @@ function ModeFields({ mode, onChange }: { readonly mode: SelectorMode; onChange(
           ) : (
             <SignalField label="Source signal" wide value={source.signal} onChange={(next) => onChange({ ...mode, source: setOptional(source, "signal", next) })} />
           )}
-          <SignalField label="Destination signal" wide value={mode.destination} onChange={(destination) => onChange(setOptional(mode, "destination", destination))} />
+          <SignalField label="Destination signal" wide wildcards={DESTINATION_WILDCARDS} value={mode.destination} onChange={(destination) => onChange(setOptional(mode, "destination", destination))} />
         </>
       );
     }
     case "time":
       return (
         <>
-          <SignalField label="Day length signal" wide allowWildcards={false} value={mode.dayLength} onChange={(next) => onChange(setOptional(mode, "dayLength", next))} />
-          <SignalField label="Day tick signal" wide allowWildcards={false} value={mode.dayTick} onChange={(next) => onChange(setOptional(mode, "dayTick", next))} />
-          <SignalField label="Game tick signal" wide allowWildcards={false} value={mode.gameTick} onChange={(next) => onChange(setOptional(mode, "gameTick", next))} />
+          <SignalField label="Day length signal" wide value={mode.dayLength} onChange={(next) => onChange(setOptional(mode, "dayLength", next))} />
+          <SignalField label="Day tick signal" wide value={mode.dayTick} onChange={(next) => onChange(setOptional(mode, "dayTick", next))} />
+          <SignalField label="Game tick signal" wide value={mode.gameTick} onChange={(next) => onChange(setOptional(mode, "gameTick", next))} />
         </>
       );
     case "stack-size":

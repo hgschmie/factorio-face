@@ -1,6 +1,12 @@
 // Canvas gestures with real pointer input: placing, dragging, wiring, zooming, panning.
 import type { Page } from "@playwright/test";
-import { canvas, canvasView, card, cardGrabPoint, clickCenter, clientPointOf, committedPositions, entityNames, entityPosition, expect, terminal, test, wires } from "./app.ts";
+import { canvas, canvasView, card, cardGrabPoint, clickCenter, clientPointOf, committedPositions, entityNames, entityPosition, expect, sourceText, terminal, test, wires } from "./app.ts";
+import { FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
+
+// Every kind and every wire shape on one screen, opened as a project from disk.
+test.beforeEach(async ({ page }) => {
+  await openFiveKinds(page);
+});
 
 const KINDS = ["constant", "arithmetic", "decider", "selector", "lamp"] as const;
 
@@ -42,6 +48,10 @@ test("places each of the five kinds from the palette", async ({ page }) => {
   await expect(terminal(page, "lamp1", "in")).toHaveCount(1);
   await expect(card(page, "selector1").locator("[data-terminal]")).toHaveCount(2);
   await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
+  // Each placement is a declaration appended to the source; what was there is untouched.
+  const source = await sourceText(page);
+  expect(source).toContain("selector selector1 at (720, 500) {");
+  expect(source.startsWith(FIVE_KINDS_SOURCE.slice(0, FIVE_KINDS_SOURCE.indexOf("    wire red source.out")))).toBe(true);
 });
 
 test("drags an entity and commits the snapped position of the pointer release", async ({ page }) => {
@@ -68,9 +78,13 @@ test("drags an entity and commits the snapped position of the pointer release", 
   const path = await page.locator('g.wire[data-wire="red|e1.out|e2.in"] path.wire-core').getAttribute("d");
   expect(path?.startsWith("M 164 255 ")).toBe(true);
 
+  // The move is a patch of the two numbers in the source.
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("constant source at (40, 80)", "constant source at (-20, 180)"));
+
   // One undo restores both coordinates.
   await page.getByRole("button", { name: "Undo" }).click();
   expect((await committedPositions(page)).source).toEqual({ x: 40, y: 80 });
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await page.getByRole("button", { name: "Redo" }).click();
   expect((await committedPositions(page)).source).toEqual({ x: -20, y: 180 });
 });
@@ -156,9 +170,13 @@ test("wires input-first and output-first in both colors, including feedback", as
   // Repeating an existing connection, in the other direction, adds nothing.
   const afterFour = await wireKeys(page);
   expect(afterFour).toHaveLength(11);
+  const sourceWithFour = await sourceText(page);
   await clickCenter(page, terminal(page, "pick", "out"));
   await clickCenter(page, terminal(page, "light", "in"));
   expect(await wireKeys(page)).toEqual(afterFour);
+  expect(await sourceText(page)).toBe(sourceWithFour);
+  expect(sourceWithFour).toContain("wire red light.in <-> pick.out");
+  expect(sourceWithFour).toContain("wire green twice.out <-> twice.in");
 
   // Escape cancels a pending wire; a second Escape returns to the select tool.
   await clickCenter(page, terminal(page, "pick", "in"));
@@ -235,7 +253,7 @@ test("dragging empty space pans, Fit shows everything again and the view survive
   expect(fitted.origin.y).toBeCloseTo(before.origin.y, 3);
 });
 
-test("simulation controls drive the tick counter without touching the document", async ({ page }) => {
+test("simulation controls drive the real engine without touching the document", async ({ page }) => {
   const counter = page.getByTestId("tick-counter");
   await expect(counter).toHaveText("0000");
   await page.getByRole("button", { name: "Step" }).click();
@@ -248,7 +266,9 @@ test("simulation controls drive the tick counter without touching the document",
   await page.getByRole("button", { name: "Pause" }).click();
   await page.getByRole("button", { name: "Reset simulation" }).click();
   await expect(counter).toHaveText("0000");
+  // Nothing selected: the first three entities are traced.
   await expect(page.locator(".traces tr")).toHaveCount(3);
-  await expect(page.getByTestId("save-state")).toHaveText("No changes");
+  await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
 });

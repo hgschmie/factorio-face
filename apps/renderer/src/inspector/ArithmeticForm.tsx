@@ -1,3 +1,4 @@
+import { SIGNAL_SLOTS } from "@face/language";
 import { ARITHMETIC_OPERATIONS, type ArithmeticCombinator, type ArithmeticOperation } from "@face/model";
 import { SelectField, type SelectOption } from "./fields.tsx";
 import { FormSection, OperandField } from "./formParts.tsx";
@@ -23,10 +24,10 @@ export function ArithmeticForm({ entity, onChange }: { readonly entity: Arithmet
   return (
     <FormSection title="Expression">
       <div className="field-grid">
-        <OperandField label="First operand" value={entity.first} onChange={(first) => onChange({ ...entity, first })} />
+        <OperandField label="First operand" wildcards={SIGNAL_SLOTS["arithmetic.operand"]} value={entity.first} onChange={(first) => onChange({ ...entity, first })} />
         <SelectField label="Operation" wide value={entity.operation} options={OPERATIONS} onChange={(operation) => onChange({ ...entity, operation })} />
-        <OperandField label="Second operand" value={entity.second} onChange={(second) => onChange({ ...entity, second })} />
-        <SignalField label="Output signal" wide value={entity.output} onChange={(output) => onChange(setOptional(entity, "output", output))} />
+        <OperandField label="Second operand" wildcards={SIGNAL_SLOTS["arithmetic.operand"]} value={entity.second} onChange={(second) => onChange({ ...entity, second })} />
+        <SignalField label="Output signal" wide wildcards={SIGNAL_SLOTS["arithmetic.output"]} value={entity.output} onChange={(output) => onChange(setOptional(entity, "output", output))} />
       </div>
     </FormSection>
   );

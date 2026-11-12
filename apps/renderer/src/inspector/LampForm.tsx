@@ -1,3 +1,4 @@
+import { SIGNAL_SLOTS } from "@face/language";
 import { LAMP_COLOR_MODES, type Condition, type Lamp, type LampColorMode, type RgbColor } from "@face/model";
 import { useId } from "react";
 import { CheckboxField, COMPARATOR_OPTIONS, IntField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
@@ -26,7 +27,7 @@ function ConditionFields({ condition, onChange }: { readonly condition: Conditio
   const second = condition.second;
   return (
     <div className="field-grid">
-      <SignalField label="Signal" wide allowWildcards value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
+      <SignalField label="Signal" ariaLabel="Condition signal" wide wildcards={SIGNAL_SLOTS["lamp.condition"]} value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
       <SelectField label="Comparator" value={condition.comparator} options={COMPARATOR_OPTIONS} onChange={(comparator) => onChange({ ...condition, comparator })} />
       <SelectField
         label="Compare to"
@@ -37,7 +38,7 @@ function ConditionFields({ condition, onChange }: { readonly condition: Conditio
       {second.type === "constant" ? (
         <IntField label="Number" wide value={second.value} onChange={(value) => onChange({ ...condition, second: { type: "constant", value } })} />
       ) : (
-        <SignalField label="Other signal" wide required allowWildcards={false} value={second.signal} onChange={(next) => next && onChange({ ...condition, second: { type: "signal", signal: next } })} />
+        <SignalField label="Other signal" wide required wildcards={SIGNAL_SLOTS["lamp.operand"]} value={second.signal} onChange={(next) => next && onChange({ ...condition, second: { type: "signal", signal: next } })} />
       )}
     </div>
   );
@@ -74,12 +75,12 @@ export function LampForm({ entity, onChange }: { readonly entity: Lamp; onChange
             <SelectField label="Color mode" wide value={entity.colorMode} options={COLOR_MODES} onChange={(colorMode) => onChange({ ...entity, colorMode })} />
             {entity.colorMode === "components" && (
               <>
-                <SignalField label="Red signal" wide allowWildcards={false} value={entity.redSignal} onChange={(next) => onChange(setOptional(entity, "redSignal", next))} />
-                <SignalField label="Green signal" wide allowWildcards={false} value={entity.greenSignal} onChange={(next) => onChange(setOptional(entity, "greenSignal", next))} />
-                <SignalField label="Blue signal" wide allowWildcards={false} value={entity.blueSignal} onChange={(next) => onChange(setOptional(entity, "blueSignal", next))} />
+                <SignalField label="Red signal" wide value={entity.redSignal} onChange={(next) => onChange(setOptional(entity, "redSignal", next))} />
+                <SignalField label="Green signal" wide value={entity.greenSignal} onChange={(next) => onChange(setOptional(entity, "greenSignal", next))} />
+                <SignalField label="Blue signal" wide value={entity.blueSignal} onChange={(next) => onChange(setOptional(entity, "blueSignal", next))} />
               </>
             )}
-            {entity.colorMode === "packed-rgb" && <SignalField label="RGB signal" wide allowWildcards={false} value={entity.rgbSignal} onChange={(next) => onChange(setOptional(entity, "rgbSignal", next))} />}
+            {entity.colorMode === "packed-rgb" && <SignalField label="RGB signal" wide value={entity.rgbSignal} onChange={(next) => onChange(setOptional(entity, "rgbSignal", next))} />}
           </div>
         )}
       </FormSection>

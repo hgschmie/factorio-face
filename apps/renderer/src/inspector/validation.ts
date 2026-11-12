@@ -1,5 +1,6 @@
 // Input validation for inspector fields. Pure.
-import { isInt32, wildcardOf, type Circuit, type EntityId, type SignalId } from "@face/model";
+import { isKeyword } from "@face/language";
+import { isInt32, wildcardOf, type Circuit, type EntityId, type SignalId, type Wildcard } from "@face/model";
 import { parseSignalText } from "../entities/signalText.ts";
 
 export type ParseResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly message: string };
@@ -13,12 +14,13 @@ export function parseInt32(text: string): ParseResult<number> {
   return isInt32(value) ? { ok: true, value } : { ok: false, message: "Must fit a signed 32-bit integer" };
 }
 
-/** Empty text means "no signal", which is only acceptable when the field is not required. */
-export function parseSignalField(text: string, required: boolean, allowWildcards: boolean): ParseResult<SignalId | undefined> {
+/** Empty text means "no signal", which is only acceptable when the field is not required. `wildcards` lists the wildcards this slot accepts. */
+export function parseSignalField(text: string, required: boolean, wildcards: readonly Wildcard[]): ParseResult<SignalId | undefined> {
   if (text.trim() === "") return required ? { ok: false, message: "A signal is required" } : { ok: true, value: undefined };
   const signal = parseSignalText(text);
   if (!signal) return { ok: false, message: `Expected ${SIGNAL_FORMAT_HINT}` };
-  if (!allowWildcards && wildcardOf(signal)) return { ok: false, message: "Wildcard signals are not allowed here" };
+  const wildcard = wildcardOf(signal);
+  if (wildcard && !wildcards.includes(wildcard)) return { ok: false, message: wildcards.length === 0 ? "Wildcard signals are not allowed here" : `'${wildcard}' is not allowed here; use ${wildcards.map((name) => `'${name}'`).join(" or ")}` };
   return { ok: true, value: signal };
 }
 
@@ -28,6 +30,7 @@ const ENTITY_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export function entityNameError(name: string, entityId: EntityId, circuit: Circuit): string | null {
   if (name === "") return "A name is required";
   if (!ENTITY_NAME.test(name)) return "Use letters, digits and _; do not start with a digit";
+  if (isKeyword(name)) return `"${name}" is a reserved word of the circuit language`;
   if (circuit.entities.some((other) => other.id !== entityId && other.name === name)) return `"${name}" is already used`;
   return null;
 }

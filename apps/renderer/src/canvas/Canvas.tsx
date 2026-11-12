@@ -5,6 +5,7 @@ import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, 
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
+import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, SHORTCUT } from "../platform.ts";
 import { SELECT_TOOL, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
@@ -29,6 +30,8 @@ export interface CanvasProps {
   /** When false the circuit is shown but cannot be changed (the source has errors). */
   readonly editable: boolean;
   readonly entityStatus?: ReadonlyMap<EntityId, EntityStatus>;
+  /** Catalog icons and names for the signals in a card's status line. */
+  readonly describeSignal?: SignalDescriber;
   readonly resolveEntityIcon?: EntityIconResolver;
   /** View to start with, for example the one in use before the canvas was unmounted. Without it the circuit is fitted. */
   readonly initialView?: CanvasView;
@@ -388,6 +391,7 @@ export function Canvas(props: CanvasProps) {
           outline={camera.zoom < OUTLINE_ZOOM}
           pendingTerminal={pendingWire}
           entityStatus={props.entityStatus}
+          describeSignal={props.describeSignal}
           resolveIcon={props.resolveEntityIcon}
         />
         {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={wireAnchor(pendingEntity.position, pendingWire.side, tool.color)} to={pointerWorld} />}

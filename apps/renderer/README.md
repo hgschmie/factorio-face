@@ -3,87 +3,136 @@
 The React workbench of FActorio Circuit Editor. It runs in the sandboxed Electron renderer and talks to the main process only through the
 typed `window.face` API (`apps/desktop/src/ipc.ts`, imported type-only).
 
-The views are presentational: they take plain props (types from `@face/model`, view state, callbacks) and contain no document logic. The one
-place that knows where state comes from is `App.tsx`.
+Two layers:
+
+- `session/` owns everything that is not a view: the source document with its history, the analysis, the selection, the simulation, the
+  catalog services and the project file. It is plain TypeScript without React and runs headless (that is how it is tested).
+- Everything else is presentational: views take plain props (types from `@face/model`, view state, callbacks) and contain no document
+  logic. `App.tsx` is the one place that connects the two.
 
 ## Structure
 
 ```
 src/
-  App.tsx              composition root: picks the controller (today the demo) and the entity icon resolver
+  App.tsx              composition root: session hook, catalog icons, signal picker and signal descriptions for the views
   main.tsx, index.html entry point; index.html carries the Content-Security-Policy
+  session/
+    projectSession.ts  ProjectSession: implements WorkbenchController, wires the parts below, batches change notifications
+    document.ts        SourceDocument: the CodeMirror EditorState (text, history, selection) with or without a mounted view
+    analysis.ts        runs the language per document version, drops stale results, keeps the last valid circuit, shares structure
+    drafts.ts          inspector edits the language cannot write yet: normalization, completeness check, hints
+    simulationRunner.ts  compile on change, keep state by semantic fingerprint, timer, bounded history, SimulationView
+    simulationView.ts  snapshots to dock traces and card statuses                    (pure)
+    catalogService.ts  per module set: SignalResolver, signal info, picker tree, module list for the settings
+    environment.ts     simulation environment from the catalog (order, stack sizes, rocket capacity, qualities)   (pure)
+    persistence.ts     project file mapping, dirty comparison, starter project      (pure)
+    completion.ts      completion candidates from the language's expectations and the catalog   (pure)
+    editorSupport.ts   CodeMirror glue: token kinds, lint transaction, completion source
+    starter.ts         the example circuit of docs/dsl.md, the content of a new project
+    useProjectSession.ts  React binding (useSyncExternalStore) and the `window.faceSession` probe
   workbench/
     controller.ts      the WorkbenchController seam (state, commands, shared view types)
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
-    TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, save state, undo, redo, fit, save)
+    TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, save state, undo, redo, fit, settings, save)
     Palette.tsx        tools (select, red wire, green wire), the five building blocks, entity list
-    SourcePane.tsx     file heading, SourceEditor, diagnostics list
-    demoSession.ts     DEMO ONLY: in-memory controller (reducer, store, project commands, test hook)
-    demoCircuit.ts     DEMO ONLY: the built-in example circuit and the 1,000 entity grid
-    demoSource.ts      DEMO ONLY: prints a Circuit as face source text
+    SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
     Canvas.tsx         SVG canvas: camera, gestures, pending wire, selection toolbar, context menu; emits callbacks only
     Scene.tsx          memoized wires and cards, culled to the visible area
-    EntityCard.tsx     one memoized card (icon, name, summary, terminals per TERMINALS)
+    EntityCard.tsx     one memoized card (icon, name, summary, live status line, terminals per TERMINALS)
     ContextMenu.tsx    keyboard-navigable popup menu
     geometry.ts        card and terminal geometry, rectangles          (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
     drag.ts            snap, drag threshold, group drag, placement     (pure)
     wireRouting.ts     wire routes and SVG path data                   (pure)
   editor/
-    SourceEditor.tsx   CodeMirror 6 wrapper (line numbers, history, external extensions, tokenize prop)
-    theme.ts           editor chrome in the app palette
-    tokenHighlight.ts  decorations from an external tokenizer
+    SourceEditor.tsx   CodeMirror view over an `EditorBinding`; owns no state
+    extensions.ts      editor chrome: gutters, selection, indentation, keys, theme
+    theme.ts           editor colors in the app palette
+    tokenHighlight.ts  viewport decorations from an external tokenizer
     tokens.ts          token kind to class mapping, minimal text diff  (pure)
   inspector/
-    Inspector.tsx      identity, rename + Delete at the top, settings slot, connections
+    Inspector.tsx      identity, rename + Delete at the top, draft hint, settings slot, connections
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm
-    SignalField.tsx    validated `kind:name[@quality]` input with a `renderPicker` slot
+    SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
     fields.tsx, formParts.tsx, immutable.ts, validation.ts
+  picker/
+    SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
+  settings/
+    ProjectSettings.tsx  project name and the five standard modules as signal groups
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
   entities/            kind labels, signal text forms, card summaries  (pure)
-  icons/               interface glyphs, entity icons (placeholder pictograms, resolver, catalog probe)
+  icons/               interface glyphs, entity icons, catalog icon resolvers (with probes for the git-ignored artwork)
   styles/              tokens.css and one stylesheet per area
-test/                  vitest unit tests for the pure modules and the demo session
+test/                  vitest: pure view modules
+test/session/          vitest: the session, headless (commands, invalid source, simulation, catalog, persistence, drafts)
 ```
 
 End-to-end tests live in `tests/e2e/` and drive the built app with Playwright's Electron support.
 
 ## The WorkbenchController seam
 
-`workbench/controller.ts` defines what the workbench needs from the layer that owns the document:
+`workbench/controller.ts` defines what the views get from the session:
 
 ```ts
 interface WorkbenchController {
   readonly state: WorkbenchState;       // immutable snapshot; a new object per change, unchanged parts keep identity
   readonly commands: WorkbenchCommands; // stable object; commands never throw, failures arrive as state.error
-  readonly editorExtensions?: readonly Extension[]; // CodeMirror extensions from the session
-  readonly tokenize?: Tokenizer;        // (source) => { kind, from, to }[] for highlighting
+  readonly editor: EditorBinding;       // the session-owned editor state: { state, apply(transactions), attach(view) }
 }
 ```
 
-`WorkbenchState`: `project` (name, path, fileName, dirty), `circuit` (last valid `Circuit`), `editable` (false while the source has errors),
-`selection`, `mode`, `tool`, `source`, `diagnostics`, `canUndo` / `canRedo`, `simulation` (`SimulationView`: running, tick, speed, traces,
-per-entity status, notice) and `error`.
+`WorkbenchState`: `project` (name, path, fileName, dirty, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
+has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
+(`SimulationView`: running, tick, speed, traces, per-entity status, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
+`describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
 `WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `updateEntity`,
-`renameEntity`, `deleteEntities`, `addWire`, `removeWire`, `setSource`, `undo`, `redo`), simulation (`run`, `pause`, `step`,
-`resetSimulation`, `setSpeed`) and project (`newProject`, `openProject`, `loadProject`, `save`, `saveAs`).
+`discardDraft`, `renameEntity`, `deleteEntities`, `addWire`, `removeWire`, `setSource`, `undo`, `redo`), simulation (`run`, `pause`,
+`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
+`loadProject`, `save`, `saveAs`).
 
-To connect the real language session, implement these two objects and return them from a hook used in `App.tsx` in place of
-`useDemoSession`. Nothing under `canvas/`, `inspector/`, `editor/`, `simulation/` or the other `workbench/` views needs to change. Notes
-for that work:
+## How the session works
 
-- Entity identity is `Entity.id`; all commands and the selection use ids, never names.
-- Document commands are expected to update `state` synchronously. The canvas clears its drag preview in the same event in which it calls
-  `moveEntities`; an asynchronous update would show the old position for a frame.
-- The source editor stays mounted while hidden, so its history survives mode switches. `SourceEditor` applies a changed `value` as a
-  minimal replacement without a history entry. A session that owns the CodeMirror document should dispatch its own transactions on the
-  view (`SourceEditorHandle.view`) and keep `state.source` equal to the document, in which case the wrapper applies nothing.
-- `Workbench` routes Edit menu commands by focus: plain text fields get the native command, everything else goes to `commands`.
-- `simulation.entityStatus` feeds the status line and the highlight of each card; the demo leaves it empty.
+- **One document, one history.** `SourceDocument` holds a CodeMirror `EditorState`. A mounted `SourceEditor` is created from that state
+  and hands every transaction to `EditorBinding.apply`; the session's own edits go through the same function. Mounting, hiding or
+  unmounting the editor changes nothing about text, history or selection. Undo and redo are CodeMirror's, for typing, canvas and inspector
+  alike.
+- **Commands are source patches.** Every graphical command runs the matching `@face/language` edit command against the current analysis
+  and dispatches its text changes as one transaction with `isolateHistory`, so it is exactly one undo step. A command without changes
+  (a wire that exists, a move to the same place) dispatches nothing. Typing never merges into a command step.
+- **Field edits are one step.** The inspector passes a `coalesce` key per focus of a text or color input; consecutive `updateEntity`
+  calls with the same key, with nothing else touching the document in between, are merged into the previous history event.
+- **Analysis.** Every document change bumps a version and runs `analyze(source, previous, { signals, version })` synchronously.
+  `Analysis.accept` only takes the result of the latest request, so the same code path works when the analysis moves to a worker;
+  `ProjectSession.acceptAnalysis` is the entry point for that. With errors, `editable` is false, the last valid circuit stays, and
+  commands and simulation are blocked. Entities whose declaration text did not change keep their object identity, which is what lets the
+  memoized cards skip rendering.
+- **Selection** is a list of entity ids. Ids come from the language session and survive renames, by command or by typing. A caret the user
+  places inside a declaration selects that entity.
+- **Inspector drafts.** Forms emit complete entities. `drafts.ts` first sets fields without meaning to what the language implies (the
+  output constant while copying the input count, the join of the first condition, ...). If the result is still not expressible (a
+  condition without signal, an expression without output, a signal twice in a section), it is kept in `state.draft` with a hint; the
+  inspector shows the draft instead of the entity, and the next edit that makes it valid writes all of it as one step. A draft is dropped
+  when the selection moves on, when it is discarded, or when its entity changes in the source.
+- **Diagnostics** go to `state.diagnostics` and, as a separate effect-only transaction, to the lint extension. Highlighting uses the tokens
+  of the analysis the session already has; completion maps the language's `completionContext` to keywords, properties, enum values,
+  entity terminals and the catalog signals of the enabled modules.
+- **Catalog.** `CatalogService` is rebuilt when the project's module list changes. It is the language's `SignalResolver` (unknown and
+  disabled signals are warnings; text is never touched), the source of names and icon ids, and the picker tree. `SignalField` receives
+  the wildcards its slot accepts (`SIGNAL_SLOTS` of the language) and the picker offers no others.
+- **Simulation.** `SimulationRunner` compiles each new valid circuit with the catalog environment. If `semanticFingerprint` is unchanged
+  (moves, renames, comments) the running engine, its tick and its history stay; otherwise it starts at tick 0. It has no reference to the
+  document, so no simulation activity can create an edit. While the source has errors it is blocked with a notice and resumes afterwards.
+  The dock traces every output signal of the selected entities (the first three entities when nothing is selected); lamps trace their
+  lit state; what an entity reads per wire color is in the row's tooltip.
+- **Project files.** New project (the example circuit), open, save, save as and open recent go through `window.face`. Dirty means: the text
+  or the settings (name, module set) differ from what was saved. Manifest fields this version does not edit (custom signal groups, unknown
+  fields in `extras`, other circuit files) are written back as loaded.
+
+`window.faceSession` (`getState()`, `commands`) exposes the controller for the end-to-end tests and measurements; it adds no behaviour.
 
 ## Design tokens
 
@@ -119,24 +168,12 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
 - Rendering: the scene is memoized against a culling rectangle snapped to a 400 unit lattice, cards and wires are memoized individually,
   cards become outlines below 30 % zoom, and the drop shadow is skipped above 60 visible cards.
 
-## Entity icons
+## Icons
 
 `EntityIcon` / `EntityIconSvg` take an `EntityIconResolver` (`(kind) => url | undefined`). `icons/catalogEntityIcons.ts` probes the five
-item icons of the generated catalog through `face-asset://catalog/icons/item/<name>.png` and resolves only those that load; every other
-kind, and every kind when `packages/catalog/generated` is absent, shows an inline SVG pictogram.
-
-## Demo only
-
-Everything in `demoSession.ts`, `demoCircuit.ts` and `demoSource.ts` exists so the workbench can be used and tested before
-`packages/language` and `packages/simulation` are wired in:
-
-- The circuit is the source of truth and the text is printed from it. Typed text is kept and saved but not parsed; the next canvas edit
-  replaces it (an info diagnostic says so).
-- A project opened from disk is shown as source only (`editable` false, empty canvas): nothing here can parse it.
-- Undo and redo are a stack of circuit snapshots, separate from the editor's own history.
-- Simulation controls move a tick counter; the traces are a synthetic waveform, labelled as such in the dock. No entity status is shown.
-- No tokenizer is supplied, so the source is not highlighted.
-- `window.faceDemo` (`loadGrid`, `loadCircuit`, `getCircuit`) is a hook for the end-to-end tests and the scale measurement.
+item icons of the generated catalog through `face-asset://catalog/icons/item/<name>.png` and resolves only those that load.
+`icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe. When `packages/catalog/generated` is absent
+(it is git-ignored), entity kinds show inline pictograms and signals are shown by name, in the picker as well.
 
 ## Commands
 
@@ -144,6 +181,6 @@ Everything in `demoSession.ts`, `demoCircuit.ts` and `demoSource.ts` exists so t
 source scripts/env.sh
 npm run build                 # dist/renderer, dist/main.cjs, dist/preload.cjs   (node scripts/build.mjs --watch to rebuild on change)
 npm start                     # run the built app; profile in .runtime/user-data
-npx vitest run apps           # unit tests
+npx vitest run apps           # unit tests (session tests need no DOM)
 npm run test:e2e              # Playwright against the built app; output in .runtime/
 ```

@@ -1,0 +1,99 @@
+/* Project settings: a popover below the project bar. */
+.project-settings {
+  position: absolute;
+  top: calc(var(--titlebar-height) + var(--projectbar-height) - 6px);
+  right: 16px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 340px;
+  max-height: calc(100% - var(--titlebar-height) - var(--projectbar-height) - 20px);
+  padding: 13px 15px 15px;
+  overflow: auto;
+  border: 1px solid #555c50;
+  border-radius: 7px;
+  background: var(--surface-popover);
+  box-shadow: var(--shadow-popover);
+}
+
+.project-settings header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.project-settings header .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.project-settings .field input {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+}
+
+.project-settings .section-label {
+  margin-top: 4px;
+}
+
+.project-settings .section-label > span:last-child {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.project-settings .muted-note {
+  margin-top: -6px;
+  line-height: 1.5;
+}
+
+.module-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.module-list li {
+  padding: 7px 9px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+}
+
+.module-list li.invalid {
+  border-color: var(--notice-border);
+}
+
+.module-list label {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  font-size: var(--text-base);
+  color: var(--text);
+}
+
+.module-title {
+  flex: 1;
+}
+
+.module-count {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-dim);
+}
+
+.module-list small {
+  display: block;
+  margin: 3px 0 0 22px;
+  font-size: var(--text-sm);
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.module-list li.invalid small {
+  color: var(--status-warning);
+}

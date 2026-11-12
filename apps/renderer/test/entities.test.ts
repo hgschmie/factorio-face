@@ -1,9 +1,17 @@
-import { BOTH_NETWORKS, DEFAULT_ENTITY, signal, wildcardSignal, type Entity } from "@face/model";
+import { analyze } from "@face/language";
+import { BOTH_NETWORKS, DEFAULT_ENTITY, signal, wildcardSignal, type Circuit, type Entity } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { formatSignal, parseSignalText, shortSignal } from "../src/entities/signalText.ts";
 import { entitySummary, truncate } from "../src/entities/summary.ts";
 import { entityNameError, parseInt32, parseSignalField } from "../src/inspector/validation.ts";
-import { createDemoCircuit } from "../src/workbench/demoCircuit.ts";
+import { STARTER_SOURCE } from "../src/session/starter.ts";
+
+/** The example circuit of a new project, extended with a selector so that every kind is covered. */
+function exampleCircuit(): Circuit {
+  const result = analyze(STARTER_SOURCE.replace("    wire red source.out", "    selector pick at (560, 240) { operation = select  order = min  index = virtual:signal-I }\n\n    wire red source.out"));
+  if (!result.circuit) throw new Error(JSON.stringify(result.diagnostics));
+  return result.circuit;
+}
 
 const base = { id: "x", name: "x", position: { x: 0, y: 0 } };
 const A = signal("virtual", "signal-A");
@@ -30,9 +38,9 @@ describe("signal text", () => {
 });
 
 describe("card summaries", () => {
-  const byName = new Map(createDemoCircuit().entities.map((entity) => [entity.name, entity]));
+  const byName = new Map(exampleCircuit().entities.map((entity) => [entity.name, entity]));
 
-  it("summarizes the demo circuit", () => {
+  it("summarizes the example circuit", () => {
     expect(entitySummary(byName.get("source")!)).toBe("A = 1");
     expect(entitySummary(byName.get("gate")!)).toBe("A < 10 → A");
     expect(entitySummary(byName.get("twice")!)).toBe("A × 2 → B");
@@ -77,22 +85,26 @@ describe("inspector validation", () => {
   });
 
   it("validates signal fields", () => {
-    expect(parseSignalField("virtual:signal-A", true, true)).toEqual({ ok: true, value: A });
-    expect(parseSignalField("", false, true)).toEqual({ ok: true, value: undefined });
-    expect(parseSignalField("  ", true, true).ok).toBe(false);
-    expect(parseSignalField("signal-A", true, true).ok).toBe(false);
-    expect(parseSignalField("each", true, true)).toEqual({ ok: true, value: wildcardSignal("each") });
-    expect(parseSignalField("each", true, false).ok).toBe(false);
-    expect(parseSignalField("virtual:signal-each", true, false).ok).toBe(false);
+    expect(parseSignalField("virtual:signal-A", true, ["each"])).toEqual({ ok: true, value: A });
+    expect(parseSignalField("", false, [])).toEqual({ ok: true, value: undefined });
+    expect(parseSignalField("  ", true, []).ok).toBe(false);
+    expect(parseSignalField("signal-A", true, []).ok).toBe(false);
+    expect(parseSignalField("each", true, ["each"])).toEqual({ ok: true, value: wildcardSignal("each") });
+    expect(parseSignalField("each", true, []).ok).toBe(false);
+    expect(parseSignalField("virtual:signal-each", true, []).ok).toBe(false);
+    // A wildcard is only accepted where the slot allows that particular one.
+    expect(parseSignalField("anything", true, ["each"])).toEqual({ ok: false, message: "'anything' is not allowed here; use 'each'" });
+    expect(parseSignalField("everything", true, ["anything", "everything"]).ok).toBe(true);
   });
 
   it("validates entity names", () => {
-    const circuit = createDemoCircuit();
+    const circuit = exampleCircuit();
     expect(entityNameError("counter_2", "e2", circuit)).toBeNull();
     expect(entityNameError("gate", "e2", circuit)).toBeNull();
     expect(entityNameError("source", "e2", circuit)).toContain("already used");
     expect(entityNameError("2fast", "e2", circuit)).not.toBeNull();
     expect(entityNameError("has space", "e2", circuit)).not.toBeNull();
     expect(entityNameError("", "e2", circuit)).not.toBeNull();
+    expect(entityNameError("lamp", "e2", circuit)).toContain("reserved");
   });
 });

@@ -3,6 +3,7 @@
 import { terminalKey, wireKey, type Circuit, type Entity, type EntityId, type Point, type TerminalRef, type Wire } from "@face/model";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
+import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
 import { EntityCard } from "./EntityCard.tsx";
 import { cardRect, rectsIntersect, type Rect } from "./geometry.ts";
@@ -21,6 +22,7 @@ export interface SceneProps {
   readonly outline: boolean;
   readonly pendingTerminal: TerminalRef | null;
   readonly entityStatus?: ReadonlyMap<EntityId, EntityStatus>;
+  readonly describeSignal?: SignalDescriber;
   readonly resolveIcon?: EntityIconResolver;
 }
 
@@ -54,7 +56,7 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, posit
   return routed;
 }
 
-export const Scene = memo(function Scene({ circuit, previewPositions, selection, visible, outline, pendingTerminal, entityStatus, resolveIcon }: SceneProps) {
+export const Scene = memo(function Scene({ circuit, previewPositions, selection, visible, outline, pendingTerminal, entityStatus, describeSignal, resolveIcon }: SceneProps) {
   const byId = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
   const wires = useMemo(() => routeWires(circuit, byId, (entity) => previewPositions?.get(entity.id) ?? entity.position), [circuit, byId, previewPositions]);
 
@@ -83,6 +85,7 @@ export const Scene = memo(function Scene({ circuit, previewPositions, selection,
               shadow={shadow}
               pendingSide={pendingTerminal?.entity === entity.id ? pendingTerminal.side : undefined}
               status={entityStatus?.get(entity.id)}
+              describeSignal={describeSignal}
               resolveIcon={resolveIcon}
             />
           );

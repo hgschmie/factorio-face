@@ -4,10 +4,21 @@ Maintained by the coordinator. Scope reference: the milestones in `../../HANDOFF
 
 ## Milestone 1 (foundation and vertical slice)
 
-- [ ] Simulation engine package finished and verified (`packages/simulation`).
-- [ ] Desktop shell and presentational workbench finished and verified (`apps/`, e2e harness).
-- [ ] Session integration: CodeMirror document as the single history; parse/analyze per version with stale-result guards; canvas and inspector commands as source patches; catalog-backed signal resolver, picker and icons; simulation dock on the real engine; project save/reopen through IPC.
+Done: simulation engine, desktop shell and workbench, session integration (single history, source patches, catalog picker and module settings, real simulation, project save/reopen).
+
 - [ ] Native (OS-level) UI check of the integrated app.
+
+## Workbench follow-ups (from the shell and integration reports)
+
+- Delete followed by undo gives the entity a new id, so the simulation resets and the entity is not reselected.
+- Card configuration summaries are short text without signal icons.
+- Dock traces are limited to 6 entities and 4 signals each; per-color inputs are only a tooltip.
+- Completion matches prototype names, not display names.
+- No canvas clipboard (copy/paste), wires do not route around other cards, keyboard accessibility is basic (cards not focusable, no keyboard wiring).
+- Typing latency in a 1,000-entity document is not measured; analysis and simulation run on the main thread.
+- `window.faceSession` test hook is present in production code.
+- The stock Electron development binary writes `~/Library/Preferences/com.github.Electron.plist`; contain it or accept it.
+- No packaging configuration; no single-instance lock.
 
 ## Language follow-ups (from the language package report)
 

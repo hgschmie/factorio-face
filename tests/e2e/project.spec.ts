@@ -1,47 +1,9 @@
-// Project persistence and the unsaved-changes handshake. Native dialogs cannot be driven, so the main process's dialog
-// functions are replaced through Playwright; everything behind them (validation, atomic writes, menu, IPC) is real.
+// Project persistence and the unsaved-changes handshake, starting from the example circuit of a new project.
 import type { ElectronApplication, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { card, cardGrabPoint, closeApp, entityNames, exitCodeOf, expect, launchApp, PROJECTS_DIR, test } from "./app.ts";
-
-let projectCount = 0;
-
-async function newProjectPath(name: string): Promise<string> {
-  const parent = resolve(PROJECTS_DIR, `project-${process.pid}-${++projectCount}`);
-  await mkdir(parent, { recursive: true });
-  return resolve(parent, name);
-}
-
-/** Makes the save dialog answer with `path` and counts how often each dialog was shown. */
-async function stubDialogs(app: ElectronApplication, answers: { savePath?: string; openPath?: string; unsavedChoice?: number }): Promise<void> {
-  await app.evaluate(({ dialog }, { savePath, openPath, unsavedChoice }) => {
-    const calls = { save: 0, open: 0, message: 0 };
-    (globalThis as Record<string, unknown>).dialogCalls = calls;
-    dialog.showSaveDialog = (async () => (calls.save++, { canceled: savePath === undefined, filePath: savePath ?? "" })) as typeof dialog.showSaveDialog;
-    dialog.showOpenDialog = (async () => (calls.open++, { canceled: openPath === undefined, filePaths: openPath === undefined ? [] : [openPath] })) as typeof dialog.showOpenDialog;
-    dialog.showMessageBox = (async () => (calls.message++, { response: unsavedChoice ?? 2, checkboxChecked: false })) as typeof dialog.showMessageBox;
-  }, answers);
-}
-
-function dialogCalls(app: ElectronApplication): Promise<{ save: number; open: number; message: number }> {
-  return app.evaluate(() => (globalThis as Record<string, unknown>).dialogCalls as { save: number; open: number; message: number });
-}
-
-/** Clicks an item of the native application menu, like the user would. */
-async function clickMenu(app: ElectronApplication, ...path: string[]): Promise<void> {
-  await app.evaluate(({ Menu, BrowserWindow }, labels) => {
-    let items = Menu.getApplicationMenu()!.items;
-    let found: Electron.MenuItem | undefined;
-    for (const label of labels) {
-      found = items.find((item) => item.label === label || item.label.startsWith(label));
-      if (!found) throw new Error(`No menu item "${label}" among: ${items.map((item) => item.label).join(", ")}`);
-      items = found.submenu?.items ?? [];
-    }
-    found!.click(undefined, BrowserWindow.getAllWindows()[0], undefined);
-  }, path);
-}
+import { card, cardGrabPoint, clickMenu, closeApp, dialogCalls, entityNames, exitCodeOf, expect, launchApp, newProjectPath, PROJECTS_DIR, sourceText, stubDialogs, test } from "./app.ts";
 
 async function deleteEntity(page: Page, name: string): Promise<void> {
   const point = await cardGrabPoint(page, name);
@@ -82,13 +44,17 @@ test("saves a project directory atomically and reopens it in a new session", asy
     await expect.poll(() => isDocumentEdited(app)).toBe(false);
     await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
 
+    // What is on disk is the document, byte for byte, including the comment at the top.
+    expect(savedSource).toBe(await sourceText(page));
+    expect(savedSource.startsWith("// A counter that lights a lamp.\n")).toBe(true);
+
     // Later saves go to the same place without a dialog (here through File > Save in the native menu).
-    await deleteEntity(page, "pick");
+    await deleteEntity(page, "twice");
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
     expect(await dialogCalls(app)).toMatchObject({ save: 1 });
     savedSource = await readFile(resolve(projectPath, "main.face"), "utf8");
-    expect(savedSource).not.toContain("selector pick");
+    expect(savedSource).not.toContain("arithmetic twice");
     expect((await readdir(projectPath)).sort()).toEqual(["face.json", "main.face"]);
   } finally {
     await closeApp(first.app);
@@ -106,11 +72,16 @@ test("saves a project directory atomically and reopens it in a new session", asy
     await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
     await expect(page.getByTestId("project-name")).toHaveText("Feedback example");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
-    // Demo limitation: without the language package an opened project is shown as source only.
+    // The opened project parses straight into the canvas.
+    await expect(page.locator("g.card")).toHaveCount(2);
+    expect(await entityNames(page)).toEqual(["source", "gate"]);
+    await expect(page.locator("g.wire")).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
+    expect(await sourceText(page)).toBe(savedSource);
+    await page.getByRole("button", { name: "Source", exact: true }).click();
     const editor = page.locator(".source-pane .cm-content");
     await expect(editor).toBeVisible();
     await expect(editor).toContainText("decider gate at (300, 80) {");
-    await expect(editor).not.toContainText("selector pick");
 
     // Editing the source and saving writes exactly the editor's text back.
     await editor.click();
@@ -131,16 +102,24 @@ test("opens a project through File > Open and refuses directories that are not p
   await clickMenu(app, "File", "Save As...");
   await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
 
-  // New project: an empty, unsaved, editable circuit.
+  await deleteEntity(page, "light");
+  await clickMenu(app, "File", "Save");
+  await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
+
+  // New project: the example circuit again, unsaved, editable, with an empty history.
   await clickMenu(app, "File", "New Project");
-  await expect(page.getByTestId("project-name")).toHaveText("Untitled circuit");
-  await expect(page.locator(".canvas-empty")).toBeVisible();
   await expect(page.locator(".project-meta .path")).toHaveText("Not saved yet");
+  await expect(page.getByTestId("project-name")).toHaveText("Feedback example");
+  await expect(page.getByTestId("save-state")).toHaveText("No changes");
+  await expect(page.locator("g.card")).toHaveCount(4);
+  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 
   await stubDialogs(app, { openPath: projectPath });
   await clickMenu(app, "File", "Open Project...");
   await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
-  await expect(page.locator(".source-pane .cm-content")).toContainText('circuit "Feedback example" {');
+  await expect(page.locator("g.card")).toHaveCount(3);
+  expect(await entityNames(page)).toEqual(["source", "gate", "twice"]);
+  expect(await sourceText(page)).toContain('circuit "Feedback example" {');
   expect(await dialogCalls(app)).toMatchObject({ open: 1, message: 0 });
 
   // A directory without face.json is reported, and the open project stays.
@@ -180,7 +159,7 @@ test("asks before closing with unsaved changes: Cancel keeps the window, Discard
     await expect.poll(async () => (await dialogCalls(app)).message).toBe(1);
     await page.waitForTimeout(200);
     expect(app.windows()).toHaveLength(1);
-    expect(await entityNames(page)).toEqual(["source", "gate", "twice", "pick"]);
+    expect(await entityNames(page)).toEqual(["source", "gate", "twice"]);
 
     await stubDialogs(app, { savePath: projectPath, unsavedChoice: 1 });
     const closed = app.waitForEvent("close");
@@ -246,18 +225,26 @@ test("the native menu forwards view, edit and simulation commands to the workben
   // Edit commands act on the circuit unless a text field has focus.
   await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
   await clickMenu(app, "Edit", "Select All");
-  await expect(page.locator("g.card.selected")).toHaveCount(5);
+  await expect(page.locator("g.card.selected")).toHaveCount(4);
   await page.keyboard.press("Escape");
   const light = await cardGrabPoint(page, "light");
   await page.mouse.click(light.x, light.y);
   await page.getByLabel("Entity name").click();
   await clickMenu(app, "Edit", "Delete");
-  expect(await entityNames(page)).toHaveLength(5);
+  expect(await entityNames(page)).toHaveLength(4);
   await page.locator("svg.canvas-svg").focus();
   await clickMenu(app, "Edit", "Delete");
-  expect(await entityNames(page)).toEqual(["source", "gate", "twice", "pick"]);
+  expect(await entityNames(page)).toEqual(["source", "gate", "twice"]);
   await clickMenu(app, "Edit", "Undo");
-  expect(await entityNames(page)).toHaveLength(5);
-  await clickMenu(app, "Edit", "Redo");
   expect(await entityNames(page)).toHaveLength(4);
+  await clickMenu(app, "Edit", "Redo");
+  expect(await entityNames(page)).toHaveLength(3);
+
+  // With the caret in the source editor, Undo and Redo of the menu act on the same history.
+  await clickMenu(app, "View", "Split");
+  await page.locator(".source-pane .cm-content").click();
+  await clickMenu(app, "Edit", "Undo");
+  expect(await entityNames(page)).toHaveLength(4);
+  await clickMenu(app, "Edit", "Redo");
+  expect(await entityNames(page)).toHaveLength(3);
 });
