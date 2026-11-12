@@ -1,6 +1,7 @@
 // Cut, copy and paste of entities on the canvas. The clipboard is the real one of the system, read and written through Electron's
 // `clipboard` module in the main process; the actions are real key presses, the web contents' own cut / copy / paste (what the
-// Edit menu items do: on macOS those are native and cannot be clicked from here) and real clicks in the context menu.
+// Edit menu items do: on macOS those are native and cannot be clicked from here) and real clicks in the context menu, whose Paste
+// goes through the main process like Edit > Paste.
 import type { ElectronApplication, Page } from "@playwright/test";
 import { canvas, card, cardGrabPoint, CARET, clickCenter, clickMenu, clientPointOf, committedPositions, entityNames, expect, selectEntity, sourceText, test, wires } from "./app.ts";
 import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
@@ -73,6 +74,14 @@ async function pointerOffCanvas(page: Page): Promise<void> {
 async function pointerTo(page: Page, world: { x: number; y: number }): Promise<void> {
   const point = await clientPointOf(page, world);
   await page.mouse.move(point.x, point.y);
+}
+
+/** Right-clicks a world point and clicks Paste in the menu that opens there. */
+async function pasteByMenu(page: Page, world: { x: number; y: number }): Promise<void> {
+  const point = await clientPointOf(page, world);
+  await page.mouse.click(point.x, point.y, { button: "right" });
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: /Paste/ }));
+  await expect(menu(page)).toHaveCount(0);
 }
 
 async function selectedNames(page: Page): Promise<string[]> {
@@ -190,12 +199,12 @@ test("the Edit menu's cut, copy and paste act on the selected entities", async (
   await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
 });
 
-test("the context menu of a card cuts and copies, and shows the shortcuts", async ({ page, app }) => {
+test("the context menu of a card cuts, copies and pastes, and shows the shortcuts", async ({ page, app }) => {
   await page.getByRole("button", { name: "Zoom out" }).click();
   const gate = await cardGrabPoint(page, "gate");
   await page.mouse.click(gate.x, gate.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
-  await expect(menu(page).getByRole("menuitem").locator("kbd")).toHaveText([/^(⌘|Ctrl\+)X$/, /^(⌘|Ctrl\+)C$/, /^R$/, /^(⇧|Shift\+)R$/, /⌫|Del/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem").locator("kbd")).toHaveText([/^(⌘|Ctrl\+)X$/, /^(⌘|Ctrl\+)C$/, /^(⌘|Ctrl\+)V$/, /^R$/, /^(⇧|Shift\+)R$/, /⌫|Del/]);
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Copy/ }));
   await expect.poll(() => readClipboard(app)).toBe(GATE);
   await expect(menu(page)).toHaveCount(0);
@@ -215,14 +224,60 @@ test("the context menu of a card cuts and copies, and shows the shortcuts", asyn
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Cut/ }));
   await expect.poll(() => entityNames(page)).toEqual(ALL);
   expect(await readClipboard(app)).toBe(GATE.replace("gate at (300, 80)", "gate2 at (120, 460)").replaceAll("gate.", "gate2."));
+
+  // Paste in the menu of a card: the copy goes to the grid point that was right-clicked, on top of the card, and is the selection.
+  const twice = await clientPointOf(page, { x: 387, y: 293 });
+  await page.mouse.click(twice.x, twice.y, { button: "right" });
+  await expect(card(page, "twice")).toHaveClass(/selected/);
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: /Paste/ }));
+  await expect.poll(() => entityNames(page)).toEqual([...ALL, "gate2"]);
+  expect((await committedPositions(page)).gate2).toEqual({ x: 380, y: 300 });
+  await expect.poll(() => selectedNames(page)).toEqual(["gate2"]);
+  for (let step = 0; step < 3; step++) await undo(page).click();
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  await expect(undo(page)).toBeDisabled();
+});
+
+test("the context menu pastes at the point it was opened at, as one undo step", async ({ page, app }) => {
+  await page.getByRole("button", { name: "Zoom out" }).click();
+  await selectEntity(page, "light");
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect.poll(() => readClipboard(app)).toBe(LIGHT);
+
+  // Empty canvas has no selection, so its menu has no Cut and no Copy. The pointer is on the item when it is clicked, away from
+  // the point the menu was opened at.
+  const empty = await clientPointOf(page, { x: 47, y: 453 });
+  await page.mouse.click(empty.x, empty.y, { button: "right" });
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Paste/, /Select all/, /Fit to content/]);
+  await expect(page.locator("g.card.selected")).toHaveCount(0);
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: /Paste/ }));
+  await expect.poll(() => entityNames(page)).toEqual([...ALL, "light2"]);
+  expect((await committedPositions(page)).light2).toEqual({ x: 40, y: 460 });
+  await expect.poll(() => selectedNames(page)).toEqual(["light2"]);
+  await expect(canvas(page)).toBeFocused();
+
+  // The point belonged to that one paste: the next one by key goes to the pointer again.
+  await pointerTo(page, { x: 312, y: 448 });
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect.poll(() => entityNames(page)).toEqual([...ALL, "light2", "light3"]);
+  expect((await committedPositions(page)).light3).toEqual({ x: 320, y: 440 });
+
+  // So does the one after a paste that the main process did not perform. The second call returns after the first has failed.
+  await app.evaluate(({ ipcMain }) => ipcMain.removeHandler("face:edit:paste"));
+  await pasteByMenu(page, { x: 47, y: 393 });
+  await page.evaluate(() => window.face!.getRecentProjects());
+  await pointerTo(page, { x: 312, y: 388 });
+  await page.keyboard.press("ControlOrMeta+v");
+  await expect.poll(() => entityNames(page)).toEqual([...ALL, "light2", "light3", "light4"]);
+  expect((await committedPositions(page)).light4).toEqual({ x: 320, y: 380 });
+
+  // Each paste is one step.
   await undo(page).click();
+  await undo(page).click();
+  await expect.poll(() => entityNames(page)).toEqual([...ALL, "light2"]);
   await undo(page).click();
   await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
-
-  // Empty canvas has no selection, so its menu has neither; there is no Paste in either menu.
-  const empty = await clientPointOf(page, { x: 112, y: 468 });
-  await page.mouse.click(empty.x, empty.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Select all/, /Fit to content/]);
+  await expect(undo(page)).toBeDisabled();
 });
 
 test("pastes into another project with names that are free there, and ignores other text with a notice", async ({ page, app }) => {
@@ -254,6 +309,11 @@ test("pastes into another project with names that are free there, and ignores ot
     await toast(page).getByRole("button", { name: "Dismiss message" }).click();
     await expect(toast(page)).toHaveCount(0);
   }
+  // The Paste of the context menu ends in the same notice.
+  await pasteByMenu(page, { x: 60, y: 320 });
+  await expect(toast(page)).toContainText("Nothing was pasted");
+  expect(await sourceText(page)).toBe(before);
+  await toast(page).getByRole("button", { name: "Dismiss message" }).click();
   // The text of the notice can be selected and copied like any text, also while entities are selected.
   await selectEntity(page, "light");
   await writeClipboard(app, "words");
@@ -347,5 +407,5 @@ test("while the source has errors a copy still works, cut and paste do nothing",
   const gate = await cardGrabPoint(page, "gate");
   await page.mouse.click(gate.x, gate.y, { button: "right" });
   await expect(menu(page).getByRole("menuitem", { name: /Copy/ })).toBeEnabled();
-  for (const item of [/Cut/, /Delete/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeDisabled();
+  for (const item of [/Cut/, /Paste/, /Delete/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeDisabled();
 });

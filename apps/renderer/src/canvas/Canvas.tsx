@@ -58,6 +58,8 @@ export interface CanvasProps {
   /** The clipboard actions of the context menu; an action the host cannot perform is absent and its item disabled. */
   onCopy?(): void;
   onCut?(): void;
+  /** Paste with the top-left corner of the group at `corner`, the grid point at which the menu was opened. */
+  onPaste?(corner: Point): void;
 }
 
 type Gesture =
@@ -69,6 +71,8 @@ interface MenuState {
   readonly x: number;
   readonly y: number;
   readonly on: "entity" | "wire" | "canvas";
+  /** The grid point that was right-clicked: where Paste puts its group. */
+  readonly corner: Point;
 }
 
 /** Margins and cell size of the culling rectangle, in world units. */
@@ -78,7 +82,7 @@ const CULL_CELL = 400;
 const OUTLINE_ZOOM = 0.3;
 const FIT_PADDING = 70;
 /** Room kept for the context menu, so that it opens inside the canvas. */
-const MENU_SIZE = { width: 250, height: 215 };
+const MENU_SIZE = { width: 250, height: 245 };
 
 function clientPoint(event: { readonly clientX: number; readonly clientY: number }): Point {
   return { x: event.clientX, y: event.clientY };
@@ -357,7 +361,7 @@ export function Canvas(props: CanvasProps) {
     const bounds = container.getBoundingClientRect();
     // Keep the menu inside the canvas.
     const x = Math.min(event.clientX - bounds.left, bounds.width - MENU_SIZE.width);
-    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), on: entityId ? "entity" : wire ? "wire" : "canvas" });
+    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), on: entityId ? "entity" : wire ? "wire" : "canvas", corner: snapPoint(worldPoint(event)) });
   };
 
   const deleteSelection = (): void => {
@@ -396,10 +400,16 @@ export function Canvas(props: CanvasProps) {
   };
   const selectAll = (): void => onSelect(circuit.entities.map((entity) => entity.id));
   // A right click on empty canvas clears the selection, so the actions on it are only offered on a card or a wire. Cut, copy
-  // and the rotations take the selected entities; a selection of wires alone has none of them.
+  // and the rotations take the selected entities; a selection of wires alone has none of them. Paste needs no selection: its
+  // group goes to the point the menu was opened at, wherever the pointer is by the time the item is clicked.
+  const paste = (): void => {
+    if (menu) props.onPaste?.(menu.corner);
+  };
+  const pasteItem: ContextMenuItem = { id: "paste", label: "Paste", icon: "paste", shortcut: shortcutLabel("edit.paste"), disabled: !editable || !props.onPaste, onSelect: clipboardAction(paste) };
   const clipboardItems: ContextMenuItem[] = [
     { id: "cut", label: "Cut", icon: "cut", shortcut: shortcutLabel("edit.cut"), disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
     { id: "copy", label: "Copy", icon: "copy", shortcut: shortcutLabel("edit.copy"), disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
+    pasteItem,
   ];
   // Each selected entity turns in place. The focus goes back to the canvas, so that the keys work afterwards.
   const rotate = (turn: RotationTurn) => (): void => {
@@ -417,7 +427,8 @@ export function Canvas(props: CanvasProps) {
         { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: shortcutLabel("edit.delete"), danger: true, disabled: !editable, separatorBefore: withEntities, onSelect: deleteSelection },
       ]
     : [
-        { id: "select-all", label: "Select all", icon: "selectAll", shortcut: shortcutLabel("edit.selectAll"), disabled: circuit.entities.length === 0, onSelect: selectAll },
+        pasteItem,
+        { id: "select-all", label: "Select all", icon: "selectAll", shortcut: shortcutLabel("edit.selectAll"), disabled: circuit.entities.length === 0, separatorBefore: true, onSelect: selectAll },
         { id: "fit", label: "Fit to content", icon: "fit", shortcut: shortcutLabel("view.fit"), onSelect: fit },
       ];
 

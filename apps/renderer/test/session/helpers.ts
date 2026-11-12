@@ -110,6 +110,7 @@ export function fakeDesktop(): FakeDesktop {
         desktop.confirmations++;
         return ok(desktop.unsavedChoice);
       },
+      paste: () => ok(null),
       setDirty: (dirty) => void desktop.dirtyReports.push(dirty),
       onMenuCommand: () => () => undefined,
       onSaveBeforeClose: () => () => undefined,

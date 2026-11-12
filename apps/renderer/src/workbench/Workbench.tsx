@@ -1,5 +1,6 @@
 // The workbench shell. It lays out the panels, routes their callbacks to the controller's commands and connects the
 // native menu and the close handshake. It keeps only view state that no panel owns (the canvas view across remounts).
+import type { Point } from "@face/model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
 import { Canvas, type CanvasHandle } from "../canvas/Canvas.tsx";
@@ -88,6 +89,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   // Effects below read the latest state through this ref instead of re-subscribing on every change.
   const stateRef = useRef(state);
   stateRef.current = state;
+  /** Where the Paste of the canvas context menu puts its group; set until the paste event it asked for has arrived. */
+  const menuCornerRef = useRef<Point | undefined>(undefined);
 
   const save = useCallback(() => {
     writeFocusedField();
@@ -124,6 +127,9 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   // events are left alone wherever they mean text, and while the canvas is not shown.
   useEffect(() => {
     const onClipboard = (event: ClipboardEvent): void => {
+      // The corner of a context-menu paste is good for one paste event, whatever becomes of that event.
+      const menuCorner = menuCornerRef.current;
+      if (event.type === "paste") menuCornerRef.current = undefined;
       const canvas = canvasRef.current;
       const data = event.clipboardData;
       if (!canvas || !data || focusIsOnText()) return;
@@ -132,7 +138,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       if (event.type === "paste") {
         if (!editable) return;
         event.preventDefault();
-        commands.pasteEntities(data.getData("text/plain"), canvas.pasteCorner());
+        commands.pasteEntities(data.getData("text/plain"), menuCorner ?? canvas.pasteCorner());
         return;
       }
       if (pageTextIsSelected() || (event.type === "cut" && !editable)) return;
@@ -197,10 +203,24 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   }, [commands]);
   const rotateSelection = useCallback((turn: RotationTurn) => commands.rotateEntities(stateRef.current.selection, turn), [commands]);
 
-  // The context menu of the canvas starts the same events for a cut and a copy. A page cannot start a paste (the main process
-  // would have to do it on its behalf), so the menu has none: pasting is Edit > Paste and Cmd/Ctrl+V.
+  // The context menu of the canvas starts the same events for a cut and a copy. A page cannot start a paste, so the main process
+  // does it on its behalf. The paste event that follows takes the corner; it may arrive before or after the call returns. A
+  // call that fails raises no event, so it takes its corner back.
   const menuCopy = useCallback(() => void document.execCommand("copy"), []);
   const menuCut = useCallback(() => void document.execCommand("cut"), []);
+  const menuPaste = useCallback(
+    (corner: Point) => {
+      if (!api) return;
+      menuCornerRef.current = corner;
+      const forget = (): void => {
+        if (menuCornerRef.current === corner) menuCornerRef.current = undefined;
+      };
+      api.paste().then((result) => {
+        if (!result.ok) forget();
+      }, forget);
+    },
+    [api],
+  );
 
   // Dirty-state handshake: main asks before closing a window that reported unsaved changes.
   useEffect(() => api?.setDirty(project.dirty), [api, project.dirty]);
@@ -311,6 +331,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   onRotate={rotateSelection}
                   onCopy={menuCopy}
                   onCut={menuCut}
+                  onPaste={api && menuPaste}
                 />
                 {!editable && (
                   <div className="invalid-banner" role="status">

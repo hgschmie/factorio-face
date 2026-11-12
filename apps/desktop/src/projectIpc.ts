@@ -1,4 +1,5 @@
-// IPC handlers for project operations. Every argument is validated before it reaches the filesystem or a dialog.
+// IPC handlers of the window: the project operations and the paste of the canvas context menu. Every argument is validated before
+// it reaches the filesystem or a dialog.
 import { dialog, ipcMain, type BrowserWindow, type FileFilter, type IpcMainInvokeEvent } from "electron";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -128,4 +129,10 @@ export function registerProjectIpc(context: ProjectIpcContext): void {
   });
 
   handle(CHANNELS.confirmUnsavedChanges, () => askUnsavedChanges(window));
+
+  // The page cannot start a paste, so the window does it on its behalf. The clipboard reaches the page in the paste event only.
+  handle(CHANNELS.paste, async (): Promise<null> => {
+    window.webContents.paste();
+    return null;
+  });
 }

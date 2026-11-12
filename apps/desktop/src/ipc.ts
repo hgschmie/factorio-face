@@ -151,6 +151,7 @@ export const CHANNELS = {
   getRecentProjects: "face:recent:list",
   clearRecentProjects: "face:recent:clear",
   confirmUnsavedChanges: "face:confirm-unsaved",
+  paste: "face:edit:paste",
   setDirty: "face:dirty",
   menuCommand: "face:menu-command",
   saveBeforeClose: "face:save-before-close",
@@ -174,6 +175,11 @@ export interface FaceApi {
   clearRecentProjects(): Promise<IpcResult<null>>;
   /** Native Save / Discard / Cancel prompt, for replacing a project with unsaved changes. */
   confirmUnsavedChanges(): Promise<IpcResult<UnsavedChoice>>;
+  /**
+   * Makes the window paste into itself, as Edit > Paste does: the page gets a `paste` event that carries the clipboard. For the Paste
+   * item of the canvas context menu, because a page cannot start a paste. It takes no arguments and returns no clipboard content.
+   */
+  paste(): Promise<IpcResult<null>>;
   /** Dirty-state handshake: main prompts on window close while the renderer reports unsaved changes. */
   setDirty(dirty: boolean): void;
   onMenuCommand(listener: (command: MenuCommand) => void): () => void;

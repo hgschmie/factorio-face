@@ -68,6 +68,12 @@ const GLYPHS = {
       <path d="M15 5V4a1 1 0 0 0-1-1H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h1" />
     </>
   ),
+  paste: (
+    <>
+      <path d="M9 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-3" />
+      <rect x="9" y="3" width="6" height="4" rx="1" />
+    </>
+  ),
   cut: (
     <>
       <circle cx="6" cy="6" r="3" />

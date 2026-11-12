@@ -216,7 +216,7 @@ test("the context menu of a wire selects it and deletes the selection", async ({
   await shiftClickCard(page, "twice");
   await expect(card(page, "twice")).toHaveClass(/selected/);
   await clickWire(page, red, { at: NEAR_SOURCE, button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete 1 entity and 1 wire/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete 1 entity and 1 wire/]);
   await expectSelectedWires(page, red);
   await expect(card(page, "twice")).toHaveClass(/selected/);
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Delete/ }));
@@ -230,7 +230,7 @@ test("the context menu of a wire selects it and deletes the selection", async ({
   await tool(page, "Red wire").click();
   await expect(tool(page, "Red wire")).toHaveAttribute("aria-pressed", "true");
   await clickWire(page, red, { at: NEAR_SOURCE, button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Select all/, /Fit to content/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Paste/, /Select all/, /Fit to content/]);
   await page.keyboard.press("Escape");
   await expect(selectedWires(page)).toHaveCount(0);
 });

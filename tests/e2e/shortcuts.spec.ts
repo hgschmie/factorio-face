@@ -303,7 +303,7 @@ test("the arrows move through an open menu and not the selection", async ({ page
   await page.keyboard.press("ArrowDown");
   await expect(menu(page).getByRole("menuitem", { name: /Copy/ })).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(menu(page).getByRole("menuitem", { name: /Rotate clockwise/ })).toBeFocused();
+  await expect(menu(page).getByRole("menuitem", { name: /Paste/ })).toBeFocused();
   // Neither do the other keys act while the menu is open.
   for (const key of ["q", "2", "Alt+KeyR", "ControlOrMeta+d", "ArrowLeft", "ArrowRight"]) await page.keyboard.press(key);
   await page.keyboard.press("Escape");

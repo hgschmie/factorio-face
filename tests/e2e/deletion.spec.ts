@@ -24,7 +24,7 @@ test("a selection shows no floating toolbar; on the canvas the context menu dele
   await expect(floatingDelete).toHaveCount(0);
   const menu = page.getByRole("menu", { name: "Canvas actions" });
   await page.mouse.click(light.x, light.y, { button: "right" });
-  await expect(menu.getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete 2 entities/]);
+  await expect(menu.getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete 2 entities/]);
   await page.keyboard.press("Escape");
   expect(await entityNames(page)).toEqual(ALL);
 
@@ -69,7 +69,7 @@ test("deletes through the context menu, which shows the shortcut", async ({ page
   // On empty canvas the menu offers view actions instead.
   const box = (await canvas(page).boundingBox())!;
   await page.mouse.click(box.x + 40, box.y + box.height - 120, { button: "right" });
-  await expect(menu.getByRole("menuitem")).toHaveText([/Select all/, /Fit to content/]);
+  await expect(menu.getByRole("menuitem")).toHaveText([/Paste/, /Select all/, /Fit to content/]);
   await menu.getByRole("menuitem", { name: /Select all/ }).click();
   await expect(page.locator("g.card.selected")).toHaveCount(4);
 });

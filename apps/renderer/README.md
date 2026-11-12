@@ -364,16 +364,22 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   they stay the browser's own. Cut and copy take the selected entities only (the wires between them are part of the text
   anyway): with wires alone selected both do nothing, and a cut leaves a selected wire that still exists selected. A paste puts the top-left corner of the group on the grid point under
   the pointer while that is over the canvas (`CanvasHandle.pasteCorner`); otherwise see `pasteShift` above. While the source has
-  errors copy works, cut and paste do nothing. The context menu of a card has Cut and Copy with their shortcuts (Cut disabled
-  while the source has errors); they run `document.execCommand`, which raises the same events. There is no Paste in the context
-  menu: a page cannot start a paste (`document.execCommand("paste")` is refused and the clipboard permissions are denied), so it
-  would need a channel on which the main process pastes on the page's behalf. Pasting is Edit > Paste and Cmd/Ctrl+V. With
-  entities selected the menu also has the two rotations, between Copy and Delete.
+  errors copy works, cut and paste do nothing. The context menu of a card has Cut, Copy and Paste with their shortcuts (Cut and
+  Paste disabled while the source has errors); Cut and Copy run `document.execCommand`, which raises the same events. A page cannot
+  start a paste (`document.execCommand("paste")` is refused and the clipboard permissions are denied), so Paste asks the main
+  process: `FaceApi.paste()` (channel `face:edit:paste`, no arguments, trusted sender only) makes the window paste into itself with
+  `webContents.paste()`, as Edit > Paste does, and the page gets the usual `paste` event. No clipboard content crosses IPC; the
+  cost is that the page can trigger a paste into itself, and so read the clipboard text, without the user's key or menu. The menu
+  of empty canvas has Paste too, above Select all; outside Electron (no `api`) the item is disabled. A paste from the menu puts the
+  top-left corner of the group on the grid point at which the menu was opened, not under the pointer: `Canvas` keeps that point
+  with the open menu and passes it to `onPaste`, `Workbench` holds it for the one paste event that follows (any paste event
+  clears it, and so does a call that fails), so a later Cmd/Ctrl+V goes to the pointer again. With entities selected the menu also
+  has the two rotations, between Paste and Delete.
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
   while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
   control or the source editor has focus. All of them delete the whole selection, entities and wires, as one undo step
   (`deleteSelection`). A right click on a card or (select tool) a wire outside the selection selects it alone first; the menu
-  of a wire has Delete, and Cut and Copy as well when entities are selected with it.
+  of a wire has Delete, and Cut, Copy and Paste as well when entities are selected with it.
 - Inspector: one selected wire is shown as `.inspector-wire` (`data-wire`, `data-color`) with its two ends as buttons
   (`.wire-end`, `data-side`, output first) that select the entity, and Delete. More than one selected thing is summed up in
   `.inspector-multi`: the names of the entities, the wires as `ul.selected-wires` and one Delete for all of it. The status bar

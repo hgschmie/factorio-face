@@ -166,7 +166,7 @@ test("a selection of several entities turns in place as one undo step, and redo 
 test("the context menu of a card rotates both ways and shows the keys", async ({ page }) => {
   const twice = await cardGrabPoint(page, "twice");
   await page.mouse.click(twice.x, twice.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
   await expect(menu(page).getByRole("menuitem", { name: /Rotate clockwise/ }).locator("kbd")).toHaveText("R");
   await expect(menu(page).getByRole("menuitem", { name: /Rotate counter-clockwise/ }).locator("kbd")).toHaveText(/^(⇧|Shift\+)R$/);
   // The menu is inside the canvas, whole.
@@ -198,7 +198,7 @@ test("the context menu of a card rotates both ways and shows the keys", async ({
   // Empty canvas has nothing to rotate.
   const empty = await clientPointOf(page, { x: 140, y: 300 });
   await page.mouse.click(empty.x, empty.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Select all/, /Fit to content/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Paste/, /Select all/, /Fit to content/]);
 });
 
 test("the Facing control of the inspector shows the direction and sets it in one step", async ({ page }) => {

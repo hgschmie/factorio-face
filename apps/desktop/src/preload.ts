@@ -13,6 +13,7 @@ const api: FaceApi = {
   getRecentProjects: () => ipcRenderer.invoke(CHANNELS.getRecentProjects),
   clearRecentProjects: () => ipcRenderer.invoke(CHANNELS.clearRecentProjects),
   confirmUnsavedChanges: () => ipcRenderer.invoke(CHANNELS.confirmUnsavedChanges),
+  paste: () => ipcRenderer.invoke(CHANNELS.paste),
   setDirty: (dirty) => ipcRenderer.send(CHANNELS.setDirty, dirty === true),
   onMenuCommand: (listener) => {
     const handler = (_event: IpcRendererEvent, command: MenuCommand): void => listener(command);
