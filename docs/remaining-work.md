@@ -14,6 +14,7 @@ Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude
 ## Workbench follow-ups (from the shell and integration reports)
 
 - Native check, defect: Cmd+Z while an inspector field has focus runs the field's own undo (`document.execCommand` in `Workbench.tsx`). The old value is committed again as an edit, so the inspector change disappears from the history (redo cannot bring it back) and a later Cmd+Z is a step that changes nothing. Seen with the decider number field after Return.
+- Wires cannot be selected on the canvas. A wire is removed by repeating the wire gesture between its two terminals with the same color (as in the game, since 2026-11-11; the handoff's rule that a repeated connection is a no-op is superseded), from the Connections list of the inspector, or in the source.
 - Native check, defect: with a wire tool, press on a terminal, drag and release on a second terminal leaves a pending wire; only a second click connects. Drag-to-connect should complete the wire.
 - Native check, to verify: Fit to Content right after switching to Split zoomed to 47% where the content would fit at roughly 70%; a card tooltip stayed visible above native sheets and after its card was deleted (the pointer may still have been over it).
 - Native check, note: an accessibility press on a card does nothing (cards select on pointer events only); the macOS application menu title reads Electron with the stock development binary (items inside carry the product name).

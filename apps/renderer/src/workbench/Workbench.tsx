@@ -154,7 +154,7 @@ export function Workbench({ controller, api, resolveEntityIcon, renderSignalPick
                   onToolChange={commands.setTool}
                   onPlaceEntity={commands.placeEntity}
                   onMoveEntities={commands.moveEntities}
-                  onAddWire={commands.addWire}
+                  onToggleWire={commands.toggleWire}
                   onDeleteSelection={deleteSelection}
                 />
                 {!editable && (

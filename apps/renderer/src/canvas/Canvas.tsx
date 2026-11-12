@@ -40,7 +40,8 @@ export interface CanvasProps {
   onToolChange(tool: Tool): void;
   onPlaceEntity(kind: EntityKind, position: Point): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
-  onAddWire(wire: Wire): void;
+  /** A wire gesture was completed between two different terminals: connect them, or disconnect them if this wire exists. */
+  onToggleWire(wire: Wire): void;
   onDeleteSelection(): void;
 }
 
@@ -80,7 +81,7 @@ function entityIdAt(target: Element): EntityId | null {
 function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean): string {
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
   if (tool.type === "place") return `Click the canvas (or press Enter on it) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
-  if (tool.type === "wire") return pending ? "Click a second terminal to connect. Esc cancels." : `Click an input or output terminal to start a ${tool.color} wire.`;
+  if (tool.type === "wire") return pending ? `Click a second terminal to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.` : `Click an input or output terminal to start a ${tool.color} wire.`;
   return "Drag to arrange. Drag empty space to pan, Shift-drag to select an area, scroll to zoom.";
 }
 
@@ -194,7 +195,7 @@ export function Canvas(props: CanvasProps) {
       return;
     }
     const sameTerminal = pendingWire.entity === terminal.entity && pendingWire.side === terminal.side;
-    if (!sameTerminal) props.onAddWire({ color: tool.color, a: pendingWire, b: terminal });
+    if (!sameTerminal) props.onToggleWire({ color: tool.color, a: pendingWire, b: terminal });
     setPendingWire(null);
   };
 

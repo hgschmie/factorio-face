@@ -167,16 +167,19 @@ test("wires input-first and output-first in both colors, including feedback", as
   expect(loops.red.top - loops.green.top).toBeGreaterThanOrEqual(10);
   expect(loops.red.left - loops.green.left).toBeGreaterThanOrEqual(10);
 
-  // Repeating an existing connection, in the other direction, adds nothing.
+  // As in the game, repeating an existing connection (here in the other direction) removes it; one undo brings it back.
   const afterFour = await wireKeys(page);
   expect(afterFour).toHaveLength(11);
   const sourceWithFour = await sourceText(page);
-  await clickCenter(page, terminal(page, "pick", "out"));
-  await clickCenter(page, terminal(page, "light", "in"));
-  expect(await wireKeys(page)).toEqual(afterFour);
-  expect(await sourceText(page)).toBe(sourceWithFour);
   expect(sourceWithFour).toContain("wire red light.in <-> pick.out");
   expect(sourceWithFour).toContain("wire green twice.out <-> twice.in");
+  await clickCenter(page, terminal(page, "pick", "out"));
+  await clickCenter(page, terminal(page, "light", "in"));
+  await expect(wires(page)).toHaveCount(10);
+  expect(await sourceText(page)).not.toContain("wire red light.in <-> pick.out");
+  await page.getByRole("button", { name: "Undo" }).click();
+  expect(await wireKeys(page)).toEqual(afterFour);
+  expect(await sourceText(page)).toBe(sourceWithFour);
 
   // Escape cancels a pending wire; a second Escape returns to the select tool.
   await clickCenter(page, terminal(page, "pick", "in"));

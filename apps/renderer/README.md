@@ -90,7 +90,7 @@ has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line num
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
 `WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `updateEntity`,
-`discardDraft`, `renameEntity`, `deleteEntities`, `addWire`, `removeWire`, `setSource`, `undo`, `redo`), simulation (`run`, `pause`,
+`discardDraft`, `renameEntity`, `deleteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`), simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
 `loadProject`, `save`, `saveAs`).
 

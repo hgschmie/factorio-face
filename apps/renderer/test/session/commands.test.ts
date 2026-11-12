@@ -157,6 +157,29 @@ describe("graphical commands as source patches", () => {
     expect(session.state.canUndo).toBe(false);
   });
 
+  it("toggles a wire as the game does: connecting an existing wire removes it, connecting again adds it", () => {
+    const { session } = createSession(IRREGULAR);
+    const red = { color: "red", a: { entity: idOf(session, "gate"), side: "in" }, b: { entity: idOf(session, "src"), side: "out" } } as const;
+    const colors = (): string[] => session.state.circuit.wires.map((wire) => wire.color).sort();
+    expect(colors()).toEqual(["green", "green", "red"]);
+
+    // The connection is declared twice, in both directions; one gesture removes it completely.
+    session.commands.toggleWire(red);
+    expect(colors()).toEqual(["green", "green"]);
+    expect(session.state.source).not.toContain("wire red");
+
+    session.commands.toggleWire(red);
+    expect(colors()).toEqual(["green", "green", "red"]);
+
+    // The other color between the same terminals is a different wire.
+    session.commands.toggleWire({ ...red, color: "green" });
+    expect(colors()).toEqual(["green", "green", "green", "red"]);
+
+    for (let step = 0; step < 3; step++) session.commands.undo();
+    expect(session.state.source).toBe(IRREGULAR);
+    expect(session.state.canUndo).toBe(false);
+  });
+
   it("places an entity with a generated name, selects it and returns to the select tool", () => {
     const { session } = createSession(IRREGULAR);
     session.commands.setTool({ type: "place", kind: "lamp" });

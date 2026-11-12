@@ -240,6 +240,8 @@ export interface WorkbenchCommands {
   /** Adding a wire that already exists (in either direction) is a no-op without an undo entry. */
   addWire(wire: Wire): void;
   removeWire(wire: Wire): void;
+  /** The wire gesture, as in the game: connects the two terminals, or removes the wire of this color if they are already connected (in either direction). */
+  toggleWire(wire: Wire): void;
   /** Replaces the source text as one edit (the differing part only). Typing in the editor goes through `EditorBinding`. */
   setSource(source: string): void;
   undo(): void;

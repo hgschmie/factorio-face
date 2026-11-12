@@ -329,6 +329,11 @@ export class ProjectSession {
         const key = wireKey(wire);
         if (this.analysis.parse?.sourceMap.wires.has(key)) this.perform({ type: "removeWire", key });
       }),
+      toggleWire: changing((wire) => {
+        const key = wireKey(wire);
+        if (this.analysis.parse?.sourceMap.wires.has(key)) this.perform({ type: "removeWire", key });
+        else this.perform({ type: "addWire", color: wire.color, a: wire.a, b: wire.b });
+      }),
       setSource: changing((source) => this.document.setText(source)),
       undo: changing(() => void this.document.undo()),
       redo: changing(() => void this.document.redo()),
