@@ -66,4 +66,4 @@ Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude
 - Reusable components, library, instance identity across files, flattening.
 - Debugging: probes, traces for arbitrary signals, stop conditions, scenarios.
 - Packaging, recovery, accessibility and performance hardening; move parsing/simulation to a worker if measurements require it.
-- Code review loop (requested by the user; to be set up).
+- Code review loop: in place since 2026-11-11 as a review before every commit (`docs/agent-rules.md`).

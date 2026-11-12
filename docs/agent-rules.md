@@ -16,6 +16,13 @@ These rules are binding for all work in this repository.
 - Do not create git commits, branches or stashes. The coordinator commits.
 - Stay inside the directories assigned to your work package. If a shared contract (`packages/model`, `docs/dsl.md`) needs to change, report it instead of editing it, unless your brief says otherwise.
 
+## Review before every commit
+
+- Whoever is about to commit (normally the coordinator) first runs `~/.local/bin/or-review --working-tree` in the repository root, after the tests pass. The review arrives as Markdown on stdout; progress and token usage go to stderr.
+- `--working-tree` covers tracked files only. Make new files visible first with `git add -N <file>` (intent to add: the file shows up in the diff, its content is still staged with a normal `git add` for the commit).
+- Every finding is addressed before the commit: fixed, or declined with a stated reason. After fixes that are more than trivial, run the review again. The user is told which findings were fixed and which were declined when asked to confirm the commit.
+- The settings file `.or-review` is maintained by the user; do not change it. The tool sends the diff to an external model; never put secrets in a change.
+
 ## Code style
 
 - Senior/staff-level TypeScript: compact, clear, no tricks. Strict mode, no `any` unless justified. Lines up to 200 characters. Unix line endings.
