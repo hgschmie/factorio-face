@@ -103,6 +103,25 @@ describe("setTiles", () => {
   });
 });
 
+describe("addEntity with a tile", () => {
+  it("writes the clause behind the position, and refuses a tile that is off the grid for the new entity", () => {
+    const added = executeCommand(parsed, { type: "addEntity", kind: "decider", position: { x: 20, y: 40 }, tile: { x: 3, y: -0.5 } });
+    if (!added.ok) throw new Error(added.message);
+    const next = applyChanges(comments, added.changes);
+    expect(next).toContain(`decider ${added.name} at (20, 40) tile (3, -0.5) {`);
+    expect(tileOf(next, added.name!)).toEqual({ x: 3, y: -0.5 });
+    // No placement warning; the new decider only has no condition yet.
+    expect(analyze(next).diagnostics.map((d) => d.code)).toEqual(["unconfigured"]);
+    // A new entity faces east: a 2x1 one needs a whole x, a 1x1 one two halves.
+    expect(executeCommand(parsed, { type: "addEntity", kind: "decider", position: { x: 0, y: 0 }, tile: { x: 0.5, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
+    expect(executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 }, tile: { x: 1, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
+    expect(executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 }, tile: { x: 1.5, y: 0.5 } })).toMatchObject({ ok: true });
+    // Without a tile nothing changes: no clause.
+    const plain = executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 } });
+    expect(plain.ok && applyChanges(comments, plain.changes)).not.toContain("tile");
+  });
+});
+
 describe("updateEntity and the tile", () => {
   const update = (source: string, name: string, change: (entity: Entity) => Entity): string => {
     const parse = valid(source);

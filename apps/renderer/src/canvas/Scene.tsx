@@ -74,10 +74,13 @@ export const Scene = memo(function Scene({ circuit, layout, selection, wireSelec
   const inView = wires.filter((wire) => rectsIntersect(wire.bounds, visible));
   // Selected wires are drawn last, above the others.
   const visibleWires = wireSelection.size === 0 ? inView : [...inView.filter((wire) => !wireSelection.has(wire.key)), ...inView.filter((wire) => wireSelection.has(wire.key))];
-  const visibleEntities = circuit.entities.flatMap((entity) => {
+  const inSight = circuit.entities.flatMap((entity) => {
     const rect = layout.rect(entity);
     return rectsIntersect(rect, visible) ? [{ entity, rect }] : [];
   });
+  // On the board the entities of a move in progress are drawn last, above whatever they are dragged over.
+  const isMoving = (entity: Entity): boolean => layout.mode === "blueprint" && layout.placement(entity).moving;
+  const visibleEntities = [...inSight.filter(({ entity }) => !isMoving(entity)), ...inSight.filter(({ entity }) => isMoving(entity))];
   const shadow = visibleEntities.length <= SHADOW_LIMIT;
 
   const wireGroup = (
@@ -101,8 +104,8 @@ export const Scene = memo(function Scene({ circuit, layout, selection, wireSelec
           resolveIcon,
         };
         if (layout.mode === "edit") return <EntityCard key={entity.id} {...shared} x={rect.x} y={rect.y} shadow={shadow} describeSignal={describeSignal} />;
-        const { origin, placed, conflict } = layout.placement(entity);
-        return <BlueprintEntity key={entity.id} {...shared} tileX={origin.x} tileY={origin.y} placed={placed} conflict={conflict} />;
+        const { origin, placed, conflict, moving, blocked } = layout.placement(entity);
+        return <BlueprintEntity key={entity.id} {...shared} tileX={origin.x} tileY={origin.y} placed={placed} conflict={conflict} moving={moving} blocked={blocked} />;
       })}
     </g>
   );

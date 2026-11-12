@@ -1,5 +1,5 @@
 // Small popup menu for the canvas. Keyboard: arrows move, Enter/Space activate (native button behavior), Escape closes.
-import { useEffect, useRef, type KeyboardEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 
 export interface ContextMenuItem {
@@ -18,13 +18,26 @@ export interface ContextMenuProps {
   /** Position in pixels relative to the positioned ancestor. */
   readonly x: number;
   readonly y: number;
+  /** Size of the positioned ancestor: the menu moves up and to the left as far as it has to, to open inside it. */
+  readonly within?: { readonly width: number; readonly height: number };
   readonly label: string;
   readonly items: readonly ContextMenuItem[];
   onClose(): void;
 }
 
-export function ContextMenu({ x, y, label, items, onClose }: ContextMenuProps) {
+/** Kept free between the menu and the edge it is held inside. */
+const EDGE_MARGIN = 8;
+
+export function ContextMenu({ x, y, within, label, items, onClose }: ContextMenuProps) {
   const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: x, top: y });
+
+  // Measured before the first paint: how many items a menu has is the caller's business.
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const fit = (wanted: number, room: number | undefined, length: number): number => (room === undefined ? wanted : Math.max(0, Math.min(wanted, room - length - EDGE_MARGIN)));
+    if (element) setPosition({ left: fit(x, within?.width, element.offsetWidth), top: fit(y, within?.height, element.offsetHeight) });
+  }, [x, y, within?.width, within?.height, items.length]);
 
   useEffect(() => {
     ref.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
@@ -56,7 +69,7 @@ export function ContextMenu({ x, y, label, items, onClose }: ContextMenuProps) {
   };
 
   return (
-    <div ref={ref} className="context-menu" role="menu" aria-label={label} style={{ left: x, top: y }} onKeyDown={onKeyDown} onContextMenu={(event) => event.preventDefault()}>
+    <div ref={ref} className="context-menu" role="menu" aria-label={label} style={position} onKeyDown={onKeyDown} onContextMenu={(event) => event.preventDefault()}>
       {items.map((item) => (
         <div key={item.id} role="none">
           {item.separatorBefore && <div className="menu-separator" role="separator" />}

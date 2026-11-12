@@ -227,4 +227,9 @@ describe("nudgeDelta", () => {
     expect(nudgeDelta("ArrowLeft", true)).toEqual({ x: -100, y: 0 });
     expect(nudgeDelta("ArrowDown", true)).toEqual({ x: 0, y: 100 });
   });
+
+  it("counts in the step it is given: one tile and five on the blueprint board", () => {
+    expect(nudgeDelta("ArrowRight", false, 1)).toEqual({ x: 1, y: 0 });
+    expect(nudgeDelta("ArrowUp", true, 1)).toEqual({ x: 0, y: -5 });
+  });
 });

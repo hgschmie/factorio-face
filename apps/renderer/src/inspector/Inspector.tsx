@@ -32,6 +32,8 @@ export interface InspectorProps {
   readonly wireSelection: readonly string[];
   /** When false, everything is shown read-only. */
   readonly editable: boolean;
+  /** The footer says where the entity stands on the blueprint board (its `tile`) instead of where its card is. */
+  readonly showTile?: boolean;
   readonly resolveEntityIcon?: EntityIconResolver;
   /** Catalog-backed signal picker for all signal fields; without it they are validated text inputs. */
   readonly renderSignalPicker?: SignalPickerRenderer;
@@ -320,9 +322,17 @@ function EntityInspector(props: EntityInspectorProps) {
         <Connections entity={entity} circuit={circuit} onRemoveWire={props.onRemoveWire} onSelect={props.onSelect} />
       </fieldset>
       <footer className="inspector-footer">
-        <span>
-          X <b>{entity.position.x}</b> Y <b>{entity.position.y}</b>
-        </span>
+        {!props.showTile ? (
+          <span>
+            X <b>{entity.position.x}</b> Y <b>{entity.position.y}</b>
+          </span>
+        ) : entity.placement?.tile ? (
+          <span>
+            Tile X <b>{entity.placement.tile.x}</b> Y <b>{entity.placement.tile.y}</b>
+          </span>
+        ) : (
+          <span>Not placed on a tile</span>
+        )}
       </footer>
     </>
   );

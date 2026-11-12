@@ -44,7 +44,7 @@ src/
                        checkerboard and the bubble; emits callbacks only
     Scene.tsx          memoized wires (with their click target) and entities in the layout of the display mode, culled to the visible area
     layout.ts          `CanvasLayout`: where an entity and its pins are in a display mode; `editLayout`, `blueprintLayout`   (pure)
-    board.ts           the blueprint board: tile size, `derivedTiles`, `arrangeBoard`, pins on a footprint   (pure)
+    board.ts           the blueprint board: tile size, `derivedTiles`, `arrangeBoard`, the rules of editing on it, pins on a footprint   (pure)
     EntityCard.tsx     one memoized card (kind, description marker, icon, name, summary, live status rows, a red and a green pin per side in
                        TERMINALS, on the edges the entity's facing gives them); `CardFace` is the card without pins and place, `Pin` one pin
     BlueprintEntity.tsx  one memoized entity on the board: footprint, icon, name, arrows, pins, compact live state
@@ -108,7 +108,7 @@ has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `dis
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
-`toggleWire`, `setSource`, `undo`, `redo`),
+`toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `snapToTiles`, `clearTiles`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
 `loadProject`, `save`, `saveAs`).
@@ -271,15 +271,24 @@ it stays open. The segmented control `Edit | Blueprint` in the heading of the ca
 mode" with `aria-pressed` buttons) and the key `B` switch it. The canvas container carries `data-display` and the class
 `display-edit` or `display-blueprint`.
 
-**What a mode offers.** `DISPLAY_CAPABILITIES` (`controller.ts`) says per mode whether entities can be moved (`move`: dragging
-and the arrow keys), placed (`place`), wired (`wire`), pasted or duplicated (`paste`) and rotated by key or context menu
-(`rotate`). Edit has all of them; blueprint has none so far, it only shows. One table switches them on: `Canvas` (drag, the
-Paste and Rotate items, which are shown disabled), `Workbench` (the keys, the paste event) and `Palette` (`canPlace`,
-`canWire`: the buttons are disabled) read it, and the session refuses a tool the mode does not offer (`toolAllowed`) and falls
-back to the select tool when the mode changes. Everything that does not depend on a position works in both modes: selecting
-(click, Shift-click, marquee, wires), pan, zoom, Fit, copy, cut, delete, Select all and the whole inspector, its Facing control
-included. With nothing to drag, a click on one member of a multi-selection narrows the selection to it at once (also on the
-edit canvas while the source has errors).
+**What a mode offers.** `DISPLAY_CAPABILITIES` (`controller.ts`) is the one place that says it:
+
+| Flag | Meaning | Edit | Blueprint |
+| --- | --- | --- | --- |
+| `move` | dragging entities and the arrow keys | yes | yes |
+| `place` | the building blocks of the palette | yes | yes |
+| `wire` | the wire tools | yes | yes |
+| `paste` | paste and duplicate | yes | no |
+| `rotate` | `R`, `Shift+R` and the rotation items of the context menu | yes | yes |
+| `tiles` | positions are tiles: a move and a new entity write `tile` instead of `at`, a turn has to find its tiles free, and the controls that give and take a tile are shown | no | yes |
+
+`Canvas` (the drag and its commit, the place tool, the menu items, the "Snap all" button, the hint), `Workbench` (the keys, the
+paste event, the footer of the inspector) and `Palette` (`canPlace`, `canWire`) read it, and the session refuses a tool the mode
+does not offer (`toolAllowed`), falls back to the select tool when a mode change takes the tool away, and applies the rule for
+turns where `tiles` is set. Paste and duplicate are off on the board because a copy has no `tile` (fragments drop it) and what a
+paste on the board should do is not decided. Everything that does not depend on a position works in both modes: selecting (click,
+Shift-click, marquee, wires), pan, zoom, Fit, copy, cut, delete, Select all and the whole inspector. While the source has
+errors nothing can be dragged, and a click on one member of a multi-selection narrows the selection to it at once.
 
 **The layout.** `Canvas` and `Scene` never ask where a card is; they ask a `CanvasLayout` (`canvas/layout.ts`), built per render
 from the display mode, the entities and the positions of a drag in progress (`layoutFor`):
@@ -298,12 +307,12 @@ interface CanvasLayout {
 ```
 
 `editLayout` wraps what was there before (`cardRect`, `pinPoint`, `routeWire`, `entitiesBounds`); `blueprintLayout` is built on
-`arrangeBoard` and adds `placement(entity)` (top-left tile, size, facing, `placed`, `conflict`). The two are told apart by
+`arrangeBoard` and adds `placement(entity)` (top-left tile, size, facing, `placed`, `conflict`, and for a drag in progress
+`moving` and `blocked`). The two are told apart by
 `layout.mode`, which is how `Scene` picks `EntityCard` or `BlueprintEntity` and the order of the layers. Hit testing is by DOM
 attributes (`data-entity-id`, `data-terminal`, `data-wire-color`, `data-wire`) in both modes. Both layouts take the preview
 positions of a drag as top-left corners in canvas units (the board rounds them to tiles), so the drag gesture of the canvas is
-the same code for both once `move` is switched on; what is missing for the board is the commit (`setTiles` of the language
-instead of `moveEntities`).
+the same code for both; only the commit differs (`onSetTiles` with the tile centers instead of `onMoveEntities`).
 
 **The camera** is kept per mode (the two pictures have nothing to do with each other): `Canvas` holds one view per mode
 (`CanvasViews`), restores the one of the mode on show and fits a mode the first time it is shown; a gesture in progress and an
@@ -324,7 +333,47 @@ the visible rectangle, so it covers the canvas at any pan and zoom.
   goes to the nearest free place: the nearest ring of tiles around the wanted one, in it the nearest tile in a straight line,
   then the upper, then the left one. Taken are the tiles of all entities with a `tile` and of the derived ones that come
   earlier in the circuit. Nothing is written to the source; the place follows the edit position until the entity gets a tile.
-- `arrangeBoard(entities, moved?)` is both together: one `BoardPlacement` per entity.
+- `arrangeBoard(entities, moved?)` is both together: one `BoardPlacement` per entity. `moved` is a move in progress (the
+  top-left tiles the moved entities would get): they stand there as if it were their `tile`, so entities without one give way
+  while the drag goes on, whatever a moved entity stands on is in conflict with it, and a moved entity that stands on a taken
+  tile is `blocked`.
+
+**Editing on the board.** The rules are pure functions in `canvas/board.ts`, the session commands apply them, and the canvas
+uses the same functions for its previews. They all rest on one: only an entity with a `tile` takes tiles. An entity without one
+stands at a derived place, gives way to the others and is never in the way. `at` is never touched by any of it.
+
+| Rule | Function | What it says |
+| --- | --- | --- |
+| Moving | `blockedMoves(entities, origins)` | A move (a drag, the arrow keys) gives every moved entity the tile of its new place, also one that had none. It is blocked as a whole when one of them would cover a tile of an entity that has a `tile` and is not moved. A blocked move changes nothing. The moved entities are not in each other's way: a group moves as it is. |
+| Turning | `blockedTurn(entities, facings)` | A turned entity keeps its top-left tile (`rotateTile`). The turn is blocked for the whole selection when one of them would newly cover a tile on which another entity with a `tile` stands after the turn. Tiles an entity covers already do not count (a half turn is always possible, and an entity in a conflict can be turned out of it). Blueprint mode only: on the edit canvas a turn is never refused, the analysis warns (`tile-overlap`). |
+| Snapping | `derivedTiles(entities)` | An entity without a `tile` gets the one of the place it is shown at. These places keep clear of all tiles that are taken and of each other, so a snap of any subset cannot be blocked. |
+| Releasing | | The `tile` clause is removed; the entity stands at a derived place again. |
+| A new entity | `footprintOriginAt(point, kind)`, `canStandAt(entities, kind, origin)`, `freeOriginNear(entities, kind, wanted)`, `editPositionOf(origin)` | It faces east and its footprint has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
+
+- Session commands (`WorkbenchCommands`), each one undo step: `setTiles(tiles: { id, tile }[])` with the centers as the `tile`
+  clause holds them (blocked: nothing happens; a center off the grid: refused by the language and reported), `nudgeTiles(delta)`
+  for the selection in whole tiles from where the board shows it, `snapToTiles(ids?)` (all entities without `ids`),
+  `clearTiles(ids)`, `placeEntityOnTile(kind, tile)`. `rotateEntities` and `faceEntities` apply the turn rule while the display
+  mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light."
+- Dragging: the gesture of the edit canvas with a step of one tile. The preview is arranged with `arrangeBoard(entities, moved)`;
+  entities of the drag are drawn last (`g.card.moving`), one on a taken tile is `blocked` (`data-blocked`, red body and outline)
+  and the entity under it gets the conflict outline. The canvas has the class `dragging`, and the bubble is hidden. A drop that
+  ends on the tiles it started from writes nothing; a blocked drop is refused by `setTiles`, so the entities go back. Dragging
+  is how a conflict of the source is repaired: a tile off the grid comes onto it, and of two entities on one tile the upper one
+  is dragged off.
+- Arrow keys: one tile, five with Shift (`nudgeTiles`); a blocked step does nothing.
+- Rotating: `R`, `Shift+R`, the two menu items and the Facing control, as on the edit canvas, under the turn rule.
+- Snapping: the button "Snap all" with the number of entities without a tile in the heading of the canvas (`button.snap-all`,
+  only while there are some); in the context menu of a selection "Snap to tile grid" for its entities without a tile and
+  "Release from tile grid" for those with one (`Snap 2 to tile grid` when the item does not take the whole selection). They
+  have no shortcut. The hint line says that dashed entities have no tile.
+- Placing: with a place tool the footprint of the new entity follows the pointer (`rect.board-ghost` with `data-tile-x` and
+  `data-tile-y`, class `blocked` and the cursor `not-allowed` over a taken tile, where a click does nothing and the tool
+  stays). The new entity is selected and the tool goes back to select, as on the edit canvas.
+- Wiring: the wire tools work as on the edit canvas (click a pin, click a second pin of the color; the pending wire is a
+  straight dashed line to the pointer).
+- The inspector's footer shows `Tile X .. Y ..` (the center, as in the source) or "Not placed on a tile" on the board
+  (`showTile`), and the position of the card on the edit canvas.
 
 **An entity on the board** (`BlueprintEntity.tsx`, canvas units from the top-left corner of its footprint). The body leaves 4
 units of its tiles free on every side. Kind accent top left, an indicator top right (lit while a combinator emits something or
@@ -341,8 +390,8 @@ pins on the top or the bottom end.
   and `data-edge`.
 - In the DOM the group is `g.card.board-entity` with the attributes of a card (`data-entity-id`, `data-entity-name`,
   `data-kind`, `data-facing`, `data-x`, `data-y`, `data-status`, `data-in-red`, `data-in-green`) plus `data-tile-x` and
-  `data-tile-y` (the top-left tile), `data-placed` (`true` or `false`) and `data-conflict`; the classes `selected`, `active`,
-  `unplaced` and `conflict`. A selected entity has the orange outline of a selected card. An entity that is not placed or
+  `data-tile-y` (the top-left tile), `data-placed` (`true` or `false`), `data-conflict` and `data-blocked`; the classes
+  `selected`, `active`, `unplaced`, `conflict`, `moving` and `blocked`. A selected entity has the orange outline of a selected card. An entity that is not placed or
   in conflict says so in a tooltip (`<title>`); the others have none, like the cards.
 - Wires are drawn above the entities, as in the game, with the same `g.wire` markup, classes and click target as the routed
   ones: a straight line between the two pins, and for a wire from the output of an entity to its own input an arc that passes
@@ -488,7 +537,9 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   top-left corner of the group on the grid point at which the menu was opened, not under the pointer: `Canvas` keeps that point
   with the open menu and passes it to `onPaste`, `Workbench` holds it for the one paste event that follows (any paste event
   clears it, and so does a call that fails), so a later Cmd/Ctrl+V goes to the pointer again. With entities selected the menu also
-  has the two rotations, between Paste and Delete.
+  has the two rotations, between Paste and Delete, and on the blueprint board below them the items that snap to the tile grid
+  and release from it. The menu opens at the pointer and moves up and to the left as far as it has to, to stay inside the canvas
+  (`ContextMenu` measures itself, `within`).
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
   while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
   control or the source editor has focus. All of them delete the whole selection, entities and wires, as one undo step
@@ -516,10 +567,10 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Select tool | `Q` | `Q` | circuit |
 | Red wire, green wire tool | `⌥R`, `⌥G` | `Alt+R`, `Alt+G` | circuit |
 | Building block to place: Constant, Arithmetic, Decider, Selector, Lamp | `1` ... `5` | `1` ... `5` | circuit |
-| Place the block in the middle of the view | `↩` | `Enter` | canvas (focus on the canvas itself) |
+| Place the block in the middle of the view (on the board: on the free tile nearest to it) | `↩` | `Enter` | canvas (focus on the canvas itself) |
 | Cancel: the pending wire, then the tool, then (in the canvas) the selection | `Esc` | `Esc` | circuit, canvas |
 | Rotate clockwise, counter-clockwise | `R`, `⇧R` | `R`, `Shift+R` | circuit |
-| Move the selection one grid step, five grid steps | arrows, `⇧` arrows | arrows, `Shift` arrows | circuit |
+| Move the selection one grid step, five grid steps (on the board: tiles) | arrows, `⇧` arrows | arrows, `Shift` arrows | circuit |
 | Duplicate the selection | `⌘D` | `Ctrl+D` | circuit |
 | Delete the selection | `⌫` or Delete | `Del` or Backspace | canvas |
 | Cut, Copy, Paste | `⌘X`, `⌘C`, `⌘V` | `Ctrl+X`, `Ctrl+C`, `Ctrl+V` | clipboard events |
@@ -547,11 +598,11 @@ when two rows share a key on a platform or when one key event matches two rows.
   keypad picks no building block. `?` is the character, whatever Shift it takes. A composing input method and an event that
   something else has cancelled are left alone. A held key repeats only for the arrows.
 - **What the keys do.** The tool keys set the tool (pressed again they keep it; the buttons toggle). `1` to `5` follow the order
-  of the palette (`ENTITY_KINDS`). The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), unless the
+  of the palette (`ENTITY_KINDS`). The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), on the
+  blueprint board `nudgeTiles` with one tile and five, unless the
   focused control uses the arrows itself (`usesArrowKeys` in `platform.ts`: text, selects, sliders, radio groups, lists, tabs,
   menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. `B` switches the display mode;
-  what the mode does not offer (`DISPLAY_CAPABILITIES`: on the blueprint board the wire and place tools, rotation, the arrows,
-  duplicate) does nothing. While the source has errors the
+  what the mode does not offer (`DISPLAY_CAPABILITIES`: on the blueprint board duplicate and paste) does nothing. While the source has errors the
   keys that edit (rotation, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
   buttons) do nothing; `Q`, Escape and `?` work.
 - **Discoverability.** The three tool buttons and the five building blocks name their key in the tooltip (`title`); the building

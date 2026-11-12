@@ -91,8 +91,8 @@ export const SHORTCUTS = [
   menu("edit.selectAll", "Editing", "Select all"),
   key("edit.rotate", "Editing", "Rotate clockwise", "circuit", letter("R")),
   key("edit.rotateBack", "Editing", "Rotate counter-clockwise", "circuit", { shift: true, ...letter("R") }),
-  key("edit.nudge", "Editing", "Move the selection one grid step", "circuit", { key: ARROW_KEYS, name: "Arrow keys" }, { repeats: true }),
-  key("edit.nudgeFar", "Editing", `Move the selection ${NUDGE_FAR_STEPS} grid steps`, "circuit", { shift: true, key: ARROW_KEYS, name: "Arrow keys" }, { repeats: true }),
+  key("edit.nudge", "Editing", "Move the selection one grid step (one tile on the board)", "circuit", { key: ARROW_KEYS, name: "Arrow keys" }, { repeats: true }),
+  key("edit.nudgeFar", "Editing", `Move the selection ${NUDGE_FAR_STEPS} grid steps (tiles on the board)`, "circuit", { shift: true, key: ARROW_KEYS, name: "Arrow keys" }, { repeats: true }),
 
   menu("view.circuit", "View", "Circuit"),
   menu("view.source", "View", "Source"),
@@ -182,9 +182,9 @@ export function withShortcut(text: string, id: ShortcutId): string {
   return `${text} (${shortcutLabel(id)})`;
 }
 
-/** How far an arrow key moves the selection, in canvas units. */
-export function nudgeDelta(arrowKey: string, far: boolean): Point {
-  const distance = GRID * (far ? NUDGE_FAR_STEPS : 1);
+/** How far an arrow key moves the selection: `step` is one grid step, in canvas units on the edit canvas and one tile on the board. */
+export function nudgeDelta(arrowKey: string, far: boolean, step = GRID): Point {
+  const distance = step * (far ? NUDGE_FAR_STEPS : 1);
   const horizontal = arrowKey === "ArrowLeft" ? -1 : arrowKey === "ArrowRight" ? 1 : 0;
   const vertical = arrowKey === "ArrowUp" ? -1 : arrowKey === "ArrowDown" ? 1 : 0;
   return { x: horizontal * distance, y: vertical * distance };

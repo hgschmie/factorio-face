@@ -20,6 +20,10 @@ export interface BlueprintEntityProps {
   readonly placed: boolean;
   /** The `tile` is off the grid or shared with another entity. */
   readonly conflict: boolean;
+  /** Part of a move in progress. */
+  readonly moving?: boolean;
+  /** The move in progress cannot end here: the entity stands on a tile that is taken. */
+  readonly blocked?: boolean;
   readonly selected: boolean;
   /** Draw without text; used when zoomed out too far for it to be legible. */
   readonly outline: boolean;
@@ -47,7 +51,7 @@ function arrowPath(x: number, y: number, forward: Point): string {
   return `M ${x + forward.x * 5} ${y + forward.y * 5} L ${back.x + forward.y * 5} ${back.y - forward.x * 5} L ${back.x - forward.y * 5} ${back.y + forward.x * 5} Z`;
 }
 
-export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, tileY, placed, conflict, selected, outline, pendingSide, pendingColor, status, resolveIcon }: BlueprintEntityProps) {
+export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, tileY, placed, conflict, moving, blocked, selected, outline, pendingSide, pendingColor, status, resolveIcon }: BlueprintEntityProps) {
   const facing = facingOf(entity);
   const size = tileSize(entity.kind, facing);
   const width = size.width * TILE;
@@ -65,7 +69,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
   const emitting = lit || (status?.output?.length ?? 0) > 0;
   const x = tileX * TILE;
   const y = tileY * TILE;
-  const className = `card board-entity kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}${placed ? "" : " unplaced"}${conflict ? " conflict" : ""}`;
+  const className = `card board-entity kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}${placed ? "" : " unplaced"}${conflict ? " conflict" : ""}${moving ? " moving" : ""}${blocked ? " blocked" : ""}`;
   return (
     <g
       className={className}
@@ -80,6 +84,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       data-tile-y={tileY}
       data-placed={placed}
       data-conflict={conflict || undefined}
+      data-blocked={blocked || undefined}
       data-status={status?.label}
       data-in-red={status?.input && inputText(status.input.red)}
       data-in-green={status?.input && inputText(status.input.green)}

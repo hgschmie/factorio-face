@@ -318,6 +318,43 @@
   stroke-width: 1.5;
 }
 
+/* A move in progress: the entities being dragged, and the look of those that stand on a taken tile, where the drop does nothing. */
+.canvas.dragging .canvas-svg,
+.canvas.dragging .card {
+  cursor: grabbing;
+}
+
+.board-entity.moving {
+  opacity: 0.88;
+}
+
+.board-entity.blocked .card-body,
+.board-entity.blocked.selected .card-body {
+  fill: color-mix(in srgb, var(--status-error) 38%, var(--card-bottom));
+  stroke: var(--status-error);
+  stroke-width: 2;
+  stroke-dasharray: 3 3;
+}
+
+/* The footprint of a new entity under the pointer while a place tool is active on the board. */
+.board-ghost {
+  fill: color-mix(in srgb, var(--accent) 16%, transparent);
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.board-ghost.blocked {
+  fill: color-mix(in srgb, var(--status-error) 26%, transparent);
+  stroke: var(--status-error);
+  stroke-dasharray: 3 3;
+}
+
+.canvas.tool-place:has(.board-ghost.blocked) .canvas-svg {
+  cursor: not-allowed;
+}
+
 .board-glow {
   fill: var(--text-strong);
   opacity: 0.3;
@@ -407,6 +444,30 @@
 
 .display-switch button[aria-pressed="true"] {
   color: var(--ink);
+  background: var(--accent-fill);
+}
+
+/* Gives every entity without a tile one; shown on the board while there are such entities. */
+.snap-all {
+  gap: 6px;
+  padding: 3px 5px 3px 8px;
+  border: 1px solid var(--border-edge);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  color: var(--text-label);
+  background: var(--surface-well);
+  pointer-events: auto;
+}
+
+.snap-all:hover:not(:disabled) {
+  color: var(--text-strong);
+  border-color: var(--accent);
+}
+
+.snap-all .count-badge {
+  padding: 1px 5px;
+  color: var(--ink);
+  border-color: transparent;
   background: var(--accent-fill);
 }
 

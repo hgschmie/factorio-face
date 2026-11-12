@@ -1,6 +1,6 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import { canRotate, type Circuit, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { canRotate, DEFAULT_FACING, facingOf, tileCenter, tileSize, type Circuit, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
 import type { RotationTurn } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
@@ -9,9 +9,9 @@ import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget } from "../platform.ts";
 import { shortcutFor, shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
-import { DISPLAY_CAPABILITIES, DISPLAY_MODES, SELECT_TOOL, type DisplayMode, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
+import { DISPLAY_CAPABILITIES, DISPLAY_MODES, SELECT_TOOL, type DisplayMode, type EntityMove, type EntityStatus, type EntityTile, type Tool } from "../workbench/controller.ts";
 import { countLabel } from "../workbench/selectionText.ts";
-import { TILE } from "./board.ts";
+import { canStandAt, footprintOriginAt, freeOriginNear, TILE } from "./board.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
 import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, snapPoint, worldDelta, type EntityPosition } from "./drag.ts";
 import { EntityBubble } from "./EntityBubble.tsx";
@@ -55,6 +55,14 @@ export interface CanvasProps {
   onDisplayModeChange(displayMode: DisplayMode): void;
   onPlaceEntity(kind: EntityKind, position: Point): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
+  /** The blueprint board. A new entity with its center at `tile`; the host refuses a taken tile. */
+  onPlaceEntityOnTile(kind: EntityKind, tile: Point): void;
+  /** A move on the board ended: the dragged entities and the centers they would get. The host refuses a move onto a taken tile. */
+  onSetTiles(tiles: readonly EntityTile[]): void;
+  /** Gives the entities that have no `tile` the one of the place they are shown at; without `ids`, all of the circuit. */
+  onSnapToTiles(ids?: readonly EntityId[]): void;
+  /** Removes the `tile` of the entities. */
+  onClearTiles(ids: readonly EntityId[]): void;
   /** A wire gesture was completed between the pins of two different terminals: connect them, or disconnect them if this wire exists. */
   onToggleWire(wire: Wire): void;
   onDeleteSelection(): void;
@@ -88,8 +96,6 @@ const CULL_MARGIN = 120;
 const CULL_CELL = 400;
 const FIT_PADDING = 70;
 const DISPLAY_LABELS: Readonly<Record<DisplayMode, string>> = { edit: "Edit", blueprint: "Blueprint" };
-/** Room kept for the context menu, so that it opens inside the canvas. */
-const MENU_SIZE = { width: 250, height: 245 };
 
 function clientPoint(event: { readonly clientX: number; readonly clientY: number }): Point {
   return { x: event.clientX, y: event.clientY };
@@ -117,13 +123,18 @@ function toggled<T>(list: readonly T[], item: T): T[] {
   return list.includes(item) ? list.filter((other) => other !== item) : [...list, item];
 }
 
-function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean, displayMode: DisplayMode): string {
-  if (displayMode === "blueprint") return "Blueprint view: entities on the tiles they take in the game; dashed ones have no tile yet. Click to select, drag empty space to pan, Shift-drag to select an area. Entities cannot be moved here yet.";
+function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean, tiles: boolean, unplaced: number): string {
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
+  if (tool.type === "place" && tiles) return `Click a free tile (or press Enter on the board) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
   if (tool.type === "place") return `Click the canvas (or press Enter on it) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
   if (tool.type === "wire" && pending) return `Click a second ${tool.color} pin to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.`;
   if (tool.type === "wire") return `Click a ${tool.color} pin of an input or output to start a ${tool.color} wire.`;
+  if (tiles) return `Drag entities to free tiles, R turns them. ${unplaced > 0 ? "Dashed ones have no tile yet: drag them or use Snap all." : "Drag empty space to pan, Shift-drag to select an area."}`;
   return "Drag to arrange, click a wire to select it. Drag empty space to pan, Shift-drag to select an area, scroll to zoom.";
+}
+
+function samePositions(a: ReadonlyMap<EntityId, Point> | null, b: readonly EntityPosition[]): boolean {
+  return a !== null && a.size === b.length && b.every(({ id, position }) => a.get(id)?.x === position.x && a.get(id)?.y === position.y);
 }
 
 export function Canvas(props: CanvasProps) {
@@ -165,6 +176,8 @@ export function Canvas(props: CanvasProps) {
   const wireSelectionSet = useMemo(() => new Set(wireSelection), [wireSelection]);
   const selectedCount = selection.length + wireSelection.length;
   const selectedEntities = useMemo(() => circuit.entities.filter((entity) => selectionSet.has(entity.id)), [circuit.entities, selectionSet]);
+  /** On the board: how many entities have no `tile`. */
+  const unplacedCount = useMemo(() => (capabilities.tiles ? circuit.entities.filter((entity) => !entity.placement?.tile).length : 0), [capabilities.tiles, circuit.entities]);
 
   // Everything below that needs to know where an entity or a pin is asks the layout of the display mode.
   const layout = useMemo(() => layoutFor(displayMode, circuit.entities, previewPositions), [displayMode, circuit.entities, previewPositions]);
@@ -240,6 +253,8 @@ export function Canvas(props: CanvasProps) {
       const bounds = container.getBoundingClientRect();
       const pointer = { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
       setCamera(zoomAround(cameraRef.current, pointer, wheelZoomFactor(event.deltaY, event.ctrlKey)));
+      // What follows the pointer (a pending wire, the footprint of a new entity) stays under it.
+      setPointerWorld((previous) => previous && screenToWorld(cameraRef.current, pointer));
     };
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => container.removeEventListener("wheel", onWheel);
@@ -253,6 +268,19 @@ export function Canvas(props: CanvasProps) {
   useEffect(() => {
     if (pendingWire && !entityById.has(pendingWire.entity)) setPendingWire(null);
   }, [pendingWire, entityById]);
+
+  // On the board a new entity is shown under the pointer before it is placed; that starts where the pointer is when the tool is picked.
+  const placingKind = tool.type === "place" && capabilities.tiles && editable ? tool.kind : null;
+  useEffect(() => {
+    if (placingKind) setPointerWorld(pointerRef.current && svgRef.current ? worldPoint(pointerRef.current) : null);
+  }, [placingKind]);
+  const ghostOrigin = placingKind && pointerWorld ? footprintOriginAt(pointerWorld, placingKind) : null;
+  const [ghostX, ghostY] = [ghostOrigin?.x, ghostOrigin?.y];
+  const ghost = useMemo(() => {
+    if (!placingKind || ghostX === undefined || ghostY === undefined) return null;
+    const size = tileSize(placingKind, DEFAULT_FACING);
+    return { x: ghostX * TILE, y: ghostY * TILE, width: size.width * TILE, height: size.height * TILE, free: canStandAt(circuit.entities, placingKind, { x: ghostX, y: ghostY }) };
+  }, [placingKind, ghostX, ghostY, circuit.entities]);
 
   const localPoint = (event: { readonly clientX: number; readonly clientY: number }): Point => {
     const bounds = svgRef.current!.getBoundingClientRect();
@@ -294,7 +322,9 @@ export function Canvas(props: CanvasProps) {
       return;
     }
     if (tool.type === "place") {
-      if (editable) props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)));
+      if (!editable) return;
+      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, DEFAULT_FACING, footprintOriginAt(worldPoint(event), tool.kind)));
+      else props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)));
       return;
     }
     // From here on the select tool. Cards and their pins lie above the wires, so a wire is only found where neither is in the way.
@@ -338,7 +368,7 @@ export function Canvas(props: CanvasProps) {
 
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
     pointerRef.current = { clientX: event.clientX, clientY: event.clientY };
-    if (pendingWire) setPointerWorld(worldPoint(event));
+    if (pendingWire || placingKind) setPointerWorld(worldPoint(event));
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     const current = clientPoint(event);
@@ -351,8 +381,9 @@ export function Canvas(props: CanvasProps) {
       setPanning(true);
       setCamera(panFrom(gesture.origin, current.x - gesture.press.x, current.y - gesture.press.y));
     } else {
+      // A new preview only when it differs: on the board that is once per tile, and every one arranges the board again.
       const positions = dragPositions(gesture.origins, gesture.grabbedId, worldDelta(gesture.press, current, cameraRef.current.zoom), layout.step);
-      setPreviewPositions(new Map(positions.map(({ id, position }) => [id, position])));
+      setPreviewPositions((previous) => (samePositions(previous, positions) ? previous : new Map(positions.map(({ id, position }) => [id, position]))));
     }
   };
 
@@ -373,7 +404,15 @@ export function Canvas(props: CanvasProps) {
       if (moved) {
         const positions = dragPositions(gesture.origins, gesture.grabbedId, worldDelta(gesture.press, release, cameraRef.current.zoom), layout.step);
         const moves = changedPositions(gesture.origins, positions);
-        if (moves.length > 0) props.onMoveEntities(moves);
+        if (moves.length === 0) return;
+        if (!capabilities.tiles) return props.onMoveEntities(moves);
+        // On the board every dragged entity gets the tile it was dropped on, also one that had none.
+        props.onSetTiles(
+          positions.flatMap(({ id, position }) => {
+            const entity = entityById.get(id);
+            return entity ? [{ id, tile: tileCenter(entity.kind, facingOf(entity), { x: Math.round(position.x / TILE), y: Math.round(position.y / TILE) }) }] : [];
+          }),
+        );
       } else if (gesture.collapseTo) {
         onSelect([gesture.collapseTo]);
       }
@@ -396,9 +435,7 @@ export function Canvas(props: CanvasProps) {
     if (wire && !wireSelectionSet.has(wire)) onSelect([], [wire]);
     if (!entityId && !wire && selectedCount > 0) onSelect([]);
     const bounds = container.getBoundingClientRect();
-    // Keep the menu inside the canvas.
-    const x = Math.min(event.clientX - bounds.left, bounds.width - MENU_SIZE.width);
-    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), on: entityId ? "entity" : wire ? "wire" : "canvas", corner: snapPoint(worldPoint(event), layout.step) });
+    setMenu({ x: event.clientX - bounds.left, y: event.clientY - bounds.top, on: entityId ? "entity" : wire ? "wire" : "canvas", corner: snapPoint(worldPoint(event), layout.step) });
   };
 
   const deleteSelection = (): void => {
@@ -420,9 +457,11 @@ export function Canvas(props: CanvasProps) {
       else if (tool.type !== "select") onToolChange(SELECT_TOOL);
       else if (selectedCount > 0) onSelect([]);
     } else if (shortcut === "tool.placeAtCenter" && tool.type === "place" && editable && event.target === svgRef.current) {
-      // Keyboard placement: the new card goes to the middle of the view.
+      // Keyboard placement: the new card goes to the middle of the view, on the board to the free place nearest to it.
       event.preventDefault();
-      props.onPlaceEntity(tool.kind, placementPosition(screenToWorld(cameraRef.current, { x: size.width / 2, y: size.height / 2 })));
+      const middle = screenToWorld(cameraRef.current, { x: size.width / 2, y: size.height / 2 });
+      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, DEFAULT_FACING, freeOriginNear(circuit.entities, tool.kind, footprintOriginAt(middle, tool.kind))));
+      else props.onPlaceEntity(tool.kind, placementPosition(middle));
     } else if (event.key.toLowerCase() === "a" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       onSelect(circuit.entities.map((entity) => entity.id));
@@ -460,10 +499,20 @@ export function Canvas(props: CanvasProps) {
     { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: shortcutLabel("edit.rotate"), disabled: noRotation, separatorBefore: true, onSelect: rotate("clockwise") },
     { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: shortcutLabel("edit.rotateBack"), disabled: noRotation, onSelect: rotate("counterclockwise") },
   ];
+  // The board: give the selected entities without a `tile` the one of the place they are shown at, and take the others off the grid.
+  const tileItems: ContextMenuItem[] = [];
+  if (menu !== null && capabilities.tiles) {
+    const unplaced = selectedEntities.filter((entity) => !entity.placement?.tile).map((entity) => entity.id);
+    const placed = selectedEntities.filter((entity) => entity.placement?.tile).map((entity) => entity.id);
+    // The number is said when the item does not take the whole selection.
+    const some = (count: number): string => (count === selectedEntities.length ? "" : `${count} `);
+    if (unplaced.length > 0) tileItems.push({ id: "snap", label: `Snap ${some(unplaced.length)}to tile grid`, icon: "grid", disabled: !editable, separatorBefore: true, onSelect: () => props.onSnapToTiles(unplaced) });
+    if (placed.length > 0) tileItems.push({ id: "release", label: `Release ${some(placed.length)}from tile grid`, icon: "arrowUp", disabled: !editable, separatorBefore: unplaced.length === 0, onSelect: () => props.onClearTiles(placed) });
+  }
   const withEntities = selection.length > 0;
   const menuItems: ContextMenuItem[] = menu && menu.on !== "canvas"
     ? [
-        ...(withEntities ? [...clipboardItems, ...rotateItems] : []),
+        ...(withEntities ? [...clipboardItems, ...rotateItems, ...tileItems] : []),
         { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: shortcutLabel("edit.delete"), danger: true, disabled: !editable, separatorBefore: withEntities, onSelect: deleteSelection },
       ]
     : [
@@ -478,14 +527,15 @@ export function Canvas(props: CanvasProps) {
 
   const pendingEntity = pendingWire ? entityById.get(pendingWire.entity) : undefined;
   const outline = camera.zoom < layout.detailZoom;
-  // The bubble: the full card of the one selected entity, where the board itself only has room for the compact form.
-  const bubbleEntity = layout.mode === "blueprint" && selection.length === 1 && wireSelection.length === 0 ? entityById.get(selection[0]!) : undefined;
+  // The bubble: the full card of the one selected entity, where the board itself only has room for the compact form. Not during
+  // a drag, when it would cover the tiles the entity is dragged to.
+  const bubbleEntity = layout.mode === "blueprint" && selection.length === 1 && wireSelection.length === 0 && !previewPositions ? entityById.get(selection[0]!) : undefined;
   const bubbleRect = bubbleEntity && layout.rect(bubbleEntity);
 
   return (
     <div
       ref={containerRef}
-      className={`canvas display-${displayMode} tool-${tool.type}${tool.type === "wire" ? ` wire-${tool.color}` : ""}${capabilities.move ? "" : " fixed-entities"}${panning ? " panning" : ""}`}
+      className={`canvas display-${displayMode} tool-${tool.type}${tool.type === "wire" ? ` wire-${tool.color}` : ""}${capabilities.move ? "" : " fixed-entities"}${panning ? " panning" : ""}${previewPositions ? " dragging" : ""}`}
       onKeyDown={onKeyDown}
       data-zoom={camera.zoom}
       data-display={displayMode}
@@ -501,7 +551,10 @@ export function Canvas(props: CanvasProps) {
         onPointerMove={onPointerMove}
         onPointerUp={(event) => endGesture(event, true)}
         onPointerCancel={(event) => endGesture(event, false)}
-        onPointerLeave={() => void (pointerRef.current = null)}
+        onPointerLeave={() => {
+          pointerRef.current = null;
+          if (placingKind) setPointerWorld(null);
+        }}
         onContextMenu={onContextMenu}
       >
         <defs>
@@ -538,6 +591,7 @@ export function Canvas(props: CanvasProps) {
           describeSignal={props.describeSignal}
           resolveIcon={props.resolveEntityIcon}
         />
+        {ghost && <rect className={`board-ghost${ghost.free ? "" : " blocked"}`} x={ghost.x + 4} y={ghost.y + 4} width={ghost.width - 8} height={ghost.height - 8} rx="6" data-tile-x={ghostX} data-tile-y={ghostY} />}
         {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={layout.pin(pendingEntity, pendingWire.side, tool.color)} to={pointerWorld} />}
         {marquee && <rect className="marquee" x={marquee.x} y={marquee.y} width={marquee.width} height={marquee.height} />}
       </svg>
@@ -552,6 +606,13 @@ export function Canvas(props: CanvasProps) {
               </button>
             ))}
           </span>
+          {unplacedCount > 0 && (
+            <button type="button" className="snap-all" disabled={!editable} title={`Give the ${unplacedCount === 1 ? "entity" : `${unplacedCount} entities`} without a tile the tile of the place ${unplacedCount === 1 ? "it is" : "they are"} shown at`} onClick={() => props.onSnapToTiles()}>
+              <Icon name="grid" size={13} />
+              Snap all
+              <span className="count-badge">{unplacedCount}</span>
+            </button>
+          )}
         </span>
         <span className="counts">
           {circuit.entities.length} {circuit.entities.length === 1 ? "entity" : "entities"}
@@ -579,11 +640,11 @@ export function Canvas(props: CanvasProps) {
         />
       )}
 
-      {menu && <ContextMenu x={menu.x} y={menu.y} label="Canvas actions" items={menuItems} onClose={closeMenu} />}
+      {menu && <ContextMenu x={menu.x} y={menu.y} within={size} label="Canvas actions" items={menuItems} onClose={closeMenu} />}
 
       <div className="canvas-footer">
         <span className="canvas-hint" aria-live="polite">
-          {hintFor(tool, pendingWire, editable, displayMode)}
+          {hintFor(tool, pendingWire, editable, capabilities.tiles, unplacedCount)}
         </span>
         <div className="zoom-controls" role="group" aria-label="Zoom">
           <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)}>

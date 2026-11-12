@@ -9,13 +9,14 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { facingOf, wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point } from "@face/model";
+import { DEFAULT_FACING, facingOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
+import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import { rotated } from "../entities/facing.ts";
 import {
-  DISPLAY_MODES, sameTool, SELECT_TOOL, toolAllowed, type Diagnostic, type DisplayMode, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands, type WorkbenchController,
-  type WorkbenchMode, type WorkbenchState,
+  DISPLAY_CAPABILITIES, DISPLAY_MODES, sameTool, SELECT_TOOL, toolAllowed, type Diagnostic, type DisplayMode, type EntityTile, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands,
+  type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
 import { Analysis } from "./analysis.ts";
 import { CatalogService } from "./catalogService.ts";
@@ -325,10 +326,43 @@ export class ProjectSession {
     if (result.changes.length > 0) this.coalesce = options.coalesce === undefined ? undefined : { key: options.coalesce, version: this.document.version };
   }
 
-  /** Writes the direction `directionOf` gives for each of the entities that exist, as one step. The language command leaves lamps out and moves a `tile` with the turn. */
+  /** The entities of the circuit among `ids`, each once, in the order of `ids`. */
+  private entities(ids: readonly EntityId[]): Entity[] {
+    const byId = new Map(this.analysis.circuit.entities.map((entity) => [entity.id, entity]));
+    return [...new Set(ids)].flatMap((id) => byId.get(id) ?? []);
+  }
+
+  /**
+   * Writes the direction `directionOf` gives for each of the entities that exist, as one step. The language command leaves lamps
+   * out and moves a `tile` with the turn. Where positions are tiles, a turn onto a taken tile is refused for all of them.
+   */
   private faceEntities(ids: readonly EntityId[], directionOf: (entity: Entity) => Direction): void {
-    const entities = [...new Set(ids)].map((id) => this.entity(id)).filter((entity) => entity !== undefined);
-    if (entities.length > 0) this.perform({ type: "faceEntities", facings: entities.map((entity) => ({ id: entity.id, direction: directionOf(entity) })) });
+    const facings = this.entities(ids).map((entity) => ({ id: entity.id, direction: directionOf(entity) }));
+    if (!this.editable || facings.length === 0) return;
+    const blocked = DISPLAY_CAPABILITIES[this.displayMode].tiles ? blockedTurn(this.analysis.circuit.entities, new Map(facings.map(({ id, direction }) => [id, direction]))) : undefined;
+    if (blocked) return void (this.error = `Not rotated: ${this.entity(blocked.entity)?.name} would stand on a tile of ${this.entity(blocked.obstacle)?.name}.`);
+    this.perform({ type: "faceEntities", facings });
+  }
+
+  /** Puts entities on the board, as one step, unless one of them would stand on a tile of an entity that is not among them. */
+  private setTiles(tiles: readonly EntityTile[]): void {
+    const circuit = this.analysis.circuit.entities;
+    const centers = new Map(tiles.map(({ id, tile }) => [id, tile]));
+    const moved = this.entities([...centers.keys()]);
+    if (!this.editable || moved.length === 0) return;
+    const origins = new Map(moved.map((entity) => [entity.id, tileOrigin(entity.kind, facingOf(entity), centers.get(entity.id)!)]));
+    if (blockedMoves(circuit, origins).size === 0) this.perform({ type: "setTiles", tiles: moved.map(({ id }) => ({ id, tile: centers.get(id)! })) });
+  }
+
+  /** Adds an entity and makes it the selection once its analysis has arrived; the tool goes back to select. */
+  private addEntity(kind: EntityKind, position: Point, tile?: Point): void {
+    const result = this.compute({ type: "addEntity", kind, position, tile });
+    if (!result) return;
+    if (!result.ok) return void (this.error = result.message);
+    // The new entity gets its id from the analysis of the edit; it is selected when that arrives.
+    this.pendingSelection = result.name === undefined ? undefined : [result.name];
+    this.tool = SELECT_TOOL;
+    this.document.edit(result.changes);
   }
 
   /** Inserts what the clipboard text declares, as one step; the copies become the selection when their analysis arrives. */
@@ -360,15 +394,7 @@ export class ProjectSession {
       }),
       dismissError: changing(() => void (this.error = null)),
 
-      placeEntity: changing((kind, position) => {
-        const result = this.compute({ type: "addEntity", kind, position });
-        if (!result) return;
-        if (!result.ok) return void (this.error = result.message);
-        // The new entity gets its id from the analysis of the edit; it is selected when that arrives.
-        this.pendingSelection = result.name === undefined ? undefined : [result.name];
-        this.tool = SELECT_TOOL;
-        this.document.edit(result.changes);
-      }),
+      placeEntity: changing((kind, position) => this.addEntity(kind, position)),
       moveEntities: changing((moves) => void this.perform({ type: "moveEntities", moves: moves.filter((move) => this.entity(move.id) !== undefined) })),
       rotateEntities: changing((ids, turn) => this.faceEntities(ids, (entity) => rotated(facingOf(entity), turn))),
       faceEntities: changing((ids, direction) => this.faceEntities(ids, () => direction)),
@@ -392,6 +418,35 @@ export class ProjectSession {
       duplicateSelection: changing(() => {
         const text = clipboardText(this.analysis.circuit, this.selection);
         if (text !== "") this.pasteEntities(text);
+      }),
+
+      setTiles: changing((tiles) => this.setTiles(tiles)),
+      nudgeTiles: changing((delta) => {
+        const board = arrangeBoard(this.analysis.circuit.entities);
+        this.setTiles(
+          this.entities(this.selection).map((entity) => {
+            const { origin, facing } = board.get(entity.id)!;
+            return { id: entity.id, tile: tileCenter(entity.kind, facing, { x: origin.x + delta.x, y: origin.y + delta.y }) };
+          }),
+        );
+      }),
+      snapToTiles: changing((ids) => {
+        // The derived places keep clear of every entity with a tile and of each other, so there is nothing to check.
+        const derived = derivedTiles(this.analysis.circuit.entities);
+        const tiles = [...new Set(ids ?? derived.keys())].flatMap((id) => (derived.has(id) ? [{ id, tile: derived.get(id)! }] : []));
+        if (tiles.length > 0) this.perform({ type: "setTiles", tiles });
+      }),
+      clearTiles: changing((ids) => {
+        const tiles = this.entities(ids).filter((entity) => entity.placement?.tile !== undefined).map((entity) => ({ id: entity.id, tile: undefined }));
+        if (tiles.length > 0) this.perform({ type: "setTiles", tiles });
+      }),
+      placeEntityOnTile: changing((kind, tile) => {
+        const circuit = this.analysis.circuit.entities;
+        const origin = tileOrigin(kind, DEFAULT_FACING, tile);
+        if (!this.editable || !canStandAt(circuit, kind, origin)) return;
+        const position = editPositionOf(origin);
+        const shift = pasteShift({ entities: [{ position }] }, circuit);
+        this.addEntity(kind, { x: position.x + shift.x, y: position.y + shift.y }, tile);
       }),
       addWire: changing((wire) => void this.perform({ type: "addWire", color: wire.color, a: wire.a, b: wire.b })),
       removeWire: changing((wire) => {

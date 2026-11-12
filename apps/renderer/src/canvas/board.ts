@@ -1,10 +1,12 @@
 // The blueprint board in canvas units: the tile size, where every entity stands, the places of entities without a `tile`,
-// and where the connection pins sit on a footprint. Built on the footprints of `@face/model`. Pure.
+// the rules of editing on the board (moving, turning, placing), and where the connection pins sit on a footprint. Built on
+// the footprints of `@face/model`. Pure.
 import {
-  facingOf, findTileOverlaps, isTileCenter, occupiedTiles, tileCenter, tileHalves, tileOrigin, tileSize, type Direction, type Entity, type EntityId, type EntityKind, type Point, type TerminalSide, type TileSize,
-  type WireColor,
+  canRotate, DEFAULT_FACING, facingOf, findTileOverlaps, isTileCenter, occupiedTiles, rotateTile, tileCenter, tileHalves, tileOrigin, tileSize, type Direction, type Entity, type EntityId, type EntityKind, type Point,
+  type TerminalSide, type TileSize, type WireColor,
 } from "@face/model";
-import { CARD, DIRECTION_VECTOR, PIN_SPACING, pinHeading } from "./geometry.ts";
+import { snapPoint } from "./drag.ts";
+import { CARD, DIRECTION_VECTOR, GRID, PIN_SPACING, pinHeading } from "./geometry.ts";
 
 /** Edge of one tile in canvas units. */
 export const TILE = 80;
@@ -27,6 +29,16 @@ export interface BoardPlacement {
   readonly placed: boolean;
   /** A `tile` that is off the grid (the entity then stands on the nearest footprint) or that shares a tile with another entity. */
   readonly conflict: boolean;
+  /** Part of a move in progress: it stands where the move would put it. */
+  readonly moving: boolean;
+  /** Part of a move in progress that cannot end here: it stands on a tile of an entity that is not moved (`blockedMoves`). */
+  readonly blocked: boolean;
+}
+
+/** A turn that is refused: `entity` would come to stand on a tile of `obstacle`. */
+export interface BlockedTurn {
+  readonly entity: EntityId;
+  readonly obstacle: EntityId;
 }
 
 function tileKey(x: number, y: number): string {
@@ -51,13 +63,29 @@ function ring(radius: number): readonly Point[] {
  * finite, and `wanted` comes from a card position, a 32-bit integer in the language, so every offset gives another tile.
  */
 function nearestFree(wanted: Point, size: TileSize, taken: ReadonlySet<string>): Point {
-  const fits = (x: number, y: number): boolean => {
-    for (let dy = 0; dy < size.height; dy++) for (let dx = 0; dx < size.width; dx++) if (taken.has(tileKey(x + dx, y + dy))) return false;
-    return true;
-  };
   for (let radius = 0; ; radius++) {
-    for (const offset of ring(radius)) if (fits(wanted.x + offset.x, wanted.y + offset.y)) return { x: wanted.x + offset.x, y: wanted.y + offset.y };
+    for (const offset of ring(radius)) {
+      const origin = { x: wanted.x + offset.x, y: wanted.y + offset.y };
+      if (isFree(origin, size, taken)) return origin;
+    }
   }
+}
+
+/** True when a footprint of `size` with its top-left tile at `origin` covers no tile of `taken`. */
+function isFree(origin: Point, size: TileSize, taken: ReadonlySet<string>): boolean {
+  for (let dy = 0; dy < size.height; dy++) for (let dx = 0; dx < size.width; dx++) if (taken.has(tileKey(origin.x + dx, origin.y + dy))) return false;
+  return true;
+}
+
+/** The tiles of the entities that have a `tile` (of the nearest footprint when it is off the grid), without the entities in `except`. */
+function takenTiles(entities: readonly Entity[], except?: ReadonlyMap<EntityId, unknown>): Set<string> {
+  const taken = new Set<string>();
+  for (const entity of entities) {
+    const tile = entity.placement?.tile;
+    if (!tile || except?.has(entity.id)) continue;
+    for (const covered of occupiedTiles(entity.kind, facingOf(entity), tile)) taken.add(tileKey(covered.x, covered.y));
+  }
+  return taken;
 }
 
 /**
@@ -90,20 +118,99 @@ export function derivedTiles(entities: readonly Entity[]): Map<EntityId, Point> 
 /**
  * Every entity on the board. One with a `tile` stands where it says (on the nearest footprint when the center is off the
  * grid) and is in conflict when it is off the grid or shares a tile; one without stands where `derivedTiles` puts it.
- * `moved` overrides the top-left tile of single entities, for a drag in progress.
+ * `moved` is a move in progress: the top-left tile of the entities being moved. They stand there as if it were their `tile`,
+ * so the entities without one give way to them and whatever they stand on is in conflict with them.
  */
 export function arrangeBoard(entities: readonly Entity[], moved?: ReadonlyMap<EntityId, Point> | null): Map<EntityId, BoardPlacement> {
-  const derived = derivedTiles(entities);
-  const overlapping = new Set(findTileOverlaps(entities).flatMap((overlap) => overlap.entities));
+  const standing = moved?.size ? entities.map((entity) => withOrigin(entity, moved.get(entity.id))) : entities;
+  const derived = derivedTiles(standing);
+  const overlapping = new Set(findTileOverlaps(standing).flatMap((overlap) => overlap.entities));
+  const blocked = moved?.size ? blockedMoves(entities, moved) : undefined;
   const placements = new Map<EntityId, BoardPlacement>();
-  for (const entity of entities) {
+  entities.forEach((entity, index) => {
     const facing = facingOf(entity);
-    const tile = entity.placement?.tile;
-    const origin = moved?.get(entity.id) ?? tileOrigin(entity.kind, facing, tile ?? derived.get(entity.id)!);
+    const tile = standing[index]!.placement?.tile;
+    const origin = tileOrigin(entity.kind, facing, tile ?? derived.get(entity.id)!);
     const conflict = tile !== undefined && (!isTileCenter(entity.kind, facing, tile) || overlapping.has(entity.id));
-    placements.set(entity.id, { origin, size: tileSize(entity.kind, facing), facing, placed: tile !== undefined, conflict });
-  }
+    placements.set(entity.id, { origin, size: tileSize(entity.kind, facing), facing, placed: entity.placement?.tile !== undefined, conflict, moving: moved?.has(entity.id) ?? false, blocked: blocked?.has(entity.id) ?? false });
+  });
   return placements;
+}
+
+/** The entity with the `tile` of a footprint whose top-left tile is `origin`; the entity itself without one. */
+function withOrigin(entity: Entity, origin: Point | undefined): Entity {
+  return origin ? { ...entity, placement: { ...entity.placement, tile: tileCenter(entity.kind, facingOf(entity), origin) } } : entity;
+}
+
+// The rules of editing on the board. They all rest on one: only an entity with a `tile` takes tiles. An entity without one
+// stands at a derived place, gives way to the others and is never in the way of a move, a turn or a new entity.
+
+/**
+ * Moving (a drag, the arrow keys): `origins` are the top-left tiles the moved entities would get. The move is blocked when one
+ * of them would cover a tile of an entity that has a `tile` and is not moved; the result names those of the moved entities.
+ * A blocked move changes nothing. What the moved entities do to each other is not looked at: a group moves as it is.
+ */
+export function blockedMoves(entities: readonly Entity[], origins: ReadonlyMap<EntityId, Point>): Set<EntityId> {
+  const taken = takenTiles(entities, origins);
+  const blocked = new Set<EntityId>();
+  for (const entity of entities) {
+    const origin = origins.get(entity.id);
+    if (origin && !isFree(origin, tileSize(entity.kind, facingOf(entity)), taken)) blocked.add(entity.id);
+  }
+  return blocked;
+}
+
+/**
+ * Turning: `facings` are the directions the turned entities would get. A turned entity with a `tile` keeps its top-left tile
+ * (`rotateTile`), so a 2x1 entity comes to cover one new tile with a quarter turn. The turn is blocked, for all of them, when
+ * one would newly cover a tile on which another entity with a `tile` stands after the turn; the first such pair is returned.
+ * Tiles an entity covers already do not count, so one that stands in a conflict can still be turned out of it.
+ */
+export function blockedTurn(entities: readonly Entity[], facings: ReadonlyMap<EntityId, Direction>): BlockedTurn | undefined {
+  const turned = (entity: Entity): Direction => (canRotate(entity.kind) ? (facings.get(entity.id) ?? facingOf(entity)) : facingOf(entity));
+  const after = (entity: Entity, tile: Point): Point[] => occupiedTiles(entity.kind, turned(entity), rotateTile(entity.kind, tile, facingOf(entity), turned(entity)));
+  const standing = new Map<string, EntityId[]>();
+  for (const entity of entities) {
+    const tile = entity.placement?.tile;
+    if (!tile) continue;
+    for (const covered of after(entity, tile)) {
+      const key = tileKey(covered.x, covered.y);
+      standing.set(key, [...(standing.get(key) ?? []), entity.id]);
+    }
+  }
+  for (const entity of entities) {
+    const tile = entity.placement?.tile;
+    if (!tile || !facings.has(entity.id)) continue;
+    const before = new Set(occupiedTiles(entity.kind, facingOf(entity), tile).map((covered) => tileKey(covered.x, covered.y)));
+    for (const covered of after(entity, tile)) {
+      const key = tileKey(covered.x, covered.y);
+      const obstacle = before.has(key) ? undefined : standing.get(key)?.find((id) => id !== entity.id);
+      if (obstacle !== undefined) return { entity: entity.id, obstacle };
+    }
+  }
+  return undefined;
+}
+
+/** Placing a new entity with the pointer: the top-left tile of a footprint that has `point` (canvas units) in its middle. A new entity faces east. */
+export function footprintOriginAt(point: Point, kind: EntityKind, facing: Direction = DEFAULT_FACING): Point {
+  const size = tileSize(kind, facing);
+  // `|| 0`: Math.round gives -0 for small negative values.
+  return { x: Math.round(point.x / TILE - size.width / 2) || 0, y: Math.round(point.y / TILE - size.height / 2) || 0 };
+}
+
+/** True when a new entity of `kind` can stand with its top-left tile at `origin`: it would cover no tile of an entity that has a `tile`. */
+export function canStandAt(entities: readonly Entity[], kind: EntityKind, origin: Point, facing: Direction = DEFAULT_FACING): boolean {
+  return isFree(origin, tileSize(kind, facing), takenTiles(entities));
+}
+
+/** Placing a new entity with the keyboard: the top-left tile nearest to `wanted` at which it can stand, in the order `derivedTiles` looks for a free place. */
+export function freeOriginNear(entities: readonly Entity[], kind: EntityKind, wanted: Point, facing: Direction = DEFAULT_FACING): Point {
+  return nearestFree(wanted, tileSize(kind, facing), takenTiles(entities));
+}
+
+/** The edit position for a new entity placed on the board: the one from which `derivedTiles` would give it the top-left tile `origin`, on the grid of the edit canvas. */
+export function editPositionOf(origin: Point): Point {
+  return snapPoint({ x: origin.x * EDIT_UNITS_PER_TILE, y: origin.y * EDIT_UNITS_PER_TILE }, GRID);
 }
 
 /**

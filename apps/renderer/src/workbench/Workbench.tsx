@@ -190,7 +190,9 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         case "edit.nudge":
         case "edit.nudgeFar":
           if (!editing || !offered.move || usesArrowKeys(event.target)) return;
-          commands.nudgeSelection(nudgeDelta(event.key, shortcut.id === "edit.nudgeFar"));
+          // One step is a tile on the board and a grid step on the edit canvas.
+          if (offered.tiles) commands.nudgeTiles(nudgeDelta(event.key, shortcut.id === "edit.nudgeFar", 1));
+          else commands.nudgeSelection(nudgeDelta(event.key, shortcut.id === "edit.nudgeFar"));
           break;
         case "edit.duplicate":
           if (!editing || !offered.paste) return;
@@ -333,6 +335,10 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   onDisplayModeChange={commands.setDisplayMode}
                   onPlaceEntity={commands.placeEntity}
                   onMoveEntities={commands.moveEntities}
+                  onPlaceEntityOnTile={commands.placeEntityOnTile}
+                  onSetTiles={commands.setTiles}
+                  onSnapToTiles={commands.snapToTiles}
+                  onClearTiles={commands.clearTiles}
                   onToggleWire={commands.toggleWire}
                   onDeleteSelection={commands.deleteSelection}
                   onRotate={rotateSelection}
@@ -361,6 +367,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           selection={selection}
           wireSelection={wireSelection}
           editable={editable}
+          showTile={capabilities.tiles}
           resolveEntityIcon={resolveEntityIcon}
           renderSignalPicker={renderSignalPicker}
           describeSignal={describeSignal}

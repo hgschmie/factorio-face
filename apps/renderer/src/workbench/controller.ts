@@ -30,12 +30,20 @@ export interface DisplayCapabilities {
   readonly paste: boolean;
   /** The rotation keys and the rotation items of the context menu. */
   readonly rotate: boolean;
+  /**
+   * Positions are tiles: moves and new entities write `tile` instead of `at`, a turn has to find its tiles free, and the
+   * controls that give entities a tile and take it away are shown.
+   */
+  readonly tiles: boolean;
 }
 
-/** Blueprint mode only shows the board so far; editing on it is switched on here, one flag at a time. */
+/**
+ * The one place that says what a mode allows. On the board everything works on tiles (the rules are in canvas/board.ts);
+ * paste and duplicate are off there, because a copy has no `tile` and what it should get is not decided.
+ */
 export const DISPLAY_CAPABILITIES: Readonly<Record<DisplayMode, DisplayCapabilities>> = {
-  edit: { move: true, place: true, wire: true, paste: true, rotate: true },
-  blueprint: { move: false, place: false, wire: false, paste: false, rotate: false },
+  edit: { move: true, place: true, wire: true, paste: true, rotate: true, tiles: false },
+  blueprint: { move: true, place: true, wire: true, paste: false, rotate: true, tiles: true },
 };
 
 /** True when the display mode offers the tool; the select tool always is. */
@@ -80,6 +88,12 @@ export interface EntityMove {
   readonly id: EntityId;
   /** New top-left position in canvas units. */
   readonly position: Point;
+}
+
+export interface EntityTile {
+  readonly id: EntityId;
+  /** The center of the entity in tiles, as the `tile` clause holds it. */
+  readonly tile: Point;
 }
 
 export interface ProjectView {
@@ -282,6 +296,7 @@ export interface WorkbenchCommands {
   /**
    * Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included.
    * An entity that cannot rotate (a lamp) is left alone; the `tile` of one that has it follows the turn (`rotateTile`).
+   * On the blueprint board a turn that would put one of them on a tile of another entity (`blockedTurn`) changes nothing and is reported.
    */
   rotateEntities(ids: readonly EntityId[], turn: RotationTurn): void;
   /** Makes the entities face `direction`, as one step, under the same rules. An entity that faces it already is left alone. */
@@ -312,6 +327,25 @@ export interface WorkbenchCommands {
   pasteEntities(text: string, corner?: Point): void;
   /** Moves the selected entities by `delta` (canvas units) as one step. The selection stays; selected wires follow their entities. */
   nudgeSelection(delta: Point): void;
+
+  // The blueprint board: the `tile` of entities. Each call is one undoable step; `at` is never touched. Rules: canvas/board.ts.
+  /**
+   * Puts the entities on the board, each with its center at `tile`; one without a `tile` gets one. Nothing happens when one of
+   * them would stand on a tile of an entity that has a `tile` and is not among them (`blockedMoves`). A center that is off the
+   * grid for its entity is refused and reported.
+   */
+  setTiles(tiles: readonly EntityTile[]): void;
+  /** Moves the selected entities by `delta` whole tiles from where the board shows them, under the rule of `setTiles`. Those without a `tile` get one by it. */
+  nudgeTiles(delta: Point): void;
+  /** Snap: gives each of the entities that has no `tile` the one of the place the board shows it at (`derivedTiles`). Without `ids`, all entities of the circuit. */
+  snapToTiles(ids?: readonly EntityId[]): void;
+  /** Takes the entities off the grid: removes their `tile`, so they stand at a derived place again. */
+  clearTiles(ids: readonly EntityId[]): void;
+  /**
+   * Adds an entity of `kind` with its center at `tile`. Its edit position is the one the tile is derived from, moved on until
+   * it is not exactly that of another entity. Nothing happens when a tile it would cover is taken (`canStandAt`).
+   */
+  placeEntityOnTile(kind: EntityKind, tile: Point): void;
   /**
    * Copies the selected entities and the wires between them into the circuit and selects the copies: what `copyEntities` and
    * `pasteEntities` without a corner do, as one step and without a clipboard. Nothing happens with no entity selected.

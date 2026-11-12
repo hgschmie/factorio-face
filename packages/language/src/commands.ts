@@ -2,7 +2,7 @@
 // Unrelated text, comments, spacing and declaration order are never touched.
 
 import {
-  canRotate, DEFAULT_ENTITY, DIRECTIONS, facingOf, hasTerminal, isInt32, isTileCenter, NORMAL_QUALITY, rotateTile, wireKey,
+  canRotate, DEFAULT_ENTITY, DEFAULT_FACING, DIRECTIONS, facingOf, hasTerminal, isInt32, isTileCenter, NORMAL_QUALITY, rotateTile, wireKey,
   type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type TerminalRef, type WireColor,
 } from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
@@ -314,8 +314,11 @@ function checkPosition(position: Point): Point {
   return rounded;
 }
 
-/** Appends a declaration with default configuration after the last entity. Generates `constant1`, `lamp2`, ... when no name is given. */
-export function addEntity(parse: ParseResult, kind: EntityKind, position: Point, name?: string): { changes: TextChange[]; name: string } {
+/**
+ * Appends a declaration with default configuration after the last entity. Generates `constant1`, `lamp2`, ... when no name is given.
+ * With `tile` (the game's center position, on the grid for the kind facing east) the declaration gets a `tile` clause.
+ */
+export function addEntity(parse: ParseResult, kind: EntityKind, position: Point, name?: string, tile?: Point): { changes: TextChange[]; name: string } {
   const edit = new Edit(parse);
   const taken = new Set(edit.circuit.entities.map((e) => e.name));
   if (name === undefined) {
@@ -323,7 +326,8 @@ export function addEntity(parse: ParseResult, kind: EntityKind, position: Point,
     while (taken.has(`${kind}${n}`)) n++;
     name = `${kind}${n}`;
   } else checkName(name, taken);
-  const entity = { ...DEFAULT_ENTITY[kind], id: "", name, position: checkPosition(position) } as Entity;
+  if (tile && !isTileCenter(kind, DEFAULT_FACING, tile)) throw new EditError("invalid-position", `tile (${tile.x}, ${tile.y}) is not on the tile grid for a new ${kind}`);
+  const entity = { ...DEFAULT_ENTITY[kind], id: "", name, position: checkPosition(position), ...(tile ? { placement: { tile } } : {}) } as Entity;
   const { member, unit } = edit.style;
   const block = member + indentRest(printEntity(entity, { unit }), member);
   const last = edit.members.findLast((m) => m.type === "entity");
@@ -741,7 +745,7 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
 // Command objects
 
 export type EditCommand =
-  | { readonly type: "addEntity"; readonly kind: EntityKind; readonly position: Point; readonly name?: string }
+  | { readonly type: "addEntity"; readonly kind: EntityKind; readonly position: Point; readonly name?: string; /** The center for a `tile` clause. */ readonly tile?: Point }
   | { readonly type: "moveEntities"; readonly moves: readonly EntityMove[] }
   | { readonly type: "faceEntities"; readonly facings: readonly EntityFacing[] }
   | { readonly type: "setTiles"; readonly tiles: readonly EntityTile[] }
@@ -767,7 +771,7 @@ export type EditResult =
 export function executeCommand(parse: ParseResult, command: EditCommand): EditResult {
   try {
     switch (command.type) {
-      case "addEntity": return { ok: true, ...addEntity(parse, command.kind, command.position, command.name) };
+      case "addEntity": return { ok: true, ...addEntity(parse, command.kind, command.position, command.name, command.tile) };
       case "moveEntities": return { ok: true, changes: moveEntities(parse, command.moves) };
       case "faceEntities": return { ok: true, changes: faceEntities(parse, command.facings) };
       case "setTiles": return { ok: true, changes: setTiles(parse, command.tiles) };

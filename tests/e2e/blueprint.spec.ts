@@ -1,107 +1,8 @@
 // The blueprint display mode: the tile board, entities on the tiles they take in the game, straight wires, the bubble of the
-// selected entity, what is switched off on the board for now, and a camera per mode.
+// selected entity, paste and duplicate (off on the board), and a camera per mode. Editing on the board: blueprintEdit.spec.ts.
 import type { Page } from "@playwright/test";
-import {
-  boardGrabPoint, canvas, canvasView, card, clickCenter, displaySwitch, entityNames, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires, type Point,
-} from "./app.ts";
-
-const TILE = 80;
-
-/** Every kind with a `tile`, the 2x1 entities in all four directions; ids follow declaration order. */
-const BOARD = `circuit "Board" {
-    constant source at (40, 80) tile (0.5, 0.5) {
-        virtual:signal-A = 1
-    }
-
-    decider gate at (300, 80) tile (3, 0.5) {
-        description = "Counts up to ten.\\nThe green wire feeds the output back."
-        when virtual:signal-A < 10
-        output virtual:signal-A = input
-    }
-
-    arithmetic twice at (300, 260) tile (5.5, 1) facing south {
-        virtual:signal-B = virtual:signal-A[red] * 2
-    }
-
-    selector pick at (560, 260) tile (3, 2.5) facing west {
-        operation = select
-        order = min
-        index = virtual:signal-I
-    }
-
-    decider check at (40, 260) tile (0.5, 3) facing north {
-        when virtual:signal-A > 3
-        output virtual:signal-C = 1
-    }
-
-    lamp light at (560, 80) tile (7.5, 0.5) {
-        when virtual:signal-B > 8
-    }
-
-    wire red source.out <-> gate.in
-    wire green gate.out <-> gate.in
-    wire red gate.out <-> twice.in
-    wire green twice.out <-> light.in
-    wire red twice.out <-> pick.in
-}
-`;
-
-const inspector = (page: Page) => page.getByRole("complementary", { name: "Inspector" });
-const menu = (page: Page) => page.getByRole("menu", { name: "Canvas actions" });
-const tool = (page: Page, name: string) => page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name });
-const display = (page: Page, name: "Edit" | "Blueprint") => displaySwitch(page).getByRole("button", { name });
-const bubble = (page: Page) => page.locator(".entity-bubble");
-const zoom = async (page: Page) => Number(await page.locator(".canvas").getAttribute("data-zoom"));
-
-async function setSource(page: Page, source: string): Promise<void> {
-  await page.evaluate((text) => window.faceSession!.commands.setSource(text), source);
-  await expect.poll(() => sourceText(page)).toBe(source);
-}
-
-/** The board with `source` on it, fitted. */
-async function openBoard(page: Page, source = BOARD): Promise<void> {
-  await setSource(page, source);
-  await showDisplay(page, "blueprint");
-  await page.getByRole("button", { name: "Fit circuit" }).click();
-}
-
-interface Footprint {
-  /** Top-left tile. */
-  readonly tile: readonly [number, number];
-  /** Tiles covered, as width and height. */
-  readonly size: readonly [number, number];
-  readonly facing: string | null;
-  readonly placed: string | null;
-}
-
-/** What the board says about an entity: its tile attributes and the size of its body in tiles. */
-async function footprint(page: Page, name: string): Promise<Footprint> {
-  return card(page, name).evaluate((group, tileSize) => {
-    const body = group.querySelector(".card-body")!;
-    const inset = Number(body.getAttribute("x"));
-    const tiles = (attribute: string): number => (Number(body.getAttribute(attribute)) + 2 * inset) / tileSize;
-    return { tile: [Number(group.getAttribute("data-tile-x")), Number(group.getAttribute("data-tile-y"))], size: [tiles("width"), tiles("height")], facing: group.getAttribute("data-facing"), placed: group.getAttribute("data-placed") };
-  }, TILE);
-}
-
-/** Where the pins of an entity are drawn, in canvas units relative to the top-left corner of its footprint. */
-async function pinOffsets(page: Page, name: string): Promise<Record<string, [number, number]>> {
-  return card(page, name)
-    .locator("g.pin")
-    .evaluateAll((pins) => Object.fromEntries(pins.map((element) => [`${element.getAttribute("data-terminal")} ${element.getAttribute("data-wire-color")}`, [Number(element.querySelector(".pin-dot")!.getAttribute("cx")), Number(element.querySelector(".pin-dot")!.getAttribute("cy"))]])));
-}
-
-async function selectOnBoard(page: Page, name: string): Promise<void> {
-  const point = await boardGrabPoint(page, name);
-  await page.mouse.click(point.x, point.y);
-  await expect(card(page, name)).toHaveClass(/selected/);
-}
-
-/** A point of the board on which nothing stands: the middle of a tile, in window coordinates. */
-async function tilePoint(page: Page, x: number, y: number): Promise<Point> {
-  const view = await canvasView(page);
-  return { x: view.box.x + ((x + 0.5) * TILE - view.origin.x) * view.zoom, y: view.box.y + ((y + 0.5) * TILE - view.origin.y) * view.zoom };
-}
+import { boardGrabPoint, canvas, canvasView, card, clickCenter, entityNames, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires } from "./app.ts";
+import { BOARD, bubble, display, footprint, inspector, menu, openBoard, pinOffsets, selectOnBoard, setSource, TILE, tilePoint, zoom } from "./board.ts";
 
 /** What the edit canvas shows: where the cards are, how the wires run and the camera. */
 async function editPicture(page: Page): Promise<unknown> {
@@ -126,7 +27,7 @@ test("the switch and the B key change between the edit canvas and the blueprint 
   await expect(card(page, "gate")).toHaveClass(/board-entity/);
   await expect(card(page, "gate")).toHaveAttribute("data-tile-x", "3");
   await expect(page.locator("svg.canvas-svg rect.canvas-ground")).toHaveAttribute("fill", "url(#board-tiles)");
-  await expect(page.locator(".canvas-hint")).toContainText("Blueprint view");
+  await expect(page.locator(".canvas-hint")).toContainText("Drag entities to free tiles");
   await expect(page.locator(".statusbar")).toContainText("Tile grid");
 
   // B goes back and forth, wherever the focus is outside a text field.
@@ -435,43 +336,21 @@ test("one selected entity shows its card and its description in a bubble that ke
   await expect(bubble(page)).toHaveCount(0);
 });
 
-test("what the board does not do yet is switched off: tools, dragging, rotating, moving, duplicating and pasting", async ({ page }) => {
+test("paste and duplicate stay off on the board; cut, copy and delete work there", async ({ page }) => {
   await openBoard(page);
-  const tiles = async () => Promise.all(["source", "gate", "twice", "pick", "check", "light"].map(async (name) => (await footprint(page, name)).tile));
-  const before = await tiles();
-
-  // The palette: only the select tool is left, and the keys of the others do nothing.
-  await expect(tool(page, "Select and move")).toBeEnabled();
-  await expect(tool(page, "Red wire")).toBeDisabled();
-  await expect(tool(page, "Green wire")).toBeDisabled();
-  for (const item of await page.locator(".palette-item").all()) await expect(item).toBeDisabled();
-  await canvas(page).focus();
-  for (const key of ["1", "5", "Alt+KeyR", "Alt+KeyG"]) await page.keyboard.press(key);
-  await expect(tool(page, "Select and move")).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator(".canvas")).toHaveClass(/tool-select/);
-  await expect(page.locator(".canvas")).toHaveClass(/fixed-entities/);
-
-  // A drag on an entity selects it and moves nothing.
   const grab = await boardGrabPoint(page, "pick");
-  await page.mouse.move(grab.x, grab.y);
-  await page.mouse.down();
-  await page.mouse.move(grab.x + 60, grab.y + 40, { steps: 4 });
-  await page.mouse.move(grab.x + 170, grab.y + 90, { steps: 4 });
-  await page.mouse.up();
-  await expect(card(page, "pick")).toHaveClass(/selected/);
-  expect(await tiles()).toEqual(before);
+  await selectOnBoard(page, "pick");
 
-  // The keys that rotate, move and duplicate.
-  for (const key of ["r", "Shift+KeyR", "ArrowRight", "Shift+ArrowDown", "ControlOrMeta+d"]) await page.keyboard.press(key);
+  // The duplicate key does nothing.
+  await page.keyboard.press("ControlOrMeta+d");
   await expect(page.locator("g.card")).toHaveCount(6);
-  expect(await tiles()).toEqual(before);
   expect(await sourceText(page)).toBe(BOARD);
 
-  // The menu of an entity: copy, cut and delete are there, paste and the rotations are not.
+  // The menu of an entity: everything but Paste.
   await page.mouse.click(grab.x, grab.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
-  for (const item of [/Paste/, /Rotate clockwise/, /Rotate counter-clockwise/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeDisabled();
-  for (const item of [/Cut/, /Copy/, /Delete/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeEnabled();
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Release from tile grid/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem", { name: /Paste/ })).toBeDisabled();
+  for (const item of [/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Release from tile grid/, /Delete/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeEnabled();
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Copy/ }));
   await expect(menu(page)).toHaveCount(0);
   // The copy is on the clipboard, and the paste key does nothing with it here.
@@ -491,14 +370,12 @@ test("what the board does not do yet is switched off: tools, dragging, rotating,
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(card(page, "pick")).toHaveCount(1);
 
-  // On the edit canvas everything is back, the paste included.
+  // On the edit canvas the paste is back: the copy has no tile.
   await showDisplay(page, "edit");
-  await expect(tool(page, "Red wire")).toBeEnabled();
-  for (const item of await page.locator(".palette-item").all()) await expect(item).toBeEnabled();
-  await expect(page.locator(".canvas")).not.toHaveClass(/fixed-entities/);
   await canvas(page).focus();
   await page.keyboard.press("ControlOrMeta+v");
   await expect(page.locator("g.card")).toHaveCount(7);
+  expect(await sourceText(page)).toMatch(/selector pick2 at \(\d+, \d+\) facing west \{/);
 });
 
 test("each display mode has its own camera: the board is fitted when it is first shown, and both views are kept", async ({ page }) => {

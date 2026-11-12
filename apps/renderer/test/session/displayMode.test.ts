@@ -42,24 +42,24 @@ describe("display mode", () => {
     expect(session.state.displayMode).toBe("edit");
   });
 
-  it("offers every tool in edit mode and, so far, only the select tool on the blueprint board", () => {
+  it("offers every tool in both modes; paste and duplicate are what the blueprint board leaves out", () => {
     expect(DISPLAY_MODES).toEqual(["edit", "blueprint"]);
-    for (const tool of TOOLS) expect(toolAllowed(tool, "edit")).toBe(true);
-    expect(TOOLS.filter((tool) => toolAllowed(tool, "blueprint"))).toEqual([{ type: "select" }]);
-    expect(Object.values(DISPLAY_CAPABILITIES.edit).every(Boolean)).toBe(true);
+    for (const mode of DISPLAY_MODES) for (const tool of TOOLS) expect(toolAllowed(tool, mode), `${mode} ${JSON.stringify(tool)}`).toBe(true);
+    const { tiles: _tiles, ...edit } = DISPLAY_CAPABILITIES.edit;
+    expect(Object.values(edit).every(Boolean)).toBe(true);
+    expect(Object.entries(DISPLAY_CAPABILITIES.blueprint).filter(([, offered]) => !offered).map(([name]) => name)).toEqual(["paste"]);
   });
 
-  it("gives up a tool the new mode does not offer and refuses to pick one", () => {
+  it("keeps the tool when the mode changes, and picks every tool on the board", () => {
     const { session } = createSession(IRREGULAR);
     session.commands.setTool({ type: "wire", color: "green" });
     session.commands.setDisplayMode("blueprint");
-    expect(session.state.tool).toEqual({ type: "select" });
+    expect(session.state.tool).toEqual({ type: "wire", color: "green" });
     for (const tool of TOOLS) {
       session.commands.setTool(tool);
-      expect(session.state.tool, JSON.stringify(tool)).toEqual({ type: "select" });
+      expect(session.state.tool, JSON.stringify(tool)).toEqual(tool);
     }
     session.commands.setDisplayMode("edit");
-    session.commands.setTool({ type: "place", kind: "lamp" });
     expect(session.state.tool).toEqual({ type: "place", kind: "lamp" });
   });
 

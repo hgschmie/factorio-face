@@ -24,7 +24,7 @@ export function readClipboardText(text: string): Fragment | undefined {
  * the group goes where it was copied from. From there it moves on by `PASTE_OFFSET` until none of its entities sits exactly on
  * an existing one, so a copy never hides its original or an earlier copy.
  */
-export function pasteShift(fragment: Fragment, existing: readonly Pick<Entity, "position">[], corner?: Point): Point {
+export function pasteShift(fragment: { readonly entities: readonly Pick<Entity, "position">[] }, existing: readonly Pick<Entity, "position">[], corner?: Point): Point {
   const key = (x: number, y: number) => `${x},${y}`;
   const occupied = new Set(existing.map(({ position }) => key(position.x, position.y)));
   const origin = { x: Math.min(...fragment.entities.map((e) => e.position.x)), y: Math.min(...fragment.entities.map((e) => e.position.y)) };
