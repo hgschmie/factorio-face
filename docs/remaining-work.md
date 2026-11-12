@@ -87,4 +87,4 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 - Reusable components, library, instance identity across files, flattening.
 - Debugging: probes, traces for arbitrary signals, stop conditions, scenarios.
 - Packaging, recovery, accessibility and performance hardening; move parsing/simulation to a worker if measurements require it.
-- Code review loop: in place since 2026-11-11 as a review before every commit (`docs/agent-rules.md`).
+- Code review loop: in place since 2026-11-11 as a review before every code commit (`docs/agent-rules.md`).
