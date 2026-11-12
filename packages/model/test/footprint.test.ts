@@ -110,34 +110,42 @@ describe("centers and tiles", () => {
 });
 
 describe("rotateTile", () => {
-  it("keeps the input tile and swings the output around it", () => {
-    // Input on tile (0, 0), output to the east of it.
+  it("keeps the top-left tile of the footprint on every turn", () => {
+    // On the tiles (0, 0) and (1, 0), input on the left.
     const east = at(1, 0.5);
     expect(rotateTile("decider", east, "east", "south")).toEqual(at(0.5, 1));
-    expect(rotateTile("decider", east, "east", "north")).toEqual(at(0.5, 0));
-    expect(rotateTile("decider", east, "east", "west")).toEqual(at(0, 0.5));
+    expect(rotateTile("decider", east, "east", "north")).toEqual(at(0.5, 1));
+    expect(rotateTile("decider", east, "east", "west")).toEqual(east);
     for (const kind of LONG) {
       for (const from of DIRECTIONS) {
         const center = tileCenter(kind, from, at(3, -5));
-        const { input } = tileHalves(kind, from, center);
         for (const to of DIRECTIONS) {
           const turned = rotateTile(kind, center, from, to);
           expect(isTileCenter(kind, to, turned)).toBe(true);
-          expect(tileHalves(kind, to, turned).input).toEqual(input);
+          expect(tileOrigin(kind, to, turned)).toEqual(at(3, -5));
         }
       }
     }
   });
 
-  it("comes back after four quarter turns and treats a half turn as two of them", () => {
+  it("keeps both tiles on a half turn and swaps the input and the output half", () => {
+    const center = at(1, 0.5);
+    expect(tileHalves("arithmetic", "east", center)).toEqual({ input: at(0, 0), output: at(1, 0) });
+    const flipped = rotateTile("arithmetic", center, "east", "west");
+    expect(occupiedTiles("arithmetic", "west", flipped)).toEqual(occupiedTiles("arithmetic", "east", center));
+    expect(tileHalves("arithmetic", "west", flipped)).toEqual({ input: at(1, 0), output: at(0, 0) });
+    const upright = rotateTile("arithmetic", at(0.5, 1), "south", "north");
+    expect(tileHalves("arithmetic", "north", upright)).toEqual({ input: at(0, 1), output: at(0, 0) });
+  });
+
+  it("comes back after four quarter turns", () => {
     let center = at(1, 0.5);
     const seen = [center];
     for (let i = 0; i < 4; i++) {
       center = rotateTile("arithmetic", center, CLOCKWISE[i]!, CLOCKWISE[(i + 1) % 4]!);
       seen.push(center);
     }
-    expect(seen).toEqual([at(1, 0.5), at(0.5, 1), at(0, 0.5), at(0.5, 0), at(1, 0.5)]);
-    expect(rotateTile("arithmetic", at(1, 0.5), "east", "west")).toEqual(seen[2]);
+    expect(seen).toEqual([at(1, 0.5), at(0.5, 1), at(1, 0.5), at(0.5, 1), at(1, 0.5)]);
   });
 
   it("leaves a 1x1 entity and an unchanged direction alone, and snaps a center off the grid first", () => {
@@ -146,6 +154,7 @@ describe("rotateTile", () => {
     expect(rotateTile("decider", at(0.5, 0.5), "east", "east")).toEqual(at(0.5, 0.5));
     // (0.5, 0.5) facing east is taken as the footprint on tiles (0, 0) and (1, 0).
     expect(rotateTile("decider", at(0.5, 0.5), "east", "south")).toEqual(at(0.5, 1));
+    expect(rotateTile("decider", at(0.5, 0.5), "east", "west")).toEqual(at(1, 0.5));
   });
 });
 

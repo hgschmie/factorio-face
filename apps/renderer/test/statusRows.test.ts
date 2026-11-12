@@ -1,7 +1,7 @@
 import { signal, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { CARD, PIN_RADIUS } from "../src/canvas/geometry.ts";
-import { inputText, layoutRow, RAISED_ROWS, rowPlacement, STATUS_ROWS, TEXT_SIGNALS } from "../src/canvas/statusRows.ts";
+import { compactOutput, inputText, layoutRow, RAISED_ROWS, rowPlacement, STATUS_ROWS, TEXT_SIGNALS } from "../src/canvas/statusRows.ts";
 import { compactNumber, signalListText } from "../src/entities/signalText.ts";
 import type { StatusSignal } from "../src/workbench/controller.ts";
 
@@ -159,5 +159,19 @@ describe("an input row as text", () => {
   it("bounds the text of a network with very many signals", () => {
     expect(inputText({ wired: true, signals: entries(TEXT_SIGNALS) })).not.toContain("+");
     expect(inputText({ wired: true, signals: entries(TEXT_SIGNALS + 5) }).endsWith(` +5`)).toBe(true);
+  });
+});
+
+describe("the output of a combinator on the blueprint board", () => {
+  it("names the first signal with its value in compact form, counts the others and shows a dash for nothing", () => {
+    expect(compactOutput([], 12)).toBe("–");
+    expect(compactOutput([{ signal: A, value: 5 }], 12)).toBe("A 5");
+    expect(compactOutput([{ signal: A, value: 12_345 }, { signal: B, value: 1 }, { signal: PLATE, value: 2 }], 12)).toBe("A 12k +2");
+  });
+
+  it("is cut to the room it has", () => {
+    expect(compactOutput([{ signal: PLATE, value: -2_147_483_648 }, { signal: A, value: 1 }], 12)).toBe("iron-plate …");
+    expect(compactOutput([{ signal: RARE, value: 1 }], 20)).toBe("carbon-fiber@rare 1");
+    expect(compactOutput([{ signal: RARE, value: 1 }], 12)).toHaveLength(12);
   });
 });

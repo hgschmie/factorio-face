@@ -3,7 +3,7 @@
 import type { Point } from "@face/model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
-import { Canvas, type CanvasHandle } from "../canvas/Canvas.tsx";
+import { Canvas, type CanvasHandle, type CanvasViews } from "../canvas/Canvas.tsx";
 import { ZOOM_STEP, type CanvasView } from "../canvas/viewport.ts";
 import type { SourceEditorHandle } from "../editor/SourceEditor.tsx";
 import type { RotationTurn } from "../entities/facing.ts";
@@ -16,7 +16,7 @@ import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { ShortcutOverview } from "../shortcuts/ShortcutOverview.tsx";
 import { nudgeDelta, shortcutFor } from "../shortcuts/shortcuts.ts";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
-import { SELECT_TOOL, type Diagnostic, type WorkbenchController } from "./controller.ts";
+import { DISPLAY_CAPABILITIES, SELECT_TOOL, toolAllowed, type Diagnostic, type DisplayMode, type WorkbenchController } from "./controller.ts";
 import { selectedItems, selectionStatus } from "./selectionText.ts";
 import { Palette, type WireIconResolver } from "./Palette.tsx";
 import { SourcePane } from "./SourcePane.tsx";
@@ -65,7 +65,8 @@ function pageTextIsSelected(): boolean {
 
 export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
-  const { circuit, selection, wireSelection, mode, tool, editable, simulation, project } = state;
+  const { circuit, selection, wireSelection, mode, displayMode, tool, editable, simulation, project } = state;
+  const capabilities = DISPLAY_CAPABILITIES[displayMode];
   const canvasRef = useRef<CanvasHandle>(null);
   const editorRef = useRef<SourceEditorHandle>(null);
   const inspectorRef = useRef<InspectorHandle>(null);
@@ -74,16 +75,16 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const revealDiagnostic = useCallback((diagnostic: Diagnostic) => editorRef.current?.reveal(diagnostic.from, diagnostic.to), []);
-  // The canvas unmounts in Source mode; its view is kept here so that coming back does not reset it.
-  const viewRef = useRef<CanvasView | undefined>(undefined);
-  const rememberView = useCallback((view: CanvasView) => {
-    viewRef.current = view;
+  // The canvas unmounts in Source mode; its views, one per display mode, are kept here so that coming back does not reset them.
+  const viewsRef = useRef<CanvasViews>({});
+  const rememberView = useCallback((view: CanvasView, shown: DisplayMode) => {
+    viewsRef.current = { ...viewsRef.current, [shown]: view };
   }, []);
-  // Another project: the remembered camera belongs to the previous one, so the canvas starts over and fits the new circuit.
+  // Another project: the remembered cameras belong to the previous one, so the canvas starts over and fits the new circuit.
   const epochRef = useRef(project.epoch);
   if (epochRef.current !== project.epoch) {
     epochRef.current = project.epoch;
-    viewRef.current = undefined;
+    viewsRef.current = {};
   }
 
   // Effects below read the latest state through this ref instead of re-subscribing on every change.
@@ -134,9 +135,9 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       const data = event.clipboardData;
       if (!canvas || !data || focusIsOnText()) return;
       // Cut and copy take the selected entities (with the wires between them); selected wires are left alone.
-      const { selection, editable } = stateRef.current;
+      const { selection, editable, displayMode } = stateRef.current;
       if (event.type === "paste") {
-        if (!editable) return;
+        if (!editable || !DISPLAY_CAPABILITIES[displayMode].paste) return;
         event.preventDefault();
         commands.pasteEntities(data.getData("text/plain"), menuCorner ?? canvas.pasteCorner());
         return;
@@ -155,20 +156,24 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
     };
   }, [commands]);
 
-  // The keys of the shortcut table that do not need the focus in the canvas: tools, rotation as in the game (R, Shift+R), moving
-  // with the arrows, duplicating, the overview. They belong to the circuit wherever the focus is while the canvas is shown,
+  // The keys of the shortcut table that do not need the focus in the canvas: tools, the display mode, rotation as in the game
+  // (R, Shift+R), moving with the arrows, duplicating, the overview. What the display mode does not offer does nothing. They belong to the circuit wherever the focus is while the canvas is shown,
   // except where a key is text or moves through a list: a text control, the source editor, a dialog, a menu. Only the arrows repeat.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.isComposing || event.defaultPrevented) return;
       const shortcut = shortcutFor(event);
       if (!shortcut || shortcut.scope === "canvas" || (event.repeat && !shortcut.repeats) || keyIsTaken(event.target)) return;
-      const { selection, editable, mode, tool } = stateRef.current;
+      const { selection, editable, mode, tool, displayMode } = stateRef.current;
       if (shortcut.scope === "circuit" && mode === "source") return;
       const editing = editable && selection.length > 0;
+      const offered = DISPLAY_CAPABILITIES[displayMode];
       switch (shortcut.id) {
         case "view.shortcuts":
           setShortcutsOpen(true);
+          break;
+        case "view.display":
+          commands.setDisplayMode(displayMode === "edit" ? "blueprint" : "edit");
           break;
         case "tool.cancel":
           // Inside the canvas the key is the canvas's own. From elsewhere it ends what is pending there: the wire, then the tool.
@@ -179,21 +184,21 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           break;
         case "edit.rotate":
         case "edit.rotateBack":
-          if (!editing) return;
+          if (!editing || !offered.rotate) return;
           commands.rotateEntities(selection, shortcut.id === "edit.rotate" ? "clockwise" : "counterclockwise");
           break;
         case "edit.nudge":
         case "edit.nudgeFar":
-          if (!editing || usesArrowKeys(event.target)) return;
+          if (!editing || !offered.move || usesArrowKeys(event.target)) return;
           commands.nudgeSelection(nudgeDelta(event.key, shortcut.id === "edit.nudgeFar"));
           break;
         case "edit.duplicate":
-          if (!editing) return;
+          if (!editing || !offered.paste) return;
           commands.duplicateSelection();
           break;
         default:
-          // The tools. Those that change the circuit are off while it cannot be edited, like their buttons.
-          if (!shortcut.tool || (shortcut.tool.type !== "select" && !editable)) return;
+          // The tools. Those that change the circuit are off while it cannot be edited or the display mode has no use for them, like their buttons.
+          if (!shortcut.tool || (shortcut.tool.type !== "select" && !editable) || !toolAllowed(shortcut.tool, displayMode)) return;
           commands.setTool(shortcut.tool);
       }
       event.preventDefault();
@@ -303,7 +308,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       {settingsOpen && <ProjectSettings project={project} catalog={state.catalog} onRename={commands.setProjectName} onModuleChange={commands.setModuleEnabled} close={closeSettings} />}
 
       <div className={`workbench mode-${mode}`}>
-        {showCanvas && <Palette tool={tool} editable={editable} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} resolveWireIcon={resolveWireIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
+        {showCanvas && <Palette tool={tool} canPlace={editable && capabilities.place} canWire={editable && capabilities.wire} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} resolveWireIcon={resolveWireIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
 
         <main className="workspace">
           <div className="editor-area">
@@ -316,14 +321,16 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   selection={selection}
                   wireSelection={wireSelection}
                   tool={tool}
+                  displayMode={displayMode}
                   editable={editable}
                   entityStatus={simulation.entityStatus}
                   resolveEntityIcon={resolveEntityIcon}
                   describeSignal={describeSignal}
-                  initialView={viewRef.current}
+                  initialViews={viewsRef.current}
                   onViewChange={rememberView}
                   onSelect={commands.select}
                   onToolChange={commands.setTool}
+                  onDisplayModeChange={commands.setDisplayMode}
                   onPlaceEntity={commands.placeEntity}
                   onMoveEntities={commands.moveEntities}
                   onToggleWire={commands.toggleWire}
@@ -386,7 +393,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         <span>
           <span className="status-selection">{selectionText}</span>
           <span className="meta-dot" />
-          20 unit grid
+          {displayMode === "blueprint" ? "Tile grid" : "20 unit grid"}
         </span>
         <span>FActorio Circuit Editor</span>
       </footer>

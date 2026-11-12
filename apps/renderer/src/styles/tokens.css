@@ -43,6 +43,10 @@
   --card-border-hover: var(--gray-control);
   --card-divider: var(--gray-edge);
   --card-lit: #5e4522;
+  /* Blueprint board: the two shades of the checkerboard, and the arrows that mark the input and the output end of a combinator */
+  --board-tile-dark: #252425;
+  --board-tile-light: #2f2e2f;
+  --board-arrow: #f2c53d;
 
   /* Borders: dark edges between panels and around wells, lighter outlines on raised controls */
   --border-edge: var(--gray-edge);

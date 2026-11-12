@@ -98,3 +98,10 @@ export function inputText(input: StatusInput): string {
   if (!input.wired) return "no wire";
   return signalListText(input.signals, TEXT_SIGNALS) || "nothing";
 }
+
+/** What a combinator emits, in a few characters, for the blueprint board: the first signal, the number of the others, a dash for nothing. */
+export function compactOutput(signals: readonly StatusSignal[], maxChars: number): string {
+  const first = signals[0];
+  if (!first) return "–";
+  return truncate(`${shortSignal(first.signal)} ${compactNumber(first.value)}${signals.length > 1 ? ` +${signals.length - 1}` : ""}`, maxChars);
+}

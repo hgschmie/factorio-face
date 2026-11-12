@@ -40,11 +40,17 @@ src/
     Palette.tsx        tools (select, red wire, green wire), the five building blocks, entity list
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
-    Canvas.tsx         SVG canvas: camera, gestures, pending wire, context menu; emits callbacks only
-    Scene.tsx          memoized wires (with their click target) and cards, culled to the visible area
+    Canvas.tsx         SVG canvas: camera per display mode, gestures, pending wire, context menu, the Edit | Blueprint switch, the
+                       checkerboard and the bubble; emits callbacks only
+    Scene.tsx          memoized wires (with their click target) and entities in the layout of the display mode, culled to the visible area
+    layout.ts          `CanvasLayout`: where an entity and its pins are in a display mode; `editLayout`, `blueprintLayout`   (pure)
+    board.ts           the blueprint board: tile size, `derivedTiles`, `arrangeBoard`, pins on a footprint   (pure)
     EntityCard.tsx     one memoized card (kind, description marker, icon, name, summary, live status rows, a red and a green pin per side in
-                       TERMINALS, on the edges the entity's facing gives them)
-    statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text   (pure)
+                       TERMINALS, on the edges the entity's facing gives them); `CardFace` is the card without pins and place, `Pin` one pin
+    BlueprintEntity.tsx  one memoized entity on the board: footprint, icon, name, arrows, pins, compact live state
+    EntityBubble.tsx   the bubble of the selected entity on the board: `CardFace` and the description as an HTML overlay
+    bubble.ts          where the bubble goes (`placeBubble`)   (pure)
+    statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text, the compact output of the board   (pure)
     ContextMenu.tsx    keyboard-navigable popup menu
     geometry.ts        card and pin geometry (`pinPoint`, `pinEdge`, `pinHeading`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
@@ -96,11 +102,11 @@ interface WorkbenchController {
 ```
 
 `WorkbenchState`: `project` (name, path, fileName, dirty, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
-has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
+has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
-`WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
+`WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
 `toggleWire`, `setSource`, `undo`, `redo`),
 simulation (`run`, `pause`,
@@ -151,7 +157,8 @@ simulation (`run`, `pause`,
   Every combinator rotates; a lamp does not, as in the game (`canRotate` of `@face/model`). The language command leaves lamps
   out, so a selection of lamps alone is no step and a mixed one turns the others; `facingOf` is east for a lamp whatever its
   source says, so its pins never move (a `facing` clause typed on a lamp gets the warning `unused-facing`). An entity with a
-  `tile` gets its tile corrected in the same transaction: a 2x1 combinator turns around its input half (`rotateTile`).
+  `tile` gets its tile corrected in the same transaction: a 2x1 combinator keeps the top-left tile of its footprint, so a half turn
+  keeps both tiles and swaps input and output (`rotateTile`).
 - **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
   a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
   so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.
@@ -235,7 +242,7 @@ green wire tokens, every `var()` resolves, the window background of the main pro
 | --- | --- |
 | Reference grays | `--gray-shadow`, `-edge`, `-well`, `-frame`, `-divider`, `-card`, `-tab`, `-control` |
 | Surfaces | `--surface-window`, `-titlebar`, `-projectbar`, `-palette`, `-inspector`, `-dock`, `-statusbar`, `-popover` (frame); `-editor`, `-inset`, `-well` (wells); `-raised`, `-raised-hover`, `-active`, `-control`, `-hover` |
-| Canvas | `--canvas-center` / `-mid` / `-edge`, `--canvas-dot`, `--card-top` / `-bottom` / `-border` / `-divider` / `-lit` |
+| Canvas | `--canvas-center` / `-mid` / `-edge`, `--canvas-dot`, `--card-top` / `-bottom` / `-border` / `-divider` / `-lit`, `--board-tile-dark` / `-light`, `--board-arrow` |
 | Borders | `--border-edge`, `--border-subtle`, `--border`, `--border-strong`, `--border-input`, `--border-popover` |
 | Text | `--text`, `--text-strong` (cream), `--text-soft`, `--text-label`, `--text-muted`, `--text-dim`, `--text-faint`, `--ink` (dark, on filled controls) |
 | Accent | `--accent`, `--accent-fill`, `--accent-bright`, `--accent-border`, `--focus-ring` |
@@ -249,6 +256,108 @@ green wire tokens, every `var()` resolves, the window background of the main pro
 
 Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`, `-comment`, `-signal`, `-atom`, `-name`, `-operator`,
 `-punctuation`, `-color-red`, `-color-green`, `-invalid`) are in `styles/source.css`; `editor/tokens.ts` maps tokenizer kinds to them.
+
+## Display modes and the layout
+
+The canvas shows the circuit in one of two display modes (`DisplayMode` in `workbench/controller.ts`):
+
+- **Edit**: the canvas as it always was. Cards of 184 x 128 at the `at` position of their entity, pins on the edges, routed wires.
+- **Blueprint**: a checkerboard of tiles on which every entity takes the space it takes in the game, at its `tile`: 1x1 for a
+  constant combinator and a lamp, 2x1 for the other combinators, turned with the facing. Wires are straight lines.
+
+The mode is view state of the session like the workbench mode and the tool: `state.displayMode`, set with
+`commands.setDisplayMode(mode)`, not part of the document, not undoable, `edit` for every project that is opened and kept while
+it stays open. The segmented control `Edit | Blueprint` in the heading of the canvas (`.display-switch`, a group named "Display
+mode" with `aria-pressed` buttons) and the key `B` switch it. The canvas container carries `data-display` and the class
+`display-edit` or `display-blueprint`.
+
+**What a mode offers.** `DISPLAY_CAPABILITIES` (`controller.ts`) says per mode whether entities can be moved (`move`: dragging
+and the arrow keys), placed (`place`), wired (`wire`), pasted or duplicated (`paste`) and rotated by key or context menu
+(`rotate`). Edit has all of them; blueprint has none so far, it only shows. One table switches them on: `Canvas` (drag, the
+Paste and Rotate items, which are shown disabled), `Workbench` (the keys, the paste event) and `Palette` (`canPlace`,
+`canWire`: the buttons are disabled) read it, and the session refuses a tool the mode does not offer (`toolAllowed`) and falls
+back to the select tool when the mode changes. Everything that does not depend on a position works in both modes: selecting
+(click, Shift-click, marquee, wires), pan, zoom, Fit, copy, cut, delete, Select all and the whole inspector, its Facing control
+included. With nothing to drag, a click on one member of a multi-selection narrows the selection to it at once (also on the
+edit canvas while the source has errors).
+
+**The layout.** `Canvas` and `Scene` never ask where a card is; they ask a `CanvasLayout` (`canvas/layout.ts`), built per render
+from the display mode, the entities and the positions of a drag in progress (`layoutFor`):
+
+```ts
+interface CanvasLayout {
+  readonly mode: DisplayMode;
+  readonly step: number;        // positions snap to multiples of this: 20 on the edit canvas, one tile (80) on the board
+  readonly fitMargin: number;   // what Fit keeps free around bounds(), for wires beside an entity
+  readonly detailZoom: number;  // below this zoom entities are drawn without text: 0.3 and 0.5
+  rect(entity): Rect;           // marquee, culling, the corner a drag moves, the anchor of the bubble
+  pin(entity, side, color): Point;
+  route(wire, a, b): { path, bounds };
+  bounds(): Rect | undefined;
+}
+```
+
+`editLayout` wraps what was there before (`cardRect`, `pinPoint`, `routeWire`, `entitiesBounds`); `blueprintLayout` is built on
+`arrangeBoard` and adds `placement(entity)` (top-left tile, size, facing, `placed`, `conflict`). The two are told apart by
+`layout.mode`, which is how `Scene` picks `EntityCard` or `BlueprintEntity` and the order of the layers. Hit testing is by DOM
+attributes (`data-entity-id`, `data-terminal`, `data-wire-color`, `data-wire`) in both modes. Both layouts take the preview
+positions of a drag as top-left corners in canvas units (the board rounds them to tiles), so the drag gesture of the canvas is
+the same code for both once `move` is switched on; what is missing for the board is the commit (`setTiles` of the language
+instead of `moveEntities`).
+
+**The camera** is kept per mode (the two pictures have nothing to do with each other): `Canvas` holds one view per mode
+(`CanvasViews`), restores the one of the mode on show and fits a mode the first time it is shown; a gesture in progress and an
+open menu end with the mode. `Workbench` keeps the views while the canvas is unmounted in Source mode (`initialViews`,
+`onViewChange(view, displayMode)`) and drops them with the project.
+
+**The board** (`canvas/board.ts`). One tile is `TILE` = 80 canvas units; tile (0, 0) is the square from (0, 0) to (80, 80).
+The ground is an SVG pattern of two by two tiles (`#board-tiles`) in `--board-tile-dark` and `--board-tile-light`, drawn over
+the visible rectangle, so it covers the canvas at any pan and zoom.
+
+- An entity with a `tile` stands on the tiles `occupiedTiles` gives for its center, kind and facing. A center that is off the
+  grid is drawn on the nearest footprint (`tileOrigin`) and is a conflict; so are entities that share a tile
+  (`findTileOverlaps`). Conflicts are drawn where their tile says, on top of each other if need be, with a dashed red outline.
+- An entity without a `tile` stands at a derived place and looks not placed (dashed outline, paler body). `derivedTiles(entities)`
+  gives these places as the centers a `tile` clause would hold, ready for `setTiles`: the top-left corner of the card divided by
+  `EDIT_UNITS_PER_TILE` (92, half a card width, the same in both directions, so the picture keeps the proportions of the edit
+  layout and a card is as wide as a 2x1 entity) and rounded to a tile. If the footprint would touch a taken tile, the entity
+  goes to the nearest free place: the nearest ring of tiles around the wanted one, in it the nearest tile in a straight line,
+  then the upper, then the left one. Taken are the tiles of all entities with a `tile` and of the derived ones that come
+  earlier in the circuit. Nothing is written to the source; the place follows the edit position until the entity gets a tile.
+- `arrangeBoard(entities, moved?)` is both together: one `BoardPlacement` per entity.
+
+**An entity on the board** (`BlueprintEntity.tsx`, canvas units from the top-left corner of its footprint). The body leaves 4
+units of its tiles free on every side. Kind accent top left, an indicator top right (lit while a combinator emits something or
+a lamp is on, in the lamp's color when it has one; a lit lamp also gets a glow over its body), the entity icon and the name
+(11 characters on one tile and on an upright 2x1 entity, 18 on a lying one) in the middle, and on a 2x1 entity below the name
+what it emits in short (`compactOutput`: the first signal, `+N`, a dash for nothing). A 2x1 entity has a notch on both long
+edges where the input half ends and two yellow arrows along its facing, one at the input end and one at the output end, as the
+game draws them. Below 50 % zoom the text is left out and the icon is larger. On one tile the content moves 9 units away from
+pins on the top or the bottom end.
+
+- Pins (`boardPinOffset`): inside the footprint, 12 units from the outer end of their tile, 20 apart; input pins on the input
+  half, output pins on the output half (a constant has its output where it faces, a lamp its input on the west end). Red is on
+  the left seen along the facing, as on the cards. They are the same `g.pin` elements with `data-terminal`, `data-wire-color`
+  and `data-edge`.
+- In the DOM the group is `g.card.board-entity` with the attributes of a card (`data-entity-id`, `data-entity-name`,
+  `data-kind`, `data-facing`, `data-x`, `data-y`, `data-status`, `data-in-red`, `data-in-green`) plus `data-tile-x` and
+  `data-tile-y` (the top-left tile), `data-placed` (`true` or `false`) and `data-conflict`; the classes `selected`, `active`,
+  `unplaced` and `conflict`. A selected entity has the orange outline of a selected card. An entity that is not placed or
+  in conflict says so in a tooltip (`<title>`); the others have none, like the cards.
+- Wires are drawn above the entities, as in the game, with the same `g.wire` markup, classes and click target as the routed
+  ones: a straight line between the two pins, and for a wire from the output of an entity to its own input an arc that passes
+  32 units beside the line (`SELF_WIRE_SAG`), just outside the long edge on the side of its color. Because wires are on top, a
+  click where a wire crosses an entity selects the wire; with a tool other than select, wires take no pointer events on the
+  board, so they never cover a pin.
+
+**The bubble.** While exactly one entity (and no wire) is selected on the board, `EntityBubble` shows its full card next to it:
+`CardFace`, the same component the card of the edit canvas draws (kind, description marker, icon, name, summary, the three
+status rows), and below it the description text when there is one. It is an HTML overlay of constant screen size (184 px wide,
+the size of a card at 100 %), so it is as readable zoomed far out as close up; it does not scale with the board. `placeBubble`
+puts it on the first side with room (right, left, below, above), otherwise on the side with the most room, keeps it inside the
+canvas and aims its pointer at the middle of the entity; it is not shown while the entity is out of sight. The bubble takes no
+pointer events (`pointer-events: none`), so everything under it stays reachable, and it has no pins and no entity attributes:
+it is `div.entity-bubble` with `data-entity-name` and `data-side`.
 
 ## Canvas behaviour worth knowing
 
@@ -414,6 +523,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Duplicate the selection | `⌘D` | `Ctrl+D` | circuit |
 | Delete the selection | `⌫` or Delete | `Del` or Backspace | canvas |
 | Cut, Copy, Paste | `⌘X`, `⌘C`, `⌘V` | `Ctrl+X`, `Ctrl+C`, `Ctrl+V` | clipboard events |
+| Edit / Blueprint view | `B` | `B` | circuit |
 | Keyboard shortcuts (the overview) | `?` | `?` | window |
 | Undo, Redo, Select All | `⌘Z`, `⇧⌘Z`, `⌘A` | `Ctrl+Z`, `Ctrl+Y`, `Ctrl+A` | menu |
 | Circuit, Source, Split | `⌘1`, `⌘2`, `⌘3` | `Ctrl+1`, `Ctrl+2`, `Ctrl+3` | menu |
@@ -439,7 +549,9 @@ when two rows share a key on a platform or when one key event matches two rows.
 - **What the keys do.** The tool keys set the tool (pressed again they keep it; the buttons toggle). `1` to `5` follow the order
   of the palette (`ENTITY_KINDS`). The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), unless the
   focused control uses the arrows itself (`usesArrowKeys` in `platform.ts`: text, selects, sliders, radio groups, lists, tabs,
-  menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. While the source has errors the
+  menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. `B` switches the display mode;
+  what the mode does not offer (`DISPLAY_CAPABILITIES`: on the blueprint board the wire and place tools, rotation, the arrows,
+  duplicate) does nothing. While the source has errors the
   keys that edit (rotation, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
   buttons) do nothing; `Q`, Escape and `?` work.
 - **Discoverability.** The three tool buttons and the five building blocks name their key in the tooltip (`title`); the building

@@ -87,12 +87,12 @@ describe("faceEntities", () => {
     expect(faced(parse, { a: "north", b: "west", c: "north" })).toBe(parse.source.replace("constant c", "constant c facing north"));
   });
 
-  it("moves the tile of a 2x1 entity with the turn: the input half stays, the output half swings around it", () => {
-    // The input half is tile (0, 0); the center goes around it.
+  it("moves the tile of a 2x1 entity with the turn: the top-left tile of the footprint stays", () => {
+    // On the tiles (0, 0) and (1, 0); a quarter turn puts it on (0, 0) and (0, 1), a half turn keeps both tiles.
     const parse = valid(circuit("decider d at (0, 0) tile (1, 0.5) { }"));
     expect(faced(parse, { d: "south" })).toBe(circuit("decider d at (0, 0) tile (0.5, 1) facing south { }"));
-    expect(faced(parse, { d: "west" })).toBe(circuit("decider d at (0, 0) tile (0, 0.5) facing west { }"));
-    expect(faced(parse, { d: "north" })).toBe(circuit("decider d at (0, 0) tile (0.5, 0) facing north { }"));
+    expect(faced(parse, { d: "west" })).toBe(circuit("decider d at (0, 0) tile (1, 0.5) facing west { }"));
+    expect(faced(parse, { d: "north" })).toBe(circuit("decider d at (0, 0) tile (0.5, 1) facing north { }"));
     let source = parse.source;
     for (const direction of ["south", "west", "north", "east"] as const) {
       source = faced(valid(source), { d: direction });
@@ -104,14 +104,14 @@ describe("faceEntities", () => {
   it("patches only the numbers of the tile that change and keeps what surrounds them", () => {
     const parse = valid(circuit("selector s facing /* way */ south tile ( 6.5 , /* y */ -21 ) at (0, 0) { } // kept"));
     const changes = faceEntities(parse, [{ id: idOf(parse, "s"), direction: "west" }]);
-    // Facing south the input half is the upper tile (6, -22); facing west the center is its left edge.
-    expect(changes.map((change) => [parse.source.slice(change.from, change.to), change.insert])).toEqual([["south", "west"], ["6.5", "6"], ["-21", "-21.5"]]);
-    expect(applyChanges(parse.source, changes)).toBe(circuit("selector s facing /* way */ west tile ( 6 , /* y */ -21.5 ) at (0, 0) { } // kept"));
+    // Facing south the top-left tile is (6, -22); facing west the entity covers that tile and the one east of it.
+    expect(changes.map((change) => [parse.source.slice(change.from, change.to), change.insert])).toEqual([["south", "west"], ["6.5", "7"], ["-21", "-21.5"]]);
+    expect(applyChanges(parse.source, changes)).toBe(circuit("selector s facing /* way */ west tile ( 7 , /* y */ -21.5 ) at (0, 0) { } // kept"));
     const west = valid(circuit("arithmetic a tile (0, 0.5) facing west { }"));
-    expect(faceEntities(west, [{ id: idOf(west, "a"), direction: "south" }]).map((change) => change.insert)).toEqual(["0.5", "1", "south"]);
-    // A half turn leaves one coordinate alone and writes one number.
+    expect(faceEntities(west, [{ id: idOf(west, "a"), direction: "south" }]).map((change) => change.insert)).toEqual(["-0.5", "1", "south"]);
+    // A half turn keeps the tile and writes the direction only.
     const half = valid(circuit("arithmetic a tile (1, 0.5) { }"));
-    expect(faceEntities(half, [{ id: idOf(half, "a"), direction: "west" }]).map((change) => change.insert)).toEqual(["0", " facing west"]);
+    expect(faceEntities(half, [{ id: idOf(half, "a"), direction: "west" }]).map((change) => change.insert)).toEqual([" facing west"]);
   });
 
   it("keeps the tile of a 1x1 entity and puts a tile that is off the grid on it", () => {

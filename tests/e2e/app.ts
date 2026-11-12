@@ -110,6 +110,35 @@ export function pin(page: Page, name: string, side: "in" | "out", color: "red" |
   return card(page, name).locator(`[data-terminal="${side}"][data-wire-color="${color}"]`);
 }
 
+export type DisplayMode = "edit" | "blueprint";
+
+/** The Edit | Blueprint switch in the heading of the canvas. */
+export function displaySwitch(page: Page): Locator {
+  return page.getByRole("group", { name: "Display mode" });
+}
+
+/** Switches the canvas to a display mode with the button of the switch and waits until it is shown. */
+export async function showDisplay(page: Page, mode: DisplayMode): Promise<void> {
+  await displaySwitch(page).getByRole("button", { name: mode === "edit" ? "Edit" : "Blueprint" }).click();
+  await page.locator(`.canvas[data-display="${mode}"]`).waitFor();
+}
+
+/**
+ * Window coordinates of a point on an entity of the blueprint board that selects it: a corner of its footprint, where no pin
+ * is. Throws when something else (a wire) is on top there, so a test never clicks that by accident.
+ */
+export async function boardGrabPoint(page: Page, name: string): Promise<Point> {
+  return card(page, name)
+    .locator(".card-body")
+    .evaluate((body: SVGRectElement) => {
+      const box = body.getBoundingClientRect();
+      const point = { x: box.left + 9, y: box.bottom - 9 };
+      const top = document.elementFromPoint(point.x, point.y);
+      if (top?.closest("[data-entity-name]") !== body.parentElement) throw new Error(`The entity is covered at its corner by ${top?.closest("[data-wire], [data-entity-name]")?.outerHTML.slice(0, 120) ?? top?.tagName}`);
+      return point;
+    });
+}
+
 export function wires(page: Page): Locator {
   return page.locator("g.wire");
 }

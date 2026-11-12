@@ -112,6 +112,7 @@ describe("shortcut labels", () => {
     expect(labels("simulation.toggleRun")).toEqual(["⌘R", "Ctrl+R"]);
     expect(labels("simulation.reset")).toEqual(["⇧⌘R", "Ctrl+Shift+R"]);
     expect(labels("view.shortcuts")).toEqual(["?", "?"]);
+    expect(labels("view.display")).toEqual(["B", "B"]);
     expect(labels("tool.cancel")).toEqual(["Esc", "Esc"]);
   });
 
@@ -148,6 +149,10 @@ describe("key matching", () => {
     expect(idFor(stroke("d", { [otherMod]: true }), mac)).toBeUndefined();
     expect(idFor(stroke("d", { [mod]: true, shift: true }), mac)).toBeUndefined();
     expect(idFor(stroke("d", { [mod]: true, alt: true }), mac)).toBeUndefined();
+    // B switches between the edit canvas and the blueprint board; with a modifier it is nothing.
+    expect(idFor(stroke("b"), mac)).toBe("view.display");
+    expect(idFor(stroke("B"), mac)).toBe("view.display");
+    for (const held of [{ [mod]: true }, { [otherMod]: true }, { alt: true }, { shift: true }]) expect(idFor(stroke("b", held), mac), JSON.stringify(held)).toBeUndefined();
     // Digits pick a building block; with Cmd or Ctrl they are the view modes of the menu.
     expect(idFor(stroke("1"), mac)).toBe("tool.place.constant");
     expect(idFor(stroke("5"), mac)).toBe("tool.place.lamp");

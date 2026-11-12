@@ -11,6 +11,38 @@ import type { RotationTurn } from "../entities/facing.ts";
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
 export type WorkbenchMode = (typeof WORKBENCH_MODES)[number];
 
+/**
+ * How the canvas shows the circuit: `edit` is the free canvas of cards at their `at` position, `blueprint` the tile board on
+ * which entities take the space they take in the game, at their `tile`.
+ */
+export const DISPLAY_MODES = ["edit", "blueprint"] as const;
+export type DisplayMode = (typeof DISPLAY_MODES)[number];
+
+/** What can be done to the layout in a display mode. The views read it; the session uses it to refuse tools. */
+export interface DisplayCapabilities {
+  /** Dragging entities and moving the selection with the arrow keys. */
+  readonly move: boolean;
+  /** The building blocks of the palette. */
+  readonly place: boolean;
+  /** The wire tools. */
+  readonly wire: boolean;
+  /** Paste and duplicate. */
+  readonly paste: boolean;
+  /** The rotation keys and the rotation items of the context menu. */
+  readonly rotate: boolean;
+}
+
+/** Blueprint mode only shows the board so far; editing on it is switched on here, one flag at a time. */
+export const DISPLAY_CAPABILITIES: Readonly<Record<DisplayMode, DisplayCapabilities>> = {
+  edit: { move: true, place: true, wire: true, paste: true, rotate: true },
+  blueprint: { move: false, place: false, wire: false, paste: false, rotate: false },
+};
+
+/** True when the display mode offers the tool; the select tool always is. */
+export function toolAllowed(tool: Tool, displayMode: DisplayMode): boolean {
+  return tool.type === "select" || DISPLAY_CAPABILITIES[displayMode][tool.type];
+}
+
 /** The active canvas tool. */
 export type Tool = { readonly type: "select" } | { readonly type: "place"; readonly kind: EntityKind } | { readonly type: "wire"; readonly color: WireColor };
 
@@ -203,6 +235,9 @@ export interface WorkbenchState {
   /** The selected wires as `wireKey`s. They exist in `circuit`; entities and wires can be selected together. */
   readonly wireSelection: readonly string[];
   readonly mode: WorkbenchMode;
+  /** View state like `mode`: not part of the document, not undoable, `edit` for every project that is opened. */
+  readonly displayMode: DisplayMode;
+  /** Always one the display mode offers (`toolAllowed`). */
   readonly tool: Tool;
   /** Full text of the circuit source shown in the editor. */
   readonly source: string;
@@ -232,6 +267,9 @@ export interface UpdateOptions {
 export interface WorkbenchCommands {
   // View state: never part of undo history.
   setMode(mode: WorkbenchMode): void;
+  /** Switches the canvas between the edit canvas and the blueprint board. A tool the new mode does not offer gives way to the select tool. */
+  setDisplayMode(displayMode: DisplayMode): void;
+  /** A tool the display mode does not offer is refused. */
   setTool(tool: Tool): void;
   /** Replaces the selection: these entities and these wires (`wireKey`s, none when omitted). What does not exist is left out. */
   select(ids: readonly EntityId[], wires?: readonly string[]): void;

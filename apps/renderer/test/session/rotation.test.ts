@@ -76,17 +76,18 @@ describe("rotating entities", () => {
     expect(session.state.source).toBe(typed);
   });
 
-  it("moves the tile of a 2x1 entity with the turn, around its input half, in the same undo step", () => {
+  it("moves the tile of a 2x1 entity with the turn, keeping its top-left tile, in the same undo step", () => {
     const start = IRREGULAR.replace("gate at (300, 80)", "gate at (300, 80) tile (1, 0.5)").replace("at ( 40 ,80 )", "at ( 40 ,80 ) tile (-0.5, 0.5)");
     const { session } = createSession(start);
     const ids = ["src", "gate"].map((name) => idOf(session, name));
     session.commands.rotateEntities(ids, "clockwise");
-    // The input half of the gate is tile (0, 0); facing south its output half is the tile below. A 1x1 entity keeps its tile.
+    // The gate stands on the tiles (0, 0) and (1, 0); facing south on (0, 0) and the tile below. A 1x1 entity keeps its tile.
     expect(session.state.source).toBe(start.replace("tile (1, 0.5)", "tile (0.5, 1) facing south").replace("tile (-0.5, 0.5)", "tile (-0.5, 0.5) facing south"));
     expect(entityNamed(session, "gate").placement).toEqual({ tile: { x: 0.5, y: 1 }, direction: "south" });
     expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["duplicate-wire"]);
     session.commands.faceEntities(ids, "west");
-    expect(entityNamed(session, "gate").placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "west" });
+    // A half turn from there is the same two tiles, flipped; from south to west the footprint lies down again.
+    expect(entityNamed(session, "gate").placement).toEqual({ tile: { x: 1, y: 0.5 }, direction: "west" });
     session.commands.undo();
     session.commands.undo();
     expect(session.state).toMatchObject({ source: start, canUndo: false });

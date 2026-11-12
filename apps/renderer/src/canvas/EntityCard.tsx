@@ -1,6 +1,6 @@
-// One entity drawn as a card. Purely presentational and memoized: pointer handling is delegated to the canvas through
+// One entity drawn as a card, and the face of a card on its own (`CardFace`). Purely presentational and memoized: pointer handling is delegated to the canvas through
 // the data-entity-id / data-terminal / data-wire-color attributes, so a card only re-renders when its own props change.
-import { facingOf, TERMINALS, WIRE_COLORS, type Direction, type Entity, type TerminalSide, type WireColor } from "@face/model";
+import { facingOf, TERMINALS, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
 import { Fragment, memo } from "react";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { entitySummary, truncate } from "../entities/summary.ts";
@@ -8,7 +8,7 @@ import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx"
 import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus, StatusSignal } from "../workbench/controller.ts";
-import { CARD, PIN_RADIUS, PIN_SPACING, pinEdge, pinPoint } from "./geometry.ts";
+import { CARD, PIN_RADIUS, PIN_SPACING, pinEdge, pinPoint, type CardEdge } from "./geometry.ts";
 import { inputText, layoutRow, rowPlacement, STATUS_ROWS } from "./statusRows.ts";
 
 export interface EntityCardProps {
@@ -102,46 +102,61 @@ function LampRow({ y, lit, color }: { readonly y: number; readonly lit: boolean;
 
 const ORIGIN = { x: 0, y: 0 };
 
+export interface PinProps {
+  readonly side: TerminalSide;
+  readonly color: WireColor;
+  /** Center, relative to the corner of the entity. */
+  readonly x: number;
+  readonly y: number;
+  readonly radius?: number;
+  /** The edge of the entity the pin belongs to. */
+  readonly edge: CardEdge;
+  /** The pin started a pending wire. */
+  readonly pending: boolean;
+}
+
 /**
- * One connection pin: the place where wires of its color attach, on the edge of the card that the entity's facing gives its
- * terminal. The hit areas of the two pins of a terminal touch but do not overlap.
+ * One connection pin: the place where wires of its color attach. The canvas finds it by `data-terminal` and `data-wire-color`
+ * inside the group of its entity. The hit areas of the two pins of a terminal touch but do not overlap.
  */
-function Pin({ side, color, facing, pending }: { readonly side: TerminalSide; readonly color: WireColor; readonly facing: Direction; readonly pending: boolean }) {
-  const { x, y } = pinPoint(ORIGIN, side, color, facing);
+export function Pin({ side, color, x, y, radius = PIN_RADIUS, edge, pending }: PinProps) {
   return (
-    <g className={`pin ${color} ${side}${pending ? " pending" : ""}`} data-terminal={side} data-wire-color={color} data-edge={pinEdge(side, facing)}>
+    <g className={`pin ${color} ${side}${pending ? " pending" : ""}`} data-terminal={side} data-wire-color={color} data-edge={edge}>
       <circle className="pin-hit" cx={x} cy={y} r={PIN_SPACING / 2} />
-      <circle className="pin-dot" cx={x} cy={y} r={PIN_RADIUS} />
+      <circle className="pin-dot" cx={x} cy={y} r={radius} />
       <title>{`${color === "red" ? "Red" : "Green"} ${side === "out" ? "output" : "input"}`}</title>
     </g>
   );
 }
 
-export const EntityCard = memo(function EntityCard({ entity, x, y, selected, outline, shadow, pendingSide, pendingColor, status, describeSignal, resolveIcon }: EntityCardProps) {
+export interface CardFaceProps {
+  readonly entity: Entity;
+  /** Draw only the body and the accent; used when zoomed out too far for text to be legible. */
+  readonly outline?: boolean;
+  readonly shadow?: boolean;
+  /** The edges that carry pins; the content next to pins on the top or the bottom edge gives way. None for a card without pins. */
+  readonly pinEdges?: readonly CardEdge[];
+  readonly status?: EntityStatus;
+  readonly describeSignal?: SignalDescriber;
+  readonly resolveIcon?: EntityIconResolver;
+}
+
+const NO_EDGES: readonly CardEdge[] = [];
+
+/**
+ * What a card shows, without its pins and without a place: body, kind, description marker, icon, name, summary and the
+ * status rows, in card units from (0, 0). The card on the edit canvas and the bubble of the blueprint board both draw it.
+ */
+export function CardFace({ entity, outline = false, shadow = false, pinEdges = NO_EDGES, status, describeSignal, resolveIcon }: CardFaceProps) {
   const info = KIND_INFO[entity.kind];
   const summary = entitySummary(entity);
   const description = entity.description?.trim();
-  const facing = facingOf(entity);
   // Pins on the top or bottom edge reach into the header band or the last status row; only then that content gives way.
-  const edges = TERMINALS[entity.kind].map((side) => pinEdge(side, facing));
-  const headerY = edges.includes("top") ? HEADER_SHIFT : 0;
-  const rows = rowPlacement(edges.includes("bottom"));
+  const headerY = pinEdges.includes("top") ? HEADER_SHIFT : 0;
+  const rows = rowPlacement(pinEdges.includes("bottom"));
   const rowY = (line: number): number => rows.top + line * rows.pitch;
-  const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}`;
   return (
-    <g
-      className={className}
-      transform={`translate(${x},${y})`}
-      data-entity-id={entity.id}
-      data-entity-name={entity.name}
-      data-kind={entity.kind}
-      data-facing={facing}
-      data-x={x}
-      data-y={y}
-      data-status={status?.label}
-      data-in-red={status?.input && inputText(status.input.red)}
-      data-in-green={status?.input && inputText(status.input.green)}
-    >
+    <>
       <rect className="card-body" width={CARD.width} height={CARD.height} rx="9" filter={shadow ? "url(#card-shadow)" : undefined} />
       {/* The outline keeps the taller accent it always had; with text the accent is as high as the kind label's band. */}
       <rect className="card-accent" x={MARGIN} y={outline ? 14 : 7 + headerY} width="3" height={outline ? 17 : 13} rx="1.5" />
@@ -175,8 +190,32 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
           )}
         </>
       )}
+    </>
+  );
+}
+
+export const EntityCard = memo(function EntityCard({ entity, x, y, selected, outline, shadow, pendingSide, pendingColor, status, describeSignal, resolveIcon }: EntityCardProps) {
+  const facing = facingOf(entity);
+  const edges = TERMINALS[entity.kind].map((side) => pinEdge(side, facing));
+  const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}`;
+  return (
+    <g
+      className={className}
+      transform={`translate(${x},${y})`}
+      data-entity-id={entity.id}
+      data-entity-name={entity.name}
+      data-kind={entity.kind}
+      data-facing={facing}
+      data-x={x}
+      data-y={y}
+      data-status={status?.label}
+      data-in-red={status?.input && inputText(status.input.red)}
+      data-in-green={status?.input && inputText(status.input.green)}
+    >
+      <CardFace entity={entity} outline={outline} shadow={shadow} pinEdges={edges} status={status} describeSignal={describeSignal} resolveIcon={resolveIcon} />
+      {/* On the edge of the card that the entity's facing gives the terminal. */}
       {TERMINALS[entity.kind].flatMap((side) =>
-        WIRE_COLORS.map((color) => <Pin key={`${side}-${color}`} side={side} color={color} facing={facing} pending={pendingSide === side && pendingColor === color} />),
+        WIRE_COLORS.map((color) => <Pin key={`${side}-${color}`} side={side} color={color} {...pinPoint(ORIGIN, side, color, facing)} edge={pinEdge(side, facing)} pending={pendingSide === side && pendingColor === color} />),
       )}
     </g>
   );

@@ -100,6 +100,7 @@ export const SHORTCUTS = [
   menu("view.zoomIn", "View", "Zoom in"),
   menu("view.zoomOut", "View", "Zoom out"),
   menu("view.fit", "View", "Fit to content"),
+  key("view.display", "View", "Switch between Edit and Blueprint view", "circuit", letter("B")),
   key("view.shortcuts", "View", "Keyboard shortcuts", "window", { anyShift: true, key: ["?"], name: "?" }),
 
   menu("simulation.toggleRun", "Simulation", "Run / Pause"),

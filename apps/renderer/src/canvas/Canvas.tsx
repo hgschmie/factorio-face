@@ -1,6 +1,6 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import { canRotate, facingOf, type Circuit, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { canRotate, type Circuit, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
 import type { RotationTurn } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
@@ -8,15 +8,17 @@ import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget } from "../platform.ts";
-import { shortcutFor, shortcutLabel } from "../shortcuts/shortcuts.ts";
-import { SELECT_TOOL, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
+import { shortcutFor, shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
+import { DISPLAY_CAPABILITIES, DISPLAY_MODES, SELECT_TOOL, type DisplayMode, type EntityMove, type EntityStatus, type Tool } from "../workbench/controller.ts";
 import { countLabel } from "../workbench/selectionText.ts";
+import { TILE } from "./board.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
 import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, snapPoint, worldDelta, type EntityPosition } from "./drag.ts";
-import { cardRect, entitiesBounds, expandRect, GRID, pinPoint, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
+import { EntityBubble } from "./EntityBubble.tsx";
+import { expandRect, GRID, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
+import { layoutFor } from "./layout.ts";
 import { Scene } from "./Scene.tsx";
-import { cameraFor, cullingRect, DEFAULT_CAMERA, fitCamera, panFrom, screenToWorld, viewOf, visibleWorldRect, wheelZoomFactor, ZOOM_STEP, zoomAround, type Camera, type CanvasView, type Size } from "./viewport.ts";
-import { FEEDBACK_CLEARANCE } from "./wireRouting.ts";
+import { cameraFor, cullingRect, DEFAULT_CAMERA, fitCamera, panFrom, screenToWorld, viewOf, visibleWorldRect, wheelZoomFactor, worldToScreen, ZOOM_STEP, zoomAround, type Camera, type CanvasView, type Size } from "./viewport.ts";
 
 export interface CanvasHandle {
   fit(): void;
@@ -36,18 +38,21 @@ export interface CanvasProps {
   /** The selected wires, as `wireKey`s. */
   readonly wireSelection: readonly string[];
   readonly tool: Tool;
+  /** The edit canvas or the blueprint board. The camera is kept per mode. */
+  readonly displayMode: DisplayMode;
   /** When false the circuit is shown but cannot be changed (the source has errors). */
   readonly editable: boolean;
   readonly entityStatus?: ReadonlyMap<EntityId, EntityStatus>;
   /** Catalog icons and names for the signals in a card's status line. */
   readonly describeSignal?: SignalDescriber;
   readonly resolveEntityIcon?: EntityIconResolver;
-  /** View to start with, for example the one in use before the canvas was unmounted. Without it the circuit is fitted. */
-  readonly initialView?: CanvasView;
-  onViewChange?(view: CanvasView): void;
+  /** Views to start with, for example the ones in use before the canvas was unmounted. A display mode without one is fitted when it is first shown. */
+  readonly initialViews?: CanvasViews;
+  onViewChange?(view: CanvasView, displayMode: DisplayMode): void;
   /** The new selection: these entities and these wires (none when omitted). */
   onSelect(ids: readonly EntityId[], wires?: readonly string[]): void;
   onToolChange(tool: Tool): void;
+  onDisplayModeChange(displayMode: DisplayMode): void;
   onPlaceEntity(kind: EntityKind, position: Point): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
   /** A wire gesture was completed between the pins of two different terminals: connect them, or disconnect them if this wire exists. */
@@ -61,6 +66,9 @@ export interface CanvasProps {
   /** Paste with the top-left corner of the group at `corner`, the grid point at which the menu was opened. */
   onPaste?(corner: Point): void;
 }
+
+/** The view of each display mode that has been shown. */
+export type CanvasViews = Readonly<Partial<Record<DisplayMode, CanvasView>>>;
 
 type Gesture =
   | { readonly type: "pan"; readonly pointerId: number; readonly press: Point; readonly origin: Camera; readonly clearsSelection: boolean }
@@ -78,9 +86,8 @@ interface MenuState {
 /** Margins and cell size of the culling rectangle, in world units. */
 const CULL_MARGIN = 120;
 const CULL_CELL = 400;
-/** Below this zoom, text is illegible and cards are drawn as outlines. */
-const OUTLINE_ZOOM = 0.3;
 const FIT_PADDING = 70;
+const DISPLAY_LABELS: Readonly<Record<DisplayMode, string>> = { edit: "Edit", blueprint: "Blueprint" };
 /** Room kept for the context menu, so that it opens inside the canvas. */
 const MENU_SIZE = { width: 250, height: 245 };
 
@@ -110,7 +117,8 @@ function toggled<T>(list: readonly T[], item: T): T[] {
   return list.includes(item) ? list.filter((other) => other !== item) : [...list, item];
 }
 
-function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean): string {
+function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean, displayMode: DisplayMode): string {
+  if (displayMode === "blueprint") return "Blueprint view: entities on the tiles they take in the game; dashed ones have no tile yet. Click to select, drag empty space to pan, Shift-drag to select an area. Entities cannot be moved here yet.";
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
   if (tool.type === "place") return `Click the canvas (or press Enter on it) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
   if (tool.type === "wire" && pending) return `Click a second ${tool.color} pin to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.`;
@@ -119,12 +127,13 @@ function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean): st
 }
 
 export function Canvas(props: CanvasProps) {
-  const { circuit, selection, wireSelection, tool, editable, onSelect, onToolChange, onViewChange } = props;
+  const { circuit, selection, wireSelection, tool, displayMode, editable, onSelect, onToolChange, onViewChange } = props;
+  const capabilities = DISPLAY_CAPABILITIES[displayMode];
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const gestureRef = useRef<Gesture | null>(null);
-  /** The view to restore once the canvas has a size; a resize keeps its center in place. */
-  const viewRef = useRef<CanvasView | undefined>(props.initialView);
+  /** The view of each display mode. The one on show is restored once the canvas has a size; a resize keeps its center in place. */
+  const viewsRef = useRef<CanvasViews>(props.initialViews ?? {});
   const sizeRef = useRef<Size>({ width: 0, height: 0 });
   /** Where the pointer is, while it is over the canvas. */
   const pointerRef = useRef<{ readonly clientX: number; readonly clientY: number } | null>(null);
@@ -144,10 +153,11 @@ export function Canvas(props: CanvasProps) {
     (next: Camera) => {
       cameraRef.current = next;
       setCameraState(next);
-      viewRef.current = viewOf(next, sizeRef.current);
-      onViewChange?.(viewRef.current);
+      const view = viewOf(next, sizeRef.current);
+      viewsRef.current = { ...viewsRef.current, [displayMode]: view };
+      onViewChange?.(view, displayMode);
     },
-    [onViewChange],
+    [onViewChange, displayMode],
   );
 
   const entityById = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
@@ -156,11 +166,13 @@ export function Canvas(props: CanvasProps) {
   const selectedCount = selection.length + wireSelection.length;
   const selectedEntities = useMemo(() => circuit.entities.filter((entity) => selectionSet.has(entity.id)), [circuit.entities, selectionSet]);
 
+  // Everything below that needs to know where an entity or a pin is asks the layout of the display mode.
+  const layout = useMemo(() => layoutFor(displayMode, circuit.entities, previewPositions), [displayMode, circuit.entities, previewPositions]);
+
   const fit = useCallback(() => {
-    const bounds = entitiesBounds(circuit.entities);
-    // Feedback loops pass 40 units beside their card, on the side its facing decides; keep them in view as well.
-    setCamera(fitCamera(bounds && expandRect(bounds, FEEDBACK_CLEARANCE.green), size, FIT_PADDING));
-  }, [circuit.entities, size, setCamera]);
+    const bounds = layout.bounds();
+    setCamera(fitCamera(bounds && expandRect(bounds, layout.fitMargin), size, FIT_PADDING));
+  }, [layout, size, setCamera]);
 
   const zoomBy = useCallback((factor: number) => setCamera(zoomAround(cameraRef.current, { x: size.width / 2, y: size.height / 2 }, factor)), [size, setCamera]);
 
@@ -171,13 +183,13 @@ export function Canvas(props: CanvasProps) {
       zoomBy,
       resetZoom: () => zoomBy(1 / cameraRef.current.zoom),
       focus: () => svgRef.current?.focus(),
-      pasteCorner: () => (pointerRef.current && svgRef.current ? snapPoint(worldPoint(pointerRef.current)) : undefined),
+      pasteCorner: () => (pointerRef.current && svgRef.current ? snapPoint(worldPoint(pointerRef.current), layout.step) : undefined),
       cancelPendingWire: () => {
         setPendingWire(null);
         return pendingWire !== null;
       },
     }),
-    [fit, zoomBy, pendingWire],
+    [fit, zoomBy, pendingWire, layout.step],
   );
 
   // Measured before the first paint, so the scene is never drawn against a canvas of unknown size.
@@ -191,14 +203,32 @@ export function Canvas(props: CanvasProps) {
     return () => observer.disconnect();
   }, []);
 
+  const showView = (): void => {
+    const view = viewsRef.current[displayMode];
+    if (view) setCamera(cameraFor(view, size));
+    else fit();
+  };
+
   // First layout: restore the view that was handed in, or show the whole circuit. Later resizes keep the center.
   useLayoutEffect(() => {
     if (size.width === 0 || size.height === 0 || (size.width === sizeRef.current.width && size.height === sizeRef.current.height)) return;
     sizeRef.current = size;
-    if (viewRef.current) setCamera(cameraFor(viewRef.current, size));
-    else fit();
+    showView();
     // Runs for size changes only; `fit` and `setCamera` are read at that moment.
   }, [size]);
+
+  // The other display mode: its own view, fitted the first time, and nothing of a gesture or a menu that belonged to the old one.
+  const shownModeRef = useRef(displayMode);
+  useLayoutEffect(() => {
+    if (shownModeRef.current === displayMode) return;
+    shownModeRef.current = displayMode;
+    gestureRef.current = null;
+    setPreviewPositions(null);
+    setMarquee(null);
+    setPanning(false);
+    setMenu(null);
+    if (sizeRef.current.width > 0 && sizeRef.current.height > 0) showView();
+  }, [displayMode]);
 
   // React registers wheel listeners as passive, and a passive listener cannot stop the page from scrolling.
   // The listener sits on the container so that the wheel also zooms while the pointer is over an overlay.
@@ -286,14 +316,21 @@ export function Canvas(props: CanvasProps) {
     }
     const alreadySelected = selectionSet.has(entityId);
     if (!alreadySelected) onSelect([entityId]);
-    if (!editable) return;
+    if (!editable || !capabilities.move) {
+      // Nothing can be dragged, so a click on one member of a multi-selection narrows the selection to it at once.
+      if (alreadySelected && selectedCount > 1) onSelect([entityId]);
+      return;
+    }
     const dragged = alreadySelected ? selectedEntities : circuit.entities.filter((entity) => entity.id === entityId);
     beginGesture(event, {
       type: "drag",
       pointerId: event.pointerId,
       press,
       grabbedId: entityId,
-      origins: dragged.map(({ id, position }) => ({ id, position })),
+      origins: dragged.map((entity) => {
+        const { x, y } = layout.rect(entity);
+        return { id: entity.id, position: { x, y } };
+      }),
       // A plain click on one member of a multi-selection narrows the selection to it.
       collapseTo: alreadySelected && selectedCount > 1 ? entityId : null,
     });
@@ -314,7 +351,7 @@ export function Canvas(props: CanvasProps) {
       setPanning(true);
       setCamera(panFrom(gesture.origin, current.x - gesture.press.x, current.y - gesture.press.y));
     } else {
-      const positions = dragPositions(gesture.origins, gesture.grabbedId, worldDelta(gesture.press, current, cameraRef.current.zoom));
+      const positions = dragPositions(gesture.origins, gesture.grabbedId, worldDelta(gesture.press, current, cameraRef.current.zoom), layout.step);
       setPreviewPositions(new Map(positions.map(({ id, position }) => [id, position])));
     }
   };
@@ -334,7 +371,7 @@ export function Canvas(props: CanvasProps) {
     const moved = exceedsDragThreshold(gesture.press, release);
     if (gesture.type === "drag") {
       if (moved) {
-        const positions = dragPositions(gesture.origins, gesture.grabbedId, worldDelta(gesture.press, release, cameraRef.current.zoom));
+        const positions = dragPositions(gesture.origins, gesture.grabbedId, worldDelta(gesture.press, release, cameraRef.current.zoom), layout.step);
         const moves = changedPositions(gesture.origins, positions);
         if (moves.length > 0) props.onMoveEntities(moves);
       } else if (gesture.collapseTo) {
@@ -342,7 +379,7 @@ export function Canvas(props: CanvasProps) {
       }
     } else if (gesture.type === "marquee") {
       const area = rectFromPoints(gesture.startWorld, worldPoint(event));
-      const inside = circuit.entities.filter((entity) => rectsIntersect(cardRect(entity.position), area)).map((entity) => entity.id);
+      const inside = circuit.entities.filter((entity) => rectsIntersect(layout.rect(entity), area)).map((entity) => entity.id);
       onSelect([...new Set([...selection, ...inside])], wireSelection);
     } else if (!moved && gesture.clearsSelection && selectedCount > 0) {
       onSelect([]);
@@ -361,7 +398,7 @@ export function Canvas(props: CanvasProps) {
     const bounds = container.getBoundingClientRect();
     // Keep the menu inside the canvas.
     const x = Math.min(event.clientX - bounds.left, bounds.width - MENU_SIZE.width);
-    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), on: entityId ? "entity" : wire ? "wire" : "canvas", corner: snapPoint(worldPoint(event)) });
+    setMenu({ x, y: Math.min(event.clientY - bounds.top, bounds.height - MENU_SIZE.height), on: entityId ? "entity" : wire ? "wire" : "canvas", corner: snapPoint(worldPoint(event), layout.step) });
   };
 
   const deleteSelection = (): void => {
@@ -405,7 +442,7 @@ export function Canvas(props: CanvasProps) {
   const paste = (): void => {
     if (menu) props.onPaste?.(menu.corner);
   };
-  const pasteItem: ContextMenuItem = { id: "paste", label: "Paste", icon: "paste", shortcut: shortcutLabel("edit.paste"), disabled: !editable || !props.onPaste, onSelect: clipboardAction(paste) };
+  const pasteItem: ContextMenuItem = { id: "paste", label: "Paste", icon: "paste", shortcut: shortcutLabel("edit.paste"), disabled: !editable || !capabilities.paste || !props.onPaste, onSelect: clipboardAction(paste) };
   const clipboardItems: ContextMenuItem[] = [
     { id: "cut", label: "Cut", icon: "cut", shortcut: shortcutLabel("edit.cut"), disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
     { id: "copy", label: "Copy", icon: "copy", shortcut: shortcutLabel("edit.copy"), disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
@@ -418,7 +455,7 @@ export function Canvas(props: CanvasProps) {
   };
   // A lamp does not rotate; with nothing else selected the two items are off. Only looked at while the menu is open.
   const canTurn = menu !== null && circuit.entities.some((entity) => selectionSet.has(entity.id) && canRotate(entity.kind));
-  const noRotation = !editable || !props.onRotate || !canTurn;
+  const noRotation = !editable || !capabilities.rotate || !props.onRotate || !canTurn;
   const rotateItems: ContextMenuItem[] = [
     { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: shortcutLabel("edit.rotate"), disabled: noRotation, separatorBefore: true, onSelect: rotate("clockwise") },
     { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: shortcutLabel("edit.rotateBack"), disabled: noRotation, onSelect: rotate("counterclockwise") },
@@ -440,9 +477,19 @@ export function Canvas(props: CanvasProps) {
   const stableCullRect = useMemo<Rect>(() => ({ x: cullRect.x, y: cullRect.y, width: cullRect.width, height: cullRect.height }), [cullRect.x, cullRect.y, cullRect.width, cullRect.height]);
 
   const pendingEntity = pendingWire ? entityById.get(pendingWire.entity) : undefined;
+  const outline = camera.zoom < layout.detailZoom;
+  // The bubble: the full card of the one selected entity, where the board itself only has room for the compact form.
+  const bubbleEntity = layout.mode === "blueprint" && selection.length === 1 && wireSelection.length === 0 ? entityById.get(selection[0]!) : undefined;
+  const bubbleRect = bubbleEntity && layout.rect(bubbleEntity);
 
   return (
-    <div ref={containerRef} className={`canvas tool-${tool.type}${tool.type === "wire" ? ` wire-${tool.color}` : ""}${panning ? " panning" : ""}`} onKeyDown={onKeyDown} data-zoom={camera.zoom}>
+    <div
+      ref={containerRef}
+      className={`canvas display-${displayMode} tool-${tool.type}${tool.type === "wire" ? ` wire-${tool.color}` : ""}${capabilities.move ? "" : " fixed-entities"}${panning ? " panning" : ""}`}
+      onKeyDown={onKeyDown}
+      data-zoom={camera.zoom}
+      data-display={displayMode}
+    >
       <svg
         ref={svgRef}
         className="canvas-svg"
@@ -461,6 +508,12 @@ export function Canvas(props: CanvasProps) {
           <pattern id="grid-dots" width={GRID} height={GRID} patternUnits="userSpaceOnUse">
             <circle className="grid-dot" cx="0" cy="0" r="0.8" />
           </pattern>
+          {/* Two by two tiles: the tile at (0, 0) and the one diagonally below it are the lighter ones. */}
+          <pattern id="board-tiles" width={2 * TILE} height={2 * TILE} patternUnits="userSpaceOnUse">
+            <rect className="board-tile dark" width={2 * TILE} height={2 * TILE} />
+            <rect className="board-tile light" width={TILE} height={TILE} />
+            <rect className="board-tile light" x={TILE} y={TILE} width={TILE} height={TILE} />
+          </pattern>
           <filter id="card-shadow" x="-20%" y="-20%" width="140%" height="160%">
             <feDropShadow dx="0" dy="7" stdDeviation="8" floodColor="#000" floodOpacity="0.25" />
           </filter>
@@ -469,26 +522,37 @@ export function Canvas(props: CanvasProps) {
             <stop offset="1" stopColor="var(--card-bottom)" />
           </linearGradient>
         </defs>
-        {camera.zoom >= OUTLINE_ZOOM && <rect x={visibleRect.x} y={visibleRect.y} width={visibleRect.width} height={visibleRect.height} fill="url(#grid-dots)" />}
+        {(layout.mode === "blueprint" || !outline) && (
+          <rect className="canvas-ground" x={visibleRect.x} y={visibleRect.y} width={visibleRect.width} height={visibleRect.height} fill={layout.mode === "blueprint" ? "url(#board-tiles)" : "url(#grid-dots)"} />
+        )}
         <Scene
           circuit={circuit}
-          previewPositions={previewPositions}
+          layout={layout}
           selection={selectionSet}
           wireSelection={wireSelectionSet}
           visible={stableCullRect}
-          outline={camera.zoom < OUTLINE_ZOOM}
+          outline={outline}
           pendingTerminal={pendingWire}
           pendingColor={pendingWire && tool.type === "wire" ? tool.color : undefined}
           entityStatus={props.entityStatus}
           describeSignal={props.describeSignal}
           resolveIcon={props.resolveEntityIcon}
         />
-        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={pinPoint(pendingEntity.position, pendingWire.side, tool.color, facingOf(pendingEntity))} to={pointerWorld} />}
+        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={layout.pin(pendingEntity, pendingWire.side, tool.color)} to={pointerWorld} />}
         {marquee && <rect className="marquee" x={marquee.x} y={marquee.y} width={marquee.width} height={marquee.height} />}
       </svg>
 
       <div className="canvas-heading">
-        <span className="eyebrow">Circuit workspace</span>
+        <span className="canvas-title">
+          <span className="eyebrow">Circuit workspace</span>
+          <span className="display-switch" role="group" aria-label="Display mode">
+            {DISPLAY_MODES.map((candidate) => (
+              <button key={candidate} type="button" aria-pressed={displayMode === candidate} title={withShortcut(`${DISPLAY_LABELS[candidate]} view`, "view.display")} onClick={() => props.onDisplayModeChange(candidate)}>
+                {DISPLAY_LABELS[candidate]}
+              </button>
+            ))}
+          </span>
+        </span>
         <span className="counts">
           {circuit.entities.length} {circuit.entities.length === 1 ? "entity" : "entities"}
           <span className="meta-dot" />
@@ -504,11 +568,22 @@ export function Canvas(props: CanvasProps) {
         </div>
       )}
 
+      {bubbleEntity && bubbleRect && (
+        <EntityBubble
+          entity={bubbleEntity}
+          anchor={{ ...worldToScreen(camera, bubbleRect), width: bubbleRect.width * camera.zoom, height: bubbleRect.height * camera.zoom }}
+          view={size}
+          status={props.entityStatus?.get(bubbleEntity.id)}
+          describeSignal={props.describeSignal}
+          resolveIcon={props.resolveEntityIcon}
+        />
+      )}
+
       {menu && <ContextMenu x={menu.x} y={menu.y} label="Canvas actions" items={menuItems} onClose={closeMenu} />}
 
       <div className="canvas-footer">
         <span className="canvas-hint" aria-live="polite">
-          {hintFor(tool, pendingWire, editable)}
+          {hintFor(tool, pendingWire, editable, displayMode)}
         </span>
         <div className="zoom-controls" role="group" aria-label="Zoom">
           <button type="button" title="Zoom out" aria-label="Zoom out" onClick={() => zoomBy(1 / ZOOM_STEP)}>

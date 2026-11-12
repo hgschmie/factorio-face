@@ -14,7 +14,8 @@ import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc
 import { editorChrome } from "../editor/extensions.ts";
 import { rotated } from "../entities/facing.ts";
 import {
-  sameTool, SELECT_TOOL, type Diagnostic, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands, type WorkbenchController, type WorkbenchMode, type WorkbenchState,
+  DISPLAY_MODES, sameTool, SELECT_TOOL, toolAllowed, type Diagnostic, type DisplayMode, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands, type WorkbenchController,
+  type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
 import { Analysis } from "./analysis.ts";
 import { CatalogService } from "./catalogService.ts";
@@ -69,6 +70,7 @@ export class ProjectSession {
   /** Selected wires as `wireKey`s. A key holds entity ids, so it survives renames and moves. */
   private wireSelection: readonly string[] = NO_WIRES;
   private mode: WorkbenchMode = "circuit";
+  private displayMode: DisplayMode = "edit";
   private tool: Tool = SELECT_TOOL;
   private diagnostics: readonly Diagnostic[] = NO_DIAGNOSTICS;
   private draft: Draft | null = null;
@@ -176,6 +178,7 @@ export class ProjectSession {
       selection: this.selection,
       wireSelection: this.wireSelection,
       mode: this.mode,
+      displayMode: this.displayMode,
       tool: this.tool,
       source: this.document.text,
       diagnostics: this.diagnostics,
@@ -345,7 +348,12 @@ export class ProjectSession {
     const changing = <A extends unknown[]>(action: (...args: A) => void) => (...args: A): void => this.change(() => action(...args));
     return {
       setMode: changing((mode) => void (this.mode = mode)),
-      setTool: changing((tool) => void (sameTool(this.tool, tool) || (this.tool = tool))),
+      setDisplayMode: changing((displayMode) => {
+        if (!DISPLAY_MODES.includes(displayMode)) return;
+        this.displayMode = displayMode;
+        if (!toolAllowed(this.tool, displayMode)) this.tool = SELECT_TOOL;
+      }),
+      setTool: changing((tool) => void (sameTool(this.tool, tool) || !toolAllowed(tool, this.displayMode) || (this.tool = tool))),
       select: changing((ids, wires = NO_WIRES) => {
         const known = new Set(this.analysis.circuit.entities.map((entity) => entity.id));
         this.setSelection([...new Set(ids)].filter((id) => known.has(id)), this.existingWires(wires));
@@ -449,6 +457,7 @@ export class ProjectSession {
       this.draft = null;
       this.error = null;
       this.tool = SELECT_TOOL;
+      this.displayMode = "edit";
       this.coalesce = undefined;
       this.pendingSelection = undefined;
       this.lintShown = 0;

@@ -11,8 +11,10 @@ export type WireIconResolver = (color: WireColor) => string | undefined;
 
 export interface PaletteProps {
   readonly tool: Tool;
-  /** When false, tools that change the circuit are disabled. */
-  readonly editable: boolean;
+  /** When false, the building blocks are disabled: the source has errors, or the display mode does not place entities. */
+  readonly canPlace: boolean;
+  /** The same for the two wire tools. */
+  readonly canWire: boolean;
   readonly entities: readonly Entity[];
   readonly selection: readonly EntityId[];
   readonly resolveEntityIcon?: EntityIconResolver;
@@ -29,7 +31,7 @@ function WireIcon({ color, resolveIcon }: { readonly color: WireColor; readonly 
   return url ? <img className="wire-icon" src={url} width={24} height={24} alt="" draggable={false} /> : <Icon name="wire" size={16} />;
 }
 
-export function Palette({ tool, editable, entities, selection, resolveEntityIcon, resolveWireIcon, onToolChange, onSelect }: PaletteProps) {
+export function Palette({ tool, canPlace, canWire, entities, selection, resolveEntityIcon, resolveWireIcon, onToolChange, onSelect }: PaletteProps) {
   // Clicking the active tool again returns to the select tool.
   const toggle = (next: Tool): void => onToolChange(sameTool(tool, next) ? SELECT_TOOL : next);
   return (
@@ -44,10 +46,10 @@ export function Palette({ tool, editable, entities, selection, resolveEntityIcon
         <button type="button" className="tool-button" aria-pressed={tool.type === "select"} aria-label="Select and move" title={withShortcut("Select and move", "tool.select")} onClick={() => onToolChange(SELECT_TOOL)}>
           <Icon name="cursor" size={16} />
         </button>
-        <button type="button" className="tool-button wire-red" aria-pressed={sameTool(tool, RED_WIRE)} aria-label="Red wire" title={withShortcut("Red wire", "tool.wireRed")} disabled={!editable} onClick={() => toggle(RED_WIRE)}>
+        <button type="button" className="tool-button wire-red" aria-pressed={sameTool(tool, RED_WIRE)} aria-label="Red wire" title={withShortcut("Red wire", "tool.wireRed")} disabled={!canWire} onClick={() => toggle(RED_WIRE)}>
           <WireIcon color="red" resolveIcon={resolveWireIcon} />
         </button>
-        <button type="button" className="tool-button wire-green" aria-pressed={sameTool(tool, GREEN_WIRE)} aria-label="Green wire" title={withShortcut("Green wire", "tool.wireGreen")} disabled={!editable} onClick={() => toggle(GREEN_WIRE)}>
+        <button type="button" className="tool-button wire-green" aria-pressed={sameTool(tool, GREEN_WIRE)} aria-label="Green wire" title={withShortcut("Green wire", "tool.wireGreen")} disabled={!canWire} onClick={() => toggle(GREEN_WIRE)}>
           <WireIcon color="green" resolveIcon={resolveWireIcon} />
         </button>
       </div>
@@ -57,7 +59,7 @@ export function Palette({ tool, editable, entities, selection, resolveEntityIcon
         {ENTITY_KINDS.map((kind) => {
           const place: Tool = { type: "place", kind };
           return (
-            <button key={kind} type="button" className="palette-item" data-kind={kind} title={withShortcut(`Place: ${KIND_INFO[kind].label}`, `tool.place.${kind}`)} aria-pressed={sameTool(tool, place)} disabled={!editable} onClick={() => toggle(place)}>
+            <button key={kind} type="button" className="palette-item" data-kind={kind} title={withShortcut(`Place: ${KIND_INFO[kind].label}`, `tool.place.${kind}`)} aria-pressed={sameTool(tool, place)} disabled={!canPlace} onClick={() => toggle(place)}>
               <EntityIcon kind={kind} size={34} resolveIcon={resolveEntityIcon} />
               <span className="palette-item-text">
                 <span className="palette-item-title">

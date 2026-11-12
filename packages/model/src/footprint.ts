@@ -44,8 +44,6 @@ export interface TileOverlap {
   readonly entities: readonly EntityId[];
 }
 
-const VECTOR: Readonly<Record<Direction, Point>> = { north: { x: 0, y: -1 }, east: { x: 1, y: 0 }, south: { x: 0, y: 1 }, west: { x: -1, y: 0 } };
-
 export function canRotate(kind: EntityKind): boolean {
   return FOOTPRINTS[kind].rotatable;
 }
@@ -96,14 +94,14 @@ export function tileHalves(kind: EntityKind, direction: Direction, center: Point
 }
 
 /**
- * The center after an entity standing at `center` and facing `from` is turned to face `to`: the tile of the input half stays
- * where it is and the output half swings around it. A half turn therefore moves a 2x1 entity by one tile, as two quarter
- * turns do. A center that is off the grid is first moved to the nearest one on it; a 1x1 entity keeps its center as it is.
+ * The center after an entity standing at `center` and facing `from` is turned to face `to`: the top-left tile of the footprint
+ * stays where it is. A 2x1 entity on the tiles (0, 0) and (1, 0) so stands on (0, 0) and (0, 1) after a quarter turn either way,
+ * and a half turn keeps both tiles and swaps the input and the output half, as flipping a combinator does in the game. A center
+ * that is off the grid is first moved to the nearest one on it; a 1x1 entity keeps its center as it is.
  */
 export function rotateTile(kind: EntityKind, center: Point, from: Direction, to: Direction): Point {
   if (FOOTPRINTS[kind].length === 1 || from === to) return center;
-  const { input } = tileHalves(kind, from, center);
-  return { x: input.x + 0.5 + VECTOR[to].x / 2, y: input.y + 0.5 + VECTOR[to].y / 2 };
+  return tileCenter(kind, to, tileOrigin(kind, from, center));
 }
 
 /** The tiles shared by several of the entities that have a `tile`, in the order they are first met. Linear in the number of entities. */

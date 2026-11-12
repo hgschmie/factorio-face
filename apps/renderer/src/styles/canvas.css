@@ -136,7 +136,8 @@
   stroke-width: 2;
 }
 
-.card.active .card-body {
+.card.active .card-body,
+.bubble-face.active .card-body {
   fill: var(--card-lit);
 }
 
@@ -218,7 +219,8 @@
   stroke-width: 1;
 }
 
-.card.active .card-row.lamp .row-value {
+.card.active .card-row.lamp .row-value,
+.bubble-face.active .card-row.lamp .row-value {
   fill: var(--accent-bright);
 }
 
@@ -277,6 +279,88 @@
   stroke-width: 2;
 }
 
+/* Blueprint board: a checkerboard of tiles, entities on the tiles they take in the game, wires above them. */
+.canvas.display-blueprint {
+  background: var(--board-tile-dark);
+}
+
+.board-tile.dark {
+  fill: var(--board-tile-dark);
+}
+
+.board-tile.light {
+  fill: var(--board-tile-light);
+}
+
+/* A display mode in which entities cannot be dragged. */
+.canvas.fixed-entities .card {
+  cursor: default;
+}
+
+/* Wires lie above the entities here; only the select tool may find them, so that they never cover a pin for a wire tool. */
+.canvas.display-blueprint:not(.tool-select) .wire {
+  pointer-events: none;
+}
+
+/* No `tile` in the source: the entity stands at a derived place. */
+.board-entity.unplaced .card-body {
+  fill-opacity: 0.65;
+  stroke-dasharray: 6 4;
+}
+
+/* A `tile` that is off the grid or taken by another entity. */
+.board-entity.conflict .card-body {
+  stroke-dasharray: 3 3;
+}
+
+.board-entity.conflict:not(.selected) .card-body {
+  stroke: var(--status-error);
+  stroke-width: 1.5;
+}
+
+.board-glow {
+  fill: var(--text-strong);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+.board-led {
+  fill: var(--gray-edge);
+  stroke: var(--card-border);
+  stroke-width: 1;
+}
+
+.board-led.on {
+  fill: var(--accent-bright);
+  stroke: var(--wire-casing);
+}
+
+.board-divider {
+  stroke: var(--card-border);
+  stroke-width: 1.5;
+}
+
+.board-arrow {
+  fill: var(--board-arrow);
+  stroke: var(--wire-casing);
+  stroke-width: 0.8;
+  stroke-linejoin: round;
+}
+
+.board-name {
+  font-size: 10px;
+  font-weight: 600;
+  text-anchor: middle;
+  fill: var(--text-strong);
+}
+
+.board-output {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-anchor: middle;
+  fill: var(--text-soft);
+}
+
 .marquee {
   fill: color-mix(in srgb, var(--accent) 10%, transparent);
   stroke: var(--accent);
@@ -295,6 +379,35 @@
   flex-direction: column;
   gap: 7px;
   pointer-events: none;
+}
+
+.canvas-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Edit | Blueprint. The heading lets the pointer through to the canvas; the switch takes it. */
+.display-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-edge);
+  border-radius: var(--radius-md);
+  background: var(--surface-well);
+  pointer-events: auto;
+}
+
+.display-switch button {
+  padding: 3px 9px;
+  border-radius: 3px;
+  font-size: var(--text-sm);
+  color: var(--text-label);
+}
+
+.display-switch button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--accent-fill);
 }
 
 .canvas-heading .counts {
@@ -377,6 +490,61 @@
   font-size: 19px;
   font-weight: 500;
   color: var(--text-strong);
+}
+
+/* The bubble of the blueprint board: the card of the selected entity and its description. Screen pixels, whatever the zoom. */
+.entity-bubble {
+  position: absolute;
+  z-index: 3;
+  filter: drop-shadow(0 6px 14px rgb(0 0 0 / 45%));
+  pointer-events: none;
+}
+
+.bubble-card {
+  display: block;
+  overflow: visible;
+}
+
+.bubble-description {
+  max-height: 11.5em;
+  margin: 5px 0 0;
+  padding: 7px 10px;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-md);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  background: var(--card-bottom);
+}
+
+/* A small square turned onto its corner, half behind the bubble, on the edge that faces the entity. */
+.bubble-pointer {
+  position: absolute;
+  z-index: -1;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bottom);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.entity-bubble.side-right .bubble-pointer {
+  left: 0;
+}
+
+.entity-bubble.side-left .bubble-pointer {
+  left: 100%;
+}
+
+.entity-bubble.side-below .bubble-pointer {
+  top: 0;
+}
+
+.entity-bubble.side-above .bubble-pointer {
+  top: 100%;
 }
 
 .context-menu {

@@ -30,8 +30,8 @@ const CHROMATIC_TOKENS: ReadonlySet<string> = new Set([
   "--text-strong",
   // orange accent
   "--accent", "--accent-fill", "--accent-bright", "--accent-border",
-  // warm states: lit lamp card, warnings and notices
-  "--card-lit", "--status-warning", "--notice-surface", "--notice-border", "--notice-text",
+  // warm states: lit lamp card, the arrows on the blueprint board, warnings and notices
+  "--card-lit", "--board-arrow", "--status-warning", "--notice-surface", "--notice-border", "--notice-text",
   // red: wire, errors, delete
   "--wire-red", "--wire-red-ui", "--wire-red-surface", "--wire-red-border", "--status-error",
   "--danger", "--danger-text", "--danger-surface", "--danger-surface-hover", "--danger-border",
