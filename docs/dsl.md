@@ -45,7 +45,7 @@ circuit "Feedback example" {
 - Color literal: `#rrggbb`.
 
 Reserved keywords: `circuit constant arithmetic decider selector lamp wire red green at tile facing north east south west in out when and or output else input section each anything everything true false AND OR XOR import component port`.
-`import`, `component` and `port` are reserved for reusable components (Milestone 3) and currently produce a "not supported yet" diagnostic.
+`import`, `component` and `port` are reserved for reusable components (Milestone 4) and currently produce a "not supported yet" diagnostic.
 
 ## Grammar
 

@@ -2,6 +2,8 @@
 
 Maintained by the coordinator. Scope reference: the milestones in `../../HANDOFF.md`. Items move out of this file when they are done and verified.
 
+Milestone numbering: on 2026-11-11 the user inserted a usability milestone as Milestone 2. The handoff's milestones 2 to 4 (game-compatible editor, reusable project workbench, distributable release) are therefore Milestones 3 to 5 here.
+
 ## Milestone 1 (foundation and vertical slice)
 
 Done: simulation engine, desktop shell and workbench, session integration (single history, source patches, catalog picker and module settings, real simulation, project save/reopen), single-file `.faceproj` project format (zip).
@@ -11,10 +13,25 @@ Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude
   To repeat: `FACE_USER_DATA=$PWD/.runtime/native/user-data FACE_PROJECTS_DIR=$PWD/release/native-check node scripts/run.mjs`. Pointer scenarios need full-screen control (background accessibility clicks do not reach the canvas). The tooling refuses to confirm a save panel that shows a hidden or an empty folder, hence the visible, git-ignored `release/native-check` with a placeholder file instead of `.runtime/native/`.
   Not covered natively: View Source, Zoom In, Zoom Out and Actual Size (menu and keys), New Project, Open Project through the native panel, Cmd+S as a key press (File Save was used through the menu), full screen.
 
+## Milestone 2 (usability)
+
+Requested by the user on 2026-11-11 as brainstorming; recorded, not started. Scope and order are still to be agreed.
+
+- Copy and paste for entities on the canvas: select, copy, paste gives a copy. The Edit menu has Cut, Copy and Paste, but they do nothing in the graphical editor. Open: what happens to wires between copied entities, naming of the copies, paste position, paste across projects.
+- Rotation of entities: the card text stays as it is, the connection pins move around the card. A step towards real graphical placement. The model already has `placement.direction`; the canvas has one function for pin positions (`pinPoint` in `apps/renderer/src/canvas/geometry.ts`) as the place to start. With the entity facing right, red is above green.
+- Description text for combinators, as the game's "Add description": a multi-line text box in the inspector, kept in the source (for example `comment "..."` with `\n` for line breaks) and later written into the blueprint. The model has `description` on every entity; check what the language does with it today.
+- Inspector: gray out the [R] and [G] boxes when no wire of that color is connected to the input, as the game does.
+- Inspector: allow both [R] and [G] to be unchecked at the same time, as the game does. Today the inspector refuses it; check the language and the simulation for the same restriction (`NetworkSelection` with both false).
+- Card status: show input and output, not only the output, and split by red and green where possible. Today a card shows the first two output signals (`STATUS_SIGNALS` in `apps/renderer/src/session/simulationView.ts`); with icons the "+N more" marker of the text form is lost. The small gray square in front of the status is a leftover marker: it only changes for lamps (orange when lit, or the light's color) and means nothing on a combinator. Decide what replaces it.
+- View menu on macOS shows two full screen entries: the app adds `togglefullscreen` (`apps/desktop/src/menu.ts`) and macOS adds its own "Enter Full Screen" to a menu named View. Keep one.
+
+Candidates from the Milestone 1 lists below that fit here: wire selection on the canvas, drag-to-connect, undo in inspector fields, Home and End in inspector fields.
+
 ## Workbench follow-ups (from the shell and integration reports)
 
 - Native check, defect: Cmd+Z while an inspector field has focus runs the field's own undo (`document.execCommand` in `Workbench.tsx`). The old value is committed again as an edit, so the inspector change disappears from the history (redo cannot bring it back) and a later Cmd+Z is a step that changes nothing. Seen with the decider number field after Return.
 - Wires cannot be selected on the canvas. A wire is removed by repeating the wire gesture between its two terminals with the same color (as in the game, since 2026-11-11; the handoff's rule that a repeated connection is a no-op is superseded), from the Connections list of the inspector, or in the source.
+- Pins (red above green per terminal side, since 2026-11-11): a pin dimmed by the other wire tool shows the end of its wire through it; on very steep forward curves the casings of a red and green pair touch near the pins; the network toggles inside a signal row are narrower (20px) than the standalone ones in decider outputs and the lamp form (24px).
 - Native check, defect: with a wire tool, press on a terminal, drag and release on a second terminal leaves a pending wire; only a second click connects. Drag-to-connect should complete the wire.
 - Native check, to verify: Fit to Content right after switching to Split zoomed to 47% where the content would fit at roughly 70%; a card tooltip stayed visible above native sheets and after its card was deleted (the pointer may still have been over it).
 - Native check, note: an accessibility press on a card does nothing (cards select on pointer events only); the macOS application menu title reads Electron with the stock development binary (items inside carry the product name).
@@ -55,7 +72,7 @@ Native (OS-level) UI check: done on 2026-11-11 with computer use from the Claude
 - Custom signals with uploaded icons, custom groups and their persistence in `face.json` (types are open for `origin: "custom"`, nothing implemented).
 - Asset redistribution rights for Wube icons before any public release.
 
-## Conformance (Milestone 2)
+## Conformance (Milestone 3)
 
 - Game-driven fixtures F-01 to F-23 from `factorio-audit.md` section 6.8, reusing the sandboxed runner in `tools/catalog/lib`. F-01 (exported blueprint shapes) blocks the blueprint exporter; F-13/F-16 fix the signal order comparator.
 - Every assumption in `packages/simulation/CONFORMANCE.md` flips to verified or gets corrected.
