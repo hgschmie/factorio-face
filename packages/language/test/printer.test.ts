@@ -1,7 +1,9 @@
-import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, wildcardSignal, type Circuit, type Entity } from "@face/model";
+import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, wildcardSignal, type Circuit, type Entity, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { analyze, checkEntity, printCircuit, printEntity, printNumber, printSignal } from "../src/index.ts";
 import { fixture, Generator, portable, valid } from "./helpers.ts";
+
+const NONE = { red: false, green: false };
 
 function expectRoundTrip(circuit: Circuit): string {
   const printed = printCircuit(circuit);
@@ -39,6 +41,25 @@ describe("canonical printer", () => {
     expect(printSignal({ kind: "item", name: "odd name", quality: 'q"x' })).toBe('item:"odd name"@"q\\"x"');
     expect(printSignal(wildcardSignal("each"))).toBe("each");
     expect(printSignal({ kind: "virtual", name: "signal-anything" })).toBe("anything");
+  });
+
+  it("prints a selection of neither network as none and omits the default of both", () => {
+    const a: SignalId = { kind: "item", name: "a" };
+    const decider: Entity = {
+      ...DEFAULT_ENTITY.decider,
+      id: "d",
+      name: "d",
+      position: { x: 0, y: 0 },
+      conditions: [{ join: "or", first: a, firstNetworks: NONE, comparator: ">", second: { type: "signal", signal: a, networks: BOTH_NETWORKS } }],
+      outputs: [{ signal: a, copyCountFromInput: true, constant: 1, networks: NONE }, { signal: a, copyCountFromInput: true, constant: 1, networks: BOTH_NETWORKS }],
+    };
+    const arithmetic: Entity = { ...DEFAULT_ENTITY.arithmetic, id: "a", name: "a", position: { x: 0, y: 0 }, first: { type: "signal", signal: a, networks: NONE }, second: { type: "signal", signal: a, networks: { red: false, green: true } }, output: a };
+    const lamp: Entity = { ...DEFAULT_ENTITY.lamp, id: "l", name: "l", position: { x: 0, y: 0 }, inputNetworks: NONE };
+    expect(printEntity(decider)).toBe("decider d at (0, 0) {\n    when item:a[none] > item:a\n    output item:a = input[none]\n    output item:a = input\n}");
+    expect(printEntity(arithmetic)).toBe("arithmetic a at (0, 0) {\n    item:a = item:a[none] * item:a[green]\n}");
+    expect(printEntity(lamp)).toBe("lamp l at (0, 0) {\n    networks = none\n}");
+    expectRoundTrip({ name: "none", entities: [decider, arithmetic, lamp], wires: [] });
+    for (const entity of [decider, arithmetic, lamp]) expect(checkEntity(entity)).toEqual({ ok: true });
   });
 
   it("prints numbers without exponent or trailing decimal point", () => {
@@ -84,11 +105,12 @@ describe("checkEntity", () => {
     const cases: Entity[] = [
       { ...base, ...DEFAULT_ENTITY.arithmetic, first: { type: "constant", value: 5 } },
       { ...base, ...DEFAULT_ENTITY.lamp, useColors: false, colorMode: "components" },
-      { ...base, ...DEFAULT_ENTITY.lamp, inputNetworks: { red: false, green: false } },
       { ...base, ...DEFAULT_ENTITY.lamp, condition: { comparator: ">", second: { type: "constant", value: 1 } } },
       { ...base, ...DEFAULT_ENTITY.decider, conditions: [{ join: "or", firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 1 } }] },
       { ...base, ...DEFAULT_ENTITY.decider, outputs: [{ signal: { kind: "item", name: "a" }, copyCountFromInput: true, constant: 5, networks: BOTH_NETWORKS }] },
       { ...base, ...DEFAULT_ENTITY.decider, outputs: [{ signal: { kind: "item", name: "a" }, copyCountFromInput: false, constant: 5, networks: { red: true, green: false } }] },
+      { ...base, ...DEFAULT_ENTITY.decider, outputs: [{ signal: { kind: "item", name: "a" }, copyCountFromInput: false, constant: 5, networks: NONE }] },
+      { ...base, ...DEFAULT_ENTITY.selector, mode: { operation: "select", max: true, index: { type: "signal", signal: { kind: "item", name: "a" }, networks: NONE }, indexComparator: "=" } },
       { ...base, ...DEFAULT_ENTITY.lamp, position: { x: 0.5, y: 0 } },
     ];
     for (const entity of cases) expect(checkEntity(entity)).toMatchObject({ ok: false, code: "unrepresentable" });

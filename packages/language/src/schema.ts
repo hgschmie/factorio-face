@@ -1,6 +1,6 @@
 // One table of statement forms, properties and legal values per entity kind. Validation, the canonical printer and completion all read it.
 
-import { ARITHMETIC_OPERATIONS, COMPARATORS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, WILDCARDS, type EntityKind, type SelectorOperation, type Wildcard } from "@face/model";
+import { ARITHMETIC_OPERATIONS, COMPARATORS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, WILDCARDS, WIRE_COLORS, type EntityKind, type SelectorOperation, type Wildcard } from "@face/model";
 
 export type ValueSpec =
   | { readonly type: "bool" }
@@ -31,6 +31,9 @@ const COMPARATOR: ValueSpec = { type: "comparator" };
 const QUALITY: ValueSpec = { type: "quality" };
 const oneOf = (...values: string[]): ValueSpec => ({ type: "enum", values });
 
+/** Written where a network selection names a wire color (`[none]`, `networks = none`): the signal is read from neither network. */
+export const NO_NETWORK = "none";
+
 const DESCRIPTION: PropertySpec = { name: "description", values: [{ type: "string" }], detail: "In-game entity description" };
 
 export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
@@ -57,7 +60,7 @@ export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpe
   ],
   lamp: [
     DESCRIPTION,
-    { name: "networks", values: [oneOf("red", "green")], detail: "Input network selection (default both)" },
+    { name: "networks", values: [oneOf(...WIRE_COLORS, NO_NETWORK)], detail: "Input network selection: one wire color or none (default both)" },
     { name: "always-on", values: [BOOL], detail: "Lit regardless of the time of day (default false)" },
     { name: "colors", values: [oneOf(...LAMP_COLOR_MODES)], detail: "Color mode; presence enables signal colors" },
     { name: "red", values: [SIGNAL], detail: "Red component signal" },

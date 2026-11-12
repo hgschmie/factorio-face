@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ARITHMETIC_OPERATIONS } from "@face/model";
 import { ARITHMETIC } from "../src/index.ts";
-import { EACH, GREEN, INT_MAX, INT_MIN, RED, arithmetic, evaluate, operand, v } from "./helpers.ts";
+import { EACH, GREEN, INT_MAX, INT_MIN, NEITHER, RED, arithmetic, evaluate, operand, v } from "./helpers.ts";
 
 describe("arithmetic combinator", () => {
   it("applies every operation to signal and constant operands", () => {
@@ -36,7 +36,15 @@ describe("arithmetic combinator", () => {
     const feed = { red: { A: 10, B: 1 }, green: { A: 3, B: 2 } };
     expect(evaluate(arithmetic("a", operand("A", RED), "-", operand("A", GREEN), "C"), feed)).toEqual(v({ C: 7 }));
     expect(evaluate(arithmetic("a", "A", "*", operand("B", GREEN), "C"), feed)).toEqual(v({ C: 26 }));
-    expect(evaluate(arithmetic("a", operand("A", { red: false, green: false }), "+", operand("B", RED), "C"), feed)).toEqual(v({ C: 1 }));
+  });
+
+  it("N-NONE assumption: an operand with neither network selected reads 0, and each finds no signals there", () => {
+    const feed = { red: { A: 10, B: 1 }, green: { A: 3, B: 2 } };
+    expect(evaluate(arithmetic("a", operand("A", NEITHER), "+", operand("B", RED), "C"), feed)).toEqual(v({ C: 1 }));
+    expect(evaluate(arithmetic("a", operand("A", NEITHER), "*", "B", "C"), feed)).toEqual({});
+    expect(evaluate(arithmetic("a", operand(EACH, NEITHER), "+", 1, EACH), feed)).toEqual({});
+    // Each iterates the other operand's signals; the one read from no network contributes 0 to every result.
+    expect(evaluate(arithmetic("a", operand(EACH, NEITHER), "+", operand(EACH, GREEN), EACH), feed)).toEqual(v({ A: 3, B: 2 }));
   });
 
   it("documented: each -> each applies the operation to every input signal, keeping kind and quality", () => {

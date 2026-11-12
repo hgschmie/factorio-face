@@ -64,13 +64,15 @@ color       = "red" | "green" ;
 terminal    = IDENT "." ( "in" | "out" ) ;
 
 signal      = SIGNAL | "each" | "anything" | "everything" ;
-networks    = "[" color "]" ;                         (* absent: both networks *)
+networks    = "[" ( color | "none" ) "]" ;            (* absent: both networks *)
 sigref      = signal [ networks ] ;
 operand     = sigref | INT ;
 comparator  = "<" | ">" | "=" | "!=" | "<=" | ">=" ;
 property    = PROPNAME "=" value ;                      (* PROPNAME: identifier, may contain "-" *)
 value       = INT | STRING | COLOR | "true" | "false" | signal | IDENT-like enum word ;
 ```
+
+A network selection says which of the two input networks a signal is read from: `S` reads the sum of red and green (the game default), `S[red]` and `S[green]` one of them, `S[none]` neither. The game allows unchecking both boxes; a signal read from no network is absent, so its value is 0 and wildcards find no signals there. `none` is not a reserved word: it has this meaning only between the brackets and as the value of the lamp's `networks` property, and remains a legal entity name.
 
 Entity names are unique within a circuit. Members may appear in any order; a wire may precede the entities it references. Statement order inside an entity is preserved; order is semantically relevant only for decider outputs, constant filters and sections.
 
@@ -108,7 +110,7 @@ condition    = sigref comparator operand ;
 output       = "output" signal "=" ( INT | "input" [ networks ] ) ;
 ```
 
-At most one `when`. `and` binds tighter than `or` and there is no grouping, matching the game's condition list (`compare_type` of each condition after the first). `output S = input` copies the input count of `S` (optionally from one network); `output S = 5` emits a constant. `else output` lines are emitted when the condition is false. Outputs keep their source order.
+At most one `when`. `and` binds tighter than `or` and there is no grouping, matching the game's condition list (`compare_type` of each condition after the first). `output S = input` copies the input count of `S` (optionally from one network, `input[red]` or `input[green]`, or from none, `input[none]`); `output S = 5` emits a constant. `else output` lines are emitted when the condition is false. Outputs keep their source order.
 
 ### selector
 
@@ -134,7 +136,7 @@ Example: `selector pick at (0, 0) { operation = select  order = min  index = vir
 lamp-stmt = "when" sigref-without-networks comparator ( SIGNAL | INT ) | property ;
 ```
 
-`when` is the circuit enable condition (its presence sets `circuit_enabled`). Properties: `networks = red` or `green` (default both; the lamp's input network selection), `always-on = BOOL` (`false`), `colors = mapping`, `components` or `packed-rgb` (presence sets `use_colors`), `red`, `green`, `blue`, `rgb` (signals for the color modes), `color = #rrggbb` (static color).
+`when` is the circuit enable condition (its presence sets `circuit_enabled`). Properties: `networks = red`, `green` or `none` (default both; the lamp's input network selection, which applies to the condition and to the color signals), `always-on = BOOL` (`false`), `colors = mapping`, `components` or `packed-rgb` (presence sets `use_colors`), `red`, `green`, `blue`, `rgb` (signals for the color modes), `color = #rrggbb` (static color).
 
 ## Diagnostics
 

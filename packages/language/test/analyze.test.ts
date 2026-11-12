@@ -5,6 +5,7 @@ import { circuit, codes, fixture, idOf, valid } from "./helpers.ts";
 
 const RED = { red: true, green: false };
 const GREEN = { red: false, green: true };
+const NONE = { red: false, green: false };
 const A: SignalId = { kind: "virtual", name: "signal-A" };
 const B: SignalId = { kind: "virtual", name: "signal-B" };
 
@@ -95,6 +96,7 @@ describe("arithmetic combinator", () => {
     const a = entity("arithmetic a { each = each[red] * each[green] }", "arithmetic");
     expect(a).toMatchObject({ output: wildcardSignal("each"), first: { signal: wildcardSignal("each"), networks: RED }, second: { signal: wildcardSignal("each"), networks: GREEN } });
     expect(entity("arithmetic a { virtual:signal-B = 7 - each }", "arithmetic").second).toEqual({ type: "signal", signal: wildcardSignal("each"), networks: BOTH_NETWORKS });
+    expect(entity("arithmetic a { virtual:signal-B = virtual:signal-A[none] + each[none] }", "arithmetic")).toMatchObject({ first: { signal: A, networks: NONE }, second: { signal: wildcardSignal("each"), networks: NONE } });
   });
 
   it("uses model defaults when unconfigured", () => {
@@ -134,6 +136,16 @@ describe("decider combinator", () => {
       { signal: B, copyCountFromInput: true, constant: 1, networks: BOTH_NETWORKS },
       { signal: wildcardSignal("anything"), copyCountFromInput: false, constant: 1, networks: BOTH_NETWORKS },
     ]);
+  });
+
+  it("reads [none] as a signal taken from neither network", () => {
+    const d = entity("decider d { when virtual:signal-A[none] > virtual:signal-B[none] and each[none] = 0 output each = input[none] else output virtual:signal-B = input[none] }", "decider");
+    expect(d.conditions).toEqual([
+      { join: "or", first: A, firstNetworks: NONE, comparator: ">", second: { type: "signal", signal: B, networks: NONE } },
+      { join: "and", first: wildcardSignal("each"), firstNetworks: NONE, comparator: "=", second: { type: "constant", value: 0 } },
+    ]);
+    expect(d.outputs).toEqual([{ signal: wildcardSignal("each"), copyCountFromInput: true, constant: 1, networks: NONE }]);
+    expect(d.elseOutputs).toEqual([{ signal: B, copyCountFromInput: true, constant: 1, networks: NONE }]);
   });
 
   it.each(["<", ">", "=", "!=", "<=", ">="] as const)("parses comparator %s", (comparator) => {
@@ -202,6 +214,12 @@ describe("lamp", () => {
     });
     expect(entity("lamp l { when everything <= -5 networks = red colors = mapping }", "lamp")).toMatchObject({ condition: { second: { type: "constant", value: -5 } }, inputNetworks: RED, useColors: true, colorMode: "mapping" });
   });
+
+  it("reads no input network from networks = none", () => {
+    expect(entity("lamp l { networks = none }", "lamp").inputNetworks).toEqual(NONE);
+    // The word has this meaning only as the value of `networks`; a lamp may still be called none.
+    expect(entity("lamp none { networks = none always-on = true }", "lamp")).toMatchObject({ name: "none", inputNetworks: NONE, alwaysOn: true });
+  });
 });
 
 describe("header clauses and placement", () => {
@@ -266,6 +284,9 @@ describe("diagnostics", () => {
   it("syntax-error", () => {
     expectCodes('circuit "x" { lamp }', ["syntax-error"]);
     expectCodes(circuit("lamp a { when virtual:signal-A[red] > 1 }"), ["syntax-error"]);
+    expectCodes(circuit("lamp a { when virtual:signal-A[none] > 1 }"), ["syntax-error"]);
+    expectCodes(circuit("decider a { when each[both] > 1 output each = 1 }"), ["syntax-error"]);
+    expectCodes(circuit("decider a { when each > 1 output each = 1[none] }"), ["syntax-error"]);
     expectCodes(circuit("lamp a { when virtual:signal-A > 1 and virtual:signal-B > 2 }"), ["syntax-error"]);
     expectCodes(circuit("arithmetic a { virtual:signal-A[red] = 1 + 1 }"), ["syntax-error"]);
     expectCodes(circuit("decider a { when each > 1 output each[red] = 1 }"), ["syntax-error"]);

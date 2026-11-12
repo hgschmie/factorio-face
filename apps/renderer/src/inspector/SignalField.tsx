@@ -75,6 +75,7 @@ export function SignalField({ label, ariaLabel = label, value, required = false,
           autoComplete="off"
           aria-label={ariaLabel}
           aria-invalid={draft.error !== null}
+          data-unwritten={draft.error !== null || undefined}
           placeholder={required ? "kind:name" : "none"}
           title={info?.displayName ?? SIGNAL_FORMAT_HINT}
           value={draft.text}

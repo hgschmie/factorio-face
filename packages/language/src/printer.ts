@@ -5,6 +5,7 @@ import {
   isValidSignalName, NORMAL_QUALITY, wildcardOf,
   type Circuit, type ConstantSection, type DeciderOutput, type Entity, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type TerminalRef, type WireColor,
 } from "@face/model";
+import { NO_NETWORK } from "./schema.ts";
 import { encodeString, isKeyword } from "./tokens.ts";
 
 export interface PrintOptions {
@@ -46,8 +47,15 @@ function printQuality(name: string): string {
   return BARE_WORD.test(name) && !isKeyword(name) && name !== "signal" ? name : encodeString(name);
 }
 
+/** The word for a selection other than the default of both networks. */
+function networkWord(networks: NetworkSelection): string | undefined {
+  if (networks.red && networks.green) return undefined;
+  return networks.red ? "red" : networks.green ? "green" : NO_NETWORK;
+}
+
 function printNetworks(networks: NetworkSelection): string {
-  return networks.red === networks.green ? "" : networks.red ? "[red]" : "[green]";
+  const word = networkWord(networks);
+  return word === undefined ? "" : `[${word}]`;
 }
 
 function printOperand(operand: Operand): string {
@@ -170,7 +178,8 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
         const second = condition.second.type === "constant" ? printInteger(condition.second.value) : printSignal(condition.second.signal);
         items.push({ key: "when", text: `when ${printSignal(condition.first)} ${condition.comparator} ${second}`, implicit: false });
       }
-      if (entity.inputNetworks.red !== entity.inputNetworks.green) items.push(property("networks", entity.inputNetworks.red ? "red" : "green"));
+      const networks = networkWord(entity.inputNetworks);
+      if (networks !== undefined) items.push(property("networks", networks));
       items.push(property("always-on", String(entity.alwaysOn), !entity.alwaysOn));
       if (entity.useColors) items.push(property("colors", entity.colorMode));
       signal("red", entity.redSignal);

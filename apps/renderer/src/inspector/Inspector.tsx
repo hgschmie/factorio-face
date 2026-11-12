@@ -1,16 +1,29 @@
 // Right panel: identity and primary actions of the selection (rename, delete) at the top, then the per-kind settings
 // form, then the connections. Presentational: every edit is emitted through a callback.
-import { wireKey, type Circuit, type Entity, type EntityId, type Wire } from "@face/model";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { wireKey, type Circuit, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
+import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+import { flushSync } from "react-dom";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
 import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
+import { FieldTextEpochContext, InputWiresContext, useFieldText } from "./fields.tsx";
 import { SignalInfoContext, SignalPickerContext, type SignalDescriber, type SignalPickerRenderer } from "./SignalField.tsx";
 import { entityNameError } from "./validation.ts";
 
+export type HistoryDirection = "undo" | "redo";
+
+export interface InspectorHandle {
+  /**
+   * Undo or redo asked for while the focus is inside the inspector. Returns false and does nothing when the focus is elsewhere,
+   * or in a popup of the inspector that keeps text of its own (the signal picker).
+   */
+  history(direction: HistoryDirection): boolean;
+}
+
 export interface InspectorProps {
+  readonly ref?: Ref<InspectorHandle>;
   readonly circuit: Circuit;
   readonly selection: readonly EntityId[];
   /** When false, everything is shown read-only. */
@@ -30,11 +43,16 @@ export interface InspectorProps {
   onDelete(ids: readonly EntityId[]): void;
   onRemoveWire(wire: Wire): void;
   onSelect(ids: readonly EntityId[]): void;
+  /** One step back or forward in the document history. */
+  onUndo(): void;
+  onRedo(): void;
 }
+
+type EntityInspectorProps = Omit<InspectorProps, "ref" | "onUndo" | "onRedo"> & { readonly entity: Entity };
 
 function NameField({ entity, circuit, onRename }: { readonly entity: Entity; readonly circuit: Circuit; onRename(name: string): void }) {
   const id = useId();
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useFieldText();
   const text = draft ?? entity.name;
   const error = draft === null ? null : entityNameError(draft, entity.id, circuit);
   // A rename rewrites every reference, so it is committed once (Enter or leaving the field), not per keystroke.
@@ -55,6 +73,7 @@ function NameField({ entity, circuit, onRename }: { readonly entity: Entity; rea
         autoComplete="off"
         aria-label="Entity name"
         aria-invalid={error !== null}
+        data-unwritten={(draft !== null && draft !== entity.name) || undefined}
         value={text}
         onChange={(event) => setDraft(event.target.value)}
         onBlur={commit}
@@ -118,7 +137,13 @@ function editsContinuously(target: EventTarget): boolean {
   return target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio";
 }
 
-function EntityInspector(props: InspectorProps & { readonly entity: Entity }) {
+/** Which wire colors are connected to the input terminal of `entity`. */
+function inputWires(circuit: Circuit, entity: EntityId): NetworkSelection {
+  const connected = (color: WireColor): boolean => circuit.wires.some((wire) => wire.color === color && [wire.a, wire.b].some((end) => end.entity === entity && end.side === "in"));
+  return { red: connected("red"), green: connected("green") };
+}
+
+function EntityInspector(props: EntityInspectorProps) {
   const { entity, circuit, editable, draft } = props;
   const info = KIND_INFO[entity.kind];
   // One key per stay in such a control: the session merges the edits made during it into a single undo step.
@@ -165,7 +190,9 @@ function EntityInspector(props: InspectorProps & { readonly entity: Entity }) {
             editKey.current = undefined;
           }}
         >
-          {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} onChange={change} />}
+          <InputWiresContext value={inputWires(circuit, entity.id)}>
+            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} onChange={change} />}
+          </InputWiresContext>
         </div>
         <Connections entity={entity} circuit={circuit} onRemoveWire={props.onRemoveWire} onSelect={props.onSelect} />
       </fieldset>
@@ -178,16 +205,35 @@ function EntityInspector(props: InspectorProps & { readonly entity: Entity }) {
   );
 }
 
-export function Inspector(props: InspectorProps) {
+export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
   const { circuit, selection, editable } = props;
   const selected = circuit.entities.filter((entity) => selection.includes(entity.id));
   const single = selected.length === 1 ? selected[0] : undefined;
+  const rootRef = useRef<HTMLElement>(null);
+  const [textEpoch, setTextEpoch] = useState(0);
+  // The document history is the only undo authority; a field has no undo of its own. What is not written is not in that history:
+  // text the focused field could not parse or has not committed, and the pending draft of the entity, whichever field made it.
+  // Undo takes that back and goes no further, redo drops it. Either way every field then shows what the document says.
+  const history = (direction: HistoryDirection): boolean => {
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement) || !rootRef.current?.contains(focused) || focused.closest('[role="dialog"]')) return false;
+    const pending = props.draft != null || focused.dataset.unwritten !== undefined;
+    // Rendered before anything else can happen: as an ordinary update it would wait for a later task, and a key arriving before
+    // that would be typed into the text that is about to be dropped, and be dropped with it.
+    flushSync(() => setTextEpoch((epoch) => epoch + 1));
+    if (props.draft) props.onDiscardDraft?.();
+    if (direction === "redo") onRedo();
+    else if (!pending) onUndo();
+    return true;
+  };
+  useImperativeHandle(ref, () => ({ history }));
   return (
-    <aside className="inspector" aria-label="Inspector">
+    <aside ref={rootRef} className="inspector" aria-label="Inspector">
       <div className="palette-heading">
         <span>INSPECTOR</span>
         {selected.length > 0 && <span className="count-badge">{String(selected.length).padStart(2, "0")}</span>}
       </div>
+      <FieldTextEpochContext value={textEpoch}>
       <SignalInfoContext value={props.describeSignal}>
       <SignalPickerContext value={props.renderSignalPicker}>
         {single && <EntityInspector key={single.id} {...props} entity={single} />}
@@ -214,6 +260,7 @@ export function Inspector(props: InspectorProps) {
         )}
       </SignalPickerContext>
       </SignalInfoContext>
+      </FieldTextEpochContext>
     </aside>
   );
 }

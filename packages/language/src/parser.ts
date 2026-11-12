@@ -4,7 +4,7 @@
 import { COMPARATORS, DIRECTIONS, ENTITY_KINDS, WILDCARDS, WIRE_COLORS, type EntityKind, type Wildcard } from "@face/model";
 import type { CstAssign, CstBlock, CstCircuit, CstCondition, CstEntity, CstFacing, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstPoint, CstProperty, CstSection, CstSigRef, CstStatement, CstTerminal, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
-import { ARITHMETIC_OPERATORS, SIGNAL_SLOTS } from "./schema.ts";
+import { ARITHMETIC_OPERATORS, NO_NETWORK, SIGNAL_SLOTS } from "./schema.ts";
 import { isTrivia, lex, type Range, type Token } from "./tokens.ts";
 
 /** What the grammar accepts at the end of a source prefix; the raw material for completion. */
@@ -314,13 +314,14 @@ class Parser {
 
   private networks(): CstNetworks {
     const open = this.next();
-    this.keywords(...WIRE_COLORS);
-    let color: Token | undefined;
-    if (this.is("red") || this.is("green")) {
-      color = this.next();
+    this.keywords(...WIRE_COLORS, NO_NETWORK);
+    let selection: Token | undefined;
+    // `none` is a plain word that only has this meaning here; it stays usable as an entity name.
+    if (this.is("red") || this.is("green") || (this.tok.kind === "ident" && this.tok.text === NO_NETWORK)) {
+      selection = this.next();
       this.take("]");
-    } else this.expected("'red' or 'green'");
-    return { from: open.from, to: this.lastEnd, color };
+    } else this.expected("'red', 'green' or 'none'");
+    return { from: open.from, to: this.lastEnd, selection };
   }
 
   private operand(kind: EntityKind): CstOperand | undefined {

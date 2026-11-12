@@ -1,14 +1,28 @@
 // Small controlled form fields used by the inspector forms.
-import { COMPARATORS, type Comparator, type NetworkSelection } from "@face/model";
-import { useId, useState, type KeyboardEvent, type ReactNode } from "react";
+import { COMPARATORS, WIRE_COLORS, type Comparator, type NetworkSelection, type WireColor } from "@face/model";
+import { createContext, useContext, useId, useState, type KeyboardEvent, type ReactNode } from "react";
 import { parseInt32, type ParseResult } from "./validation.ts";
 
 /**
+ * Counts the times the inspector dropped the text its fields hold on their own (it does on undo and redo). A field shows its
+ * local text only while the count it was typed under is current; after that it shows its value again.
+ */
+export const FieldTextEpochContext = createContext(0);
+
+/** The text of a field while it differs from the field's value: what the user typed and the field has not written, or keeps as typed. */
+export function useFieldText(): readonly [text: string | null, setText: (text: string | null) => void] {
+  const epoch = useContext(FieldTextEpochContext);
+  const [typed, setTyped] = useState<{ readonly text: string; readonly epoch: number } | null>(null);
+  return [typed?.epoch === epoch ? typed.text : null, (text) => setTyped(text === null ? null : { text, epoch })];
+}
+
+/**
  * Text editing over a typed value. While the text does not parse, it is kept as a local draft and nothing is emitted;
- * every valid text is emitted immediately. Escape drops the draft.
+ * every valid text is emitted immediately. Escape drops the draft. An input showing text that was not emitted carries
+ * `data-unwritten` (see `Inspector`: undo takes such text back before it touches the history).
  */
 export function useDraft<T>(value: T, format: (value: T) => string, parse: (text: string) => ParseResult<T>, onCommit: (value: T) => void) {
-  const [draft, setDraft] = useState<string | null>(null);
+  const [draft, setDraft] = useFieldText();
   const result = draft === null ? null : parse(draft);
   return {
     text: draft ?? format(value),
@@ -52,7 +66,7 @@ export function IntField({ label, ariaLabel = label, value, onChange, wide }: { 
   const draft = useDraft(value, String, parseInt32, onChange);
   return (
     <Field label={label} htmlFor={id} wide={wide} error={draft.error}>
-      <input id={id} type="text" inputMode="numeric" aria-label={ariaLabel} aria-invalid={draft.error !== null} value={draft.text} onChange={(event) => draft.onChange(event.target.value)} onBlur={draft.onBlur} onKeyDown={draft.onKeyDown} />
+      <input id={id} type="text" inputMode="numeric" aria-label={ariaLabel} aria-invalid={draft.error !== null} data-unwritten={draft.error !== null || undefined} value={draft.text} onChange={(event) => draft.onChange(event.target.value)} onBlur={draft.onBlur} onKeyDown={draft.onKeyDown} />
     </Field>
   );
 }
@@ -98,20 +112,34 @@ export function CheckboxField({ label, checked, onChange }: { readonly label: st
   );
 }
 
-/** Red/green input network selection. At least one network stays selected. */
+/** The wire colors connected to the input terminal of the entity a form edits. Undefined where that is not known. */
+export const InputWiresContext = createContext<NetworkSelection | undefined>(undefined);
+
+/**
+ * Red/green input network selection. As in the game both may be off (the signal is then read from no network), and a color without
+ * a wire on the input is grayed but stays operable.
+ */
 export function NetworkToggle({ label, value, onChange }: { readonly label: string; readonly value: NetworkSelection; onChange(value: NetworkSelection): void }) {
-  const toggle = (color: "red" | "green"): void => {
-    const next = { ...value, [color]: !value[color] };
-    if (next.red || next.green) onChange(next);
+  const wired = useContext(InputWiresContext);
+  const button = (color: WireColor) => {
+    const unwired = wired !== undefined && !wired[color];
+    return (
+      <button
+        key={color}
+        type="button"
+        className={unwired ? `${color} unwired` : color}
+        aria-pressed={value[color]}
+        aria-label={`${label}: ${color} network`}
+        title={unwired ? `No ${color} wire connected to the input` : `Read the ${color} network`}
+        onClick={() => onChange({ ...value, [color]: !value[color] })}
+      >
+        {color === "red" ? "R" : "G"}
+      </button>
+    );
   };
   return (
     <span className="network-toggle" role="group" aria-label={label}>
-      <button type="button" className="red" aria-pressed={value.red} aria-label={`${label}: red network`} title="Read the red network" onClick={() => toggle("red")}>
-        R
-      </button>
-      <button type="button" className="green" aria-pressed={value.green} aria-label={`${label}: green network`} title="Read the green network" onClick={() => toggle("green")}>
-        G
-      </button>
+      {WIRE_COLORS.map(button)}
     </span>
   );
 }

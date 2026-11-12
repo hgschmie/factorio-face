@@ -136,6 +136,29 @@ describe("inspector drafts", () => {
     expect(checkDraft({ ...l, condition: { comparator: ">", second: { type: "constant", value: 0 } } })).toMatchObject({ ok: false, message: "The light condition needs a signal." });
   });
 
+  it("writes a selection of neither input network as none instead of holding it back", () => {
+    const { session } = createSession(IRREGULAR);
+    const none = { red: false, green: false };
+    const gate = decider(session);
+    session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, firstNetworks: none }], outputs: [{ ...gate.outputs[0]!, networks: none }] });
+    expect(session.state.draft).toBeNull();
+    expect(session.state.error).toBeNull();
+    const written = IRREGULAR.replace("when virtual:signal-A < 10   // limit", "when virtual:signal-A[none] < 10   // limit").replace("output virtual:signal-A = input", "output virtual:signal-A = input[none]");
+    expect(session.state.source).toBe(written);
+    expect(decider(session)).toMatchObject({ conditions: [{ firstNetworks: none }], outputs: [{ networks: none }] });
+
+    session.commands.updateEntity({ ...(entityNamed(session, "light") as Lamp), inputNetworks: none });
+    expect(session.state.source).toBe(written.replace("{ when virtual:signal-A > 3 }", "{ when virtual:signal-A > 3 networks = none }"));
+    expect((entityNamed(session, "light") as Lamp).inputNetworks).toEqual(none);
+    expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["duplicate-wire"]);
+
+    session.commands.undo();
+    session.commands.undo();
+    expect(session.state.source).toBe(IRREGULAR);
+    session.commands.redo();
+    expect(session.state.source).toBe(written);
+  });
+
   it("writes a normalized edit through the session", () => {
     const { session } = createSession(IRREGULAR);
     const gate = decider(session);

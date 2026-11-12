@@ -9,7 +9,7 @@ import {
 import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import { parse } from "./parser.ts";
-import { lookupProperty, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, type PropertySpec, type SignalSlot, type StatementForm } from "./schema.ts";
+import { lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, type PropertySpec, type SignalSlot, type StatementForm } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
 
 /** Catalog awareness is injected; the language itself knows no signal names. */
@@ -139,6 +139,13 @@ interface Sorted {
 }
 
 /** Drops undefined members so that absent optional fields are really absent. */
+/** What a network selection word stands for; without a word both networks are read. */
+function networkSelection(word: string | undefined): NetworkSelection {
+  if (word === "red") return { red: true, green: false };
+  if (word === "green") return { red: false, green: true };
+  return word === NO_NETWORK ? { red: false, green: false } : BOTH_NETWORKS;
+}
+
 function compact<T extends object>(value: T): T {
   for (const key of Object.keys(value) as (keyof T)[]) if (value[key] === undefined) delete value[key];
   return value;
@@ -222,8 +229,7 @@ class Analyzer {
   }
 
   networks(networks: CstNetworks | undefined): NetworkSelection {
-    const color = networks?.color?.text;
-    return color === "red" ? { red: true, green: false } : color === "green" ? { red: false, green: true } : BOTH_NETWORKS;
+    return networkSelection(networks?.selection?.text);
   }
 
   noNetworks(ref: CstSigRef | undefined, what: string): void {
@@ -510,7 +516,7 @@ class Analyzer {
     for (const other of extra) this.report(other, "syntax-error", "A lamp condition is a single comparison");
     if (!condition) return undefined;
     const first = this.slot(condition.first?.signal, "lamp.condition");
-    this.noNetworks(condition.first, "A lamp condition signal (use 'networks = red' or 'networks = green')");
+    this.noNetworks(condition.first, "A lamp condition signal (use the lamp's 'networks' property)");
     let second: Condition["second"] | undefined;
     if (condition.second?.type === "int") {
       const value = this.int(condition.second.token);
@@ -526,12 +532,12 @@ class Analyzer {
   private lamp(sorted: Sorted): Omit<Extract<Entity, { kind: "lamp" }>, "id" | "name" | "position"> {
     const when = sorted.whens[0];
     const value = <T>(name: string) => sorted.values.get(name)?.value as T | undefined;
-    const networks = value<WireColor>("networks");
+    const networks = value<WireColor | typeof NO_NETWORK>("networks");
     const colors = value<LampColorMode>("colors");
     return compact({
       kind: "lamp" as const,
       condition: when && this.lampCondition(when),
-      inputNetworks: networks ? { red: networks === "red", green: networks === "green" } : BOTH_NETWORKS,
+      inputNetworks: networkSelection(networks),
       alwaysOn: value<boolean>("always-on") ?? false,
       useColors: colors !== undefined,
       colorMode: colors ?? "mapping",

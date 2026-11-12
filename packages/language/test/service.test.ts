@@ -32,7 +32,7 @@ describe("language tables", () => {
     expect(enumValues("selector", "order", "count")).toEqual([]);
     expect(enumValues("lamp", "colors")).toEqual(["mapping", "components", "packed-rgb"]);
     expect(enumValues("lamp", "always-on")).toEqual(["true", "false"]);
-    expect(enumValues("lamp", "networks")).toEqual(["red", "green"]);
+    expect(enumValues("lamp", "networks")).toEqual(["red", "green", "none"]);
     expect(enumValues("selector", "source", "quality-transfer")).toEqual(["signal"]);
     expect(enumValues("constant", "active", undefined, true)).toEqual(["true", "false"]);
     expect(lookupProperty("selector", "interval", "select")).toEqual({ status: "inapplicable", operations: ["random"] });
@@ -103,7 +103,9 @@ describe("completionContext", () => {
     expect(at(circuit("lamp l { when item:a > | }")).expected).toEqual([{ type: "signal", wildcards: [] }, { type: "literal", kind: "integer" }]);
     expect(at(circuit("arithmetic a { each = | }")).expected).toEqual([{ type: "signal", wildcards: ["each"] }, { type: "literal", kind: "integer" }]);
     expect(at(circuit("arithmetic a { each = each | }")).get("keyword")!.values).toEqual(["*", "/", "+", "-", "%", "^", "<<", ">>", "AND", "OR", "XOR"]);
-    expect(at(circuit("arithmetic a { each = each[| }")).get("keyword")!.values).toEqual(["red", "green"]);
+    expect(at(circuit("arithmetic a { each = each[| }")).get("keyword")!.values).toEqual(["red", "green", "none"]);
+    expect(at(circuit("decider d { output each = input[no| }"))).toMatchObject({ prefix: "no", expected: [{ type: "keyword", values: ["red", "green", "none"] }] });
+    expect(at(circuit("lamp l { networks = | }")).expected).toEqual([{ type: "enum", property: "networks", values: ["red", "green", "none"] }]);
     expect(at(circuit("decider d { output | }")).expected).toEqual([{ type: "signal", wildcards: ["everything", "anything", "each"] }]);
     expect(at(circuit("decider d { output each = | }")).expected).toEqual([{ type: "keyword", values: ["input"] }, { type: "literal", kind: "integer" }]);
     expect(at(circuit("constant c { item:a = | }")).expected).toEqual([{ type: "literal", kind: "integer" }]);

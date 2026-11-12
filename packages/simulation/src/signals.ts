@@ -124,6 +124,7 @@ export class InputView {
     this.sum = undefined;
   }
 
+  /** N-NONE: with neither network selected nothing is read. */
   select(selection: Selection): SignalMap {
     return selection === BOTH ? this.both : selection === RED ? this.red : selection === GREEN ? this.green : EMPTY;
   }

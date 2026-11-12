@@ -7,9 +7,9 @@ import { ZOOM_STEP, type CanvasView } from "../canvas/viewport.ts";
 import type { SourceEditorHandle } from "../editor/SourceEditor.tsx";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
-import { Inspector } from "../inspector/Inspector.tsx";
+import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspector/Inspector.tsx";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
-import { isTextEntryTarget } from "../platform.ts";
+import { isTextEntryTarget, isTextField } from "../platform.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
 import type { Diagnostic, WorkbenchController } from "./controller.ts";
@@ -33,6 +33,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   const { circuit, selection, mode, tool, editable, simulation, project } = state;
   const canvasRef = useRef<CanvasHandle>(null);
   const editorRef = useRef<SourceEditorHandle>(null);
+  const inspectorRef = useRef<InspectorHandle>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const revealDiagnostic = useCallback((diagnostic: Diagnostic) => editorRef.current?.reveal(diagnostic.from, diagnostic.to), []);
@@ -54,6 +55,31 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
 
   const deleteSelection = useCallback(() => commands.deleteEntities(stateRef.current.selection), [commands]);
 
+  // Undo and redo have one authority, the document history. From the inspector, whose fields write to the document, the request
+  // goes through the inspector (it first takes back text that is not written). A text field that is not part of the document
+  // (project settings, signal search) has no undo: the browser's own would reach into the other fields of the window.
+  const history = useCallback(
+    (direction: HistoryDirection): void => {
+      if (inspectorRef.current?.history(direction)) return;
+      if (!isTextField(document.activeElement)) commands[direction]();
+    },
+    [commands],
+  );
+
+  // The browser keeps one undo stack for all text fields of the window and applies it on Ctrl+Z (not on macOS, where the key
+  // only reaches the menu). Applied to an inspector field it would arrive as typing and be written as a new edit, so the request
+  // is taken over here. The source editor does the same for itself.
+  useEffect(() => {
+    const onBeforeInput = (event: InputEvent): void => {
+      const direction = event.inputType === "historyUndo" ? "undo" : event.inputType === "historyRedo" ? "redo" : undefined;
+      if (direction === undefined || (event.target instanceof Element && event.target.closest(".cm-editor") !== null)) return;
+      event.preventDefault();
+      history(direction);
+    };
+    document.addEventListener("beforeinput", onBeforeInput, true);
+    return () => document.removeEventListener("beforeinput", onBeforeInput, true);
+  }, [history]);
+
   // Dirty-state handshake: main asks before closing a window that reported unsaved changes.
   useEffect(() => api?.setDirty(project.dirty), [api, project.dirty]);
   useEffect(() => api?.onSaveBeforeClose(() => commands.save()), [api, commands]);
@@ -64,7 +90,6 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       const current = stateRef.current;
       // Edit commands belong to a focused text control when there is one, otherwise to the circuit.
       const typing = isTextEntryTarget(document.activeElement);
-      const inSourceEditor = document.activeElement?.closest(".cm-editor") != null;
       switch (command.id) {
         case "file.new":
           return void commands.newProject();
@@ -77,9 +102,9 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         case "file.saveAs":
           return void commands.saveAs();
         case "edit.undo":
-          return typing && !inSourceEditor ? void document.execCommand("undo") : commands.undo();
+          return history("undo");
         case "edit.redo":
-          return typing && !inSourceEditor ? void document.execCommand("redo") : commands.redo();
+          return history("redo");
         case "edit.delete":
           return typing ? void document.execCommand("delete") : commands.deleteEntities(current.selection);
         case "edit.selectAll":
@@ -107,7 +132,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       }
     };
     return api.onMenuCommand(run);
-  }, [api, commands]);
+  }, [api, commands, history]);
 
   const errors = state.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warnings = state.diagnostics.length - errors;
@@ -174,6 +199,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         </main>
 
         <Inspector
+          ref={inspectorRef}
           circuit={circuit}
           selection={selection}
           editable={editable}
@@ -187,6 +213,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           onDelete={commands.deleteEntities}
           onRemoveWire={commands.removeWire}
           onSelect={commands.select}
+          onUndo={commands.undo}
+          onRedo={commands.redo}
         />
       </div>
 

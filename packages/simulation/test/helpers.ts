@@ -34,6 +34,7 @@ export const EVERYTHING = wildcardSignal("everything");
 export const RED: NetworkSelection = { red: true, green: false };
 export const GREEN: NetworkSelection = { red: false, green: true };
 export const BOTH = BOTH_NETWORKS;
+export const NEITHER: NetworkSelection = { red: false, green: false };
 export const INT_MAX = 2147483647;
 export const INT_MIN = -2147483648;
 

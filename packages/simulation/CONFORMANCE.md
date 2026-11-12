@@ -45,6 +45,7 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 | N-COLORS | Same-colored wires form one network; red and green are separate; a combinator output goes to both colors | 6.2 | F-07 | documented | `compile.ts` |
 | N-REDGREEN | An input with both networks selected reads the wrapping sum of red and green | 6.2 | F-07 | assumed (wrap) | `signals.ts` `sumMaps` |
 | N-ZERO | A signal whose sum is 0 does not exist: red +3 and green -3 hide it from each, anything, everything, count and select | 6.2 | F-07 | assumed | `signals.ts` `sumMaps` |
+| N-NONE | A network selection with neither color (the game allows unchecking both) reads nothing: a signal is 0, wildcards and each find no signals, a copied output count is 0, a lamp sees no condition or color signal | 3.3 | none | assumed | `signals.ts` `InputView.select` |
 | N-DOUBLE | Wiring both output colors of one combinator into one input doubles the value there | 6.2 | none | assumed | follows from N-COLORS, N-REDGREEN |
 
 ### Arithmetic combinator

@@ -52,10 +52,11 @@ src/
     tokenHighlight.ts  viewport decorations from an external tokenizer
     tokens.ts          token kind to class mapping, minimal text diff  (pure)
   inspector/
-    Inspector.tsx      identity, rename + Delete at the top, draft hint, settings slot, connections
+    Inspector.tsx      identity, rename + Delete at the top, draft hint, settings slot, connections; undo and redo from its fields
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
-    fields.tsx, formParts.tsx, immutable.ts, validation.ts
+    fields.tsx         text, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
+    formParts.tsx, immutable.ts, validation.ts
   picker/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
   settings/
@@ -105,6 +106,19 @@ has errors), `selection`, `mode`, `tool`, `source`, `diagnostics` (with line num
   (a wire that exists, a move to the same place) dispatches nothing. Typing never merges into a command step.
 - **Field edits are one step.** The inspector passes a `coalesce` key per focus of a text or color input; consecutive `updateEntity`
   calls with the same key, with nothing else touching the document in between, are merged into the previous history event.
+- **Undo from a text field.** The document history is the only undo authority; no text field of the window has an undo of its own.
+  Edit > Undo and Redo arrive in `Workbench` as menu commands (on macOS that is also where Cmd+Z ends while a field has the focus).
+  Where the browser would apply its own undo to a field (Ctrl+Z on the other platforms), `Workbench` cancels the `beforeinput` event
+  (`historyUndo`, `historyRedo`) and takes the same path; the browser keeps one undo stack for all fields of the window, and applying
+  it would arrive as typing and be written as a new edit. With the focus in the inspector the request goes to `InspectorHandle.history`:
+  what is not written yet (text a field could not parse, a name before Return, a pending draft) is taken back by undo, which then
+  goes no further, and is dropped by redo; otherwise it is one step in the document history. The fields then show the document's
+  values (`FieldTextEpochContext` invalidates the text they hold on their own; that update is rendered at once with `flushSync`, so
+  that a key arriving right behind the command is typed into what the undo left). In a text field that is not part of the document
+  (project name, signal search) undo and redo do nothing. The source editor keeps CodeMirror's handling.
+- **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
+  a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
+  so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.
 - **Analysis.** Every document change bumps a version and runs `analyze(source, previous, { signals, version })` synchronously.
   `Analysis.accept` only takes the result of the latest request, so the same code path works when the analysis moves to a worker;
   `ProjectSession.acceptAnalysis` is the entry point for that. With errors, `editable` is false, the last valid circuit stays, and

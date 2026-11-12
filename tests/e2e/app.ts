@@ -257,8 +257,22 @@ export function dialogCalls(app: ElectronApplication): Promise<DialogCalls> {
   return app.evaluate(() => (globalThis as Record<string, unknown>).dialogCalls as DialogCalls);
 }
 
-/** Clicks an item of the native application menu by its labels, for example `clickMenu(app, "File", "Save")`. */
+/**
+ * Clicks an item of the native application menu by its labels, for example `clickMenu(app, "File", "Save")`, and returns once the
+ * window has handled the command the item sends. The command travels to the window asynchronously; input or an assertion sent
+ * right after the click could otherwise overtake it. Only for items that send a command to the window (not for role items).
+ */
 export async function clickMenu(app: ElectronApplication, ...path: string[]): Promise<void> {
+  const page = await app.firstWindow();
+  // Listeners run in the order they were added: this one after the workbench's, which has handled the command by then.
+  const command = await page.evaluateHandle(() => ({
+    handled: new Promise<void>((resolve) => {
+      const off = window.face!.onMenuCommand(() => {
+        off();
+        resolve();
+      });
+    }),
+  }));
   await app.evaluate(({ Menu, BrowserWindow }, labels) => {
     let items = Menu.getApplicationMenu()!.items;
     let found: Electron.MenuItem | undefined;
@@ -269,6 +283,8 @@ export async function clickMenu(app: ElectronApplication, ...path: string[]): Pr
     }
     found!.click(undefined, BrowserWindow.getAllWindows()[0], undefined);
   }, path);
+  await command.evaluate((waiting) => waiting.handled);
+  await command.dispose();
 }
 
 /** Selects an entity by clicking its card. */

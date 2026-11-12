@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Comparator } from "@face/model";
 import { createEnvironment } from "../src/index.ts";
-import { ANYTHING, EACH, EVERYTHING, GREEN, INT_MAX, RED, and, cond, decider, evaluate, out, v } from "./helpers.ts";
+import { ANYTHING, EACH, EVERYTHING, GREEN, INT_MAX, NEITHER, RED, and, cond, decider, evaluate, out, v } from "./helpers.ts";
 
 const YES = v({ Y: 1 });
 const NO = v({ N: 1 });
@@ -60,6 +60,26 @@ describe("decider conditions", () => {
     expect(evaluate(truth(cond("B", "<", "B", { firstNetworks: RED, secondNetworks: GREEN })), feed)).toEqual(YES);
     expect(evaluate(truth(cond("B", "=", "B", { firstNetworks: RED, secondNetworks: RED })), feed)).toEqual(YES);
     expect(evaluate(truth(cond("B", "=", 10)), feed)).toEqual(YES);
+  });
+
+  it("N-NONE assumption: an operand with neither network selected reads 0 and shows no signals to wildcards", () => {
+    const feed = { red: { A: 5, B: 1 }, green: { A: -2, B: 9 } };
+    expect(evaluate(truth(cond("A", "=", 0, { firstNetworks: NEITHER })), feed)).toEqual(YES);
+    expect(evaluate(truth(cond("A", ">", 0, { firstNetworks: NEITHER })), feed)).toEqual(NO);
+    expect(evaluate(truth(cond("A", ">", "B", { secondNetworks: NEITHER })), feed)).toEqual(YES);
+    expect(evaluate(truth(cond("B", "=", "A", { firstNetworks: NEITHER, secondNetworks: NEITHER })), feed)).toEqual(YES);
+    // Everything holds for an empty set, anything does not, each has nothing to iterate.
+    expect(evaluate(truth(cond(EVERYTHING, "<", 0, { firstNetworks: NEITHER })), feed)).toEqual(YES);
+    expect(evaluate(truth(cond(ANYTHING, "!=", 0, { firstNetworks: NEITHER })), feed)).toEqual(NO);
+    expect(evaluate(decider("d", [cond(EACH, "!=", 0, { firstNetworks: NEITHER })], [out(EACH, 1)], [out(EACH, -1)]), feed)).toEqual({});
+  });
+
+  it("N-NONE assumption: an output copying its count from neither network emits nothing", () => {
+    const feed = { red: { A: 5, B: 1 }, green: { A: 7 } };
+    expect(evaluate(decider("d", [cond("A", ">", 0)], [out("A", "input", NEITHER), out("B", "input", RED)]), feed)).toEqual(v({ B: 1 }));
+    expect(evaluate(decider("d", [cond("A", ">", 0)], [out(EVERYTHING, "input", NEITHER)]), feed)).toEqual({});
+    expect(evaluate(decider("d", [cond("A", ">", 0)], [out(ANYTHING, "input", NEITHER)]), feed)).toEqual({});
+    expect(evaluate(decider("d", [cond(EACH, ">", 0)], [out(EACH, "input", NEITHER)], [out("C", 1)]), feed)).toEqual({});
   });
 
   it("F-15 assumption: an empty condition list is false, so only else outputs fire", () => {

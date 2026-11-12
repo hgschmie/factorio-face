@@ -76,6 +76,20 @@ describe("concrete syntax tree", () => {
     const expression = a!.body!.statements[0]!;
     expect(expression.type === "assign" && [slice(text, expression.target), slice(text, expression.first), expression.operator?.text, slice(text, expression.second)]).toEqual(["each", "each", "AND", "0xff"]);
   });
+
+  it("parses the network selections red, green and none", () => {
+    const text = circuit("decider none { when each[none] > item:a[red] output each = input[none] }\nwire green none.out <-> none.in");
+    const result = parse(text);
+    expect(result.diagnostics).toEqual([]);
+    const [d, wire] = result.cst.circuit!.members as [CstEntity, CstWire];
+    // `none` is not reserved: it names the entity and is a selection only between the brackets.
+    expect([d.name?.kind, d.name?.text, wire.a?.name.text]).toEqual(["ident", "none", "none"]);
+    const when = d.body!.statements[0]!;
+    const output = d.body!.statements[1]!;
+    const condition = when.type === "when" ? when.conditions[0]! : undefined;
+    expect([condition?.first?.networks?.selection?.text, condition?.second?.type === "signal" && condition.second.ref.networks?.selection?.text]).toEqual(["none", "red"]);
+    expect(output.type === "output" && [slice(text, output.networks), output.networks?.selection?.text]).toEqual(["[none]", "none"]);
+  });
 });
 
 describe("error recovery", () => {
@@ -131,7 +145,8 @@ describe("error recovery", () => {
     expect(messages(circuit("decider a { else when each > 1 }"))).toEqual(["Expected 'output' after 'else' but found 'when'"]);
     expect(messages(circuit("lamp a { networks = }"))).toEqual(["Expected a value for 'networks' but found '}'"]);
     expect(messages(circuit("lamp a { networks =\n always-on = true }"))).toEqual(["Expected a value for 'networks' but found 'always-on'"]);
-    expect(messages(circuit("lamp a { when each[blue] > 1 }"))).toEqual(["Expected 'red' or 'green' but found 'blue'"]);
+    expect(messages(circuit("lamp a { when each[blue] > 1 }"))).toEqual(["Expected 'red', 'green' or 'none' but found 'blue'"]);
+    expect(messages(circuit("decider a { when each[none > 1 }"))).toEqual(["Expected ']' but found '>'"]);
     expect(messages(circuit("constant a { section { section { } } }"))).toEqual(["Sections cannot be nested"]);
   });
 

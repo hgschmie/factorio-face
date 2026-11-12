@@ -260,6 +260,20 @@
   background: var(--wire-green-surface);
 }
 
+/* No wire of this color on the input: grayed as in the game, without the wire color and with a dashed outline. The button still
+   works and still shows whether it is pressed. */
+.network-toggle button.unwired {
+  border-style: dashed;
+  border-color: var(--border);
+  color: var(--text-faint);
+}
+
+.network-toggle button.unwired[aria-pressed="true"] {
+  border-color: var(--border-strong);
+  color: var(--text-soft);
+  background: var(--surface-raised);
+}
+
 /* Settings forms */
 .form-section {
   display: flex;

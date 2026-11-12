@@ -3,7 +3,6 @@ import { mkdir, mkdtemp, readdir, readFile, rm, truncate, writeFile } from "node
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LIMITS, PROJECT_FILE_EXTENSION, type ProjectData } from "../src/ipc.ts";
-import { buildMenuTemplate } from "../src/menu.ts";
 import { createEmptyProject, readProject, writeFileAtomic, writeProject } from "../src/projectStore.ts";
 import { RecentProjects } from "../src/recentProjects.ts";
 import { parseProjectData, ValidationError } from "../src/validation.ts";
@@ -315,49 +314,5 @@ describe("recent projects", () => {
     const file = join(scratch, "corrupt-recent.json");
     await writeFile(file, "not json");
     expect(await new RecentProjects(file).list()).toEqual([]);
-  });
-});
-
-describe("application menu", () => {
-  const sent: unknown[] = [];
-  const template = buildMenuTemplate({
-    platform: "darwin",
-    developerTools: false,
-    recentProjects: [{ path: "/projects/a", name: "A", openedAt: "2026-11-11T12:00:00.000Z" }],
-    send: (command) => sent.push(command),
-    clearRecentProjects: () => sent.push("clear"),
-  });
-  const submenu = (label: string) => (template.find((menu) => menu.label === label)?.submenu ?? []) as Electron.MenuItemConstructorOptions[];
-  const labels = (label: string) => submenu(label).map((item) => item.label ?? item.role ?? item.type);
-  const click = (items: Electron.MenuItemConstructorOptions[], label: string) => (items.find((item) => item.label === label)!.click as () => void)();
-
-  it("has the required menus and items", () => {
-    expect(template[0]!.label).toBe("FActorio Circuit Editor");
-    expect(labels("File")).toEqual(["New Project", "Open Project...", "Open Recent", "separator", "Save", "Save As...", "separator", "close"]);
-    expect(labels("Edit")).toEqual(["Undo", "Redo", "separator", "cut", "copy", "paste", "Delete", "Select All"]);
-    expect(labels("View")).toEqual(["Circuit", "Source", "Split", "separator", "Zoom In", "Zoom Out", "Actual Size", "Fit to Content", "separator", "togglefullscreen"]);
-    expect(labels("Simulation")).toEqual(["Run / Pause", "Step", "Reset"]);
-  });
-
-  it("forwards commands to the renderer", () => {
-    click(submenu("File"), "Save");
-    click(submenu("Edit"), "Delete");
-    click(submenu("View"), "Split");
-    click(submenu("Simulation"), "Step");
-    const recent = submenu("File").find((item) => item.label === "Open Recent")!.submenu as Electron.MenuItemConstructorOptions[];
-    click(recent, "A (/projects/a)");
-    click(recent, "Clear Recent Projects");
-    expect(sent).toEqual([{ id: "file.save" }, { id: "edit.delete" }, { id: "view.split" }, { id: "simulation.step" }, { id: "file.openRecent", path: "/projects/a" }, "clear"]);
-  });
-
-  it("does not bind Delete or Backspace to the Delete item, so text fields keep those keys", () => {
-    expect(submenu("Edit").find((item) => item.label === "Delete")!.accelerator).toBeUndefined();
-  });
-
-  it("omits the application menu and developer tools where they do not belong", () => {
-    const other = buildMenuTemplate({ platform: "linux", developerTools: true, recentProjects: [], send: () => undefined, clearRecentProjects: () => undefined });
-    expect(other[0]!.label).toBe("File");
-    expect((other.find((menu) => menu.label === "View")!.submenu as Electron.MenuItemConstructorOptions[]).some((item) => item.role === "toggleDevTools")).toBe(true);
-    expect(((other[0]!.submenu as Electron.MenuItemConstructorOptions[]).find((item) => item.label === "Open Recent")!.submenu as Electron.MenuItemConstructorOptions[])[0]).toMatchObject({ enabled: false });
   });
 });

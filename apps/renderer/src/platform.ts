@@ -10,6 +10,11 @@ export const SHORTCUT = {
   fit: IS_MAC ? "⌘0" : "Ctrl+0",
 } as const;
 
+/** True for an input or text area that holds text the user types (not the source editor, which is no form control). */
+export function isTextField(target: EventTarget | null): boolean {
+  return (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && isTextEntryTarget(target);
+}
+
 /** True when keyboard input currently belongs to a text control or the source editor rather than to the canvas. */
 export function isTextEntryTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;

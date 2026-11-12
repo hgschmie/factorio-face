@@ -20,20 +20,23 @@ Requested by the user on 2026-11-11. In progress since the same day; the user as
 - Copy and paste for entities on the canvas: select, copy, paste gives a copy. The Edit menu has Cut, Copy and Paste, but they do nothing in the graphical editor. Open: what happens to wires between copied entities, naming of the copies, paste position, paste across projects.
 - Rotation of entities: the card text stays as it is, the connection pins move around the card. A step towards real graphical placement. The model already has `placement.direction`; the canvas has one function for pin positions (`pinPoint` in `apps/renderer/src/canvas/geometry.ts`) as the place to start. With the entity facing right, red is above green.
 - Description text for combinators, as the game's "Add description": a multi-line text box in the inspector, kept in the source (for example `comment "..."` with `\n` for line breaks) and later written into the blueprint. The model has `description` on every entity; check what the language does with it today.
-- Inspector: gray out the [R] and [G] boxes when no wire of that color is connected to the input, as the game does.
-- Inspector: allow both [R] and [G] to be unchecked at the same time, as the game does. Today the inspector refuses it; check the language and the simulation for the same restriction (`NetworkSelection` with both false).
+- Done: the [R] and [G] boxes are grayed (dashed outline, no wire color, still operable) when no wire of that color is connected to the entity's input, as the game does.
+- Done: both [R] and [G] can be unchecked, as the game allows. The language writes it as `[none]` after a signal and `networks = none` for the lamp (`none` is not a reserved word); a signal read from no network counts as absent (rule N-NONE in `packages/simulation/CONFORMANCE.md`, assumed).
 - Card status: show input and output, not only the output, and split by red and green where possible. Today a card shows the first two output signals (`STATUS_SIGNALS` in `apps/renderer/src/session/simulationView.ts`); with icons the "+N more" marker of the text form is lost. The small gray square in front of the status is a leftover marker: it only changes for lamps (orange when lit, or the light's color) and means nothing on a combinator. Decide what replaces it.
-- View menu on macOS shows two full screen entries: the app adds `togglefullscreen` (`apps/desktop/src/menu.ts`) and macOS adds its own "Enter Full Screen" to a menu named View. Keep one.
+- Done, not verified natively: on macOS the app no longer adds its own full screen entry to the View menu and relies on the one macOS adds. If macOS does not add it, View has no such entry (the green window button still works).
 
 - Wire selection on the canvas, to build: a click on a wire selects it, and it can then be deleted like an entity (added by the user on 2026-11-11). Details under the workbench follow-ups. Open: what the inspector shows for a selected wire, and whether a marquee selects wires.
-- Undo in inspector fields, to fix: Cmd+Z while a field has focus must undo through the shared history instead of the field's own undo (added by the user on 2026-11-11). Details under the workbench follow-ups.
+- Done: undo and redo from an inspector field (key, menu, or the browser's own undo) go through the shared document history. The first undo only takes back text that is not written yet (unparsable text, a name before Return, a pending draft); it never creates a history entry and never costs the redo.
 - Keyboard shortcuts for the most common canvas operations: select tool, wire tools, rotate, delete and the like (added by the user on 2026-11-11 while the milestone was being built). Built as its own step after rotation, so the keys can be chosen together.
 
 Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wires, and Home and End moving the caret in inspector fields. Both stay in the workbench follow-ups.
 
 ## Workbench follow-ups (from the shell and integration reports)
 
-- In Milestone 2. Native check, defect: Cmd+Z while an inspector field has focus runs the field's own undo (`document.execCommand` in `Workbench.tsx`). The old value is committed again as an edit, so the inspector change disappears from the history (redo cannot bring it back) and a later Cmd+Z is a step that changes nothing. Seen with the decider number field after Return.
+- To verify natively on macOS: Cmd+Z and Shift+Cmd+Z in an inspector field undo exactly one step; the View menu shows one full screen entry.
+- Text fields outside the inspector (signal picker search, project name in the settings) have no undo of their own any more: the browser keeps one undo stack for all fields of the window, which let an undo there rewrite an inspector field. Undo from the toolbar button or with focus on the canvas does not discard a pending inspector draft.
+- A menu command (all accelerators travel main process, then IPC) can be overtaken by input that arrives while the window is busy for 50 ms or more. Handling the shortcuts in the renderer's keydown would remove that, but needs a native check that the accelerator does not fire twice.
+- Closing the signal picker with Escape leaves the focus on the body instead of the button that opened it.
 - In Milestone 2. Wires cannot be selected on the canvas today. A wire is removed by repeating the wire gesture between its two terminals with the same color (as in the game, since 2026-11-11; the handoff's rule that a repeated connection is a no-op is superseded), from the Connections list of the inspector, or in the source.
 - Pins (red above green per terminal side, since 2026-11-11): a pin dimmed by the other wire tool shows the end of its wire through it; on very steep forward curves the casings of a red and green pair touch near the pins; the network toggles inside a signal row are narrower (20px) than the standalone ones in decider outputs and the lamp form (24px).
 - Wire routing (all wires axis-aligned with rounded corners since 2026-11-11): a fan-out from one output splits into two vertical legs 20 apart instead of a T; a red wire going down and a green wire going up from one output overlap for a few units at the pin level; routes do not avoid other cards, so a wire can pass behind a card and seem to start at it; same-side legs and detours share the lines 10 and 30 beside a card.
@@ -64,7 +67,7 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 
 ## Language follow-ups (from the language package report)
 
-- Model states the language cannot express are reported as `unrepresentable` by commands and silently normalized by the printer. Decide per case before blueprint import: a condition without a first signal (decider, lamp), an arithmetic combinator without output, lamp `colorMode` without `useColors`, lamp with neither input network, a decider output constant other than 1 while copying input, network selection on a constant output or on a selector index signal.
+- Model states the language cannot express are reported as `unrepresentable` by commands and silently normalized by the printer. Decide per case before blueprint import: a condition without a first signal (decider, lamp), an arithmetic combinator without output, lamp `colorMode` without `useColors`, a decider output constant other than 1 while copying input, network selection on a constant output or on a selector index signal.
 - Hexadecimal literals above `0x7FFFFFFF` are rejected; consider two's-complement masks (`0xFFFFFFFF`).
 - `docs/dsl.md` must absorb the implemented choices: header clauses in any order, separators between members, single-line strings, `source = signal` wording, the extra diagnostic codes (`invalid-statement`, `invalid-signal`, `duplicate-signal`, `contradictory-statement` for selector properties), wildcard legality per slot, canonical print rules.
 - Shorthand for virtual signals (open point for the user's language review).
@@ -79,6 +82,7 @@ Not in this milestone, nice to have (user, 2026-11-11): drag-to-connect for wire
 
 ## Conformance (Milestone 3)
 
+- A fixture for N-NONE (operand, decider output and lamp with both networks unchecked) is missing from the list below.
 - Game-driven fixtures F-01 to F-23 from `factorio-audit.md` section 6.8, reusing the sandboxed runner in `tools/catalog/lib`. F-01 (exported blueprint shapes) blocks the blueprint exporter; F-13/F-16 fix the signal order comparator.
 - Every assumption in `packages/simulation/CONFORMANCE.md` flips to verified or gets corrected.
 

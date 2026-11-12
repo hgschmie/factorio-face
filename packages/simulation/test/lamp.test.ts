@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Comparator, Lamp, SignalId } from "@face/model";
 import { MAPPING_COLORS, colorComponent, unpackRgb } from "../src/lamp.ts";
-import { ANYTHING, EVERYTHING, GREEN, RED, arithmetic, circuit, constant, lamp, lampState, sig, simulate, wire } from "./helpers.ts";
+import { ANYTHING, EVERYTHING, GREEN, NEITHER, RED, arithmetic, circuit, constant, lamp, lampState, sig, simulate, wire } from "./helpers.ts";
 
 const when = (first: string | SignalId | undefined, comparator: Comparator, second: number | string): Lamp["condition"] => ({
   ...(first !== undefined && { first: sig(first) }),
@@ -52,7 +52,17 @@ describe("lamp lighting", () => {
     expect(lampState(lamp("l", { condition: when("A", "=", 0) }), feed)).toEqual(ON);
     expect(lampState(lamp("l", { condition: when("A", "=", 5), inputNetworks: RED }), feed)).toEqual(ON);
     expect(lampState(lamp("l", { condition: when("A", "=", -5), inputNetworks: GREEN }), feed)).toEqual(ON);
-    expect(lampState(lamp("l", { condition: when("A", "=", 0), inputNetworks: { red: false, green: false } }), feed)).toEqual(ON);
+  });
+
+  it("N-NONE assumption: a wired lamp with neither input network selected sees no signals", () => {
+    const feed = { red: { A: 5, "virtual:signal-red": 1 }, green: { A: 2 } };
+    expect(lampState(lamp("l", { condition: when("A", "=", 0), inputNetworks: NEITHER }), feed)).toEqual(ON);
+    expect(lampState(lamp("l", { condition: when("A", ">", 0), inputNetworks: NEITHER, alwaysOn: true }), feed)).toEqual(OFF);
+    expect(lampState(lamp("l", { condition: when(EVERYTHING, "<", 0), inputNetworks: NEITHER }), feed)).toEqual(ON);
+    expect(lampState(lamp("l", { condition: when(ANYTHING, ">", 0), inputNetworks: NEITHER }), feed)).toEqual(OFF);
+    // No color signal arrives either: the static color, or the plain light.
+    expect(lampState(lamp("l", { alwaysOn: true, useColors: true, inputNetworks: NEITHER }), feed)).toEqual(ON);
+    expect(lampState(lamp("l", { alwaysOn: true, useColors: true, inputNetworks: NEITHER, color: { r: 1, g: 2, b: 3 } }), feed)).toEqual({ lit: true, color: { r: 1, g: 2, b: 3 } });
   });
 
   it("F-21 assumption: a lamp reacts in the same tick as its network and emits nothing", () => {

@@ -69,8 +69,10 @@ export interface CstProperty extends Range {
   readonly value?: Token;
 }
 
+/** `[red]`, `[green]` or `[none]`. */
 export interface CstNetworks extends Range {
-  readonly color?: Token;
+  /** A wire color keyword or the word `none`. */
+  readonly selection?: Token;
 }
 
 export interface CstSigRef extends Range {

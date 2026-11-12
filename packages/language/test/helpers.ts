@@ -88,7 +88,7 @@ export class Generator {
   }
 
   networks(): NetworkSelection {
-    return this.pick([BOTH_NETWORKS, { red: true, green: false }, { red: false, green: true }]);
+    return this.pick([BOTH_NETWORKS, { red: true, green: false }, { red: false, green: true }, { red: false, green: false }]);
   }
 
   operand(each = false): Operand {

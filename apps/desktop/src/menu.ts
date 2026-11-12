@@ -34,9 +34,10 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
     command("Zoom Out", "view.zoomOut", "CmdOrCtrl+-"),
     command("Actual Size", "view.zoomReset"),
     command("Fit to Content", "view.fit", "CmdOrCtrl+0"),
-    separator,
-    { role: "togglefullscreen" },
   ];
+  // macOS adds its own Enter Full Screen item, with the system shortcut, to a menu titled View. Electron's role item does not use
+  // the standard action, so the system does not recognize it as that item and both would be shown.
+  if (!isMac) viewItems.push(separator, { role: "togglefullscreen" });
   if (options.developerTools) viewItems.push(separator, { role: "toggleDevTools" });
 
   return [

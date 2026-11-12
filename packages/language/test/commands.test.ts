@@ -1,10 +1,16 @@
-import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, wireKey, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator } from "@face/model";
+import {
+  BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, wireKey,
+  type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type NetworkSelection, type SelectorCombinator,
+} from "@face/model";
 import { describe, expect, it } from "vitest";
 import {
   addEntity, addWire, analyze, applyChanges, deleteEntities, EditError, executeCommand, moveEntities, moveEntity, printCircuit, printEntity, removeWire, renameEntity, updateEntity,
   type ParseResult, type TextChange,
 } from "../src/index.ts";
 import { circuit, fixture, Generator, idOf, valid, withoutId } from "./helpers.ts";
+
+const RED: NetworkSelection = { red: true, green: false };
+const NONE: NetworkSelection = { red: false, green: false };
 
 const comments = fixture("comments.face");
 const parsed = valid(comments);
@@ -376,6 +382,38 @@ describe("updateEntity: statement-level minimal rewrite", () => {
       return { ...d, conditions: [{ ...d.conditions[0]!, second: { type: "constant", value: 11 } }, d.conditions[1]!] };
     });
     expect(result).toBe(decider.replace("when virtual:signal-A < 10 /* limit */ and virtual:signal-B > 0", "when virtual:signal-A < 11 and virtual:signal-B > 0"));
+  });
+
+  it("switching a network selection, to none and back, rewrites only the statement it is in", () => {
+    const select = (first: NetworkSelection, output: NetworkSelection) => (e: Entity): Entity => {
+      const d = e as DeciderCombinator;
+      return { ...d, conditions: [{ ...d.conditions[0]!, firstNetworks: first }, d.conditions[1]!], outputs: [{ ...d.outputs[0]!, networks: output }, d.outputs[1]!] };
+    };
+    const rewritten = decider.replace("when virtual:signal-A < 10 /* limit */ and", "when virtual:signal-A < 10 and");
+    const none = update(decider, "gate", select(NONE, NONE));
+    expect(none).toBe(rewritten.replace("when virtual:signal-A <", "when virtual:signal-A[none] <").replace("output virtual:signal-A = input   //", "output virtual:signal-A = input[none]   //"));
+    const red = update(none, "gate", select(RED, BOTH_NETWORKS));
+    expect(red).toBe(rewritten.replace("when virtual:signal-A <", "when virtual:signal-A[red] <"));
+    expect(update(red, "gate", select(BOTH_NETWORKS, BOTH_NETWORKS))).toBe(rewritten);
+
+    const arithmetic = circuit("    arithmetic a {\n        // product\n        item:x = item:a[red] * item:b /* b */ ; // both colors\n    }");
+    const operand = update(arithmetic, "a", (e) => ({ ...(e as ArithmeticCombinator), second: { type: "signal", signal: { kind: "item", name: "b" }, networks: NONE } }));
+    expect(operand).toBe(arithmetic.replace("item:b /* b */ ;", "item:b[none] /* b */ ;"));
+    expect(update(operand, "a", (e) => ({ ...(e as ArithmeticCombinator), first: { type: "signal", signal: { kind: "item", name: "a" }, networks: NONE } }))).toBe(operand.replace("item:a[red]", "item:a[none]"));
+  });
+
+  it("writes, changes and removes the networks property of a lamp in place", () => {
+    const source = circuit("    lamp l {\n        // lit by b\n        when item:b > 0 // enable\n        always-on = true; // sep\n    }");
+    const select = (inputNetworks: NetworkSelection) => (e: Entity): Entity => ({ ...(e as Lamp), inputNetworks });
+    const none = update(source, "l", select(NONE));
+    expect(none).toBe(source.replace("// enable\n", "// enable\n        networks = none\n"));
+    const green = update(none, "l", select({ red: false, green: true }));
+    expect(green).toBe(none.replace("networks = none", "networks = green"));
+    expect(update(green, "l", select(BOTH_NETWORKS))).toBe(source);
+    // A hand-written statement that keeps its meaning keeps its text.
+    const written = circuit("    lamp l { networks   =   none /* dark */ always-on = true }");
+    expect(update(written, "l", (e) => ({ ...(e as Lamp), alwaysOn: false }))).toBe(written.replace("always-on = true", "always-on = false"));
+    expect(update(written, "l", select(RED))).toBe(written.replace("networks   =   none", "networks = red"));
   });
 
   it("inserts new outputs after the previous output and removes dropped ones with their line", () => {
