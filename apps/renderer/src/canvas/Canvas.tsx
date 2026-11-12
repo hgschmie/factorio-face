@@ -2,6 +2,7 @@
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
 import type { Circuit, EntityId, EntityKind, Point, TerminalRef, Wire, WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
+import { facingOf, type RotationTurn } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
@@ -49,6 +50,8 @@ export interface CanvasProps {
   /** A wire gesture was completed between the pins of two different terminals: connect them, or disconnect them if this wire exists. */
   onToggleWire(wire: Wire): void;
   onDeleteSelection(): void;
+  /** Turns the selected entities a quarter turn; offered in the context menu of a card. */
+  onRotate?(turn: RotationTurn): void;
   /** The clipboard actions of the context menu; an action the host cannot perform is absent and its item disabled. */
   onCopy?(): void;
   onCut?(): void;
@@ -72,7 +75,7 @@ const CULL_CELL = 400;
 const OUTLINE_ZOOM = 0.3;
 const FIT_PADDING = 70;
 /** Room kept for the context menu, so that it opens inside the canvas. */
-const MENU_SIZE = { width: 200, height: 150 };
+const MENU_SIZE = { width: 250, height: 215 };
 const NUDGE_KEYS: Readonly<Record<string, Point>> = { ArrowLeft: { x: -GRID, y: 0 }, ArrowRight: { x: GRID, y: 0 }, ArrowUp: { x: 0, y: -GRID }, ArrowDown: { x: 0, y: GRID } };
 
 function clientPoint(event: { readonly clientX: number; readonly clientY: number }): Point {
@@ -149,7 +152,7 @@ export function Canvas(props: CanvasProps) {
 
   const fit = useCallback(() => {
     const bounds = entitiesBounds(circuit.entities);
-    // Feedback loops pass above their card; keep them in view as well.
+    // Feedback loops pass 40 units beside their card, on the side its facing decides; keep them in view as well.
     setCamera(fitCamera(bounds && expandRect(bounds, FEEDBACK_CLEARANCE.green), size, FIT_PADDING));
   }, [circuit.entities, size, setCamera]);
 
@@ -388,17 +391,26 @@ export function Canvas(props: CanvasProps) {
     action?.();
   };
   const selectAll = (): void => onSelect(circuit.entities.map((entity) => entity.id));
-  // A right click on empty canvas clears the selection, so the actions on it are only offered on a card or a wire. Cut and
-  // copy take the selected entities; a selection of wires alone has neither.
+  // A right click on empty canvas clears the selection, so the actions on it are only offered on a card or a wire. Cut, copy
+  // and the rotations take the selected entities; a selection of wires alone has none of them.
   const clipboardItems: ContextMenuItem[] = [
     { id: "cut", label: "Cut", icon: "cut", shortcut: SHORTCUT.cut, disabled: !editable || !props.onCut, onSelect: clipboardAction(props.onCut) },
     { id: "copy", label: "Copy", icon: "copy", shortcut: SHORTCUT.copy, disabled: !props.onCopy, onSelect: clipboardAction(props.onCopy) },
   ];
-  const withClipboard = selection.length > 0;
+  // Each selected entity turns in place. The focus goes back to the canvas, so that the keys work afterwards.
+  const rotate = (turn: RotationTurn) => (): void => {
+    svgRef.current?.focus();
+    props.onRotate?.(turn);
+  };
+  const rotateItems: ContextMenuItem[] = [
+    { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: SHORTCUT.rotate, disabled: !editable || !props.onRotate, separatorBefore: true, onSelect: rotate("clockwise") },
+    { id: "rotate-back", label: "Rotate counter-clockwise", icon: "rotateLeft", shortcut: SHORTCUT.rotateBack, disabled: !editable || !props.onRotate, onSelect: rotate("counterclockwise") },
+  ];
+  const withEntities = selection.length > 0;
   const menuItems: ContextMenuItem[] = menu && menu.on !== "canvas"
     ? [
-        ...(withClipboard ? clipboardItems : []),
-        { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, separatorBefore: withClipboard, onSelect: deleteSelection },
+        ...(withEntities ? [...clipboardItems, ...rotateItems] : []),
+        { id: "delete", label: selectedCount > 1 ? `Delete ${countLabel(selection.length, wireSelection.length)}` : "Delete", icon: "trash", shortcut: SHORTCUT.delete, danger: true, disabled: !editable, separatorBefore: withEntities, onSelect: deleteSelection },
       ]
     : [
         { id: "select-all", label: "Select all", icon: "selectAll", shortcut: SHORTCUT.selectAll, disabled: circuit.entities.length === 0, onSelect: selectAll },
@@ -453,7 +465,7 @@ export function Canvas(props: CanvasProps) {
           describeSignal={props.describeSignal}
           resolveIcon={props.resolveEntityIcon}
         />
-        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={pinPoint(pendingEntity.position, pendingWire.side, tool.color)} to={pointerWorld} />}
+        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={pinPoint(pendingEntity.position, pendingWire.side, tool.color, facingOf(pendingEntity))} to={pointerWorld} />}
         {marquee && <rect className="marquee" x={marquee.x} y={marquee.y} width={marquee.width} height={marquee.height} />}
       </svg>
 

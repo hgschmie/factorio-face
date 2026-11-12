@@ -1,7 +1,7 @@
 // Graphical edits as source patches: pure functions from (parse result, command) to minimal text changes.
 // Unrelated text, comments, spacing and declaration order are never touched.
 
-import { DEFAULT_ENTITY, hasTerminal, isInt32, NORMAL_QUALITY, wireKey, type Circuit, type Entity, type EntityId, type EntityKind, type Point, type TerminalRef, type WireColor } from "@face/model";
+import { DEFAULT_ENTITY, DIRECTIONS, hasTerminal, isInt32, NORMAL_QUALITY, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type TerminalRef, type WireColor } from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
 import type { CstBlock, CstMember, CstSection, CstStatement } from "./cst.ts";
 import { uniqueNames, type Fragment } from "./fragment.ts";
@@ -40,6 +40,14 @@ export class EditError extends Error {
 export interface EntityMove {
   readonly id: EntityId;
   readonly position: Point;
+}
+
+/** The direction an entity without a `facing` clause faces. */
+export const DEFAULT_FACING: Direction = "east";
+
+export interface EntityFacing {
+  readonly id: EntityId;
+  readonly direction: Direction;
 }
 
 /** Applies sorted, non-overlapping changes. */
@@ -337,6 +345,24 @@ export function moveEntities(parse: ParseResult, moves: readonly EntityMove[]): 
 
 export function moveEntity(parse: ParseResult, id: EntityId, position: Point): TextChange[] {
   return moveEntities(parse, [{ id, position }]);
+}
+
+/**
+ * Patches the direction word of the `facing` clause, or inserts the clause behind `tile`, `at` or the name when the entity has
+ * none. An entity that faces the wanted direction already (east without a clause) is left alone; a clause is never removed.
+ */
+export function faceEntities(parse: ParseResult, facings: readonly EntityFacing[]): TextChange[] {
+  const edit = new Edit(parse);
+  for (const [id, direction] of new Map(facings.map((f) => [f.id, f.direction]))) {
+    const { node, atInsert } = edit.entity(id);
+    if (!DIRECTIONS.includes(direction)) throw new EditError("invalid-entity", `'${String(direction)}' is not a direction; use ${DIRECTIONS.join(", ")}`);
+    if ((edit.model(id).placement?.direction ?? DEFAULT_FACING) === direction) continue;
+    const word = node.facing?.direction;
+    const behind = Math.max(atInsert, node.at?.to ?? 0, node.tile?.to ?? 0);
+    if (word) edit.change(word.from, word.to, direction);
+    else edit.change(behind, behind, ` facing ${direction}`);
+  }
+  return edit.finish();
 }
 
 function rename(edit: Edit, id: EntityId, newName: string): void {
@@ -683,6 +709,7 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
 export type EditCommand =
   | { readonly type: "addEntity"; readonly kind: EntityKind; readonly position: Point; readonly name?: string }
   | { readonly type: "moveEntities"; readonly moves: readonly EntityMove[] }
+  | { readonly type: "faceEntities"; readonly facings: readonly EntityFacing[] }
   | { readonly type: "renameEntity"; readonly id: EntityId; readonly name: string }
   | { readonly type: "deleteEntities"; readonly ids: readonly EntityId[]; /** Connections to remove in the same edit, as `wireKey`s. */ readonly wires?: readonly string[] }
   | { readonly type: "addWire"; readonly color: WireColor; readonly a: TerminalRef; readonly b: TerminalRef }
@@ -707,6 +734,7 @@ export function executeCommand(parse: ParseResult, command: EditCommand): EditRe
     switch (command.type) {
       case "addEntity": return { ok: true, ...addEntity(parse, command.kind, command.position, command.name) };
       case "moveEntities": return { ok: true, changes: moveEntities(parse, command.moves) };
+      case "faceEntities": return { ok: true, changes: faceEntities(parse, command.facings) };
       case "renameEntity": return { ok: true, changes: renameEntity(parse, command.id, command.name) };
       case "deleteEntities": return { ok: true, changes: deleteEntities(parse, command.ids, command.wires) };
       case "addWire": return { ok: true, changes: addWire(parse, command.color, command.a, command.b) };

@@ -5,7 +5,8 @@
 import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup } from "@face/catalog";
-import type { Circuit, Entity, EntityId, EntityKind, Point, SignalId, Wire, WireColor } from "@face/model";
+import type { Circuit, Direction, Entity, EntityId, EntityKind, Point, SignalId, Wire, WireColor } from "@face/model";
+import type { RotationTurn } from "../entities/facing.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
 export type WorkbenchMode = (typeof WORKBENCH_MODES)[number];
@@ -240,6 +241,10 @@ export interface WorkbenchCommands {
   /** Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units). */
   placeEntity(kind: EntityKind, position: Point): void;
   moveEntities(moves: readonly EntityMove[]): void;
+  /** Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included. */
+  rotateEntities(ids: readonly EntityId[], turn: RotationTurn): void;
+  /** Makes the entities face `direction`, as one step. An entity that faces it already is left alone. */
+  faceEntities(ids: readonly EntityId[], direction: Direction): void;
   /**
    * Replaces the configuration of the entity with `next.id`. Name and position changes go through their own commands.
    * A configuration the language cannot express yet is kept as `WorkbenchState.draft` and written once it becomes valid.

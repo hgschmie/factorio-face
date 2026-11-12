@@ -10,6 +10,8 @@ export const SHORTCUT = {
   redo: IS_MAC ? "⇧⌘Z" : "Ctrl+Y",
   save: IS_MAC ? "⌘S" : "Ctrl+S",
   fit: IS_MAC ? "⌘0" : "Ctrl+0",
+  rotate: "R",
+  rotateBack: IS_MAC ? "⇧R" : "Shift+R",
 } as const;
 
 /** True for an input or text area that holds text the user types (not the source editor, which is no form control). */

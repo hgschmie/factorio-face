@@ -41,13 +41,14 @@ src/
   canvas/
     Canvas.tsx         SVG canvas: camera, gestures, pending wire, context menu; emits callbacks only
     Scene.tsx          memoized wires (with their click target) and cards, culled to the visible area
-    EntityCard.tsx     one memoized card (kind, description marker, icon, name, summary, live status rows, a red and a green pin per side in TERMINALS)
+    EntityCard.tsx     one memoized card (kind, description marker, icon, name, summary, live status rows, a red and a green pin per side in
+                       TERMINALS, on the edges the entity's facing gives them)
     statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text   (pure)
     ContextMenu.tsx    keyboard-navigable popup menu
-    geometry.ts        card and pin geometry (`pinPoint`), rectangles  (pure)
+    geometry.ts        card and pin geometry (`pinPoint`, `pinEdge`, `pinHeading`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
     drag.ts            snap, drag threshold, group drag, placement     (pure)
-    wireRouting.ts     wire routes and SVG path data                   (pure)
+    wireRouting.ts     wire routes for every combination of pin edges, SVG path data   (pure)
   editor/
     SourceEditor.tsx   CodeMirror view over an `EditorBinding`; owns no state
     extensions.ts      editor chrome: gutters, selection, indentation, keys, theme
@@ -68,7 +69,8 @@ src/
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
-  entities/            kind labels, signal text forms (short names, lists, compact numbers), card summaries  (pure)
+  entities/            kind labels, signal text forms (short names, lists, compact numbers), card summaries, the direction an entity
+                       faces and its quarter turns (`facing.ts`)  (pure)
   icons/               interface glyphs, entity icons, catalog icon resolvers (with probes for the git-ignored artwork)
   styles/              tokens.css and one stylesheet per area
 test/                  vitest: pure view modules
@@ -94,7 +96,7 @@ has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `too
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
 
-`WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `updateEntity`,
+`WorkbenchCommands`: view (`setMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `addWire`, `removeWire`, `toggleWire`, `setSource`, `undo`, `redo`),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
@@ -133,6 +135,14 @@ simulation (`run`, `pause`,
 - **Saving while a field holds unwritten text.** A name or a description is written when its field is left. Save and Save As
   (menu, key, the close prompt) first leave and re-enter the focused field when it carries `data-unwritten` (`writeFocusedField`
   in `Workbench.tsx`), so the saved file has the text and the caret stays where it was.
+- **Rotation.** `facing` in the entity header is the direction the output points to; without the clause an entity faces east
+  (`DEFAULT_FACING` of `@face/language`, `facingOf` in `entities/facing.ts`). `rotateEntities(ids, turn)` turns each of the
+  entities a quarter turn in place (clockwise: east, south, west, north), `faceEntities(ids, direction)` sets a direction. Both
+  run the language command `faceEntities`, which patches the direction word of the clause or inserts ` facing <direction>`
+  behind `tile`, `at` or the name and never removes a clause: one transaction for all entities, one undo step, nothing for an
+  entity that faces the direction already. A rotation therefore always leaves an explicit clause, `facing east` included. Name,
+  position and settings edits keep the direction (`updateEntity` takes the placement from the document). The simulation does
+  not see it: `semanticFingerprint` is unchanged, so a running engine, its tick and its history stay. Copy and paste keep it.
 - **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
   a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
   so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.
@@ -231,7 +241,12 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   (3 x 13 at y 7), kind label (9px, baseline 17), description marker (13 at the top right). Body down to the divider at 72.5:
   entity icon 34 at (13, 32), name (15px, baseline 46, 13 characters) and summary (12px monospace, baseline 63, 15 characters)
   from x 56. Below it three status rows of 9px monospace text, centered at y 84, 100 and 116 (`STATUS_ROWS` in
-  `statusRows.ts`). Nothing but the pins lies outside x 13 to 171; the pins reach 7 units into the card.
+  `statusRows.ts`). Nothing but the pins lies outside x 13 to 171; the pins reach 7 units into the card. The card, its text and
+  its icon never turn with the entity. Where pins sit on the top or the bottom edge (an entity facing north or south) the content
+  next to them gives way, and only there: a card with pins on its top edge has the kind accent, the kind label and the
+  description marker 2 units lower (label baseline 19), a card with pins on its bottom edge has its three status rows centered at
+  y 82, 97 and 112 (`RAISED_ROWS`), which leaves 2.5 units between the icons of the last row and the pins. A card facing east or
+  west is drawn exactly as before entities could be rotated.
 - Status rows, while the simulation has data: what the entity reads on red (a red bar in front), what it reads on green (a
   green bar) and what it emits (an arrow; the same on both colors). A lamp has its state in the third row instead (`lit` or
   `off`, and a swatch of the light's color when it has one). A constant combinator has no input rows; its output starts in
@@ -248,28 +263,77 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   and the classes `red`, `green`, `out`, `lamp` and `unwired`; inside them `.row-marker`, one `<image>` (with a catalog icon)
   and one `text.row-value` per signal, `text.row-more` (`+N`), `text.row-none` (the dash, a lamp that is off) and
   `rect.row-swatch`. Rows are memoized by their signal list, which the engine keeps while a network or an output is unchanged.
-- Grid 20 units; cards are 184 x 128. Every terminal side (`TERMINALS`: inputs on the left edge, outputs on the right) has one connection
-  pin per wire color, red 60 and green 80 units below the top edge, so both sit on grid lines 20 units apart. `pinPoint(position, side,
-  color)` in `geometry.ts` is the only place that knows this; a wire of a color starts and ends in the center of the pin of that color.
-- Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out"`, `data-wire-color="red|green"` and a `<title>` such as "Red
-  input". Pins are drawn in the wire color tokens. A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color
-  are targets (highlight, click, pending state, start of the rubber band), the others are dimmed and ignored. The model is unchanged: a
-  wire is a color plus two terminals, and the tool decides the color.
+- Grid 20 units; cards are 184 x 128. Every terminal (`TERMINALS`: `in`, `out`) has one connection pin per wire color. Which edge
+  of the card carries them follows from the direction the entity faces (`facing`, the direction its output points to; east when the
+  source does not say). The pins turn with the entity as one rigid figure, clockwise from east over south and west to north; offsets
+  from the top-left corner of the card:
+
+  | Facing | Outputs | Inputs | Output red, green | Input red, green | Red is |
+  | --- | --- | --- | --- | --- | --- |
+  | east | right edge | left edge | (184, 60), (184, 80) | (0, 60), (0, 80) | above green |
+  | south | bottom edge | top edge | (100, 128), (80, 128) | (100, 0), (80, 0) | right of green |
+  | west | left edge | right edge | (0, 80), (0, 60) | (184, 80), (184, 60) | below green |
+  | north | top edge | bottom edge | (80, 0), (100, 0) | (80, 128), (100, 128) | left of green |
+
+  All pins are on grid lines, 20 units apart; those on the top and bottom edge sit around the middle of the card (92). A constant
+  and a lamp have the pins of their one terminal. `pinPoint(position, side, color, facing)` in `geometry.ts` is the only place that
+  knows the positions (`pinEdge` and `pinHeading` name the edge and the direction a wire leaves in); a wire of a color starts and
+  ends in the center of the pin of that color, and the rubber band of a pending wire starts there too.
+- Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out"`, `data-wire-color="red|green"`, `data-edge="left|right|top|
+  bottom"` and a `<title>` such as "Red input"; the card (`g.card`) carries `data-facing`. Pins are drawn in the wire color tokens.
+  A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color are targets (highlight, click, pending state,
+  start of the rubber band), the others are dimmed and ignored, whatever edge they are on. The model is unchanged: a wire is a
+  color plus two terminals, and the tool decides the color.
+- Rotating: `R` turns the selected entities a quarter turn clockwise, `Shift+R` counter-clockwise, as in the game. The keys are
+  handled by `Workbench` on the document, so they work wherever the focus is while the canvas is shown (canvas, palette,
+  inspector buttons, dock), except where a key is text or moves through a list: a text control, a select, the source editor, a
+  dialog, an open menu. A held key does not repeat. The context menu of a card has "Rotate clockwise" and "Rotate
+  counter-clockwise" with the keys, and the inspector of a single entity has the Facing control (`.facing-toggle`, a group named
+  "Facing" with four buttons `data-direction`, `aria-pressed` on the current one). Every entity of a selection turns in place, each
+  from its own direction; the selection is not turned as a group. One rotation of a selection is one undo step. While the source
+  has errors all three are off.
 - Routes (`wireRouting.ts`): every wire is a line of horizontal and vertical segments from pin to pin, drawn with rounded corners
   (radius 14; a corner next to a shorter segment gets what fits: the whole first or last segment, half of one between two corners).
-  There are no curves. Red and green between the same two terminals run as parallels one pin spacing (20) apart and never touch,
-  except in a narrow gap and at the one crossing described below.
-  - Output to an input at least 16 units to its right: out, one vertical leg midway between the two cards, in; a straight line when
-    the pins are level. The color on the outside of the first bend takes the far leg. In a gap below 26 units (cards one grid step
-    apart leave 16) the two legs move together, down to 10 apart and 3 from the cards.
+  There are no curves. A wire leaves and enters a pin at a right angle to its edge. Red and green between the same two terminals
+  run as parallels one pin spacing (20) apart and never touch, except in a narrow gap and at the one crossing described below.
+  `routeWire(color, a, b, sameEntity)` takes the position, the side and the facing of both ends; the route does not depend on
+  their order. The rules below are written for two entities facing east. Two entities that face the same other way, and the
+  feedback wire of one entity, get the same rules in a frame turned with them (the whole figure turns: a column of entities
+  facing south is wired with straight vertical lines, the loop of a feedback wire passes the side of the card on which the red
+  pins sit).
+  - Output to an input at least 16 units to its right (12 for entities facing north or south: in both cases the gap that cards one
+    grid step apart leave): out, one vertical leg midway between the two cards, in; a straight line when the pins are level. The color on the outside of the first bend takes the far leg. In a gap below 26 units (cards one grid step
+    apart leave 16, cards facing north or south 12) the two legs move together, down to 10 apart (6 in a gap of 12) and 3 from the
+    cards.
   - Output to an input that is not to its right: a detour out to the right, across between the two cards (below both when they are
     less than 40 apart vertically, then also around the lower one) and into the input from the left, 10 and 30 units from the cards.
-  - Output to input of one card: a loop over the top with 20 (red, inside) and 40 (green, outside) units of clearance.
+  - Output to input of one card: a loop over the top with 20 (red, inside) and 40 (green, outside) units of clearance. Facing
+    south the loop passes the right side of the card, facing west below it, facing north its left side.
   - Two inputs or two outputs: out, a leg 10 (green) and 30 (red) units beyond the terminal further out, back in. The colors have to
     cross once, at a right angle: here where red returns into the lower terminal. When the card of the outer terminal is in the way
     of the other one (cards side by side), the wire first passes 10 and 30 units below that card, or above it when the other terminal
     is higher (green is then outside); the crossing is at the far corner of that lane.
-  Routes do not avoid other cards, and wires of different connections may share a line.
+
+  Two entities that face different ways have their pins on edges in any combination, so their line is searched instead of built
+  from a rule per case (`laneRoute`, `searchLine`):
+  - The line between the centers of the two terminals runs on a few lanes: the lines through the two pins, the lines 20 units
+    beside each card, and the line midway between the two cards where they are at least 40 apart. It leaves and enters each
+    terminal straight for 20 units and stays 20 units away from both cards. Among all such lines the one with the fewest corners
+    is taken, then the shortest (a corner counts as 100 units), then the one that turns on the middle lane, then on a lane of the
+    pins or of the first card.
+  - From an output to an input the colors are exact parallels 10 units to both sides of that line (10 and 30 units from a card
+    they pass), red on the left seen from the output.
+  - Between two outputs or two inputs red is on one side of the line where it leaves and on the other where it arrives. The colors
+    swap sides at the last corner that has room for it and cross there once, at a right angle. Two such terminals that face each
+    other on one line have no corner: red steps over halfway, and green passes around the step, 10 units from each card and a pin
+    spacing further out, crossing red in front of the second card.
+  - Cards 26 to 40 units apart: the line keeps half the gap from the cards instead of 20, so the pair still fits between them.
+    Where even that is impossible (a terminal that points into a narrower gap, cards one grid step apart) each color takes lanes
+    of its own, green 10 and red 30 units from the cards, then 3 and up to 13; the colors may then cross more than once. Cards
+    that touch or overlap get a line that ignores them.
+
+  Routes do not avoid other cards, and wires of different connections may share a line. Fit to Content adds 40 units around the
+  cards, which holds every feedback loop whatever the direction.
 - Wires in the DOM: `g.wire` in `g.wires` with `data-wire` (the wire key), `data-color` and the class `selected`; inside it
   `path.wire-hit`, `path.wire-casing` and `path.wire-core` on the same route. `wire-hit` is a 12 unit wide stroke: it takes the
   pointer while the select tool is active (and only then), shows a faint glow under the pointer and is the accent outline of a
@@ -294,7 +358,8 @@ Token classes for source highlighting (`face-tok-keyword`, `-string`, `-number`,
   errors copy works, cut and paste do nothing. The context menu of a card has Cut and Copy with their shortcuts (Cut disabled
   while the source has errors); they run `document.execCommand`, which raises the same events. There is no Paste in the context
   menu: a page cannot start a paste (`document.execCommand("paste")` is refused and the clipboard permissions are denied), so it
-  would need a channel on which the main process pastes on the page's behalf. Pasting is Edit > Paste and Cmd/Ctrl+V.
+  would need a channel on which the main process pastes on the page's behalf. Pasting is Edit > Paste and Cmd/Ctrl+V. With
+  entities selected the menu also has the two rotations, between Copy and Delete.
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
   while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
   control or the source editor has focus. All of them delete the whole selection, entities and wires, as one undo step

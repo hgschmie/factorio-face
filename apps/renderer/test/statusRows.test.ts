@@ -1,7 +1,7 @@
 import { signal, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { CARD, PIN_RADIUS } from "../src/canvas/geometry.ts";
-import { inputText, layoutRow, outputText, STATUS_ROWS, statusLines, TEXT_SIGNALS } from "../src/canvas/statusRows.ts";
+import { inputText, layoutRow, outputText, RAISED_ROWS, rowPlacement, STATUS_ROWS, statusLines, TEXT_SIGNALS } from "../src/canvas/statusRows.ts";
 import { compactNumber, signalListText } from "../src/entities/signalText.ts";
 import type { StatusSignal } from "../src/workbench/controller.ts";
 
@@ -123,6 +123,27 @@ describe("row layout", () => {
     expect(three.items.filter((item) => item.line === 0).length).toBeGreaterThan(three.items.filter((item) => item.line === 2).length);
     // What fits on one line stays on it.
     expect(layoutRow(entries(3), icon, 3).items.every((item) => item.line === 0)).toBe(true);
+  });
+});
+
+describe("rows of a card with pins on its bottom edge", () => {
+  /** Top of the first row's icons and bottom of the last row's, the tallest things in a row. */
+  const extent = ({ top, pitch }: { readonly top: number; readonly pitch: number }) => [top - STATUS_ROWS.icon / 2, top + 2 * pitch + STATUS_ROWS.icon / 2] as const;
+
+  it("leaves the rows of every other card where they were", () => {
+    expect(rowPlacement(false)).toBe(STATUS_ROWS);
+    expect([STATUS_ROWS.top, STATUS_ROWS.pitch]).toEqual([84, 16]);
+  });
+
+  it("moves the rows up and together, clear of the pins below and of the divider above", () => {
+    expect(rowPlacement(true)).toBe(RAISED_ROWS);
+    const [top, bottom] = extent(RAISED_ROWS);
+    // The pins reach their radius and half their outline into the card; the divider above the rows is at 72.5.
+    expect(bottom).toBeLessThanOrEqual(CARD.height - PIN_RADIUS - 1 - 1.5);
+    expect(top).toBeGreaterThanOrEqual(72.5 + 2);
+    expect(extent(STATUS_ROWS)[1]).toBeGreaterThan(CARD.height - PIN_RADIUS - 1);
+    // Three rows of icons still do not touch each other.
+    expect(RAISED_ROWS.pitch).toBeGreaterThanOrEqual(STATUS_ROWS.icon + 2);
   });
 });
 

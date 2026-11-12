@@ -5,6 +5,7 @@ import type { FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
 import { Canvas, type CanvasHandle } from "../canvas/Canvas.tsx";
 import { ZOOM_STEP, type CanvasView } from "../canvas/viewport.ts";
 import type { SourceEditorHandle } from "../editor/SourceEditor.tsx";
+import type { RotationTurn } from "../entities/facing.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspector/Inspector.tsx";
@@ -139,6 +140,21 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
     };
   }, [commands]);
 
+  // R and Shift+R turn the selected entities, as in the game. They belong to the circuit wherever the focus is while the canvas
+  // is shown, except where a key is text or moves through a list: a text control, the source editor, a dialog, a menu.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key.toLowerCase() !== "r" || event.metaKey || event.ctrlKey || event.altKey || event.repeat || event.isComposing || event.defaultPrevented) return;
+      const { selection, editable, mode } = stateRef.current;
+      if (mode === "source" || !editable || selection.length === 0 || focusIsOnText() || document.activeElement?.closest('[role="menu"]')) return;
+      event.preventDefault();
+      commands.rotateEntities(selection, event.shiftKey ? "counterclockwise" : "clockwise");
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [commands]);
+  const rotateSelection = useCallback((turn: RotationTurn) => commands.rotateEntities(stateRef.current.selection, turn), [commands]);
+
   // The context menu of the canvas starts the same events for a cut and a copy. A page cannot start a paste (the main process
   // would have to do it on its behalf), so the menu has none: pasting is Edit > Paste and Cmd/Ctrl+V.
   const menuCopy = useCallback(() => void document.execCommand("copy"), []);
@@ -248,6 +264,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   onMoveEntities={commands.moveEntities}
                   onToggleWire={commands.toggleWire}
                   onDeleteSelection={commands.deleteSelection}
+                  onRotate={rotateSelection}
                   onCopy={menuCopy}
                   onCut={menuCut}
                 />
@@ -278,6 +295,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           draft={state.draft}
           onRename={commands.renameEntity}
           onChange={commands.updateEntity}
+          onFace={commands.faceEntities}
           onDiscardDraft={commands.discardDraft}
           onDelete={commands.deleteEntities}
           onDeleteSelection={commands.deleteSelection}

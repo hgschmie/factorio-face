@@ -27,6 +27,17 @@ export const STATUS_ROWS = {
   nameChars: 12,
 } as const;
 
+/**
+ * Where the rows of a card with pins on its bottom edge go: higher and closer together, so that the last row stays clear of
+ * those pins as the other rows do of the pins on the sides.
+ */
+export const RAISED_ROWS = { top: 82, pitch: 15 } as const;
+
+/** Vertical center of the first row and the distance to the next, for a card with or without pins on its bottom edge. */
+export function rowPlacement(pinsBelow: boolean): { readonly top: number; readonly pitch: number } {
+  return pinsBelow ? RAISED_ROWS : STATUS_ROWS;
+}
+
 /** Signals named per row in the tooltip and in the card's data attributes; a network can carry thousands. */
 export const TEXT_SIGNALS = 32;
 

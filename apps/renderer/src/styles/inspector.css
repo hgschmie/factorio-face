@@ -65,6 +65,36 @@
   padding-bottom: 11px;
 }
 
+/* The direction the entity faces: four arrows, the pressed one pointing where the outputs are. */
+.facing-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 11px;
+}
+
+.facing-toggle {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.facing-toggle button {
+  width: 31px;
+  height: 27px;
+  padding: 0;
+  border-color: var(--border-input);
+  color: var(--text-dim);
+  background: var(--surface-inset);
+}
+
+.facing-toggle button[aria-pressed="true"],
+.facing-toggle button[aria-pressed="true"]:hover:not(:disabled) {
+  border-color: var(--accent-fill);
+  color: var(--ink);
+  background: var(--accent-fill);
+}
+
 /* One line while empty, as high as its text up to eight lines, then it scrolls: the settings below move as little as possible. */
 .description-field {
   padding-bottom: 16px;

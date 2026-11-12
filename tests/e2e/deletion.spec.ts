@@ -24,7 +24,7 @@ test("a selection shows no floating toolbar; on the canvas the context menu dele
   await expect(floatingDelete).toHaveCount(0);
   const menu = page.getByRole("menu", { name: "Canvas actions" });
   await page.mouse.click(light.x, light.y, { button: "right" });
-  await expect(menu.getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Delete 2 entities/]);
+  await expect(menu.getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete 2 entities/]);
   await page.keyboard.press("Escape");
   expect(await entityNames(page)).toEqual(ALL);
 

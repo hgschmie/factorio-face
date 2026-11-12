@@ -85,6 +85,9 @@ test("typing in Source updates the canvas", async ({ page }) => {
   await page.keyboard.type("wire green sec");
   const completions = page.locator(".cm-tooltip-autocomplete");
   await expect(completions).toContainText("second.in");
+  // CodeMirror ignores Enter for the first 75 ms a completion list is shown (`interactionDelay`), so that typing ahead does not
+  // accept by accident; the key would then be a line break. The page shows nothing when that time is over.
+  await page.waitForTimeout(150);
   await page.keyboard.press("Enter");
   await expect(page.locator(".source-pane .cm-line", { hasText: "wire green second.in" })).toHaveCount(1);
 });

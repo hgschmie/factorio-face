@@ -76,7 +76,9 @@ A network selection says which of the two input networks a signal is read from: 
 
 Entity names are unique within a circuit. Members may appear in any order; a wire may precede the entities it references. Statement order inside an entity is preserved; order is semantically relevant only for decider outputs, constant filters and sections.
 
-`at (x, y)` is the schematic position on the editor canvas (integers, canvas units, 20-unit grid). If absent, the editor auto-places the entity and writes the clause on first move. `tile (x, y)` and `facing` are the optional in-game placement kept for blueprint round trips; they never affect simulation.
+`at (x, y)` is the schematic position on the editor canvas (integers, canvas units, 20-unit grid). If absent, the editor auto-places the entity and writes the clause on first move. `tile (x, y)` is the optional in-game position kept for blueprint round trips.
+
+`facing <direction>` is the direction the entity faces: the direction its output points to, seen from its input, as in the game. Without the clause an entity faces east. On the editor canvas the direction decides which edges of the card carry the connection pins; the card and its text do not turn. Facing east, the inputs are on the left edge and the outputs on the right edge, red above green. The pins turn with the direction as one figure: facing south the outputs are on the bottom edge and the inputs on the top edge, red right of green; facing west the outputs are on the left and the inputs on the right, red below green; facing north the outputs are on the top and the inputs on the bottom, red left of green. A constant combinator and a lamp follow the same rule with the one terminal they have. The editor writes the clause when an entity is rotated and from then on keeps it, also as `facing east`. `facing` is also the in-game direction kept for blueprint round trips. Neither `tile` nor `facing` ever affects simulation.
 
 ### Common property
 

@@ -1,12 +1,13 @@
 // Right panel: identity and primary actions of the selection (rename, delete) at the top, then the description, the per-kind
 // settings form and the connections. A selected wire shows its color and its two ends; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
-import { wireKey, type Circuit, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
+import { DIRECTIONS, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
+import { facingOf } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
-import { Icon } from "../icons/Icon.tsx";
+import { Icon, type IconName } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
 import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
 import { countLabel, entityNames, selectedItems, wireEndsLabel, type EntityNames } from "../workbench/selectionText.ts";
@@ -43,6 +44,8 @@ export interface InspectorProps {
   readonly renderSettings?: (entity: Entity, onChange: (next: Entity) => void) => ReactNode;
   onRename(id: EntityId, name: string): void;
   onChange(next: Entity, options?: UpdateOptions): void;
+  /** Makes the entities face a direction; without it the inspector shows no Facing control. */
+  onFace?(ids: readonly EntityId[], direction: Direction): void;
   onDiscardDraft?(): void;
   onDelete(ids: readonly EntityId[]): void;
   /** Deletes everything that is selected, entities and wires, as one step. */
@@ -93,6 +96,30 @@ function NameField({ entity, circuit, onRename }: { readonly entity: Entity; rea
           {error}
         </small>
       )}
+    </div>
+  );
+}
+
+const FACING: Readonly<Record<Direction, { readonly label: string; readonly icon: IconName; readonly edges: string }>> = {
+  north: { label: "North", icon: "arrowUp", edges: "outputs on the top edge, inputs on the bottom edge" },
+  east: { label: "East", icon: "arrow", edges: "outputs on the right edge, inputs on the left edge" },
+  south: { label: "South", icon: "arrowDown", edges: "outputs on the bottom edge, inputs on the top edge" },
+  west: { label: "West", icon: "arrowLeft", edges: "outputs on the left edge, inputs on the right edge" },
+};
+
+/** The direction the output of the entity points to, which decides the edges its pins are on. One of four; a click is one step. */
+function FacingField({ entity, onFace }: { readonly entity: Entity; onFace(direction: Direction): void }) {
+  const facing = facingOf(entity);
+  return (
+    <div className="facing-field">
+      <span className="field-label">Facing</span>
+      <span className="facing-toggle" role="group" aria-label="Facing">
+        {DIRECTIONS.map((direction) => (
+          <button key={direction} type="button" data-direction={direction} aria-pressed={direction === facing} aria-label={FACING[direction].label} title={`${FACING[direction].label}: ${FACING[direction].edges}`} onClick={() => onFace(direction)}>
+            <Icon name={FACING[direction].icon} size={15} />
+          </button>
+        ))}
+      </span>
     </div>
   );
 }
@@ -265,6 +292,7 @@ function EntityInspector(props: EntityInspectorProps) {
             Delete
           </button>
         </div>
+        {props.onFace && <FacingField entity={entity} onFace={(direction) => props.onFace?.([entity.id], direction)} />}
         {/* Not through `change`: the text is written once per stay, and that is a step of its own in the history. */}
         <DescriptionField entity={shown} onCommit={(description) => props.onChange({ ...shown, description })} />
         {draft && (

@@ -1,18 +1,30 @@
 // Card and pin geometry in canvas (world) units. Pure.
-import type { Entity, Point, TerminalSide, WireColor } from "@face/model";
+import { DEFAULT_FACING } from "@face/language";
+import type { Direction, Entity, Point, TerminalSide, WireColor } from "@face/model";
+import { opposite } from "../entities/facing.ts";
 
 export const GRID = 20;
 
 export const CARD = {
   width: 184,
   height: 128,
-  /** Vertical position of the connection pins, measured from the top of the card: red above green, both on the grid. */
+  /** Pins on the left and right edge, measured from the top of the card, as a card facing east has them: red above green, both on the grid. */
   pinY: { red: 60, green: 80 },
+  /** Pins on the top and bottom edge, measured from the left of the card, as a card facing north has them: red left of green, both on the grid. */
+  pinX: { red: 80, green: 100 },
 } as const;
 
 /** Distance between the red and the green pin of one terminal. */
 export const PIN_SPACING = CARD.pinY.green - CARD.pinY.red;
 export const PIN_RADIUS = 6;
+
+/** One step in `direction` on the canvas, where y grows downwards. */
+export const DIRECTION_VECTOR: Readonly<Record<Direction, Point>> = { east: { x: 1, y: 0 }, south: { x: 0, y: 1 }, west: { x: -1, y: 0 }, north: { x: 0, y: -1 } };
+
+export type CardEdge = "left" | "right" | "top" | "bottom";
+
+const EDGE_TOWARDS: Readonly<Record<Direction, CardEdge>> = { east: "right", south: "bottom", west: "left", north: "top" };
+const OTHER_COLOR: Readonly<Record<WireColor, WireColor>> = { red: "green", green: "red" };
 
 export interface Rect {
   readonly x: number;
@@ -25,12 +37,34 @@ export function cardRect(position: Point): Rect {
   return { x: position.x, y: position.y, width: CARD.width, height: CARD.height };
 }
 
+/** The direction in which a wire leaves a terminal: an output points where its entity faces, an input the other way. */
+export function pinHeading(side: TerminalSide, facing: Direction = DEFAULT_FACING): Direction {
+  return side === "out" ? facing : opposite(facing);
+}
+
+/** The edge of the card that carries the pins of a terminal. */
+export function pinEdge(side: TerminalSide, facing: Direction = DEFAULT_FACING): CardEdge {
+  return EDGE_TOWARDS[pinHeading(side, facing)];
+}
+
 /**
  * Center of the connection pin for one wire color on one terminal side; a wire of that color starts and ends exactly here.
- * Every entity faces right: inputs on the left edge, outputs on the right, red above green. Entity rotation hooks in here.
+ * An entity facing east has its inputs on the left edge and its outputs on the right, red above green. The pins turn with the
+ * entity as one rigid figure, clockwise from east to south, west and north: facing south the outputs are on the bottom edge with
+ * red right of green, facing west on the left edge with red below green, facing north on the top edge with red left of green.
  */
-export function pinPoint(position: Point, side: TerminalSide, color: WireColor): Point {
-  return { x: position.x + (side === "out" ? CARD.width : 0), y: position.y + CARD.pinY[color] };
+export function pinPoint(position: Point, side: TerminalSide, color: WireColor, facing: Direction = DEFAULT_FACING): Point {
+  const far = side === "out";
+  switch (facing) {
+    case "east":
+      return { x: position.x + (far ? CARD.width : 0), y: position.y + CARD.pinY[color] };
+    case "west":
+      return { x: position.x + (far ? 0 : CARD.width), y: position.y + CARD.pinY[OTHER_COLOR[color]] };
+    case "north":
+      return { x: position.x + CARD.pinX[color], y: position.y + (far ? 0 : CARD.height) };
+    case "south":
+      return { x: position.x + CARD.pinX[OTHER_COLOR[color]], y: position.y + (far ? CARD.height : 0) };
+  }
 }
 
 export function rectFromPoints(a: Point, b: Point): Rect {

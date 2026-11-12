@@ -7,6 +7,7 @@ import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
 import { EntityCard } from "./EntityCard.tsx";
+import { facingOf } from "../entities/facing.ts";
 import { cardRect, rectsIntersect, type Rect } from "./geometry.ts";
 import { routeBounds, routePath, routeWire } from "./wireRouting.ts";
 
@@ -60,7 +61,7 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, posit
     const a = byId.get(wire.a.entity);
     const b = byId.get(wire.b.entity);
     if (!a || !b || terminalKey(wire.a) === terminalKey(wire.b)) continue;
-    const route = routeWire(wire.color, { position: positionOf(a), side: wire.a.side }, { position: positionOf(b), side: wire.b.side }, a.id === b.id);
+    const route = routeWire(wire.color, { position: positionOf(a), side: wire.a.side, facing: facingOf(a) }, { position: positionOf(b), side: wire.b.side, facing: facingOf(b) }, a.id === b.id);
     routed.push({ key: wireKey(wire), wire, path: routePath(route), bounds: routeBounds(route), title: `${wire.color}: ${a.name}.${wire.a.side} <-> ${b.name}.${wire.b.side}` });
   }
   return routed;

@@ -9,9 +9,10 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { wireKey, type Circuit, type Entity, type EntityId, type Point } from "@face/model";
+import { wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { editorChrome } from "../editor/extensions.ts";
+import { facingOf, rotated } from "../entities/facing.ts";
 import {
   sameTool, SELECT_TOOL, type Diagnostic, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands, type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
@@ -321,6 +322,12 @@ export class ProjectSession {
     if (result.changes.length > 0) this.coalesce = options.coalesce === undefined ? undefined : { key: options.coalesce, version: this.document.version };
   }
 
+  /** Writes the direction `directionOf` gives for each of the entities that exist, as one step. */
+  private faceEntities(ids: readonly EntityId[], directionOf: (entity: Entity) => Direction): void {
+    const entities = [...new Set(ids)].map((id) => this.entity(id)).filter((entity) => entity !== undefined);
+    if (entities.length > 0) this.perform({ type: "faceEntities", facings: entities.map((entity) => ({ id: entity.id, direction: directionOf(entity) })) });
+  }
+
   /** Inserts what the clipboard text declares, as one step; the copies become the selection when their analysis arrives. */
   private pasteEntities(text: string, corner?: Point): void {
     if (!this.editable) return;
@@ -355,6 +362,8 @@ export class ProjectSession {
         this.document.edit(result.changes);
       }),
       moveEntities: changing((moves) => void this.perform({ type: "moveEntities", moves: moves.filter((move) => this.entity(move.id) !== undefined) })),
+      rotateEntities: changing((ids, turn) => this.faceEntities(ids, (entity) => rotated(facingOf(entity), turn))),
+      faceEntities: changing((ids, direction) => this.faceEntities(ids, () => direction)),
       updateEntity: changing((next, options) => this.updateEntity(next, options)),
       discardDraft: changing(() => void (this.draft = null)),
       renameEntity: changing((id, name) => void (this.entity(id) && this.perform({ type: "renameEntity", id, name }))),
