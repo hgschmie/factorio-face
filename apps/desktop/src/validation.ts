@@ -1,6 +1,7 @@
 // Validators for everything that crosses the IPC boundary or is read from disk. Pure: no Electron, no filesystem access.
 import { clampWireReach } from "@face/model";
 import { basename, isAbsolute, normalize } from "node:path";
+import type { AppSettings } from "./appSettings.ts";
 import {
   CIRCUIT_FILE_EXTENSION,
   LIMITS,
@@ -51,12 +52,12 @@ function parseArray(value: unknown, what: string, maxLength: number): readonly u
 }
 
 /** An absolute, already normalized path. Relative paths and paths with `..` or `.` segments are rejected, not repaired. */
-function parseAbsolutePath(value: unknown): string {
-  if (typeof value !== "string" || value.length === 0) fail("Project path must be a non-empty string");
-  if (value.length > LIMITS.pathLength) fail("Project path is too long");
-  if (value.includes("\0")) fail("Project path contains a NUL character");
-  if (!isAbsolute(value)) fail("Project path must be absolute");
-  if (normalize(value) !== value) fail("Project path must be normalized");
+function parseAbsolutePath(value: unknown, what = "Project path"): string {
+  if (typeof value !== "string" || value.length === 0) fail(`${what} must be a non-empty string`);
+  if (value.length > LIMITS.pathLength) fail(`${what} is too long`);
+  if (value.includes("\0")) fail(`${what} contains a NUL character`);
+  if (!isAbsolute(value)) fail(`${what} must be absolute`);
+  if (normalize(value) !== value) fail(`${what} must be normalized`);
   return value;
 }
 
@@ -230,4 +231,23 @@ export function parseRecentProjects(value: unknown): RecentProject[] {
     }
   }
   return result;
+}
+
+export const APP_SETTINGS_VERSION = 1;
+
+/** The folder of the game installation as the user chose it: absolute and normalized. Whether the game is there is for the inspection to say. */
+export function parseGameDirectory(value: unknown): string {
+  return parseAbsolutePath(value, "Game folder");
+}
+
+/** Tolerant reader for the settings file of this machine: unknown or damaged content reads as the defaults. */
+export function parseAppSettingsFile(value: unknown): AppSettings {
+  const defaults: AppSettings = { gameDirectory: null };
+  if (!isRecord(value) || value.version !== APP_SETTINGS_VERSION || value.gameDirectory === null || value.gameDirectory === undefined) return defaults;
+  try {
+    return { gameDirectory: parseGameDirectory(value.gameDirectory) };
+  } catch (error) {
+    if (!(error instanceof ValidationError)) throw error;
+    return defaults;
+  }
 }

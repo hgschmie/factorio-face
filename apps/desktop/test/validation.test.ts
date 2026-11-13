@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { LIMITS, type ProjectData } from "../src/ipc.ts";
 import {
   manifestFileContent,
+  parseAppSettingsFile,
   parseArchiveEntryName,
   parseBoolean,
   parseCircuitFileName,
+  parseGameDirectory,
   parseManifest,
   parseManifestFile,
   parseProjectData,
@@ -240,5 +242,30 @@ describe("recent projects file", () => {
   it("returns an empty list for anything that is not an array and caps the length", () => {
     expect(parseRecentProjects({ entry })).toEqual([]);
     expect(parseRecentProjects(Array.from({ length: 50 }, (_, i) => ({ ...entry, path: `/projects/p${i}.faceproj` })))).toHaveLength(LIMITS.recentProjects);
+  });
+});
+
+describe("application settings", () => {
+  it("accepts a game folder that is an absolute, normalized path", () => {
+    for (const folder of ["/Applications/factorio.app", "/Users/someone/Library/Application Support/Steam/steamapps/common/Factorio", "/"]) expect(parseGameDirectory(folder)).toBe(folder);
+  });
+
+  const notFolders = ["relative/folder", "./factorio", "/a/../factorio", "/a//factorio", "/a/b\0c", "", 42, null, undefined, {}, "/" + "a".repeat(LIMITS.pathLength)];
+  it.each(notFolders.map((value) => [value]))("rejects the game folder %j", (value) => {
+    expect(() => parseGameDirectory(value)).toThrow(/^Game folder /);
+    expect(() => parseGameDirectory(value)).toThrow(ValidationError);
+  });
+
+  it("reads the settings file", () => {
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: "/Applications/factorio.app" })).toEqual({ gameDirectory: "/Applications/factorio.app" });
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: null })).toEqual({ gameDirectory: null });
+    expect(parseAppSettingsFile({ version: 1 })).toEqual({ gameDirectory: null });
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: "/games/factorio", unknown: { nested: true } })).toEqual({ gameDirectory: "/games/factorio" });
+  });
+
+  const folder = "/games/factorio";
+  const damaged = [undefined, null, [], "text", {}, { version: 2, gameDirectory: folder }, { version: "1", gameDirectory: folder }, { version: 1, gameDirectory: "games/factorio" }, { version: 1, gameDirectory: [folder] }];
+  it.each(damaged.map((value) => [value]))("reads %j as the default settings", (value) => {
+    expect(parseAppSettingsFile(value)).toEqual({ gameDirectory: null });
   });
 });
