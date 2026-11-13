@@ -4,7 +4,7 @@ import { PROTOTYPE_NAMES, PROTOTYPES } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { KEYED_KINDS, keyedKindOf, PALETTE_ENTRIES, PALETTE_GROUPS, paletteGroupOf, prototypeIconId } from "../src/entities/registry.ts";
 import { placeFacing, sameTool, SELECT_TOOL, turnedTool, type PlaceTool } from "../src/workbench/controller.ts";
-import { defaultOpenGroups, OPEN_GROUPS_KEY, readOpenGroups, writeOpenGroups, type KeyValueStore } from "../src/workbench/paletteGroups.ts";
+import { CIRCUIT_LIST_KEY, defaultOpenGroups, OPEN_GROUPS_KEY, readCircuitListOpen, readOpenGroups, writeCircuitListOpen, writeOpenGroups, type KeyValueStore } from "../src/workbench/paletteGroups.ts";
 
 describe("palette registry", () => {
   it("keeps the combinators pinned and puts the other entities into groups, in this order", () => {
@@ -126,5 +126,43 @@ describe("open groups", () => {
     expect(readOpenGroups(refusing)).toEqual(START);
     expect(() => writeOpenGroups(refusing, START)).not.toThrow();
     expect(() => writeOpenGroups(undefined, START)).not.toThrow();
+  });
+});
+
+describe("the list of the circuit's entities", () => {
+  const memory = (): KeyValueStore & { readonly values: Map<string, string> } => {
+    const values = new Map<string, string>();
+    return { values, getItem: (key) => values.get(key) ?? null, setItem: (key, value) => void values.set(key, value) };
+  };
+  const refusing: KeyValueStore = {
+    getItem() {
+      throw new Error("storage is switched off");
+    },
+    setItem() {
+      throw new Error("storage is full");
+    },
+  };
+
+  it("starts open, without storage, with storage that refuses and with anything but a stored false", () => {
+    expect(readCircuitListOpen(undefined)).toBe(true);
+    expect(readCircuitListOpen(refusing)).toBe(true);
+    const store = memory();
+    expect(readCircuitListOpen(store)).toBe(true);
+    for (const garbage of ["", "0", "no", "null", "{}"]) {
+      store.setItem(CIRCUIT_LIST_KEY, garbage);
+      expect(readCircuitListOpen(store), garbage).toBe(true);
+    }
+  });
+
+  it("reads back what was written, under its own key and apart from the groups", () => {
+    const store = memory();
+    writeOpenGroups(store, { "lights-and-sound": false, "power-poles": true });
+    writeCircuitListOpen(store, false);
+    expect(store.values.get(CIRCUIT_LIST_KEY)).toBe("false");
+    expect(readCircuitListOpen(store)).toBe(false);
+    expect(readOpenGroups(store)).toEqual({ "lights-and-sound": false, "power-poles": true });
+    writeCircuitListOpen(store, true);
+    expect(readCircuitListOpen(store)).toBe(true);
+    expect(() => writeCircuitListOpen(refusing, false)).not.toThrow();
   });
 });

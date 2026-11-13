@@ -380,3 +380,50 @@ test("with every group open the groups scroll in their own area and the entity l
   await showDisplay(page, "blueprint");
   expect((await measure()).overflow).toBe(0);
 });
+
+test("the list of the circuit's entities closes like a group, leaves its room to the groups and is remembered across a restart", async () => {
+  const listHeader = (page: Page) => palette(page).locator(".palette-list-header");
+  const list = (page: Page) => palette(page).locator(".entity-list");
+  const groupsHeight = (page: Page) => page.evaluate(() => document.querySelector(".palette-groups")!.clientHeight);
+  const first = await launchApp();
+  let second: { app: ElectronApplication; page: Page } | undefined;
+  try {
+    const page = first.page;
+    await openFiveKinds(page);
+    await header(page, "Power poles").click();
+    await expect(listHeader(page)).toHaveAttribute("aria-expanded", "true");
+    await expect(listHeader(page)).toHaveText("In this circuit5");
+    await expect(list(page).getByRole("button")).toHaveCount(5);
+    const shared = await groupsHeight(page);
+
+    await listHeader(page).click();
+    await expect(listHeader(page)).toHaveAttribute("aria-expanded", "false");
+    await expect(list(page)).toBeHidden();
+    await expect(list(page).getByRole("button")).toHaveCount(0);
+    // The heading and its count stay, and the groups have the room of the list.
+    await expect(listHeader(page)).toHaveText("In this circuit5");
+    expect(await groupsHeight(page)).toBeGreaterThan(shared);
+    expect(await page.evaluate(() => document.querySelector(".palette")!.scrollHeight - document.querySelector(".palette")!.clientHeight)).toBe(0);
+    // It is a preference of this machine like the groups, not a change of the project, and the groups keep their own state.
+    await expect(page.locator(".project-meta")).toContainText("All changes saved");
+    expect(await openGroups(page)).toEqual({ "Lights and sound": true, "Power poles": true });
+
+    // By keyboard, as a button.
+    await listHeader(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(listHeader(page)).toHaveAttribute("aria-expanded", "true");
+    await expect(list(page).getByRole("button")).toHaveCount(5);
+    await page.keyboard.press("Space");
+    await expect(listHeader(page)).toHaveAttribute("aria-expanded", "false");
+    await closeApp(first.app);
+
+    second = await launchApp({ userData: first.userData });
+    await expect(listHeader(second.page)).toHaveAttribute("aria-expanded", "false");
+    await expect(list(second.page)).toBeHidden();
+    await listHeader(second.page).click();
+    await expect(list(second.page).getByRole("button")).not.toHaveCount(0);
+  } finally {
+    await closeApp(first.app);
+    if (second) await closeApp(second.app);
+  }
+});

@@ -184,7 +184,8 @@
   flex-shrink: 0;
 }
 
-.palette-group-header {
+.palette-group-header,
+.palette-list-header {
   justify-content: flex-start;
   gap: 5px;
   width: 100%;
@@ -196,25 +197,30 @@
   color: var(--text-label);
 }
 
-.palette-group-header:hover {
+.palette-group-header:hover,
+.palette-list-header:hover {
   color: var(--text-strong);
 }
 
-.palette-group-header > svg {
+.palette-group-header > svg,
+.palette-list-header > svg {
   flex-shrink: 0;
   transition: transform 80ms ease-out;
 }
 
-.palette-group-header[aria-expanded="true"] > svg {
+.palette-group-header[aria-expanded="true"] > svg,
+.palette-list-header[aria-expanded="true"] > svg {
   transform: rotate(90deg);
 }
 
-.palette-group-name {
+.palette-group-name,
+.palette-list-name {
   flex: 1;
   text-align: left;
 }
 
-.palette-group-count {
+.palette-group-count,
+.palette-list-count {
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   letter-spacing: 0;
@@ -252,12 +258,21 @@
 
 .palette-divider {
   flex-shrink: 0;
-  margin: 12px 0 12px;
+  /* Less below than above: the heading under it is a button with its own padding. */
+  margin: 12px 0 5px;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .palette > .section-label {
   flex-shrink: 0;
+}
+
+/* The heading of the entity list: it closes the list like a group, which leaves its room to the groups. */
+.palette-list-header {
+  flex-shrink: 0;
+  margin-bottom: 2px;
+  padding-top: 3px;
+  padding-bottom: 3px;
 }
 
 .entity-list {
@@ -267,6 +282,10 @@
   margin: 0 -6px;
   padding: 0 6px 8px;
   overflow: auto;
+}
+
+.entity-list[hidden] {
+  display: none;
 }
 
 .entity-list button {

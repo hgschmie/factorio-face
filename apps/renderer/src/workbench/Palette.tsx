@@ -8,7 +8,7 @@ import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
 import { sameTool, SELECT_TOOL, type Tool } from "./controller.ts";
-import { browserStore, readOpenGroups, writeOpenGroups } from "./paletteGroups.ts";
+import { browserStore, readCircuitListOpen, readOpenGroups, writeCircuitListOpen, writeOpenGroups } from "./paletteGroups.ts";
 
 /** Returns the image URL of the game's icon for the wire tool of that color, or undefined to use the line pictogram. */
 export type WireIconResolver = (color: WireColor) => string | undefined;
@@ -148,6 +148,13 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
     if (armedShown) groupsRef.current?.querySelector('.palette-item[aria-pressed="true"]')?.scrollIntoView({ block: "nearest" });
   }, [armed, armedShown]);
   const entryProps = { tool, disabled: !canPlace, resolveIcon: resolveEntityIcon, onToggle: toggle };
+  // The list of the circuit's entities closes like a group, so the groups can have its room.
+  const listId = useId();
+  const [listOpen, setListOpen] = useState(() => readCircuitListOpen(browserStore()));
+  const toggleList = (): void => {
+    setListOpen(!listOpen);
+    writeCircuitListOpen(browserStore(), !listOpen);
+  };
   return (
     <aside className="palette" aria-label="Components">
       <div className="palette-heading">
@@ -181,17 +188,19 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
       </div>
 
       <div className="palette-divider" />
-      <div className="section-label">
-        <span>In this circuit</span>
-        <span>{entities.length}</span>
-      </div>
-      <div className="entity-list">
-        {entities.map((entity) => (
-          <button key={entity.id} type="button" aria-pressed={selection.includes(entity.id)} onClick={() => onSelect([entity.id])}>
-            <span className={`kind-dot kind-${entity.kind}`} />
-            <span>{entity.name}</span>
-          </button>
-        ))}
+      <button type="button" className="palette-list-header" aria-expanded={listOpen} aria-controls={listId} title={listOpen ? "Hide the entities of this circuit" : "Show the entities of this circuit"} onClick={toggleList}>
+        <Icon name="chevron" size={13} />
+        <span className="palette-list-name">In this circuit</span>
+        <span className="palette-list-count">{entities.length}</span>
+      </button>
+      <div id={listId} className="entity-list" role="group" aria-label="In this circuit" hidden={!listOpen}>
+        {listOpen &&
+          entities.map((entity) => (
+            <button key={entity.id} type="button" aria-pressed={selection.includes(entity.id)} onClick={() => onSelect([entity.id])}>
+              <span className={`kind-dot kind-${entity.kind}`} />
+              <span>{entity.name}</span>
+            </button>
+          ))}
       </div>
     </aside>
   );
