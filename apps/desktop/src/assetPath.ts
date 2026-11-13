@@ -38,8 +38,8 @@ export function isInsideDirectory(root: string, candidate: string): boolean {
   return candidate.startsWith(prefix);
 }
 
-/** Returns the file for a URL, or undefined when the URL is malformed, not allow-listed or escapes the root. */
-export function resolveServedUrl(url: string, served: ServedRoot): ResolvedAsset | undefined {
+/** The path segments of a URL of the root, or undefined when the URL is malformed or not allow-listed. No segment is empty, `.` or `..`. */
+export function servedSegments(url: string, served: ServedRoot): string[] | undefined {
   let parsed: URL;
   try {
     parsed = new URL(url);
@@ -58,11 +58,26 @@ export function resolveServedUrl(url: string, served: ServedRoot): ResolvedAsset
   // Reject anything that is not a plain forward-slash path, before the platform resolver gets to interpret it.
   if (relative.includes("\0") || relative.includes("\\") || /%2f|%5c/i.test(parsed.pathname)) return undefined;
   const segments = relative.split("/").filter((segment) => segment.length > 0);
-  if (segments.length === 0 || segments.some((segment) => segment === "." || segment === "..")) return undefined;
+  return segments.length === 0 || segments.some((segment) => segment === "." || segment === "..") ? undefined : segments;
+}
 
+/** Returns the file for a URL, or undefined when the URL is malformed, not allow-listed or escapes the root. */
+export function resolveServedUrl(url: string, served: ServedRoot): ResolvedAsset | undefined {
+  const segments = servedSegments(url, served);
+  if (!segments) return undefined;
   const root = resolve(served.directory);
   const filePath = resolve(root, ...segments);
   if (!isInsideDirectory(root, filePath)) return undefined;
   const contentType = served.contentTypes[extname(filePath).toLowerCase()];
   return contentType ? { filePath, contentType } : undefined;
+}
+
+const ICON_DIRECTORY = "icons";
+const ICON_EXTENSION = ".png";
+
+/** The catalog icon id that `/icons/<id>.png` asks for, from the segments of the URL; undefined for any other path. The id is only ever a key of the icon table. */
+export function iconIdOf(segments: readonly string[]): string | undefined {
+  if (segments.length < 2 || segments[0] !== ICON_DIRECTORY) return undefined;
+  const id = segments.slice(1).join("/");
+  return id.endsWith(ICON_EXTENSION) && id.length > ICON_EXTENSION.length ? id.slice(0, -ICON_EXTENSION.length) : undefined;
 }

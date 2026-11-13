@@ -1,5 +1,5 @@
 import type { Entity, EntityId } from "@face/model";
-import type { FaceApi, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
+import type { AppSettingsState, FaceApi, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
 import { ProjectSession, type SessionOptions } from "../../src/session/projectSession.ts";
 import type { Scheduler } from "../../src/session/simulationRunner.ts";
@@ -75,6 +75,8 @@ export interface FakeDesktop {
   confirmations: number;
 }
 
+const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: "2.1.24", versionMatch: null, modules: [], problem: null, iconRevision: 0 };
+
 /** An in-memory stand-in for the desktop bridge. Data is cloned on the way in and out, like over IPC. */
 export function fakeDesktop(): FakeDesktop {
   const ok = <T>(value: T): Promise<IpcResult<T>> => Promise.resolve({ ok: true, value: structuredClone(value) });
@@ -111,6 +113,10 @@ export function fakeDesktop(): FakeDesktop {
         return ok(desktop.unsavedChoice);
       },
       paste: () => ok(null),
+      getAppSettings: () => ok(NO_GAME),
+      chooseGameFolder: () => ok(null),
+      resetGameFolder: () => ok(NO_GAME),
+      onAppSettingsChanged: () => () => undefined,
       setDirty: (dirty) => void desktop.dirtyReports.push(dirty),
       onMenuCommand: () => () => undefined,
       onSaveBeforeClose: () => () => undefined,

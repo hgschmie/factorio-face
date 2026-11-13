@@ -10,6 +10,10 @@ export const ROOT = resolve(import.meta.dirname, "../..");
 export const MAIN_SCRIPT = resolve(ROOT, "dist/main.cjs");
 export const USER_DATA_DIR = resolve(ROOT, ".runtime/test-user-data");
 export const PROJECTS_DIR = resolve(ROOT, ".runtime/e2e-projects");
+/** Where the tests build installations of the game for the app to read: a few files each, none of them the game's. */
+export const GAMES_DIR = resolve(ROOT, ".runtime/e2e-games");
+/** The one folder the app looks at for the game unless a test says otherwise. It never exists, so no run uses a game that happens to be installed on this machine. */
+export const NO_GAME_DIR = resolve(GAMES_DIR, "none");
 export const SCREENSHOT_DIR = resolve(ROOT, ".runtime/screenshots");
 export const MEASUREMENT_DIR = resolve(ROOT, ".runtime/measurements");
 export const APP_TITLE = "FActorio Circuit Editor";
@@ -30,6 +34,7 @@ export function exitCodeOf(app: ElectronApplication): number | null {
 export interface LaunchOptions {
   /** Profile directory; defaults to a fresh one. Pass the same directory twice to test persistence across launches. */
   readonly userData?: string;
+  /** Overrides, among them FACE_GAME_DIR (the folder auto-detection looks at; by default one that does not exist) and FACE_ASSET_ROOT (the bundled icons). */
   readonly env?: Readonly<Record<string, string>>;
 }
 
@@ -45,7 +50,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<RunningApp
   const app = await _electron.launch({
     args: [MAIN_SCRIPT],
     cwd: ROOT,
-    env: { ...(process.env as Record<string, string>), FACE_USER_DATA: userData, ...options.env },
+    env: { ...(process.env as Record<string, string>), FACE_USER_DATA: userData, FACE_GAME_DIR: NO_GAME_DIR, ...options.env },
   });
   processes.set(app, app.process());
   const page = await app.firstWindow();

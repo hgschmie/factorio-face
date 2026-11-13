@@ -112,6 +112,7 @@ export const SHORTCUTS = [
   menu("file.open", "File", "Open project"),
   menu("file.save", "File", "Save"),
   menu("file.saveAs", "File", "Save as"),
+  menu("app.settings", "File", "Application settings"),
 ] as const satisfies readonly Shortcut[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

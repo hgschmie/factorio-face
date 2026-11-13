@@ -6,6 +6,7 @@ import type { SimpleMenuCommandId } from "./ipc.ts";
 export type MenuAccelerator = string | { readonly mac: string; readonly other: string };
 
 export const MENU_ACCELERATORS = {
+  "app.settings": "CmdOrCtrl+,",
   "file.new": "CmdOrCtrl+N",
   "file.open": "CmdOrCtrl+O",
   "file.save": "CmdOrCtrl+S",

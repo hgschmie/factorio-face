@@ -1,11 +1,10 @@
-// The app's two private schemes. face-app:// serves the renderer bundle, face-asset:// serves catalog icons; each
-// from one allow-listed directory, and nothing outside those directories is reachable.
+// The app's two private schemes. face-app:// serves the renderer bundle from one allow-listed directory. face-asset://
+// serves catalog icons: rendered from the user's installation of the game, or files of a second allow-listed directory.
+// Nothing else is reachable; what a request gets is decided in assetHandler.ts.
 import { protocol } from "electron";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { BUNDLE_CONTENT_TYPES, IMAGE_CONTENT_TYPES, isInsideDirectory, resolveServedUrl, type ServedRoot } from "./assetPath.ts";
+import { assetHandler, fileHandler, type InstallationIcons } from "./assetHandler.ts";
+import { BUNDLE_CONTENT_TYPES, IMAGE_CONTENT_TYPES, type ServedRoot } from "./assetPath.ts";
 import { APP_HOST, APP_SCHEME, ASSET_HOST_CATALOG, ASSET_SCHEME } from "./ipc.ts";
-
-const MAX_FILE_BYTES = 32 * 1024 * 1024;
 
 export const RENDERER_URL = `${APP_SCHEME}://${APP_HOST}/index.html`;
 
@@ -36,28 +35,10 @@ export function registerSchemes(): void {
   ]);
 }
 
-function serve(served: ServedRoot, extraHeaders: Readonly<Record<string, string>>): void {
-  const notFound = (): Response => new Response(null, { status: 404 });
-  protocol.handle(served.scheme, async (request) => {
-    if (request.method !== "GET") return new Response(null, { status: 405 });
-    const file = resolveServedUrl(request.url, served);
-    if (!file) return notFound();
-    try {
-      // Resolve symlinks on both sides so a link inside the root cannot point outside it.
-      const [realRoot, realFile] = await Promise.all([realpath(served.directory), realpath(file.filePath)]);
-      if (!isInsideDirectory(realRoot, realFile)) return notFound();
-      const info = await stat(realFile);
-      if (!info.isFile() || info.size > MAX_FILE_BYTES) return notFound();
-      const body = await readFile(realFile);
-      return new Response(new Uint8Array(body), { headers: { "content-type": file.contentType, "cache-control": "no-cache", "x-content-type-options": "nosniff", ...extraHeaders } });
-    } catch {
-      return notFound();
-    }
-  });
-}
-
-/** Must run after app `ready`. */
-export function handleSchemes(rendererDirectory: string, assetRoot: string): void {
-  serve({ scheme: APP_SCHEME, host: APP_HOST, directory: rendererDirectory, contentTypes: BUNDLE_CONTENT_TYPES }, { "content-security-policy": CONTENT_SECURITY_POLICY });
-  serve({ scheme: ASSET_SCHEME, host: ASSET_HOST_CATALOG, directory: assetRoot, contentTypes: IMAGE_CONTENT_TYPES }, {});
+/** Must run after app `ready`. `icons` are the catalog icons of the user's installation of the game. */
+export function handleSchemes(rendererDirectory: string, assetRoot: string, icons?: InstallationIcons): void {
+  const bundle: ServedRoot = { scheme: APP_SCHEME, host: APP_HOST, directory: rendererDirectory, contentTypes: BUNDLE_CONTENT_TYPES };
+  const assets: ServedRoot = { scheme: ASSET_SCHEME, host: ASSET_HOST_CATALOG, directory: assetRoot, contentTypes: IMAGE_CONTENT_TYPES };
+  protocol.handle(APP_SCHEME, fileHandler(bundle, { "content-security-policy": CONTENT_SECURITY_POLICY }));
+  protocol.handle(ASSET_SCHEME, assetHandler(assets, icons));
 }

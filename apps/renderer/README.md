@@ -82,6 +82,11 @@ src/
   settings/
     ProjectSettings.tsx  project name, wire reach and the five standard modules as signal groups
     wireReach.ts       the text of the wire reach field as a number in range   (pure)
+    AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from (modal)
+    appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
+    useAppSettings.ts  the state as the main process reports it, and the two requests that change it
+  dialog/
+    Modal.tsx          the modal dialog: backdrop, title, close button, focus kept inside and given back
   shortcuts/
     shortcuts.ts       the shortcut table: every key of the app, key matching, labels per platform, the arrow distance   (pure)
     ShortcutOverview.tsx  the modal overview of all shortcuts
@@ -91,7 +96,8 @@ src/
   entities/            kind labels and the names an entity goes by (`kindInfo.ts`), the registry of what the palette offers
                        (`registry.ts`), signal text forms (short names, lists, compact numbers), card summaries, the quarter turns
                        of the direction an entity faces (`facing.ts`)  (pure)
-  icons/               interface glyphs, entity icons per prototype, catalog icon resolvers (with probes for the git-ignored artwork)
+  icons/               interface glyphs, entity icons per prototype, catalog icon resolvers (with probes: the icons come from the
+                       user's installation of the game or from bundled files, and neither may be there)
   styles/              tokens.css and one stylesheet per area
 test/                  vitest: pure view modules
 test/session/          vitest: the session, headless (commands, invalid source, simulation, catalog, persistence, drafts)
@@ -704,6 +710,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Zoom In, Zoom Out, Fit to Content | `⌘+`, `⌘-`, `⌘0` | `Ctrl++`, `Ctrl+-`, `Ctrl+0` | menu |
 | Run / Pause, Step, Reset | `⌘R`, `⌘T`, `⇧⌘R` | `Ctrl+R`, `Ctrl+T`, `Ctrl+Shift+R` | menu |
 | New, Open, Save, Save As | `⌘N`, `⌘O`, `⌘S`, `⇧⌘S` | `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S` | menu |
+| Application settings (Settings... in the application menu on macOS, in the File menu elsewhere) | `⌘,` | `Ctrl+,` | menu |
 
 - **Scopes.** `circuit`: handled by `Workbench` with one `keydown` listener on the document, wherever the focus is while the
   canvas is shown (canvas, palette, buttons of the inspector and the dock, nothing focused), but never where the key means
@@ -739,6 +746,7 @@ when two rows share a key on a platform or when one key event matches two rows.
   a modal dialog (`role="dialog"`, `aria-modal`, labelled by its heading): the focus goes to its Close button, Tab stays inside,
   a click on its text focuses the dialog itself, so no key reaches the circuit behind it. Escape, Close and a press beside the
   dialog close it and give the focus back to where it was. Escape closes the dialog only; a tool picked before stays picked.
+  That behaviour is `dialog/Modal.tsx`, which the application settings share.
 
 ## Icons
 
@@ -747,10 +755,35 @@ when two rows share a key on a platform or when one key event matches two rows.
 (`prototypeIconId` of the registry: `item/<prototype name>` unless the registry says otherwise) of the generated catalog through
 `face-asset://catalog/icons/item/<name>.png` and resolves only those that load, so each pole shows its own item.
 `icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe; the two wire tool buttons of the palette
-take the game's `item/red-wire` and `item/green-wire` icons from it. When `packages/catalog/generated` is absent (it is git-ignored),
+take the game's `item/red-wire` and `item/green-wire` icons from it. The main process answers these URLs with icons it renders from the
+user's installation of the game, or with bundled files (`packages/catalog/generated` in development, git-ignored). With neither,
 entities and wire tools show inline pictograms and signals are shown by name, in the picker as well. The pictograms tell the
 kinds apart by their shape, not only by a mark: a combinator is a box with a display, a lamp a bulb, a speaker a loudspeaker
 with sound waves, a pole a mast with a crossbar (taller and wider for the bigger poles, a box with two masts for a substation).
+An icon the installation should have but lacks (a module that is not installed) arrives as a gray placeholder image.
+
+The URL of an icon does not say where it comes from, and an image does not fetch an unchanged URL again. When the installation in use
+changes while the app runs, the state of the application settings carries a higher `iconRevision`; both resolvers take it, append it
+as `?r=<n>` (`revisionQuery`; nothing for revision 0, the installation found at start) and probe again.
+
+## Application settings
+
+`settings/AppSettings.tsx` is the dialog for the settings of the application on this machine (menu command `app.settings`:
+Settings... with `Cmd+,` in the application menu on macOS, with `Ctrl+,` in the File menu elsewhere). It is a `Modal` and shows what
+`appSettingsView` (pure) makes of the state the main process reports (`AppSettingsState` in `ipc.ts`): the folder in use
+(`.game-folder-path`, `data-source="chosen|detected|none"`; "No installation found" without one) and whether it was chosen or found
+automatically; the game version (`[data-fact="version"]`, `data-level="ok|note|warning"`: a note for another patch release than the
+catalog's, a warning for another release line, used all the same); the data directory when it is not the folder shown
+(`[data-fact="data"]`); the modules found and those not installed (`[data-fact="modules"]`, `[data-missing]`); the problem of a chosen
+folder that cannot be used (`[data-message="problem"]`, the folder stays chosen); the reason a folder was refused
+(`[data-message="error"]`). "Choose..." asks the main process to show the native folder chooser, "Reset to auto-detect" (enabled while
+a folder is chosen) to forget the choice; the renderer never names a folder. Both are disabled while a request is on its way.
+`useAppSettings` reads the state once, follows the change event and keeps the newer of two reports (`reduceAppSettings`).
+
+Nothing is asked at the first start: the app looks for the game by itself. Only when no installation is in use and no bundled icon
+loads either does the workbench show one hint at the right end of the title bar (`.icon-hint`, `needsGameFolderHint`; there it covers
+nothing and takes no room from the workbench), with a button "Game folder..." that opens the dialog and one that dismisses the hint
+until the next start.
 
 ## The entity selector
 

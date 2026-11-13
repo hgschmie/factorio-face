@@ -107,7 +107,10 @@ test("runs the renderer sandboxed, isolated and without remote or dynamic code",
   });
   expect(page.url()).toBe("face-app://bundle/index.html");
   expect(inPage.nodeGlobals).toEqual(["undefined", "undefined", "undefined"]);
-  expect(inPage.api).toEqual(["catalogAssetUrl", "clearRecentProjects", "confirmUnsavedChanges", "getRecentProjects", "loadProject", "newProject", "onMenuCommand", "onSaveBeforeClose", "openProject", "paste", "platform", "saveProject", "saveProjectAs", "setDirty"]);
+  expect(inPage.api).toEqual([
+    "catalogAssetUrl", "chooseGameFolder", "clearRecentProjects", "confirmUnsavedChanges", "getAppSettings", "getRecentProjects", "loadProject", "newProject",
+    "onAppSettingsChanged", "onMenuCommand", "onSaveBeforeClose", "openProject", "paste", "platform", "resetGameFolder", "saveProject", "saveProjectAs", "setDirty",
+  ]);
   expect(inPage.eval).toBe("EvalError");
   expect(inPage.functionConstructor).toBe("EvalError");
   expect(inPage.remoteFetch).not.toBe("allowed");

@@ -6,7 +6,9 @@ every prototype that can be a circuit signal, with English name, order, group/su
 - `data/catalog-2.1.24.json` - generated, committed. No image data.
 - `data/icons-2.1.24.json` - generated, committed: the icon table, which says for every icon id which image files of the game it is
   composited from. Paths and numbers only, no image data.
-- `generated/icons/**.png`, `generated/manifest.json` - generated, git-ignored (Wube artwork; local builds only).
+- `generated/icons/**.png`, `generated/manifest.json` - generated, git-ignored (Wube artwork; local builds only). The app does not need
+  them: it renders icons from the user's installation of the game (see "Icons"). They are its fallback when no installation is in use,
+  and the reference the generator's output is compared against.
 - `src/` - browser-safe TypeScript API (no Node APIs; imports the JSON). The icon table has its own entry points
   (`@face/catalog/icons`, `@face/catalog/icons/standard`), so the renderer bundle does not carry it.
 - Generator: `tools/catalog/` (`make catalog` or `npm run catalog`).
@@ -81,6 +83,13 @@ The generator writes the files with the codec's `COMPACT_ENCODING` (best of four
 pixels from the user's installation while it runs and encodes them with `FAST_ENCODING`. The codec reads what the game's icon files use:
 8 bits per sample, not interlaced, at most 1024 pixels on a side. A layer may only name a `.png` inside one of the game's own modules
 (`base`, `core`, `space-age`, `quality`, `elevated-rails`, `recycler`); the generator refuses to write a table with anything else.
+
+In the running app `GameIcons` (`apps/desktop/src/gameIcons/gameIcons.ts`) does this for the installation the application settings name
+(`gameSettings.ts`: the user's choice, or the installation the app finds by itself, `/Applications/factorio.app` on macOS). The renderer
+asks for `face-asset://catalog/icons/<icon id>.png`, the same URL under which a generated file would be served, and the main process
+answers with the icon rendered from the installation, else the generated file, else a gray placeholder when the installation should
+have the icon but lacks its files (a module that is not installed), else 404 (`assetHandler.ts`). Against Factorio 2.1.24 installed on
+the development machine all 1138 icons render, and the pixels equal those of the generated files.
 
 `--dump-icon-sprites` is not used, see "Isolation". One such dump of the `base` set exists from the pilot run and serves as reference:
 `compare-icons.mjs` finds a mean absolute error of 0.24/255 per channel over 1141 base icons, worst case 0.65/255 (`lane-splitter`, a

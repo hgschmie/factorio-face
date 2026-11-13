@@ -35,6 +35,22 @@ describe("application menu", () => {
     expect(names(menu(build({ platform: "linux" }).template, "File")).at(-1)).toBe("role:quit");
   });
 
+  it("has the application settings where the platform keeps them: after About on macOS, in the File menu elsewhere", () => {
+    const darwin = build({ platform: "darwin" }).template;
+    expect(names(menu(darwin, APP_NAME))).toEqual(["role:about", "-", "Settings...", "-", "role:services", "-", "role:hide", "role:hideOthers", "role:unhide", "-", "role:quit"]);
+    expect(menu(darwin, APP_NAME).find((item) => item.label === "Settings...")?.accelerator).toBe("CmdOrCtrl+,");
+    expect(names(menu(darwin, "File"))).not.toContain("Settings...");
+    for (const platform of ["linux", "win32"] as const) {
+      const { template, sent } = build({ platform });
+      expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "-", "Save", "Save As...", "-", "Settings...", "-", "role:quit"]);
+      const settings = menu(template, "File").find((item) => item.label === "Settings...")!;
+      expect(settings.accelerator).toBe("CmdOrCtrl+,");
+      click(settings);
+      expect(sent).toEqual([{ id: "app.settings" }]);
+      expect(flatten(template).filter((item) => item.label === "Settings...")).toHaveLength(1);
+    }
+  });
+
   it("shows one full screen entry: the system's own in the View menu on macOS, the role item elsewhere", () => {
     const view = ["Circuit", "Source", "Split", "-", "Zoom In", "Zoom Out", "Actual Size", "Fit to Content"];
     const darwin = build({ platform: "darwin" }).template;
@@ -72,6 +88,7 @@ describe("application menu", () => {
     const { template, sent } = build({ platform: "darwin" });
     for (const item of flatten(template)) if (item.click) click(item);
     expect(sent.map((command) => command.id)).toEqual([
+      "app.settings",
       "file.new", "file.open", "file.save", "file.saveAs",
       "edit.undo", "edit.redo", "edit.delete", "edit.selectAll",
       "view.circuit", "view.source", "view.split", "view.zoomIn", "view.zoomOut", "view.zoomReset", "view.fit",

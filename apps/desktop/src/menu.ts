@@ -18,13 +18,21 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
   const command = (label: string, id: SimpleMenuCommandId): MenuItemConstructorOptions => ({ label, accelerator: menuAccelerator(id, isMac), click: () => send({ id }) });
   const separator: MenuItemConstructorOptions = { type: "separator" };
 
+  // The settings of the application, not of the project: where the platform's users look for them.
+  const settings = command("Settings...", "app.settings");
+
   const recentItems: MenuItemConstructorOptions[] =
     recentProjects.length === 0
       ? [{ label: "No Recent Projects", enabled: false }]
       : [...recentProjects.map((project) => ({ label: `${project.name} (${project.path})`, click: () => send({ id: "file.openRecent", path: project.path }) })), separator, { label: "Clear Recent Projects", click: options.clearRecentProjects }];
 
   const appMenu: MenuItemConstructorOptions[] = isMac
-    ? [{ label: APP_NAME, submenu: [{ role: "about" }, separator, { role: "services" }, separator, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, separator, { role: "quit" }] }]
+    ? [
+        {
+          label: APP_NAME,
+          submenu: [{ role: "about" }, separator, settings, separator, { role: "services" }, separator, { role: "hide" }, { role: "hideOthers" }, { role: "unhide" }, separator, { role: "quit" }],
+        },
+      ]
     : [];
 
   const viewItems: MenuItemConstructorOptions[] = [
@@ -54,7 +62,7 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         command("Save", "file.save"),
         command("Save As...", "file.saveAs"),
         separator,
-        isMac ? { role: "close" } : { role: "quit" },
+        ...(isMac ? [{ role: "close" } as const] : [settings, separator, { role: "quit" } as const]),
       ],
     },
     {

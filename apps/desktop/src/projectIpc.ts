@@ -1,11 +1,11 @@
 // IPC handlers of the window: the project operations and the paste of the canvas context menu. Every argument is validated before
 // it reaches the filesystem or a dialog.
-import { dialog, ipcMain, type BrowserWindow, type FileFilter, type IpcMainInvokeEvent } from "electron";
+import { dialog, type BrowserWindow, type FileFilter } from "electron";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
-import { CHANNELS, PROJECT_FILE_EXTENSION, UNSAVED_CHOICES, type IpcResult, type LoadedProject, type ProjectData, type SavedProject, type UnsavedChoice } from "./ipc.ts";
+import { CHANNELS, PROJECT_FILE_EXTENSION, UNSAVED_CHOICES, type LoadedProject, type ProjectData, type SavedProject, type UnsavedChoice } from "./ipc.ts";
+import type { IpcHandle } from "./ipcHandle.ts";
 import { createEmptyProject, readProject, writeProject } from "./projectStore.ts";
-import { RENDERER_URL } from "./protocols.ts";
 import type { RecentProjects } from "./recentProjects.ts";
 import { parseProjectData, parseProjectPath, parseSaveProjectRequest, ValidationError, withProjectExtension } from "./validation.ts";
 
@@ -31,12 +31,6 @@ export async function askUnsavedChanges(window: BrowserWindow): Promise<UnsavedC
   return UNSAVED_CHOICES[response] ?? "cancel";
 }
 
-function describeError(error: unknown): string {
-  if (error instanceof ValidationError) return error.message;
-  console.error("[face] IPC handler failed:", error);
-  return error instanceof Error ? error.message : String(error);
-}
-
 const PROJECT_FILE_FILTERS: FileFilter[] = [{ name: "face project", extensions: [PROJECT_FILE_EXTENSION.slice(1)] }];
 
 function suggestedFileName(projectName: string): string {
@@ -44,25 +38,8 @@ function suggestedFileName(projectName: string): string {
   return withProjectExtension(cleaned.length > 0 ? cleaned : "face-project");
 }
 
-export function registerProjectIpc(context: ProjectIpcContext): void {
+export function registerProjectIpc(handle: IpcHandle, context: ProjectIpcContext): void {
   const { window, recentProjects, projectsDirectory } = context;
-
-  // Only the main frame of our own window may call in; anything else is a bug or an attack.
-  const assertTrustedSender = (event: IpcMainInvokeEvent): void => {
-    const trusted = !window.isDestroyed() && event.sender === window.webContents && event.senderFrame === window.webContents.mainFrame && event.senderFrame.url === RENDERER_URL;
-    if (!trusted) throw new ValidationError("IPC call from an unknown sender");
-  };
-
-  const handle = <T>(channel: string, handler: (...args: unknown[]) => Promise<T>): void => {
-    ipcMain.handle(channel, async (event, ...args: unknown[]): Promise<IpcResult<T>> => {
-      try {
-        assertTrustedSender(event);
-        return { ok: true, value: await handler(...args) };
-      } catch (error) {
-        return { ok: false, error: describeError(error) };
-      }
-    });
-  };
 
   const remember = async (path: string, name: string): Promise<void> => {
     await recentProjects.add(path, name);

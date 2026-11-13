@@ -1,4 +1,4 @@
-/* Key hints next to controls, and the shortcut overview: a modal dialog over the workbench. */
+/* Key hints next to controls, and the shortcut overview (a modal dialog, see dialog.css). */
 .key-hint,
 .shortcut-overview kbd {
   flex-shrink: 0;
@@ -11,44 +11,8 @@
   background: var(--surface-inset);
 }
 
-.shortcut-backdrop {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgb(0 0 0 / 45%);
-}
-
 .shortcut-overview {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
   width: min(900px, 100%);
-  max-height: 100%;
-  padding: 15px 18px 16px;
-  overflow: auto;
-  border: 1px solid var(--border-popover);
-  border-radius: 7px;
-  background: var(--surface-popover);
-  box-shadow: var(--shadow-popover);
-}
-
-.shortcut-overview:focus-visible {
-  outline: none;
-}
-
-.shortcut-overview header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.shortcut-overview header .icon-button {
-  width: 26px;
-  height: 26px;
 }
 
 .shortcut-groups {

@@ -56,6 +56,11 @@ export class GameIcons {
     this.installation = dataDirectory === undefined ? undefined : { root: realpath(dataDirectory).catch(() => undefined), icons: new Map(), sources: new Map() };
   }
 
+  /** True when an installation is set and the table has the icon: `icon` then answers from the installation, or with nothing when its files are missing or damaged. */
+  covers(id: string): boolean {
+    return this.installation !== undefined && this.table.icons.has(id);
+  }
+
   /**
    * The icon as a 64 pixel PNG, or undefined when the id is not in the table, no installation is set or a source file is
    * missing, damaged or outside the data directory. Never rejects. The answer is kept, so the bytes must not be changed.

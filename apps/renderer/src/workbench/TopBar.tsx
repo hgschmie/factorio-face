@@ -1,4 +1,5 @@
-// Title bar (brand, mode switch) and project bar (project name, save state, document actions).
+// Title bar (brand, mode switch, room for a notice) and project bar (project name, save state, document actions).
+import type { ReactNode } from "react";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { withShortcut } from "../shortcuts/shortcuts.ts";
 import { WORKBENCH_MODES, type ProjectView, type WorkbenchMode } from "./controller.ts";
@@ -11,6 +12,8 @@ export interface TopBarProps {
   /** False when no canvas is shown, so there is nothing to fit. */
   readonly canFit: boolean;
   readonly settingsOpen: boolean;
+  /** A notice at the right end of the title bar, where it takes no room from the workbench. */
+  readonly notice?: ReactNode;
   onModeChange(mode: WorkbenchMode): void;
   onUndo(): void;
   onRedo(): void;
@@ -25,7 +28,7 @@ const MODES: Readonly<Record<WorkbenchMode, { readonly label: string; readonly i
   split: { label: "Split", icon: "split" },
 };
 
-export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, onModeChange, onUndo, onRedo, onFit, onToggleSettings, onSave }: TopBarProps) {
+export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, notice, onModeChange, onUndo, onRedo, onFit, onToggleSettings, onSave }: TopBarProps) {
   return (
     <>
       <header className="titlebar">
@@ -49,7 +52,7 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
             </button>
           ))}
         </nav>
-        <span className="titlebar-aside" />
+        <div className="titlebar-aside">{notice}</div>
       </header>
 
       <div className="projectbar">

@@ -114,12 +114,45 @@ export interface RecentProject {
 export const UNSAVED_CHOICES = ["save", "discard", "cancel"] as const;
 export type UnsavedChoice = (typeof UNSAVED_CHOICES)[number];
 
+// Settings of the application on this machine. So far: where the game is installed, whose icon images the app reads.
+
+/** `chosen`: the user's folder, usable or not. `detected`: found by the app. `none`: nothing chosen and nothing found. */
+export type GameSource = "chosen" | "detected" | "none";
+/** How the installed game relates to the release the catalog was generated from. */
+export type GameVersionMatch = "equal" | "same-minor" | "different";
+
+export interface GameModuleState {
+  readonly name: string;
+  readonly present: boolean;
+}
+
+/** What the renderer learns about the game installation. It names folders for display only; the renderer never passes one back. */
+export interface AppSettingsState {
+  /** The folder the user chose, as chosen; null while the app looks for the game itself. */
+  readonly chosenFolder: string | null;
+  /** The game's `data` directory the icons are read from; null when no installation is in use. */
+  readonly dataDirectory: string | null;
+  readonly source: GameSource;
+  /** Version of the installation in use. */
+  readonly gameVersion: string | null;
+  /** The release the catalog and its icon table were generated from. */
+  readonly catalogVersion: string;
+  readonly versionMatch: GameVersionMatch | null;
+  /** The game's own modules and whether the installation in use has them; empty without an installation. */
+  readonly modules: readonly GameModuleState[];
+  /** Why the chosen folder cannot be used. The choice stands; the app does not switch to another installation. */
+  readonly problem: string | null;
+  /** 0 for the installation found at start, one more after every change. Icon URLs carry it as `?r=<n>` once it is above 0, so images are fetched again. */
+  readonly iconRevision: number;
+}
+
 /** Every invoke returns a result instead of rejecting, so errors cross the process boundary as plain data. */
 export type IpcResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
 // Commands forwarded from the native application menu to the renderer.
 
 export const SIMPLE_MENU_COMMANDS = [
+  "app.settings",
   "file.new",
   "file.open",
   "file.save",
@@ -154,6 +187,10 @@ export const CHANNELS = {
   clearRecentProjects: "face:recent:clear",
   confirmUnsavedChanges: "face:confirm-unsaved",
   paste: "face:edit:paste",
+  getAppSettings: "face:app-settings:get",
+  chooseGameFolder: "face:app-settings:choose-game-folder",
+  resetGameFolder: "face:app-settings:reset-game-folder",
+  appSettingsChanged: "face:app-settings:changed",
   setDirty: "face:dirty",
   menuCommand: "face:menu-command",
   saveBeforeClose: "face:save-before-close",
@@ -182,6 +219,16 @@ export interface FaceApi {
    * item of the canvas context menu, because a page cannot start a paste. It takes no arguments and returns no clipboard content.
    */
   paste(): Promise<IpcResult<null>>;
+  getAppSettings(): Promise<IpcResult<AppSettingsState>>;
+  /**
+   * Shows the native folder chooser for the game installation and stores the choice. Takes no arguments: the folder comes from the dialog
+   * alone. Resolves with null when the user cancels or a chooser is already open; a folder without the game is an error and stores nothing.
+   */
+  chooseGameFolder(): Promise<IpcResult<AppSettingsState | null>>;
+  /** Forgets the chosen folder; the app looks for the game itself again. */
+  resetGameFolder(): Promise<IpcResult<AppSettingsState>>;
+  /** Called after the game installation in use changed. */
+  onAppSettingsChanged(listener: (state: AppSettingsState) => void): () => void;
   /** Dirty-state handshake: main prompts on window close while the renderer reports unsaved changes. */
   setDirty(dirty: boolean): void;
   onMenuCommand(listener: (command: MenuCommand) => void): () => void;

@@ -126,3 +126,162 @@
 .module-list li.invalid small {
   color: var(--status-warning);
 }
+
+/* Application settings: a modal dialog. */
+.app-settings {
+  width: min(560px, 100%);
+}
+
+.game-folder {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.game-folder .section-label {
+  margin: 0;
+}
+
+.game-folder .path {
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.game-folder-path {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  background: var(--surface-inset);
+}
+
+.game-folder-path.none .path {
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+  color: var(--text-soft);
+}
+
+.game-folder small {
+  display: block;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.game-folder small.warning {
+  color: var(--status-warning);
+}
+
+.game-facts {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.game-facts > div {
+  display: flex;
+  gap: 12px;
+  padding: 6px 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-base);
+}
+
+.game-facts dt {
+  flex-shrink: 0;
+  width: 74px;
+  color: var(--text-label);
+}
+
+.game-facts dd {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+}
+
+.game-facts dd small {
+  margin-top: 3px;
+}
+
+.settings-message {
+  margin: 0;
+  padding: 8px 11px;
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--notice-text);
+  background: var(--notice-surface);
+}
+
+.settings-message.error {
+  border-color: var(--danger-border);
+  color: var(--danger-text);
+  background: var(--danger-surface);
+}
+
+.settings-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.settings-button {
+  padding: 6px 12px;
+  border-color: var(--border);
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.settings-button:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-raised-hover);
+}
+
+.game-folder .muted-note {
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* The hint that no icons of the game can be shown: a notice at the right end of the title bar. */
+.icon-hint {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 3px 4px 3px 11px;
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  letter-spacing: 0;
+  color: var(--notice-text);
+  background: var(--notice-surface);
+}
+
+.icon-hint > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.icon-hint button {
+  flex-shrink: 0;
+}
+
+.icon-hint .open-settings {
+  padding: 3px 9px;
+  border-color: var(--notice-border);
+  color: var(--accent-bright);
+}
+
+.icon-hint .icon-button {
+  width: 24px;
+  height: 24px;
+  color: var(--notice-text);
+}

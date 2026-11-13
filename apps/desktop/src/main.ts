@@ -1,14 +1,23 @@
 // Electron main process: one sandboxed window, a validated IPC surface, the native menu and the close handshake.
+import { loadStandardIconTable } from "@face/catalog/icons/standard";
 import { app, BrowserWindow, ipcMain, Menu, session, systemPreferences } from "electron";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { APP_SETTINGS_FILE_NAME, AppSettingsStore, gameDirectoryFromEnv } from "./appSettings.ts";
+import { registerAppSettingsIpc } from "./appSettingsIpc.ts";
+import { GameIcons } from "./gameIcons/gameIcons.ts";
+import { GameSettings } from "./gameSettings.ts";
 import { APP_ID, APP_NAME, CHANNELS, type MenuCommand } from "./ipc.ts";
+import { createIpcHandle } from "./ipcHandle.ts";
 import { buildMenuTemplate } from "./menu.ts";
 import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot } from "./paths.ts";
 import { askUnsavedChanges, registerProjectIpc } from "./projectIpc.ts";
 import { handleSchemes, registerSchemes, RENDERER_URL } from "./protocols.ts";
 import { RecentProjects } from "./recentProjects.ts";
 import { hardenSession, hardenWebContents } from "./security.ts";
+
+/** Problems with icons of one installation that are written to the log; a missing module alone accounts for hundreds. */
+const LOGGED_ICON_PROBLEMS = 20;
 
 // Matches --surface-window in apps/renderer/src/styles/tokens.css, so the window does not flash on launch.
 const WINDOW_BACKGROUND = "#313031";
@@ -73,9 +82,41 @@ function requestSaveBeforeClose(window: BrowserWindow): Promise<boolean> {
 
 async function start(): Promise<void> {
   hardenSession(session.defaultSession);
-  handleSchemes(join(__dirname, "renderer"), resolveAssetRoot({ env: process.env, packaged: app.isPackaged, mainDirectory: __dirname, resourcesPath: process.resourcesPath }));
+  // Fails the start for a malformed value, like the other path variables, instead of leaving the app without its icons.
+  gameDirectoryFromEnv(process.env);
 
   const window = createWindow();
+
+  // The icons come from the user's installation of the game. The search for it starts here and holds nothing up: the
+  // window loads meanwhile, and the first icon requests wait for the answer.
+  const iconTable = loadStandardIconTable();
+  let iconProblems = 0;
+  const gameIcons = new GameIcons(iconTable, {
+    onProblem: (id, error) => {
+      if (++iconProblems > LOGGED_ICON_PROBLEMS) return;
+      console.warn(`[face] icon ${id}: ${error instanceof Error ? error.message : String(error)}${iconProblems === LOGGED_ICON_PROBLEMS ? " (further problems are not logged)" : ""}`);
+    },
+  });
+  const gameSettings = new GameSettings({
+    store: new AppSettingsStore(join(app.getPath("userData"), APP_SETTINGS_FILE_NAME)),
+    icons: {
+      reset: (dataDirectory) => {
+        iconProblems = 0;
+        gameIcons.reset(dataDirectory);
+      },
+    },
+    host: { platform: process.platform, env: process.env, home: app.getPath("home") },
+    catalogVersion: iconTable.game.version,
+    onChange: (state) => {
+      if (!window.isDestroyed()) window.webContents.send(CHANNELS.appSettingsChanged, state);
+    },
+  });
+  handleSchemes(join(__dirname, "renderer"), resolveAssetRoot({ env: process.env, packaged: app.isPackaged, mainDirectory: __dirname, resourcesPath: process.resourcesPath }), {
+    ready: () => gameSettings.ready(),
+    covers: (id) => gameIcons.covers(id),
+    icon: (id) => gameIcons.icon(id),
+  });
+
   const recentProjects = new RecentProjects(join(app.getPath("userData"), "recent-projects.json"));
   const sendCommand = (command: MenuCommand): void => {
     if (!window.isDestroyed()) window.webContents.send(CHANNELS.menuCommand, command);
@@ -93,7 +134,9 @@ async function start(): Promise<void> {
   };
   await installMenu();
 
-  registerProjectIpc({
+  const handle = createIpcHandle(window);
+  registerAppSettingsIpc(window, handle, gameSettings);
+  registerProjectIpc(handle, {
     window,
     recentProjects,
     projectsDirectory: projectsDirectoryFromEnv(process.env),

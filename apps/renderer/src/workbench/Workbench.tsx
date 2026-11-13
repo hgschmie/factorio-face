@@ -13,7 +13,10 @@ import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspe
 import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
+import { AppSettings } from "../settings/AppSettings.tsx";
+import { gameFolderHint, needsGameFolderHint } from "../settings/appSettings.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
+import type { AppSettingsController } from "../settings/useAppSettings.ts";
 import { ShortcutOverview } from "../shortcuts/ShortcutOverview.tsx";
 import { nudgeDelta, shortcutFor } from "../shortcuts/shortcuts.ts";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
@@ -27,6 +30,10 @@ export interface WorkbenchProps {
   readonly controller: WorkbenchController;
   /** The desktop bridge; undefined when the renderer runs outside Electron. */
   readonly api?: FaceApi;
+  /** The settings of the application on this machine; undefined outside Electron. */
+  readonly appSettings?: AppSettingsController;
+  /** No icon of the game can be shown: neither an installation nor bundled icons provide one. */
+  readonly iconsMissing?: boolean;
   readonly resolveEntityIcon?: EntityIconResolver;
   readonly resolveWireIcon?: WireIconResolver;
   readonly renderSignalPicker?: SignalPickerRenderer;
@@ -64,7 +71,7 @@ function pageTextIsSelected(): boolean {
   return anchor != null && anchor.closest(".cm-editor") === null;
 }
 
-export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
+export function Workbench({ controller, api, appSettings, iconsMissing = false, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
   const { circuit, selection, wireSelection, mode, displayMode, tool, editable, simulation, project } = state;
   const capabilities = DISPLAY_CAPABILITIES[displayMode];
@@ -75,6 +82,9 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
+  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
+  const closeAppSettings = useCallback(() => setAppSettingsOpen(false), []);
+  const [iconHintDismissed, setIconHintDismissed] = useState(false);
   const revealDiagnostic = useCallback((diagnostic: Diagnostic) => editorRef.current?.reveal(diagnostic.from, diagnostic.to), []);
   // The canvas unmounts in Source mode; its views, one per display mode, are kept here so that coming back does not reset them.
   const viewsRef = useRef<CanvasViews>({});
@@ -251,6 +261,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       // Edit commands belong to a focused text control when there is one, otherwise to the circuit.
       const typing = isTextEntryTarget(document.activeElement);
       switch (command.id) {
+        case "app.settings":
+          return setAppSettingsOpen(true);
         case "file.new":
           return void commands.newProject();
         case "file.open":
@@ -315,6 +327,21 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         onUndo={commands.undo}
         onRedo={commands.redo}
         settingsOpen={settingsOpen}
+        notice={
+          appSettings?.state &&
+          !iconHintDismissed &&
+          needsGameFolderHint(appSettings.state, iconsMissing) && (
+            <div className="icon-hint" role="status" title={gameFolderHint(appSettings.state).detail}>
+              <span>{gameFolderHint(appSettings.state).text}</span>
+              <button type="button" className="open-settings" onClick={() => setAppSettingsOpen(true)}>
+                Game folder...
+              </button>
+              <button type="button" className="icon-button" aria-label="Dismiss hint" onClick={() => setIconHintDismissed(true)}>
+                <Icon name="close" size={14} />
+              </button>
+            </div>
+          )
+        }
         onFit={() => canvasRef.current?.fit()}
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         onSave={() => void save()}
@@ -429,6 +456,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
       </footer>
 
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
+      {appSettingsOpen && appSettings && <AppSettings settings={appSettings} close={closeAppSettings} />}
 
       {state.error && (
         <div className="toast" role="alert">

@@ -1,11 +1,46 @@
 import { describe, expect, it } from "vitest";
-import { BUNDLE_CONTENT_TYPES, IMAGE_CONTENT_TYPES, isInsideDirectory, resolveServedUrl, type ServedRoot } from "../src/assetPath.ts";
+import { BUNDLE_CONTENT_TYPES, iconIdOf, IMAGE_CONTENT_TYPES, isInsideDirectory, resolveServedUrl, servedSegments, type ServedRoot } from "../src/assetPath.ts";
 import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot } from "../src/paths.ts";
 
 const ROOT = "/repo/packages/catalog/generated";
 const CATALOG: ServedRoot = { scheme: "face-asset", host: "catalog", directory: ROOT, contentTypes: IMAGE_CONTENT_TYPES };
 const BUNDLE: ServedRoot = { scheme: "face-app", host: "bundle", directory: "/repo/dist/renderer", contentTypes: BUNDLE_CONTENT_TYPES };
 const resolveAssetUrl = (url: string, _root: string) => resolveServedUrl(url, CATALOG);
+
+describe("catalog icon ids in face-asset URLs", () => {
+  const idOf = (url: string): string | undefined => {
+    const segments = servedSegments(url, CATALOG);
+    return segments && iconIdOf(segments);
+  };
+
+  it("reads the id from /icons/<id>.png, whatever the query says", () => {
+    expect(idOf("face-asset://catalog/icons/item/iron-plate.png")).toBe("item/iron-plate");
+    expect(idOf("face-asset://catalog/icons/virtual/signal-A.png?r=4")).toBe("virtual/signal-A");
+    expect(idOf("face-asset://catalog/icons/quality/normal.png#x")).toBe("quality/normal");
+    expect(idOf("face-asset://catalog/icons/item/a%20b.png")).toBe("item/a b");
+    // Dot segments are gone before the path is looked at.
+    expect(idOf("face-asset://catalog/x/../icons/item/iron-plate.png")).toBe("item/iron-plate");
+    expect(idOf("face-asset://catalog/icons/item/../../../secret.png")).toBeUndefined();
+  });
+
+  it.each([
+    ["another directory", "face-asset://catalog/images/item/iron-plate.png"],
+    ["the directory itself", "face-asset://catalog/icons"],
+    ["no name", "face-asset://catalog/icons/.png"],
+    ["another image type", "face-asset://catalog/icons/item/iron-plate.webp"],
+    ["another case of the extension", "face-asset://catalog/icons/item/iron-plate.PNG"],
+    ["another case of the directory", "face-asset://catalog/Icons/item/iron-plate.png"],
+    ["an encoded slash", "face-asset://catalog/icons/item%2firon-plate.png"],
+    ["a backslash", "face-asset://catalog/icons/item%5ciron-plate.png"],
+    ["a NUL byte", "face-asset://catalog/icons/item/a%00.png"],
+    ["another host", "face-asset://project/icons/item/iron-plate.png"],
+    ["another scheme", "face-app://catalog/icons/item/iron-plate.png"],
+    ["credentials", "face-asset://user@catalog/icons/item/iron-plate.png"],
+    ["no URL", "icons/item/iron-plate.png"],
+  ])("has no id for %s", (_name, url) => {
+    expect(idOf(url)).toBeUndefined();
+  });
+});
 
 describe("face-asset URLs", () => {
   it("maps catalog URLs to files below the root", () => {
