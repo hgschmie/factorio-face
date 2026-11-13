@@ -1,6 +1,6 @@
 // The display mode of the canvas: view state of the session like the workbench mode and the tool.
 import { describe, expect, it } from "vitest";
-import { DISPLAY_CAPABILITIES, DISPLAY_MODES, toolAllowed, type Tool } from "../../src/workbench/controller.ts";
+import { DISPLAY_CAPABILITIES, DISPLAY_MODES, placeFacing, sameTool, toolAllowed, turnedTool, type Tool } from "../../src/workbench/controller.ts";
 import { createSession, idOf, IRREGULAR, project } from "./helpers.ts";
 
 const TOOLS: readonly Tool[] = [{ type: "select" }, { type: "wire", color: "red" }, { type: "wire", color: "green" }, { type: "place", kind: "lamp" }];
@@ -42,12 +42,41 @@ describe("display mode", () => {
     expect(session.state.displayMode).toBe("edit");
   });
 
-  it("offers every tool in both modes; paste and duplicate are what the blueprint board leaves out", () => {
+  it("offers every tool and everything else in both modes; only the board works on tiles", () => {
     expect(DISPLAY_MODES).toEqual(["edit", "blueprint"]);
     for (const mode of DISPLAY_MODES) for (const tool of TOOLS) expect(toolAllowed(tool, mode), `${mode} ${JSON.stringify(tool)}`).toBe(true);
     const { tiles: _tiles, ...edit } = DISPLAY_CAPABILITIES.edit;
     expect(Object.values(edit).every(Boolean)).toBe(true);
-    expect(Object.entries(DISPLAY_CAPABILITIES.blueprint).filter(([, offered]) => !offered).map(([name]) => name)).toEqual(["paste"]);
+    expect(Object.values(DISPLAY_CAPABILITIES.blueprint).every(Boolean)).toBe(true);
+  });
+
+  it("turns a place tool with the keys of a rotation: the direction is part of the tool, and picking the tool again faces east", () => {
+    const decider: Tool = { type: "place", kind: "decider" };
+    expect(placeFacing(decider)).toBe("east");
+    expect(turnedTool(decider, "clockwise")).toEqual({ type: "place", kind: "decider", facing: "south" });
+    expect(turnedTool(decider, "counterclockwise")).toEqual({ type: "place", kind: "decider", facing: "north" });
+    expect(turnedTool({ ...decider, facing: "north" }, "clockwise")).toEqual({ type: "place", kind: "decider", facing: "east" });
+    // The same button of the palette whatever the direction.
+    expect(sameTool(decider, { ...decider, facing: "west" })).toBe(true);
+    // A lamp does not rotate, and the other tools place nothing.
+    expect(turnedTool({ type: "place", kind: "lamp" }, "clockwise")).toBeUndefined();
+    expect(placeFacing({ type: "place", kind: "lamp", facing: "south" })).toBe("east");
+    expect(turnedTool({ type: "select" }, "clockwise")).toBeUndefined();
+    expect(turnedTool({ type: "wire", color: "red" }, "clockwise")).toBeUndefined();
+
+    const { session, notifications } = createSession(IRREGULAR);
+    session.commands.setTool(decider);
+    session.commands.setTool(turnedTool(session.state.tool, "clockwise")!);
+    expect(session.state.tool).toEqual({ type: "place", kind: "decider", facing: "south" });
+    const count = notifications();
+    session.commands.setTool({ type: "place", kind: "decider", facing: "south" });
+    expect(notifications()).toBe(count);
+    // The mode keeps it; the tool picked again starts over.
+    session.commands.setDisplayMode("blueprint");
+    expect(placeFacing(session.state.tool)).toBe("south");
+    session.commands.setTool(decider);
+    expect(placeFacing(session.state.tool)).toBe("east");
+    expect(session.state).toMatchObject({ source: IRREGULAR, canUndo: false });
   });
 
   it("keeps the tool when the mode changes, and picks every tool on the board", () => {

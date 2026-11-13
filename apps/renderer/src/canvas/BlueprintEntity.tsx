@@ -1,14 +1,14 @@
 // One entity on the blueprint board: its footprint on the tiles with compact content. The counterpart of EntityCard, and like
 // it purely presentational and memoized; the canvas finds it and its pins through the same data attributes. Coordinates are
 // canvas units from the top-left corner of the footprint.
-import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type Point, type TerminalSide, type WireColor } from "@face/model";
+import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
 import { memo } from "react";
 import { truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
 import { BOARD_PIN, boardPinOffset, TILE } from "./board.ts";
 import { Pin } from "./EntityCard.tsx";
-import { DIRECTION_VECTOR, pinEdge, pinHeading } from "./geometry.ts";
+import { arrowPath, DIRECTION_VECTOR, pinEdge, pinHeading } from "./geometry.ts";
 import { compactOutput, inputText } from "./statusRows.ts";
 
 export interface BlueprintEntityProps {
@@ -44,12 +44,6 @@ const ARROW_SHIFT = 8;
 const NOTCH = 7;
 const NAME_CHARS = { single: 11, wide: 18, tall: 11 } as const;
 const OUTPUT_CHARS = { wide: 20, tall: 12 } as const;
-
-/** A triangle around (x, y) that points along `forward`. */
-function arrowPath(x: number, y: number, forward: Point): string {
-  const back = { x: x - forward.x * 4, y: y - forward.y * 4 };
-  return `M ${x + forward.x * 5} ${y + forward.y * 5} L ${back.x + forward.y * 5} ${back.y - forward.x * 5} L ${back.x - forward.y * 5} ${back.y + forward.x * 5} Z`;
-}
 
 export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, tileY, placed, conflict, moving, blocked, selected, outline, pendingSide, pendingColor, status, resolveIcon }: BlueprintEntityProps) {
   const facing = facingOf(entity);

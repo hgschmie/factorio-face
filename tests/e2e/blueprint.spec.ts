@@ -1,5 +1,5 @@
 // The blueprint display mode: the tile board, entities on the tiles they take in the game, straight wires, the bubble of the
-// selected entity, paste and duplicate (off on the board), and a camera per mode. Editing on the board: blueprintEdit.spec.ts.
+// selected entity, paste and duplicate (copies without a tile), and a camera per mode. Editing on the board: blueprintEdit.spec.ts.
 import type { Page } from "@playwright/test";
 import { boardGrabPoint, canvas, canvasView, card, clickCenter, entityNames, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires } from "./app.ts";
 import { BOARD, bubble, display, footprint, inspector, menu, openBoard, pinOffsets, selectOnBoard, setSource, TILE, tilePoint, zoom } from "./board.ts";
@@ -217,6 +217,21 @@ test("wires are straight lines from pin to pin, a feedback wire bends around its
   expect(await sourceText(page)).not.toContain("wire red source.out <-> gate.in");
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(wires(page)).toHaveCount(5);
+
+  // A wire is on top wherever it is drawn: where it crosses an entity, a click and a right click take the wire, not the entity.
+  const crossing = await wirePoint(page, down, 0.1);
+  const under = (await card(page, "twice").locator(".card-body").boundingBox())!;
+  expect(crossing.x > under.x && crossing.x < under.x + under.width && crossing.y > under.y && crossing.y < under.y + under.height).toBe(true);
+  await page.mouse.click(crossing.x, crossing.y);
+  await expect(wire(page, down)).toHaveClass(/selected/);
+  await expect(page.locator("g.card.selected")).toHaveCount(0);
+  await expect(inspector(page).locator(".inspector-wire")).toHaveAttribute("data-wire", down);
+  await selectOnBoard(page, "twice");
+  await page.mouse.click(crossing.x, crossing.y, { button: "right" });
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Delete/]);
+  await expect(wire(page, down)).toHaveClass(/selected/);
+  await expect(page.locator("g.card.selected")).toHaveCount(0);
+  await page.keyboard.press("Escape");
 });
 
 test("click, Shift-click and the marquee select on the board, and the context menu deletes and selects all", async ({ page }) => {
@@ -336,46 +351,74 @@ test("one selected entity shows its card and its description in a bubble that ke
   await expect(bubble(page)).toHaveCount(0);
 });
 
-test("paste and duplicate stay off on the board; cut, copy and delete work there", async ({ page }) => {
+test("paste and duplicate on the board give copies without a tile, selected, as one undo step each", async ({ page }) => {
   await openBoard(page);
-  const grab = await boardGrabPoint(page, "pick");
-  await selectOnBoard(page, "pick");
+  const undo = page.getByRole("button", { name: "Undo" });
+  const unplaced = async (name: string): Promise<void> => {
+    await expect(card(page, name)).toHaveClass(/selected/);
+    await expect(card(page, name)).toHaveClass(/unplaced/);
+    await expect(card(page, name)).toHaveAttribute("data-placed", "false");
+  };
+  const at = async (name: string) => page.evaluate((wanted) => window.faceSession!.getState().circuit.entities.find((entity) => entity.name === wanted)?.position, name);
 
-  // The duplicate key does nothing.
+  // Duplicate: the copy stands where an entity without a tile stands, 40 units on in the edit layout, and is the selection.
+  await selectOnBoard(page, "pick");
   await page.keyboard.press("ControlOrMeta+d");
-  await expect(page.locator("g.card")).toHaveCount(6);
+  await unplaced("pick2");
+  await expect(page.locator("g.card.selected")).toHaveCount(1);
+  const copy = "    selector pick2 at (600, 300) facing west {\n        operation = select\n        order = min\n        index = virtual:signal-I\n    }\n\n";
+  expect(await sourceText(page)).toBe(BOARD.replace("    wire red source.out", `${copy}    wire red source.out`));
+  expect(await footprint(page, "pick")).toMatchObject({ tile: [2, 2], placed: "true" });
+  await expect(page.getByRole("button", { name: /^Snap all/ })).toHaveText("Snap all1");
+  await expect(page.locator(".canvas-hint")).toContainText("Dashed ones have no tile yet");
+  await undo.click();
   expect(await sourceText(page)).toBe(BOARD);
 
-  // The menu of an entity: everything but Paste.
+  // The menu of an entity: all of it is on.
+  const grab = await boardGrabPoint(page, "gate");
   await page.mouse.click(grab.x, grab.y, { button: "right" });
   await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Release from tile grid/, /Delete/]);
-  await expect(menu(page).getByRole("menuitem", { name: /Paste/ })).toBeDisabled();
-  for (const item of [/Cut/, /Copy/, /Rotate clockwise/, /Rotate counter-clockwise/, /Release from tile grid/, /Delete/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeEnabled();
+  for (const item of await menu(page).getByRole("menuitem").all()) await expect(item).toBeEnabled();
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Copy/ }));
   await expect(menu(page)).toHaveCount(0);
-  // The copy is on the clipboard, and the paste key does nothing with it here.
-  await page.keyboard.press("ControlOrMeta+v");
-  const free = await tilePoint(page, 4, 3);
-  await page.mouse.click(free.x, free.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem", { name: /Paste/ })).toBeDisabled();
-  await page.keyboard.press("Escape");
-  await expect(page.locator("g.card")).toHaveCount(6);
-  expect(await sourceText(page)).toBe(BOARD);
-  await expect(page.getByRole("button", { name: "Redo" })).toBeDisabled();
 
-  // Cut works: it is a copy and a deletion.
+  // Paste by key, with the pointer far from the gate: the copy goes where it was copied from, not to the pointer, whose
+  // place on the board is no edit position. The feedback wire comes along.
+  const far = await tilePoint(page, 7, 3);
+  await page.mouse.move(far.x, far.y);
+  await page.keyboard.press("ControlOrMeta+v");
+  await unplaced("gate2");
+  expect(await at("gate2")).toEqual({ x: 340, y: 120 });
+  await expect(wires(page)).toHaveCount(6);
+  expect(await sourceText(page)).toContain("decider gate2 at (340, 120) {");
+  // Paste by the menu of the empty board: the next copy, one step further on.
+  await page.mouse.click(far.x, far.y, { button: "right" });
+  await expect(menu(page).getByRole("menuitem", { name: /Paste/ })).toBeEnabled();
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: /Paste/ }));
+  await unplaced("gate3");
+  expect(await at("gate3")).toEqual({ x: 380, y: 160 });
+  await expect(page.locator("g.card.selected")).toHaveCount(1);
+  await expect(page.locator("g.card.conflict")).toHaveCount(0);
+  // A copy is made at home on the board like any entity without a tile.
+  await page.getByRole("button", { name: /^Snap all/ }).click();
+  await expect(page.locator("g.card.unplaced")).toHaveCount(0);
+  for (let step = 0; step < 3; step++) await undo.click();
+  expect(await sourceText(page)).toBe(BOARD);
+
+  // Cut is a copy and a deletion, and what was cut comes back without its tile.
   await selectOnBoard(page, "pick");
   await page.keyboard.press("ControlOrMeta+x");
   await expect(card(page, "pick")).toHaveCount(0);
-  await page.getByRole("button", { name: "Undo" }).click();
-  await expect(card(page, "pick")).toHaveCount(1);
+  await page.keyboard.press("ControlOrMeta+v");
+  await unplaced("pick");
+  expect(await sourceText(page)).toContain("selector pick at (560, 260) facing west {");
 
-  // On the edit canvas the paste is back: the copy has no tile.
+  // On the edit canvas a paste goes to the pointer, as before.
   await showDisplay(page, "edit");
   await canvas(page).focus();
   await page.keyboard.press("ControlOrMeta+v");
   await expect(page.locator("g.card")).toHaveCount(7);
-  expect(await sourceText(page)).toMatch(/selector pick2 at \(\d+, \d+\) facing west \{/);
+  expect(await sourceText(page)).toMatch(/selector pick2 at \(-?\d+, -?\d+\) facing west \{/);
 });
 
 test("each display mode has its own camera: the board is fitted when it is first shown, and both views are kept", async ({ page }) => {

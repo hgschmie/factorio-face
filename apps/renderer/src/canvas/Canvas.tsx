@@ -1,6 +1,6 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import { canRotate, DEFAULT_FACING, facingOf, tileCenter, tileSize, type Circuit, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { canRotate, facingOf, tileCenter, tileSize, type Circuit, type Direction, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
 import type { RotationTurn } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
@@ -9,13 +9,13 @@ import { Icon } from "../icons/Icon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget } from "../platform.ts";
 import { shortcutFor, shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
-import { DISPLAY_CAPABILITIES, DISPLAY_MODES, SELECT_TOOL, type DisplayMode, type EntityMove, type EntityStatus, type EntityTile, type Tool } from "../workbench/controller.ts";
+import { DISPLAY_CAPABILITIES, DISPLAY_MODES, placeFacing, SELECT_TOOL, type DisplayMode, type EntityMove, type EntityStatus, type EntityTile, type Tool } from "../workbench/controller.ts";
 import { countLabel } from "../workbench/selectionText.ts";
 import { canStandAt, footprintOriginAt, freeOriginNear, TILE } from "./board.ts";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
 import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, snapPoint, worldDelta, type EntityPosition } from "./drag.ts";
 import { EntityBubble } from "./EntityBubble.tsx";
-import { expandRect, GRID, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
+import { arrowPath, DIRECTION_VECTOR, expandRect, GRID, rectFromPoints, rectsIntersect, type Rect } from "./geometry.ts";
 import { layoutFor } from "./layout.ts";
 import { Scene } from "./Scene.tsx";
 import { cameraFor, cullingRect, DEFAULT_CAMERA, fitCamera, panFrom, screenToWorld, viewOf, visibleWorldRect, wheelZoomFactor, worldToScreen, ZOOM_STEP, zoomAround, type Camera, type CanvasView, type Size } from "./viewport.ts";
@@ -53,10 +53,11 @@ export interface CanvasProps {
   onSelect(ids: readonly EntityId[], wires?: readonly string[]): void;
   onToolChange(tool: Tool): void;
   onDisplayModeChange(displayMode: DisplayMode): void;
-  onPlaceEntity(kind: EntityKind, position: Point): void;
+  /** A new entity at `position`, facing the way the place tool was turned. */
+  onPlaceEntity(kind: EntityKind, position: Point, facing: Direction): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
-  /** The blueprint board. A new entity with its center at `tile`; the host refuses a taken tile. */
-  onPlaceEntityOnTile(kind: EntityKind, tile: Point): void;
+  /** The blueprint board. A new entity with its center at `tile`, facing the way the place tool was turned; the host refuses a taken tile. */
+  onPlaceEntityOnTile(kind: EntityKind, tile: Point, facing: Direction): void;
   /** A move on the board ended: the dragged entities and the centers they would get. The host refuses a move onto a taken tile. */
   onSetTiles(tiles: readonly EntityTile[]): void;
   /** Gives the entities that have no `tile` the one of the place they are shown at; without `ids`, all of the circuit. */
@@ -125,8 +126,11 @@ function toggled<T>(list: readonly T[], item: T): T[] {
 
 function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean, tiles: boolean, unplaced: number): string {
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
-  if (tool.type === "place" && tiles) return `Click a free tile (or press Enter on the board) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
-  if (tool.type === "place") return `Click the canvas (or press Enter on it) to place a ${KIND_INFO[tool.kind].label.toLowerCase()}. Esc cancels.`;
+  if (tool.type === "place") {
+    // What R does with a place tool is said with the direction it has set; a lamp does not turn.
+    const what = `${KIND_INFO[tool.kind].label.toLowerCase()}${canRotate(tool.kind) ? ` facing ${placeFacing(tool)} (R turns it)` : ""}`;
+    return tiles ? `Click a free tile (or press Enter on the board) to place a ${what}. Esc cancels.` : `Click the canvas (or press Enter on it) to place a ${what}. Esc cancels.`;
+  }
   if (tool.type === "wire" && pending) return `Click a second ${tool.color} pin to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.`;
   if (tool.type === "wire") return `Click a ${tool.color} pin of an input or output to start a ${tool.color} wire.`;
   if (tiles) return `Drag entities to free tiles, R turns them. ${unplaced > 0 ? "Dashed ones have no tile yet: drag them or use Snap all." : "Drag empty space to pan, Shift-drag to select an area."}`;
@@ -271,16 +275,19 @@ export function Canvas(props: CanvasProps) {
 
   // On the board a new entity is shown under the pointer before it is placed; that starts where the pointer is when the tool is picked.
   const placingKind = tool.type === "place" && capabilities.tiles && editable ? tool.kind : null;
+  const facing = placeFacing(tool);
   useEffect(() => {
     if (placingKind) setPointerWorld(pointerRef.current && svgRef.current ? worldPoint(pointerRef.current) : null);
   }, [placingKind]);
-  const ghostOrigin = placingKind && pointerWorld ? footprintOriginAt(pointerWorld, placingKind) : null;
+  const ghostOrigin = placingKind && pointerWorld ? footprintOriginAt(pointerWorld, placingKind, facing) : null;
   const [ghostX, ghostY] = [ghostOrigin?.x, ghostOrigin?.y];
   const ghost = useMemo(() => {
     if (!placingKind || ghostX === undefined || ghostY === undefined) return null;
-    const size = tileSize(placingKind, DEFAULT_FACING);
-    return { x: ghostX * TILE, y: ghostY * TILE, width: size.width * TILE, height: size.height * TILE, free: canStandAt(circuit.entities, placingKind, { x: ghostX, y: ghostY }) };
-  }, [placingKind, ghostX, ghostY, circuit.entities]);
+    const size = tileSize(placingKind, facing);
+    const [x, y, width, height] = [ghostX * TILE, ghostY * TILE, size.width * TILE, size.height * TILE];
+    const arrow = canRotate(placingKind) ? arrowPath(x + width / 2, y + height / 2, DIRECTION_VECTOR[facing], 2) : undefined;
+    return { x, y, width, height, arrow, free: canStandAt(circuit.entities, placingKind, { x: ghostX, y: ghostY }, facing) };
+  }, [placingKind, facing, ghostX, ghostY, circuit.entities]);
 
   const localPoint = (event: { readonly clientX: number; readonly clientY: number }): Point => {
     const bounds = svgRef.current!.getBoundingClientRect();
@@ -323,8 +330,8 @@ export function Canvas(props: CanvasProps) {
     }
     if (tool.type === "place") {
       if (!editable) return;
-      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, DEFAULT_FACING, footprintOriginAt(worldPoint(event), tool.kind)));
-      else props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)));
+      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, facing, footprintOriginAt(worldPoint(event), tool.kind, facing)), facing);
+      else props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)), facing);
       return;
     }
     // From here on the select tool. Cards and their pins lie above the wires, so a wire is only found where neither is in the way.
@@ -460,8 +467,9 @@ export function Canvas(props: CanvasProps) {
       // Keyboard placement: the new card goes to the middle of the view, on the board to the free place nearest to it.
       event.preventDefault();
       const middle = screenToWorld(cameraRef.current, { x: size.width / 2, y: size.height / 2 });
-      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, DEFAULT_FACING, freeOriginNear(circuit.entities, tool.kind, footprintOriginAt(middle, tool.kind))));
-      else props.onPlaceEntity(tool.kind, placementPosition(middle));
+      if (!capabilities.tiles) return props.onPlaceEntity(tool.kind, placementPosition(middle), facing);
+      const origin = freeOriginNear(circuit.entities, tool.kind, footprintOriginAt(middle, tool.kind, facing), facing);
+      props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, facing, origin), facing);
     } else if (event.key.toLowerCase() === "a" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       onSelect(circuit.entities.map((entity) => entity.id));
@@ -591,7 +599,21 @@ export function Canvas(props: CanvasProps) {
           describeSignal={props.describeSignal}
           resolveIcon={props.resolveEntityIcon}
         />
-        {ghost && <rect className={`board-ghost${ghost.free ? "" : " blocked"}`} x={ghost.x + 4} y={ghost.y + 4} width={ghost.width - 8} height={ghost.height - 8} rx="6" data-tile-x={ghostX} data-tile-y={ghostY} />}
+        {ghost && (
+          <rect
+            className={`board-ghost${ghost.free ? "" : " blocked"}`}
+            x={ghost.x + 4}
+            y={ghost.y + 4}
+            width={ghost.width - 8}
+            height={ghost.height - 8}
+            rx="6"
+            data-tile-x={ghostX}
+            data-tile-y={ghostY}
+            data-facing={facing}
+          />
+        )}
+        {/* Which way the new entity will face; a lamp has no direction. */}
+        {ghost?.arrow && <path className={`board-ghost-arrow${ghost.free ? "" : " blocked"}`} d={ghost.arrow} />}
         {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={layout.pin(pendingEntity, pendingWire.side, tool.color)} to={pointerWorld} />}
         {marquee && <rect className="marquee" x={marquee.x} y={marquee.y} width={marquee.width} height={marquee.height} />}
       </svg>

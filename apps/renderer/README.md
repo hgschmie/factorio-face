@@ -104,7 +104,8 @@ interface WorkbenchController {
 `WorkbenchState`: `project` (name, path, fileName, dirty, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
-`describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error`.
+`describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
+below).
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
@@ -159,6 +160,25 @@ simulation (`run`, `pause`,
   source says, so its pins never move (a `facing` clause typed on a lamp gets the warning `unused-facing`). An entity with a
   `tile` gets its tile corrected in the same transaction: a 2x1 combinator keeps the top-left tile of its footprint, so a half turn
   keeps both tiles and swaps input and output (`rotateTile`).
+- **Placing with a direction.** A place tool holds the direction of what it places: `Tool` is `{ type: "place", kind, facing? }`,
+  east without `facing` (`placeFacing(tool)`; always east for a lamp). `R` and `Shift+R` turn it while the tool is active
+  (`turnedTool(tool, turn)`, set with `setTool`), in both display modes, instead of turning the selection; a lamp tool does
+  not turn and the keys then do nothing. `sameTool` does not look at the direction (it is the same button of the palette), but
+  `setTool` does: the tool picked again by its key, or after another tool, comes without `facing` and so faces east again. A
+  click that places nothing (a taken tile) keeps the tool and its direction. `placeEntity(kind, position, facing?)` and
+  `placeEntityOnTile(kind, tile, facing?)` pass it to the language command `addEntity`, which writes ` facing <direction>`
+  behind `at` or `tile` for every direction but east (a new entity that faces east has no clause, as before) and never for a
+  lamp. The hint line says the direction and the key ("to place a decider facing south (R turns it)"); on the edit canvas that
+  is the only sign of it before the click, on the board the outline turns as well.
+- **Messages.** `state.error` is one message, shown in the toast (`.toast`, `role="alert"`) with a Dismiss button; a newer one
+  replaces it. The session sets it through `show(message, refusal?)` and keeps two sorts apart. A message about a refused edit
+  (a name that is taken, a wire that cannot be, a `tile` off the grid, "Nothing was pasted", a turn refused on the board)
+  describes the document it was refused on, so it goes away with the next change of the document, whatever makes it: a command
+  that works, undo, redo, typing in the source. Commands that change nothing (a blocked move, a tool, a menu, the display mode)
+  leave it. The message about a refused turn was about the selection, so it also goes when other entities, or none, are
+  selected; the others stay through a selection, because the inspector writes a name when its field is left, and a click on
+  another card would take the message about that name away before it was read. A message that is not about an edit (a project
+  that could not be opened or saved) stays until it is dismissed or the next project is loaded.
 - **Network toggles.** `NetworkToggle` writes any of the four selections; both off is `[none]` after a signal and `networks = none` on
   a lamp. A color without a wire on the entity's input terminal is drawn grayed (class `unwired`, dashed outline, a title that says
   so) but works as usual. The inspector passes the connected colors down through `InputWiresContext`.
@@ -174,7 +194,8 @@ simulation (`run`, `pause`,
   the top-left corner of the group goes there, otherwise the group goes where it was copied from; from there it moves on by
   (40, 40) until none of its entities sits exactly on an existing one. A copy pasted into its own circuit so lands 40 units right
   of and below the original, the next one 80, and a group that was cut comes back in place. Cut is `copyEntities` plus
-  `deleteEntities`, the deletion being the undo step.
+  `deleteEntities`, the deletion being the undo step. On the blueprint board the session ignores `corner`: the point under the
+  pointer or the menu is a place on the board there, not an edit position, so a paste is placed like a duplicate.
 - **Moving and duplicating the selection.** `nudgeSelection(delta)` moves the selected entities by a distance in canvas units
   (the language command `moveEntities`): one undo step per call, the selection stays, an entity that is off the grid stays off
   it by the same amount. `duplicateSelection()` is `copyEntities` of the selection followed by `pasteEntities` without a corner,
@@ -278,15 +299,14 @@ mode" with `aria-pressed` buttons) and the key `B` switch it. The canvas contain
 | `move` | dragging entities and the arrow keys | yes | yes |
 | `place` | the building blocks of the palette | yes | yes |
 | `wire` | the wire tools | yes | yes |
-| `paste` | paste and duplicate | yes | no |
+| `paste` | paste and duplicate | yes | yes |
 | `rotate` | `R`, `Shift+R` and the rotation items of the context menu | yes | yes |
 | `tiles` | positions are tiles: a move and a new entity write `tile` instead of `at`, a turn has to find its tiles free, and the controls that give and take a tile are shown | no | yes |
 
 `Canvas` (the drag and its commit, the place tool, the menu items, the "Snap all" button, the hint), `Workbench` (the keys, the
 paste event, the footer of the inspector) and `Palette` (`canPlace`, `canWire`) read it, and the session refuses a tool the mode
 does not offer (`toolAllowed`), falls back to the select tool when a mode change takes the tool away, and applies the rule for
-turns where `tiles` is set. Paste and duplicate are off on the board because a copy has no `tile` (fragments drop it) and what a
-paste on the board should do is not decided. Everything that does not depend on a position works in both modes: selecting (click,
+turns where `tiles` is set. Everything that does not depend on a position works in both modes: selecting (click,
 Shift-click, marquee, wires), pan, zoom, Fit, copy, cut, delete, Select all and the whole inspector. While the source has
 errors nothing can be dragged, and a click on one member of a multi-selection narrows the selection to it at once.
 
@@ -348,13 +368,14 @@ stands at a derived place, gives way to the others and is never in the way. `at`
 | Turning | `blockedTurn(entities, facings)` | A turned entity keeps its top-left tile (`rotateTile`). The turn is blocked for the whole selection when one of them would newly cover a tile on which another entity with a `tile` stands after the turn. Tiles an entity covers already do not count (a half turn is always possible, and an entity in a conflict can be turned out of it). Blueprint mode only: on the edit canvas a turn is never refused, the analysis warns (`tile-overlap`). |
 | Snapping | `derivedTiles(entities)` | An entity without a `tile` gets the one of the place it is shown at. These places keep clear of all tiles that are taken and of each other, so a snap of any subset cannot be blocked. |
 | Releasing | | The `tile` clause is removed; the entity stands at a derived place again. |
-| A new entity | `footprintOriginAt(point, kind)`, `canStandAt(entities, kind, origin)`, `freeOriginNear(entities, kind, wanted)`, `editPositionOf(origin)` | It faces east and its footprint has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
+| A new entity | `footprintOriginAt(point, kind, facing)`, `canStandAt(entities, kind, origin, facing)`, `freeOriginNear(entities, kind, wanted, facing)`, `editPositionOf(origin)` | It faces the way the place tool was turned (east at first) and its footprint, turned with it, has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
 
 - Session commands (`WorkbenchCommands`), each one undo step: `setTiles(tiles: { id, tile }[])` with the centers as the `tile`
   clause holds them (blocked: nothing happens; a center off the grid: refused by the language and reported), `nudgeTiles(delta)`
   for the selection in whole tiles from where the board shows it, `snapToTiles(ids?)` (all entities without `ids`),
-  `clearTiles(ids)`, `placeEntityOnTile(kind, tile)`. `rotateEntities` and `faceEntities` apply the turn rule while the display
-  mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light."
+  `clearTiles(ids)`, `placeEntityOnTile(kind, tile, facing?)`. `rotateEntities` and `faceEntities` apply the turn rule while the display
+  mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light." The message goes
+  with the next change of the document or of the selected entities ("Messages" above).
 - Dragging: the gesture of the edit canvas with a step of one tile. The preview is arranged with `arrangeBoard(entities, moved)`;
   entities of the drag are drawn last (`g.card.moving`), one on a taken tile is `blocked` (`data-blocked`, red body and outline)
   and the entity under it gets the conflict outline. The canvas has the class `dragging`, and the bubble is hidden. A drop that
@@ -367,9 +388,19 @@ stands at a derived place, gives way to the others and is never in the way. `at`
   only while there are some); in the context menu of a selection "Snap to tile grid" for its entities without a tile and
   "Release from tile grid" for those with one (`Snap 2 to tile grid` when the item does not take the whole selection). They
   have no shortcut. The hint line says that dashed entities have no tile.
-- Placing: with a place tool the footprint of the new entity follows the pointer (`rect.board-ghost` with `data-tile-x` and
-  `data-tile-y`, class `blocked` and the cursor `not-allowed` over a taken tile, where a click does nothing and the tool
-  stays). The new entity is selected and the tool goes back to select, as on the edit canvas.
+- Placing: with a place tool the footprint of the new entity follows the pointer (`rect.board-ghost` with `data-tile-x`,
+  `data-tile-y` and `data-facing`, class `blocked` and the cursor `not-allowed` over a taken tile, where a click does nothing
+  and the tool stays). `R` and `Shift+R` turn the outline, not the selection ("Placing with a direction" above): a 2x1
+  outline changes between lying and upright around the pointer, an arrow in its middle (`path.board-ghost-arrow`, none for a
+  lamp) points the way the entity will face, and whether the tiles are free is asked for the turned footprint. Enter places
+  with the same direction. The new entity is selected and the tool goes back to select, as on the edit canvas; `facing` is
+  written with the `tile`, whose center is the one of the turned footprint.
+- Paste and duplicate: as on the edit canvas, by `Cmd/Ctrl+V`, Edit > Paste, the Paste of the context menu and `Cmd/Ctrl+D`.
+  The copies have no `tile` (a fragment drops it): they appear as entities that are not placed (dashed, at their derived
+  place), are the selection, and are one undo step. Their edit position is the one of a paste without a corner (where they
+  were copied from, moved on by (40, 40) until free), also when the pointer is over the board or the menu was opened on it:
+  a point of the board is not an edit position. From there they are dragged or snapped like any entity without a tile; the
+  hint line and "Snap all" say so.
 - Wiring: the wire tools work as on the edit canvas (click a pin, click a second pin of the color; the pending wire is a
   straight dashed line to the pointer).
 - The inspector's footer shows `Tile X .. Y ..` (the center, as in the source) or "Not placed on a tile" on the board
@@ -458,7 +489,8 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   start of the rubber band), the others are dimmed and ignored, whatever edge they are on. The model is unchanged: a wire is a
   color plus two terminals, and the tool decides the color.
 - Rotating: `R` turns the selected entities a quarter turn clockwise, `Shift+R` counter-clockwise, as in the game (see
-  "Keyboard shortcuts" for where the keys act). A held key does not repeat. The context menu of a card has "Rotate clockwise" and "Rotate
+  "Keyboard shortcuts" for where the keys act; with a place tool they turn what it is about to place instead, see "Placing
+  with a direction"). A held key does not repeat. The context menu of a card has "Rotate clockwise" and "Rotate
   counter-clockwise" with the keys, and the inspector of a single entity has the Facing control (`.facing-toggle`, a group named
   "Facing" with four buttons `data-direction`, `aria-pressed` on the current one). Every entity of a selection turns in place, each
   from its own direction; the selection is not turned as a group. One rotation of a selection is one undo step. While the source
@@ -526,7 +558,7 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   source editor or a dialog (`focusIsOnText`); there, and for a copy while text of the page is selected (a message in the toast),
   they stay the browser's own. Cut and copy take the selected entities only (the wires between them are part of the text
   anyway): with wires alone selected both do nothing, and a cut leaves a selected wire that still exists selected. A paste puts the top-left corner of the group on the grid point under
-  the pointer while that is over the canvas (`CanvasHandle.pasteCorner`); otherwise see `pasteShift` above. While the source has
+  the pointer while that is over the canvas (`CanvasHandle.pasteCorner`); otherwise, and always on the blueprint board, see `pasteShift` above. While the source has
   errors copy works, cut and paste do nothing. The context menu of a card has Cut, Copy and Paste with their shortcuts (Cut and
   Paste disabled while the source has errors); Cut and Copy run `document.execCommand`, which raises the same events. A page cannot
   start a paste (`document.execCommand("paste")` is refused and the clipboard permissions are denied), so Paste asks the main
@@ -569,7 +601,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Building block to place: Constant, Arithmetic, Decider, Selector, Lamp | `1` ... `5` | `1` ... `5` | circuit |
 | Place the block in the middle of the view (on the board: on the free tile nearest to it) | `↩` | `Enter` | canvas (focus on the canvas itself) |
 | Cancel: the pending wire, then the tool, then (in the canvas) the selection | `Esc` | `Esc` | circuit, canvas |
-| Rotate clockwise, counter-clockwise | `R`, `⇧R` | `R`, `Shift+R` | circuit |
+| Rotate clockwise, counter-clockwise: the selection, or with a place tool the entity it is about to place | `R`, `⇧R` | `R`, `Shift+R` | circuit |
 | Move the selection one grid step, five grid steps (on the board: tiles) | arrows, `⇧` arrows | arrows, `Shift` arrows | circuit |
 | Duplicate the selection | `⌘D` | `Ctrl+D` | circuit |
 | Delete the selection | `⌫` or Delete | `Del` or Backspace | canvas |
@@ -601,8 +633,9 @@ when two rows share a key on a platform or when one key event matches two rows.
   of the palette (`ENTITY_KINDS`). The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), on the
   blueprint board `nudgeTiles` with one tile and five, unless the
   focused control uses the arrows itself (`usesArrowKeys` in `platform.ts`: text, selects, sliders, radio groups, lists, tabs,
-  menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. `B` switches the display mode;
-  what the mode does not offer (`DISPLAY_CAPABILITIES`: on the blueprint board duplicate and paste) does nothing. While the source has errors the
+  menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. `R` and `Shift+R` turn the
+  selection, or, while a place tool is active, what that tool is about to place (`turnedTool`; nothing for a lamp). `B` switches
+  the display mode; what a mode does not offer (`DISPLAY_CAPABILITIES`) does nothing. While the source has errors the
   keys that edit (rotation, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
   buttons) do nothing; `Q`, Escape and `?` work.
 - **Discoverability.** The three tool buttons and the five building blocks name their key in the tooltip (`title`); the building

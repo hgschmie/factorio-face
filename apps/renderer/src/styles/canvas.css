@@ -351,6 +351,16 @@
   stroke-dasharray: 3 3;
 }
 
+.board-ghost-arrow {
+  fill: var(--accent);
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.board-ghost-arrow.blocked {
+  fill: var(--status-error);
+}
+
 .canvas.tool-place:has(.board-ghost.blocked) .canvas-svg {
   cursor: not-allowed;
 }

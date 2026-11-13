@@ -1,6 +1,6 @@
 import { DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, TERMINAL_SIDES, TERMINALS, WIRE_COLORS, type Direction } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
+import { arrowPath, CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
 import { CLOCKWISE, opposite, rotated } from "../src/entities/facing.ts";
 
 describe("connection pins", () => {
@@ -126,5 +126,14 @@ describe("connection pins of rotated entities", () => {
       expect(rotated(rotated(facing, "clockwise"), "counterclockwise")).toBe(facing);
       expect(opposite(facing)).toBe(rotated(rotated(facing, "clockwise"), "clockwise"));
     }
+  });
+});
+
+describe("arrowPath", () => {
+  it("is a triangle with its tip ahead of the point, turned with the direction and grown with the scale", () => {
+    expect(arrowPath(100, 50, DIRECTION_VECTOR.east)).toBe("M 105 50 L 96 45 L 96 55 Z");
+    expect(arrowPath(100, 50, DIRECTION_VECTOR.south)).toBe("M 100 55 L 105 46 L 95 46 Z");
+    expect(arrowPath(100, 50, DIRECTION_VECTOR.west, 2)).toBe("M 90 50 L 108 60 L 108 40 Z");
+    expect(arrowPath(0, 0, DIRECTION_VECTOR.north, 2)).toBe("M 0 -10 L -10 8 L 10 8 Z");
   });
 });

@@ -20,6 +20,13 @@ export const PIN_RADIUS = 6;
 /** One step in `direction` on the canvas, where y grows downwards. */
 export const DIRECTION_VECTOR: Readonly<Record<Direction, Point>> = { east: { x: 1, y: 0 }, south: { x: 0, y: 1 }, west: { x: -1, y: 0 }, north: { x: 0, y: -1 } };
 
+/** SVG path of a triangle around (x, y) that points along `forward` (a `DIRECTION_VECTOR`): 9 units long and 10 wide, times `scale`. */
+export function arrowPath(x: number, y: number, forward: Point, scale = 1): string {
+  const [tip, back, half] = [5 * scale, 4 * scale, 5 * scale];
+  const base = { x: x - forward.x * back, y: y - forward.y * back };
+  return `M ${x + forward.x * tip} ${y + forward.y * tip} L ${base.x + forward.y * half} ${base.y - forward.x * half} L ${base.x - forward.y * half} ${base.y + forward.x * half} Z`;
+}
+
 export type CardEdge = "left" | "right" | "top" | "bottom";
 
 const EDGE_TOWARDS: Readonly<Record<Direction, CardEdge>> = { east: "right", south: "bottom", west: "left", north: "top" };

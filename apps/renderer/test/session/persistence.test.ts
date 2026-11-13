@@ -172,6 +172,12 @@ describe("project lifecycle", () => {
     await session.commands.loadProject("/projects/missing");
     expect(session.state.error).toContain("Not a face project");
     expect(session.state.source).toBe(IRREGULAR);
+    // It says nothing about the circuit, so an edit and a selection do not take it away.
+    session.commands.select([idOf(session, "gate")]);
+    session.commands.moveEntities([{ id: idOf(session, "gate"), position: { x: 320, y: 80 } }]);
+    session.commands.undo();
+    expect(session.state.error).toContain("Not a face project");
+    expect(session.state.source).toBe(IRREGULAR);
     session.commands.dismissError();
 
     // A cancelled location dialog is not an error.

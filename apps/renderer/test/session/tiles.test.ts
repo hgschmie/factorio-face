@@ -1,5 +1,5 @@
 // Editing on the blueprint board: the session commands that write `tile`, and the rules they keep (canvas/board.ts).
-import { facingOf, type Point } from "@face/model";
+import { facingOf, wireKey, type Point } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { DISPLAY_CAPABILITIES } from "../../src/workbench/controller.ts";
 import { createSession, entityNamed, idOf, replaceText } from "./helpers.ts";
@@ -39,8 +39,8 @@ function board(source = BOARD) {
 }
 
 describe("what the blueprint board allows", () => {
-  it("is said in one table: everything but paste and duplicate, with positions in tiles", () => {
-    expect(DISPLAY_CAPABILITIES.blueprint).toEqual({ move: true, place: true, wire: true, paste: false, rotate: true, tiles: true });
+  it("is said in one table: everything, with positions in tiles", () => {
+    expect(DISPLAY_CAPABILITIES.blueprint).toEqual({ move: true, place: true, wire: true, paste: true, rotate: true, tiles: true });
     expect(DISPLAY_CAPABILITIES.edit).toEqual({ move: true, place: true, wire: true, paste: true, rotate: true, tiles: false });
   });
 });
@@ -248,6 +248,32 @@ describe("placeEntityOnTile", () => {
     expect(tiles()).toMatchObject({ lamp1: at(6.5, 1.5), light: undefined });
   });
 
+  it("places an entity that faces the way the tool was turned: the tile and the free-tile test are those of the turned footprint", () => {
+    const { session, tiles } = board();
+    session.commands.setDisplayMode("blueprint");
+    // Upright on (4, 0) and (4, 1), next to the gate: the center has a whole y.
+    session.commands.placeEntityOnTile("decider", at(4.5, 1), "south");
+    expect(session.state.source).toContain("decider decider1 at (360, 0) tile (4.5, 1) facing south {");
+    expect(entityNamed(session, "decider1").placement).toEqual({ tile: at(4.5, 1), direction: "south" });
+    expect(session.state).toMatchObject({ error: null, selection: [idOf(session, "decider1")] });
+    session.commands.undo();
+    expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
+    // Upright on (3, 0) and (3, 1) it would stand on the gate; lying on (4, 1) and (5, 1) an east-facing one is free there.
+    session.commands.placeEntityOnTile("arithmetic", at(3.5, 1), "north");
+    expect(session.state).toMatchObject({ source: BOARD, error: null, canUndo: false });
+    session.commands.placeEntityOnTile("arithmetic", at(4, 1.5), "west");
+    expect(session.state.source).toContain("arithmetic arithmetic1 at (280, 100) tile (4, 1.5) facing west {");
+    // East is not written, and a lamp is placed as it always is.
+    session.commands.placeEntityOnTile("selector", at(1, 5.5), "east");
+    session.commands.placeEntityOnTile("lamp", at(0.5, 7.5), "south");
+    expect(session.state.source).toMatch(/selector selector1 at \(-?\d+, \d+\) tile \(1, 5\.5\) \{/);
+    expect(session.state.source).toMatch(/lamp lamp1 at \(-?\d+, \d+\) tile \(0\.5, 7\.5\) \{/);
+    expect(tiles()).toMatchObject({ gate: at(3, 0.5), arithmetic1: at(4, 1.5) });
+    // A center that belongs to the other orientation is refused by the language.
+    session.commands.placeEntityOnTile("decider", at(8, 8.5), "south");
+    expect(session.state.error).toBe("tile (8, 8.5) is not on the tile grid for a new decider facing south");
+  });
+
   it("moves the edit position on while it is exactly the one of another entity, as a paste does", () => {
     const { session } = board(BOARD.replace("lamp light at (560, 80)", "lamp light at (280, 100)"));
     session.commands.placeEntityOnTile("constant", at(3.5, 1.5));
@@ -288,6 +314,52 @@ describe("rotating on the board", () => {
     session.commands.clearTiles([idOf(session, "light")]);
     session.commands.rotateEntities(ids, "clockwise");
     expect(entityNamed(session, "gate").placement).toEqual({ tile: at(2.5, 1), direction: "north" });
+    expect(session.state.error).toBeNull();
+  });
+
+  it("takes the message back when the document changes or other entities are selected, not before", () => {
+    const { session, set } = board(TIGHT);
+    session.commands.setDisplayMode("blueprint");
+    const [source, gate] = [idOf(session, "source"), idOf(session, "gate")];
+    const message = "Not rotated: gate would stand on a tile of light.";
+    const refuse = (): void => {
+      session.commands.select([gate]);
+      session.commands.rotateEntities([gate], "clockwise");
+      expect(session.state.error).toBe(message);
+    };
+
+    // What changes neither the document nor the selection leaves it: view state, a blocked move, the same selection again.
+    refuse();
+    session.commands.setTool({ type: "wire", color: "red" });
+    session.commands.setMode("split");
+    set({ gate: at(1, 0.5) });
+    session.commands.select([gate]);
+    session.commands.select([gate], [wireKey(session.state.circuit.wires[0]!)]);
+    expect(session.state.wireSelection).toHaveLength(1);
+    expect(session.state).toMatchObject({ error: message, source: TIGHT });
+
+    // The next turn that works, a move, an undo, typing: each is a change of the document.
+    session.commands.faceEntities([gate], "west");
+    expect(session.state).toMatchObject({ error: null, canUndo: true });
+    refuse();
+    session.commands.undo();
+    expect(session.state).toMatchObject({ error: null, source: TIGHT });
+    refuse();
+    set({ source: at(0.5, 2.5) });
+    expect(session.state.error).toBeNull();
+    refuse();
+    replaceText(session, "virtual:signal-A = 1", "virtual:signal-A = 2");
+    expect(session.state.error).toBeNull();
+
+    // Other entities selected, or none: the message was about the turn of that selection.
+    refuse();
+    session.commands.select([gate, source]);
+    expect(session.state.error).toBeNull();
+    refuse();
+    session.commands.select([]);
+    expect(session.state.error).toBeNull();
+    refuse();
+    session.commands.dismissError();
     expect(session.state.error).toBeNull();
   });
 

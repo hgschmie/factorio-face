@@ -85,6 +85,41 @@ test("R turns the selected entity clockwise and Shift+R back, the card stays and
   await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
 });
 
+test("with a place tool R turns what is about to be placed, not the selection, and the hint says which way", async ({ page }) => {
+  for (let step = 0; step < 2; step++) await page.getByRole("button", { name: "Zoom out" }).click();
+  await selectEntity(page, "gate");
+  const hint = page.locator(".canvas-hint");
+  await page.keyboard.press("3");
+  await expect(hint).toHaveText("Click the canvas (or press Enter on it) to place a decider facing east (R turns it). Esc cancels.");
+  await page.keyboard.press("r");
+  await expect(hint).toContainText("facing south");
+  await page.keyboard.press("Shift+KeyR");
+  await page.keyboard.press("Shift+KeyR");
+  await expect(hint).toContainText("facing north");
+  await expect(card(page, "gate")).toHaveAttribute("data-facing", "east");
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
+  // The pointer is the center of the new card.
+  const point = await clientPointOf(page, { x: 92, y: 564 });
+  await page.mouse.click(point.x, point.y);
+  await expect(card(page, "decider1")).toHaveClass(/selected/);
+  await expect(card(page, "decider1")).toHaveAttribute("data-facing", "north");
+  await expect.poll(() => pinOffsets(page, "decider1")).toEqual(expectedPins("north"));
+  expect(await sourceText(page)).toContain("decider decider1 at (0, 500) facing north {");
+
+  // The tool picked again faces east; a lamp has no direction to turn, and the new decider, which is selected, stays as it is.
+  await page.keyboard.press("3");
+  await expect(hint).toContainText("facing east");
+  await page.keyboard.press("5");
+  await expect(hint).toHaveText("Click the canvas (or press Enter on it) to place a lamp. Esc cancels.");
+  await page.keyboard.press("r");
+  await expect(page.locator('.palette-item[data-kind="lamp"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(card(page, "decider1")).toHaveAttribute("data-facing", "north");
+  // Without the tool the key is the selection's again.
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("r");
+  await expect(card(page, "decider1")).toHaveAttribute("data-facing", "east");
+});
+
 test("a constant turns the one terminal it has", async ({ page }) => {
   await selectEntity(page, "source");
   await page.keyboard.press("r");

@@ -230,6 +230,9 @@ describe("the rules of editing on the board", () => {
     expect(canStandAt(entities, "decider", at(4, 1))).toBe(false);
     // Where an entity without a tile is shown, a new one can stand.
     expect(canStandAt(entities, "decider", at(2, 1))).toBe(true);
+    // Turned, it is the upright footprint that has to be free: (2, 0) and (2, 1) are, (3, -1) and (3, 0) are not.
+    expect(canStandAt(entities, "decider", at(2, 0), "south")).toBe(true);
+    expect(canStandAt(entities, "decider", at(3, -1), "north")).toBe(false);
   });
 
   it("finds the free place nearest to a wanted one for a new entity", () => {
@@ -238,6 +241,9 @@ describe("the rules of editing on the board", () => {
     expect(freeOriginNear(entities, "lamp", at(3, 0))).toEqual(at(3, -1));
     expect(freeOriginNear(entities, "decider", at(0, 0))).toEqual(at(0, -1));
     expect(freeOriginNear([], "decider", at(-4, 2))).toEqual(at(-4, 2));
+    // Upright, the decider fits where it does not fit lying.
+    expect(freeOriginNear(entities, "decider", at(2, 0), "north")).toEqual(at(2, 0));
+    expect(freeOriginNear(entities, "decider", at(2, 0))).not.toEqual(at(2, 0));
   });
 
   it("gives a new entity the edit position its tile is derived from, on the grid of the edit canvas", () => {

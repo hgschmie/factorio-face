@@ -1,5 +1,5 @@
-// Editing on the blueprint board: dragging on tiles, the arrow keys, rotating, snapping to the grid and back, placing new
-// entities, wiring, and repairing a conflict. Nothing of it touches the edit positions (`at`).
+// Editing on the blueprint board: dragging on tiles, the arrow keys, rotating and its refusal, snapping to the grid and back, placing new
+// entities (turned with R before the click), wiring, and repairing a conflict. Nothing of it touches the edit positions (`at`).
 import type { Page } from "@playwright/test";
 import { boardGrabPoint, canvas, canvasView, card, clickCenter, committedPositions, entityNames, expect, pin, showDisplay, sourceText, test, wire, wireKeyOf, wires } from "./app.ts";
 import { BOARD, bubble, committedTiles, dragOnBoard, footprint, inspector, menu, openBoardProject as openBoard, selectOnBoard, TILE, tilePoint, tool } from "./board.ts";
@@ -259,6 +259,55 @@ test("a turn onto a tile of another entity is refused for the whole selection, w
   expect(await tileOf(page, "light")).not.toEqual([2, 1]);
 });
 
+test("the message about a refused turn goes with the next turn or move that works, and with another selection", async ({ page }) => {
+  // The lamp stands on (2, 1), below the left tile of the gate.
+  const tight = BOARD.replace("tile (7.5, 0.5)", "tile (2.5, 1.5)");
+  await openBoard(page, tight);
+  const refuse = async (): Promise<void> => {
+    await selectOnBoard(page, "gate");
+    await page.keyboard.press("r");
+    await expect(toast(page)).toHaveText("Not rotated: gate would stand on a tile of light.");
+  };
+
+  // What changes neither the circuit nor the selection leaves it: a menu, a tool, a drop on a taken tile.
+  await refuse();
+  await openMenuOn(page, "gate");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Alt+KeyR");
+  await page.keyboard.press("Escape");
+  await dragOnBoard(page, "gate", { x: 2, y: 0 });
+  expect(await sourceText(page)).toBe(tight);
+  await expect(toast(page)).toHaveCount(1);
+
+  // A turn that works: the half turn keeps both tiles.
+  await inspector(page).getByRole("group", { name: "Facing" }).locator('[data-direction="west"]').click();
+  await expect.poll(() => footprint(page, "gate")).toMatchObject({ tile: [2, 0], facing: "west" });
+  await expect(toast(page)).toHaveCount(0);
+  // A move that works, by key and by drag, and taking a step back.
+  await refuse();
+  await page.keyboard.press("ArrowUp");
+  await expect.poll(() => tileOf(page, "gate")).toEqual([2, -1]);
+  await expect(toast(page)).toHaveCount(0);
+  await page.keyboard.press("ArrowDown");
+  await refuse();
+  await dragOnBoard(page, "source", { x: 0, y: 1 });
+  await expect.poll(() => tileOf(page, "source")).toEqual([0, 1]);
+  await expect(toast(page)).toHaveCount(0);
+  await refuse();
+  await undo(page).click();
+  await expect(toast(page)).toHaveCount(0);
+
+  // Another selection, or none: the message was about the turn of that one.
+  await refuse();
+  await shiftClick(page, "pick");
+  await expect(toast(page)).toHaveCount(0);
+  await refuse();
+  const free = await tilePoint(page, 4, 3);
+  await page.mouse.click(free.x, free.y);
+  await expect(page.locator("g.card.selected")).toHaveCount(0);
+  await expect(toast(page)).toHaveCount(0);
+});
+
 test("entities without a tile are snapped with the button, the menu or a drag, released again, and never in the way", async ({ page }) => {
   await openBoard(page, LOOSE);
   const positions = await committedPositions(page);
@@ -426,6 +475,110 @@ test("the palette places each kind on the tile under the pointer, and refuses a 
   // Within two tiles of the middle of the view.
   expect(Math.hypot(lamp.x + lamp.width / 2 - middle.x, lamp.y + lamp.height / 2 - middle.y)).toBeLessThan(2.5 * TILE * view.zoom);
   expect(await committedPositions(page)).toMatchObject(positions);
+});
+
+test("R and Shift+R turn what a place tool is about to place: the outline, the free-tile test and the entity", async ({ page }) => {
+  await openBoard(page);
+  const ghost = page.locator("rect.board-ghost");
+  const arrow = page.locator("path.board-ghost-arrow");
+  const hint = page.locator(".canvas-hint");
+  const block = (kind: string) => page.locator(`.palette-item[data-kind="${kind}"]`);
+  /** The outline: its top-left tile, its size in tiles and the direction it says. */
+  const outline = async () =>
+    ghost.evaluate((rect, tile) => {
+      const [x, y, width, height] = ["data-tile-x", "data-tile-y", "width", "height"].map((name) => Number(rect.getAttribute(name)));
+      return { tile: [x, y], size: [(width! + 8) / tile, (height! + 8) / tile], facing: rect.getAttribute("data-facing") };
+    }, TILE);
+  // With a place tool the keys are not for the selection: the gate here, later what was placed last.
+  await selectOnBoard(page, "gate");
+
+  // A quarter of a tile right of and below the middle of tile (6, 2): lying, the footprint takes (6, 2) and (7, 2), upright (6, 2) and (6, 3).
+  await page.keyboard.press("3");
+  await expect(hint).toHaveText("Click a free tile (or press Enter on the board) to place a decider facing east (R turns it). Esc cancels.");
+  const spot = await tilePoint(page, 6.25, 2.25);
+  await page.mouse.move(spot.x, spot.y, { steps: 3 });
+  await expect.poll(outline).toEqual({ tile: [6, 2], size: [2, 1], facing: "east" });
+  await expect(arrow).toHaveCount(1);
+  await page.keyboard.press("r");
+  await expect.poll(outline).toEqual({ tile: [6, 2], size: [1, 2], facing: "south" });
+  await expect(hint).toContainText("facing south");
+  await page.keyboard.press("Shift+KeyR");
+  await page.keyboard.press("Shift+KeyR");
+  await expect.poll(outline).toEqual({ tile: [6, 2], size: [1, 2], facing: "north" });
+  await expect(ghost).not.toHaveClass(/blocked/);
+  expect(await sourceText(page)).toBe(BOARD);
+  await page.mouse.click(spot.x, spot.y);
+  await expect(card(page, "decider1")).toHaveClass(/selected/);
+  expect(await footprint(page, "decider1")).toEqual({ tile: [6, 2], size: [1, 2], facing: "north", placed: "true" });
+  expect(await sourceText(page)).toContain("decider decider1 at (560, 180) tile (6.5, 3) facing north {");
+  await expect(tool(page, "Select and move")).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("g.card.conflict")).toHaveCount(0);
+  await undo(page).click();
+  expect(await sourceText(page)).toBe(BOARD);
+
+  // The free-tile test is the one of the turned footprint: around (0.25, 1.1) a lying decider is free on (0, 1) and (1, 1), an
+  // upright one would stand on (0, 2), which is taken. The tool picked again faces east.
+  await page.keyboard.press("3");
+  const tight = await tilePoint(page, 0.25, 1.125);
+  await page.mouse.move(tight.x, tight.y, { steps: 3 });
+  await expect.poll(outline).toEqual({ tile: [0, 1], size: [2, 1], facing: "east" });
+  await expect(ghost).not.toHaveClass(/blocked/);
+  await page.keyboard.press("r");
+  await expect.poll(outline).toEqual({ tile: [0, 1], size: [1, 2], facing: "south" });
+  await expect(ghost).toHaveClass(/blocked/);
+  await expect(arrow).toHaveClass(/blocked/);
+  // The refused click keeps the tool and its direction.
+  await page.mouse.click(tight.x, tight.y);
+  expect(await sourceText(page)).toBe(BOARD);
+  await expect(block("decider")).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(outline).toMatchObject({ facing: "south" });
+  await expect(toast(page)).toHaveCount(0);
+  // Its key again: east. Another tool and back: east as well.
+  await page.keyboard.press("3");
+  await expect.poll(outline).toEqual({ tile: [0, 1], size: [2, 1], facing: "east" });
+  await page.keyboard.press("r");
+  await page.keyboard.press("2");
+  await expect.poll(outline).toMatchObject({ facing: "east" });
+  await page.keyboard.press("3");
+  await expect.poll(outline).toMatchObject({ facing: "east" });
+  await page.keyboard.press("Shift+KeyR");
+  await page.keyboard.press("Shift+KeyR");
+  await expect.poll(outline).toEqual({ tile: [0, 1], size: [2, 1], facing: "west" });
+  await page.mouse.click(tight.x, tight.y);
+  await expect(card(page, "decider1")).toHaveClass(/selected/);
+  expect(await footprint(page, "decider1")).toEqual({ tile: [0, 1], size: [2, 1], facing: "west", placed: "true" });
+  expect(await sourceText(page)).toContain("decider decider1 at (0, 100) tile (1, 1.5) facing west {");
+
+  // A constant turns on its one tile; a lamp does not turn, and its outline has no arrow.
+  await page.keyboard.press("1");
+  const one = await tilePoint(page, 1, 4);
+  await page.mouse.move(one.x, one.y, { steps: 3 });
+  await page.keyboard.press("r");
+  await expect.poll(outline).toEqual({ tile: [1, 4], size: [1, 1], facing: "south" });
+  await page.mouse.click(one.x, one.y);
+  await expect(card(page, "constant1")).toHaveAttribute("data-facing", "south");
+  expect(await sourceText(page)).toContain("constant constant1 at (100, 360) tile (1.5, 4.5) facing south {");
+  await page.keyboard.press("5");
+  await expect(hint).toHaveText("Click a free tile (or press Enter on the board) to place a lamp. Esc cancels.");
+  await page.mouse.move(one.x + 1, one.y + 1);
+  await page.keyboard.press("r");
+  await page.keyboard.press("Shift+KeyR");
+  await expect.poll(outline).toMatchObject({ size: [1, 1], facing: "east" });
+  await expect(arrow).toHaveCount(0);
+  await expect(block("lamp")).toHaveAttribute("aria-pressed", "true");
+  await expect(card(page, "constant1")).toHaveClass(/selected/);
+  await expect(card(page, "constant1")).toHaveAttribute("data-facing", "south");
+
+  // Enter places with the direction of the tool too.
+  await page.keyboard.press("2");
+  await page.keyboard.press("r");
+  await canvas(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(card(page, "arithmetic1")).toHaveClass(/selected/);
+  expect(await footprint(page, "arithmetic1")).toMatchObject({ size: [1, 2], facing: "south", placed: "true" });
+  await expect(page.locator("g.card.conflict")).toHaveCount(0);
+  // Nothing of it turned the gate.
+  expect(await footprint(page, "gate")).toEqual({ tile: [2, 0], size: [2, 1], facing: "east", placed: "true" });
 });
 
 test("the wire tools connect pins on the board with a straight line, and take a wire away again", async ({ page }) => {

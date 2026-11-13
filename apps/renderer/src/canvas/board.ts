@@ -191,7 +191,7 @@ export function blockedTurn(entities: readonly Entity[], facings: ReadonlyMap<En
   return undefined;
 }
 
-/** Placing a new entity with the pointer: the top-left tile of a footprint that has `point` (canvas units) in its middle. A new entity faces east. */
+/** Placing a new entity with the pointer: the top-left tile of a footprint that has `point` (canvas units) in its middle. A new entity faces east unless its place tool was turned. */
 export function footprintOriginAt(point: Point, kind: EntityKind, facing: Direction = DEFAULT_FACING): Point {
   const size = tileSize(kind, facing);
   // `|| 0`: Math.round gives -0 for small negative values.

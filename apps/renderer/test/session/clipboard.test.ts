@@ -172,6 +172,21 @@ describe("paste", () => {
     }
   });
 
+  it("takes the notice of a refused paste back with the next change of the document, not with a selection", () => {
+    const { session } = createSession();
+    session.commands.pasteEntities("hello");
+    session.commands.select([idOf(session, "gate")]);
+    session.commands.setDisplayMode("blueprint");
+    // A second refusal replaces the first.
+    session.commands.renameEntity(idOf(session, "gate"), "light");
+    expect(session.state.error).toMatch(/already in use/);
+    session.commands.pasteEntities("hello");
+    session.commands.select([]);
+    expect(session.state.error).toMatch(/^Nothing was pasted/);
+    session.commands.pasteEntities(GROUP_TEXT);
+    expect(session.state).toMatchObject({ error: null, canUndo: true });
+  });
+
   it("is blocked while the source has errors; a copy still gives the circuit on show", () => {
     const { session } = createSession();
     replaceText(session, "< 10", "<");
@@ -182,6 +197,48 @@ describe("paste", () => {
     expect(session.state.source).toBe(broken);
     expect(session.state.error).toBeNull();
     expect(names(session)).toEqual(["source", "gate", "twice", "light"]);
+  });
+});
+
+describe("paste and duplicate on the blueprint board", () => {
+  /** `source` and `gate` stand on tiles; `twice` and `light` have none. */
+  const BOARD = STARTER_SOURCE.replace("constant source at (40, 80)", "constant source at (40, 80) tile (0.5, 0.5)")
+    .replace("decider gate at (300, 80)", "decider gate at (300, 80) tile (3, 0.5) facing west");
+
+  it("gives copies without a tile at the edit position a paste without a corner gives them, whatever point comes with it", () => {
+    const { session } = createSession(BOARD);
+    session.commands.setDisplayMode("blueprint");
+    const text = copy(session, "source", "gate");
+    expect(text).toContain("tile (3, 0.5) facing west");
+    // The point is one of the board (the pointer, the place of the menu): no edit position.
+    session.commands.pasteEntities(text, { x: 800, y: 480 });
+    expect(selected(session)).toEqual(["source2", "gate2"]);
+    expect(positions(session, "source2", "gate2")).toEqual([{ x: 80, y: 120 }, { x: 340, y: 120 }]);
+    expect(entityNamed(session, "source2").placement).toBeUndefined();
+    expect(entityNamed(session, "gate2").placement).toEqual({ direction: "west" });
+    expect(entityNamed(session, "gate").placement).toEqual({ tile: { x: 3, y: 0.5 }, direction: "west" });
+    expect(session.state).toMatchObject({ error: null, tool: { type: "select" }, displayMode: "blueprint" });
+    session.commands.undo();
+    expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
+
+    // On the edit canvas the same call puts the corner of the group there.
+    session.commands.setDisplayMode("edit");
+    session.commands.pasteEntities(text, { x: 800, y: 480 });
+    expect(positions(session, "source2", "gate2")).toEqual([{ x: 800, y: 480 }, { x: 1060, y: 480 }]);
+  });
+
+  it("duplicates the selection as one step: the copies have no tile and are the selection", () => {
+    const { session } = createSession(BOARD);
+    session.commands.setDisplayMode("blueprint");
+    session.commands.select([idOf(session, "gate")]);
+    session.commands.duplicateSelection();
+    expect(selected(session)).toEqual(["gate2"]);
+    expect(entityNamed(session, "gate2")).toMatchObject({ position: { x: 340, y: 120 }, placement: { direction: "west" } });
+    expect(entityNamed(session, "gate2").placement).not.toHaveProperty("tile");
+    // The feedback wire of the gate came along.
+    expect(session.state.circuit.wires).toHaveLength(5);
+    session.commands.undo();
+    expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
   });
 });
 

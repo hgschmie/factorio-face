@@ -5,8 +5,8 @@
 import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup } from "@face/catalog";
-import type { Circuit, Direction, Entity, EntityId, EntityKind, Point, SignalId, Wire, WireColor } from "@face/model";
-import type { RotationTurn } from "../entities/facing.ts";
+import { canRotate, DEFAULT_FACING, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type SignalId, type Wire, type WireColor } from "@face/model";
+import { rotated, type RotationTurn } from "../entities/facing.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
 export type WorkbenchMode = (typeof WORKBENCH_MODES)[number];
@@ -38,12 +38,12 @@ export interface DisplayCapabilities {
 }
 
 /**
- * The one place that says what a mode allows. On the board everything works on tiles (the rules are in canvas/board.ts);
- * paste and duplicate are off there, because a copy has no `tile` and what it should get is not decided.
+ * The one place that says what a mode allows. On the board everything works on tiles (the rules are in canvas/board.ts). A
+ * paste or a duplicate there gives copies without a `tile`: they stand at a derived place until they are dragged or snapped.
  */
 export const DISPLAY_CAPABILITIES: Readonly<Record<DisplayMode, DisplayCapabilities>> = {
   edit: { move: true, place: true, wire: true, paste: true, rotate: true, tiles: false },
-  blueprint: { move: true, place: true, wire: true, paste: false, rotate: true, tiles: true },
+  blueprint: { move: true, place: true, wire: true, paste: true, rotate: true, tiles: true },
 };
 
 /** True when the display mode offers the tool; the select tool always is. */
@@ -51,15 +51,26 @@ export function toolAllowed(tool: Tool, displayMode: DisplayMode): boolean {
   return tool.type === "select" || DISPLAY_CAPABILITIES[displayMode][tool.type];
 }
 
-/** The active canvas tool. */
-export type Tool = { readonly type: "select" } | { readonly type: "place"; readonly kind: EntityKind } | { readonly type: "wire"; readonly color: WireColor };
+/** The active canvas tool. A place tool holds the direction the new entity will face: east until the tool is turned. */
+export type Tool = { readonly type: "select" } | { readonly type: "place"; readonly kind: EntityKind; readonly facing?: Direction } | { readonly type: "wire"; readonly color: WireColor };
 
 export const SELECT_TOOL: Tool = { type: "select" };
 
+/** True for the same tool of the palette; the direction of a place tool is not looked at. */
 export function sameTool(a: Tool, b: Tool): boolean {
   if (a.type === "place" && b.type === "place") return a.kind === b.kind;
   if (a.type === "wire" && b.type === "wire") return a.color === b.color;
   return a.type === b.type;
+}
+
+/** The direction an entity placed with `tool` faces: east for a kind that cannot rotate (a lamp), whatever the tool says. */
+export function placeFacing(tool: Tool): Direction {
+  return tool.type === "place" && canRotate(tool.kind) ? (tool.facing ?? DEFAULT_FACING) : DEFAULT_FACING;
+}
+
+/** A place tool a quarter turn on. Undefined for a tool that places nothing or something that cannot rotate (a lamp). */
+export function turnedTool(tool: Tool, turn: RotationTurn): Tool | undefined {
+  return tool.type === "place" && canRotate(tool.kind) ? { ...tool, facing: rotated(placeFacing(tool), turn) } : undefined;
 }
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
@@ -262,7 +273,10 @@ export interface WorkbenchState {
   readonly catalog: CatalogView;
   /** Pending inspector edit of the single selected entity, if any. */
   readonly draft: InspectorDraft | null;
-  /** A failure to show to the user, until dismissed. */
+  /**
+   * A message to show to the user until dismissed. One about a refused edit also goes with the next change of the document,
+   * and one about a refused turn of the selection when other entities are selected.
+   */
   readonly error: string | null;
 }
 
@@ -283,15 +297,15 @@ export interface WorkbenchCommands {
   setMode(mode: WorkbenchMode): void;
   /** Switches the canvas between the edit canvas and the blueprint board. A tool the new mode does not offer gives way to the select tool. */
   setDisplayMode(displayMode: DisplayMode): void;
-  /** A tool the display mode does not offer is refused. */
+  /** A tool the display mode does not offer is refused. A place tool without `facing` faces east, also when the tool of that kind was turned before. */
   setTool(tool: Tool): void;
   /** Replaces the selection: these entities and these wires (`wireKey`s, none when omitted). What does not exist is left out. */
   select(ids: readonly EntityId[], wires?: readonly string[]): void;
   dismissError(): void;
 
   // Document edits: each call is one undoable step.
-  /** Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units). */
-  placeEntity(kind: EntityKind, position: Point): void;
+  /** Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units), facing `facing` (east when omitted; a lamp does not rotate). */
+  placeEntity(kind: EntityKind, position: Point, facing?: Direction): void;
   moveEntities(moves: readonly EntityMove[]): void;
   /**
    * Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included.
@@ -320,9 +334,10 @@ export interface WorkbenchCommands {
   copyEntities(ids: readonly EntityId[]): string;
   /**
    * Inserts the entities and wires that clipboard text declares and selects them. Taken names are replaced and `tile` is dropped.
-   * With `corner` (canvas units) the top-left corner of the group goes there, otherwise the group goes where it was copied from;
-   * either way it moves on until no copy sits exactly on another entity. Text that is not a circuit fragment changes nothing
-   * and is reported.
+   * With `corner` (canvas units of the edit canvas; ignored on the blueprint board, whose points are no edit positions) the
+   * top-left corner of the group goes there, otherwise the group goes where it was copied from; either way it moves on until
+   * no copy sits exactly on another entity. On the board the copies stand at a derived place, as every entity without a `tile`.
+   * Text that is not a circuit fragment changes nothing and is reported.
    */
   pasteEntities(text: string, corner?: Point): void;
   /** Moves the selected entities by `delta` (canvas units) as one step. The selection stays; selected wires follow their entities. */
@@ -342,10 +357,11 @@ export interface WorkbenchCommands {
   /** Takes the entities off the grid: removes their `tile`, so they stand at a derived place again. */
   clearTiles(ids: readonly EntityId[]): void;
   /**
-   * Adds an entity of `kind` with its center at `tile`. Its edit position is the one the tile is derived from, moved on until
-   * it is not exactly that of another entity. Nothing happens when a tile it would cover is taken (`canStandAt`).
+   * Adds an entity of `kind` that faces `facing` (east when omitted) with its center at `tile`. Its edit position is the one the
+   * tile is derived from, moved on until it is not exactly that of another entity. Nothing happens when a tile it would cover
+   * is taken (`canStandAt`).
    */
-  placeEntityOnTile(kind: EntityKind, tile: Point): void;
+  placeEntityOnTile(kind: EntityKind, tile: Point, facing?: Direction): void;
   /**
    * Copies the selected entities and the wires between them into the circuit and selects the copies: what `copyEntities` and
    * `pasteEntities` without a corner do, as one step and without a clipboard. Nothing happens with no entity selected.

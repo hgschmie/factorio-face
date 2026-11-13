@@ -9,13 +9,14 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { DEFAULT_FACING, facingOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point } from "@face/model";
+import { canRotate, DEFAULT_FACING, facingOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import { rotated } from "../entities/facing.ts";
 import {
-  DISPLAY_CAPABILITIES, DISPLAY_MODES, sameTool, SELECT_TOOL, toolAllowed, type Diagnostic, type DisplayMode, type EntityTile, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands,
+  DISPLAY_CAPABILITIES, DISPLAY_MODES, placeFacing, sameTool, SELECT_TOOL, toolAllowed,
+  type Diagnostic, type DisplayMode, type EntityTile, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands,
   type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
 import { Analysis } from "./analysis.ts";
@@ -76,6 +77,11 @@ export class ProjectSession {
   private diagnostics: readonly Diagnostic[] = NO_DIAGNOSTICS;
   private draft: Draft | null = null;
   private error: string | null = null;
+  /**
+   * Set while `error` reports a refused edit. Such a message describes a document that is gone once the document changes, so
+   * it goes with the next change; one about a turn of the selection also goes when other entities are selected.
+   */
+  private refusal: "edit" | "selection" | undefined;
   /** Names of the entities to select once the analysis of the edit that created them has arrived. */
   private pendingSelection: readonly string[] | undefined;
   /** The last inspector edit that may still be extended into the same undo step. */
@@ -201,8 +207,10 @@ export class ProjectSession {
 
   private documentApplied(transactions: readonly Transaction[]): void {
     this.depth++;
-    if (transactions.some((transaction) => transaction.docChanged)) this.analyze();
-    else this.followCaret(transactions);
+    if (transactions.some((transaction) => transaction.docChanged)) {
+      if (this.refusal) this.show(null);
+      this.analyze();
+    } else this.followCaret(transactions);
   }
 
   /** A caret placed by the user inside an entity declaration selects that entity, one inside a wire declaration that wire. */
@@ -265,6 +273,7 @@ export class ProjectSession {
     // The inspector shows a draft only for an entity that is selected alone.
     if (this.draft && !(selection.length === 1 && selection[0] === this.draft.id && wires.length === 0)) this.draft = null;
     if (sameList(selection, this.selection)) return;
+    if (this.refusal === "selection") this.show(null);
     this.selection = selection;
     this.simulation.setSelection(selection);
   }
@@ -297,8 +306,14 @@ export class ProjectSession {
   /** Like `execute`, with failures shown to the user. */
   private perform(command: EditCommand): EditResult | undefined {
     const result = this.execute(command);
-    if (result && !result.ok) this.error = result.message;
+    if (result && !result.ok) this.show(result.message, "edit");
     return result;
+  }
+
+  /** Sets the message on show, or takes it away. `refusal` says that it reports a refused edit and how long it therefore stays. */
+  private show(message: string | null, refusal?: "edit" | "selection"): void {
+    this.error = message;
+    this.refusal = message === null ? undefined : refusal;
   }
 
   private entity(id: EntityId): Entity | undefined {
@@ -318,10 +333,7 @@ export class ProjectSession {
     const join = options.coalesce !== undefined && this.coalesce?.key === options.coalesce && this.coalesce.version === this.document.version;
     const result = this.execute({ type: "updateEntity", id: current.id, entity: wanted }, join);
     if (!result) return;
-    if (!result.ok) {
-      this.error = result.message;
-      return;
-    }
+    if (!result.ok) return this.show(result.message, "edit");
     if (this.draft?.id === current.id) this.draft = null;
     if (result.changes.length > 0) this.coalesce = options.coalesce === undefined ? undefined : { key: options.coalesce, version: this.document.version };
   }
@@ -340,7 +352,7 @@ export class ProjectSession {
     const facings = this.entities(ids).map((entity) => ({ id: entity.id, direction: directionOf(entity) }));
     if (!this.editable || facings.length === 0) return;
     const blocked = DISPLAY_CAPABILITIES[this.displayMode].tiles ? blockedTurn(this.analysis.circuit.entities, new Map(facings.map(({ id, direction }) => [id, direction]))) : undefined;
-    if (blocked) return void (this.error = `Not rotated: ${this.entity(blocked.entity)?.name} would stand on a tile of ${this.entity(blocked.obstacle)?.name}.`);
+    if (blocked) return this.show(`Not rotated: ${this.entity(blocked.entity)?.name} would stand on a tile of ${this.entity(blocked.obstacle)?.name}.`, "selection");
     this.perform({ type: "faceEntities", facings });
   }
 
@@ -355,10 +367,10 @@ export class ProjectSession {
   }
 
   /** Adds an entity and makes it the selection once its analysis has arrived; the tool goes back to select. */
-  private addEntity(kind: EntityKind, position: Point, tile?: Point): void {
-    const result = this.compute({ type: "addEntity", kind, position, tile });
+  private addEntity(kind: EntityKind, position: Point, facing?: Direction, tile?: Point): void {
+    const result = this.compute({ type: "addEntity", kind, position, tile, facing });
     if (!result) return;
-    if (!result.ok) return void (this.error = result.message);
+    if (!result.ok) return this.show(result.message, "edit");
     // The new entity gets its id from the analysis of the edit; it is selected when that arrives.
     this.pendingSelection = result.name === undefined ? undefined : [result.name];
     this.tool = SELECT_TOOL;
@@ -369,10 +381,12 @@ export class ProjectSession {
   private pasteEntities(text: string, corner?: Point): void {
     if (!this.editable) return;
     const fragment = readClipboardText(text);
-    if (!fragment) return void (this.error = NOT_A_FRAGMENT);
-    const result = this.compute({ type: "pasteFragment", fragment, shift: pasteShift(fragment, this.analysis.circuit.entities, corner) });
+    if (!fragment) return this.show(NOT_A_FRAGMENT, "edit");
+    // A point of the board is not an edit position: there the copies go where they were copied from, like a duplicate.
+    const at = DISPLAY_CAPABILITIES[this.displayMode].tiles ? undefined : corner;
+    const result = this.compute({ type: "pasteFragment", fragment, shift: pasteShift(fragment, this.analysis.circuit.entities, at) });
     if (!result) return;
-    if (!result.ok) return void (this.error = result.message);
+    if (!result.ok) return this.show(result.message, "edit");
     this.pendingSelection = result.names;
     this.tool = SELECT_TOOL;
     this.document.edit(result.changes);
@@ -387,14 +401,17 @@ export class ProjectSession {
         this.displayMode = displayMode;
         if (!toolAllowed(this.tool, displayMode)) this.tool = SELECT_TOOL;
       }),
-      setTool: changing((tool) => void (sameTool(this.tool, tool) || !toolAllowed(tool, this.displayMode) || (this.tool = tool))),
+      setTool: changing((tool) => {
+        const same = sameTool(this.tool, tool) && placeFacing(this.tool) === placeFacing(tool);
+        if (!same && toolAllowed(tool, this.displayMode)) this.tool = tool;
+      }),
       select: changing((ids, wires = NO_WIRES) => {
         const known = new Set(this.analysis.circuit.entities.map((entity) => entity.id));
         this.setSelection([...new Set(ids)].filter((id) => known.has(id)), this.existingWires(wires));
       }),
-      dismissError: changing(() => void (this.error = null)),
+      dismissError: changing(() => this.show(null)),
 
-      placeEntity: changing((kind, position) => this.addEntity(kind, position)),
+      placeEntity: changing((kind, position, facing) => this.addEntity(kind, position, facing)),
       moveEntities: changing((moves) => void this.perform({ type: "moveEntities", moves: moves.filter((move) => this.entity(move.id) !== undefined) })),
       rotateEntities: changing((ids, turn) => this.faceEntities(ids, (entity) => rotated(facingOf(entity), turn))),
       faceEntities: changing((ids, direction) => this.faceEntities(ids, () => direction)),
@@ -440,13 +457,14 @@ export class ProjectSession {
         const tiles = this.entities(ids).filter((entity) => entity.placement?.tile !== undefined).map((entity) => ({ id: entity.id, tile: undefined }));
         if (tiles.length > 0) this.perform({ type: "setTiles", tiles });
       }),
-      placeEntityOnTile: changing((kind, tile) => {
+      placeEntityOnTile: changing((kind, tile, facing = DEFAULT_FACING) => {
         const circuit = this.analysis.circuit.entities;
-        const origin = tileOrigin(kind, DEFAULT_FACING, tile);
-        if (!this.editable || !canStandAt(circuit, kind, origin)) return;
+        const direction = canRotate(kind) ? facing : DEFAULT_FACING;
+        const origin = tileOrigin(kind, direction, tile);
+        if (!this.editable || !canStandAt(circuit, kind, origin, direction)) return;
         const position = editPositionOf(origin);
         const shift = pasteShift({ entities: [{ position }] }, circuit);
-        this.addEntity(kind, { x: position.x + shift.x, y: position.y + shift.y }, tile);
+        this.addEntity(kind, { x: position.x + shift.x, y: position.y + shift.y }, direction, tile);
       }),
       addWire: changing((wire) => void this.perform({ type: "addWire", color: wire.color, a: wire.a, b: wire.b })),
       removeWire: changing((wire) => {
@@ -510,7 +528,7 @@ export class ProjectSession {
       this.selection = [];
       this.wireSelection = NO_WIRES;
       this.draft = null;
-      this.error = null;
+      this.show(null);
       this.tool = SELECT_TOOL;
       this.displayMode = "edit";
       this.coalesce = undefined;
@@ -526,7 +544,7 @@ export class ProjectSession {
   }
 
   private fail(message: string): void {
-    this.change(() => void (this.error = message));
+    this.change(() => this.show(message));
   }
 
   /** Unwraps an IPC result; a failure becomes the visible error and yields undefined. */

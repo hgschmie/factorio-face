@@ -16,7 +16,7 @@ import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import { ShortcutOverview } from "../shortcuts/ShortcutOverview.tsx";
 import { nudgeDelta, shortcutFor } from "../shortcuts/shortcuts.ts";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
-import { DISPLAY_CAPABILITIES, SELECT_TOOL, toolAllowed, type Diagnostic, type DisplayMode, type WorkbenchController } from "./controller.ts";
+import { DISPLAY_CAPABILITIES, SELECT_TOOL, toolAllowed, turnedTool, type Diagnostic, type DisplayMode, type WorkbenchController } from "./controller.ts";
 import { selectedItems, selectionStatus } from "./selectionText.ts";
 import { Palette, type WireIconResolver } from "./Palette.tsx";
 import { SourcePane } from "./SourcePane.tsx";
@@ -157,7 +157,8 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   }, [commands]);
 
   // The keys of the shortcut table that do not need the focus in the canvas: tools, the display mode, rotation as in the game
-  // (R, Shift+R), moving with the arrows, duplicating, the overview. What the display mode does not offer does nothing. They belong to the circuit wherever the focus is while the canvas is shown,
+  // (R, Shift+R: the selection, or with a place tool what it is about to place), moving with the arrows, duplicating, the overview.
+  // What the display mode does not offer does nothing. They belong to the circuit wherever the focus is while the canvas is shown,
   // except where a key is text or moves through a list: a text control, the source editor, a dialog, a menu. Only the arrows repeat.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -183,10 +184,19 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           commands.setTool(SELECT_TOOL);
           break;
         case "edit.rotate":
-        case "edit.rotateBack":
+        case "edit.rotateBack": {
+          const turn = shortcut.id === "edit.rotate" ? "clockwise" : "counterclockwise";
+          if (tool.type === "place") {
+            // As in the game: with something in hand the keys turn that, not what is selected. A lamp does not turn.
+            const turned = editable && offered.rotate ? turnedTool(tool, turn) : undefined;
+            if (!turned) return;
+            commands.setTool(turned);
+            break;
+          }
           if (!editing || !offered.rotate) return;
-          commands.rotateEntities(selection, shortcut.id === "edit.rotate" ? "clockwise" : "counterclockwise");
+          commands.rotateEntities(selection, turn);
           break;
+        }
         case "edit.nudge":
         case "edit.nudgeFar":
           if (!editing || !offered.move || usesArrowKeys(event.target)) return;

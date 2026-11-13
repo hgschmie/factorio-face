@@ -195,6 +195,18 @@ describe("graphical commands as source patches", () => {
     expect(session.state.selection).toEqual([]);
   });
 
+  it("places an entity facing the way the tool was turned; east is not written and a lamp does not turn", () => {
+    const { session } = createSession(IRREGULAR);
+    session.commands.placeEntity("decider", { x: 100, y: 300 }, "north");
+    session.commands.placeEntity("constant", { x: 100, y: 500 }, "east");
+    session.commands.placeEntity("lamp", { x: 100, y: 700 }, "south");
+    expect(session.state.source).toContain("decider decider1 at (100, 300) facing north {");
+    expect(session.state.source).toContain("constant constant1 at (100, 500) {");
+    expect(session.state.source).toContain("lamp lamp1 at (100, 700) {");
+    expect(entityNamed(session, "decider1").placement).toEqual({ direction: "north" });
+    expect(session.state).toMatchObject({ error: null, diagnostics: expect.not.arrayContaining([expect.objectContaining({ code: "unused-facing" })]) });
+  });
+
   it("round trips a mixed sequence of canvas, inspector and text edits byte for byte", () => {
     const { session } = createSession(IRREGULAR);
     const texts = [session.state.source];

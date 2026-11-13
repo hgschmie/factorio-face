@@ -120,6 +120,26 @@ describe("addEntity with a tile", () => {
     const plain = executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 } });
     expect(plain.ok && applyChanges(comments, plain.changes)).not.toContain("tile");
   });
+
+  it("writes a facing other than east, and takes the tile on the grid of that direction", () => {
+    type Added = { kind: "decider" | "constant" | "lamp"; tile?: { x: number; y: number }; facing?: "east" | "south" | "west" | "north" };
+    const add = (command: Added) => executeCommand(parsed, { type: "addEntity", position: { x: 20, y: 40 }, ...command });
+    const declared = (result: ReturnType<typeof add>): string => {
+      if (!result.ok) throw new Error(result.message);
+      return new RegExp(`${result.name} (.*) \\{`).exec(applyChanges(comments, result.changes))![1]!;
+    };
+    // Upright, a 2x1 entity has its center on a whole y.
+    expect(declared(add({ kind: "decider", tile: { x: 2.5, y: 1 }, facing: "south" }))).toBe("at (20, 40) tile (2.5, 1) facing south");
+    const offGrid = { ok: false, code: "invalid-position", message: "tile (3, 0.5) is not on the tile grid for a new decider facing north" };
+    expect(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "north" })).toMatchObject(offGrid);
+    expect(declared(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "west" }))).toBe("at (20, 40) tile (3, 0.5) facing west");
+    expect(declared(add({ kind: "constant", facing: "north" }))).toBe("at (20, 40) facing north");
+    // East is what a declaration without the clause means, and a lamp does not rotate.
+    expect(declared(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "east" }))).toBe("at (20, 40) tile (3, 0.5)");
+    expect(declared(add({ kind: "lamp", tile: { x: 1.5, y: 0.5 }, facing: "south" }))).toBe("at (20, 40) tile (1.5, 0.5)");
+    const turned = add({ kind: "decider", tile: { x: 2.5, y: 1 }, facing: "south" });
+    expect(turned.ok && analyze(applyChanges(comments, turned.changes)).diagnostics.map((d) => d.code)).toEqual(["unconfigured"]);
+  });
 });
 
 describe("updateEntity and the tile", () => {
