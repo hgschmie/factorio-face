@@ -148,7 +148,7 @@ Decided by the user on 2026-11-12:
 - Wire reach is per kind as in the game: a pole uses its own reach (small 7.5, medium 9, substation 18, big 32), the project setting is the reach of every other entity, and a wire spans the smaller reach of its two ends.
 - The selector keeps the combinators on top and shows the other entities in collapsible groups in the same sidebar ("Groups in the sidebar sounds reasonable"), not on a separate screen.
 - The speaker gets every setting the game has; the editor plays no sound.
-- The location of the game installation becomes a setting of the application on this machine (not of the project), and in a first step the app takes files only from it: the icon images. No game process is started; sizes, signals and recipes stay in the catalog that ships with the app. The installation in use here is `/Applications/factorio.app/Contents/data`.
+- The location of the game installation becomes a setting of the application on this machine (not of the project), and in a first step the app takes files only from it: the icon images. No game process is started; sizes, signals and recipes stay in the catalog that ships with the app. The installation in use here is `/Applications/factorio.app/Contents/data`; with nothing chosen, `/Applications/factorio.app` is the default on macOS.
 
 Decided by the coordinator: two kinds, `pole` (which carries its prototype) and `speaker`, not one keyword per prototype. Only the arithmetic, decider and selector combinators have an input and an output; a pole has one connection point that is neither, written as the bare entity name in a wire. Circuit wires only, no copper wires between poles. The digit keys 1 to 5 stay as they are; the new entities get none.
 
