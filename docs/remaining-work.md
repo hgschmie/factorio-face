@@ -124,11 +124,11 @@ Decided by the user on 2026-11-12:
 - A new entity can be rotated before it is placed, as in the game ("yes").
 - A click where a wire crosses an entity selects the wire ("it's on top"); the entity does not win inside its footprint.
 - The board keeps rectangles with the item icons; no entity sprites.
+- The labels "Snap all", "Snap to tile grid" and "Release from tile grid" are fine and get no shortcuts.
+- Wire reach is a project setting with the default 9; a wire longer than the reach is flagged, not blocked (in progress).
 
 Open for the user:
-- Whether the labels "Snap all", "Snap to tile grid" and "Release from tile grid" are right, and whether any gets a shortcut.
 - Wiring and placing new entities work in blueprint mode; say if that mode should only arrange.
-- A warning for wires longer than the game's reach (9 tiles) is not built yet.
 - Whether the derived layout of unplaced entities (92 edit units per tile) and the bubble size (a card at 100 %) are right.
 
 ## Conformance (Milestone 4)
