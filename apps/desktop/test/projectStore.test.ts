@@ -96,6 +96,25 @@ describe("project file", () => {
     expect(JSON.parse(strFromU8(unzipSync(await readFile(path))["face.json"]!))).toEqual({ ...onDisk, modules: ["base", "quality"] });
   });
 
+  it("keeps the wire reach across write and read, and writes none for a project that has none", async () => {
+    const path = await projectFile("wire-reach");
+    const manifestOnDisk = async (): Promise<unknown> => JSON.parse(strFromU8(unzipSync(await readFile(path))["face.json"]!));
+    await writeProject(path, project);
+    expect(await manifestOnDisk()).not.toHaveProperty("wireReach");
+    expect((await readProject(path)).data.manifest).not.toHaveProperty("wireReach");
+    const changed: ProjectData = { ...project, manifest: { ...project.manifest, wireReach: 12.5 } };
+    await writeProject(path, parseProjectData(changed));
+    expect(await manifestOnDisk()).toEqual({ ...project.manifest, wireReach: 12.5 });
+    expect(await readProject(path)).toEqual({ path, data: changed });
+  });
+
+  it("refuses a project file whose wire reach is out of range or not a number", async () => {
+    for (const [index, wireReach] of [0, 101, "9", null].entries()) {
+      const path = await projectFile(`bad-reach-${index}`, zipSync({ ...validEntries(), "face.json": manifestEntry({ wireReach }) }));
+      await expect(readProject(path)).rejects.toThrow("Wire reach must be a number from 1 to 100");
+    }
+  });
+
   it("ignores unknown root entries, unlisted circuits and everything below assets/", async () => {
     const assets = { "icon.png": new Uint8Array(8), nested: { "deep.png": new Uint8Array(8) } };
     const extra = { "notes.txt": strToU8("mine"), ".DS_Store": new Uint8Array(4), "unlisted.face": strToU8("circuit"), "Main.face": strToU8("other case"), assets };

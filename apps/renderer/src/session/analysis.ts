@@ -40,10 +40,10 @@ export class Analysis {
     return this.accepted !== undefined && this.acceptedDocument === documentVersion;
   }
 
-  /** Analyzes `source` and returns the result, tagged with a fresh request number. The caller hands it to `accept`. */
-  request(source: string, documentVersion: number, signals: SignalResolver | undefined): ParseResult {
+  /** Analyzes `source` under the project settings and returns the result, tagged with a fresh request number. The caller hands it to `accept`. */
+  request(source: string, documentVersion: number, signals: SignalResolver | undefined, wireReach?: number): ParseResult {
     this.requestedDocument = documentVersion;
-    return analyze(source, this.accepted, { signals, version: ++this.requested });
+    return analyze(source, this.accepted, { signals, wireReach, version: ++this.requested });
   }
 
   /** Takes a result over unless a newer request was made in the meantime. Returns whether it was accepted. */

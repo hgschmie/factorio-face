@@ -9,7 +9,7 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { canRotate, DEFAULT_FACING, facingOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point } from "@face/model";
+import { canRotate, DEFAULT_FACING, facingOf, isWireReach, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { editorChrome } from "../editor/extensions.ts";
@@ -173,10 +173,10 @@ export class ProjectSession {
 
   private buildState(): WorkbenchState {
     const dirty = isDirty(this.file, this.document.text, this.settings);
-    const project = this.projectView;
-    if (!project || project.name !== this.settings.name || project.path !== this.file.path || project.fileName !== this.file.fileName || project.dirty !== dirty || project.epoch !== this.epoch) {
-      this.projectView = { name: this.settings.name, path: this.file.path, fileName: this.file.fileName, dirty, epoch: this.epoch };
-    }
+    const project: ProjectView = { name: this.settings.name, path: this.file.path, fileName: this.file.fileName, dirty, wireReach: this.settings.wireReach, epoch: this.epoch };
+    // The view keeps its identity while nothing in it changed.
+    const shown = this.projectView;
+    if (!shown || (Object.keys(project) as (keyof ProjectView)[]).some((key) => project[key] !== shown[key])) this.projectView = project;
     const draft = this.draft && this.selection.length === 1 && this.selection[0] === this.draft.id ? this.draft : null;
     return {
       project: this.projectView!,
@@ -226,7 +226,7 @@ export class ProjectSession {
   }
 
   private analyze(): void {
-    this.acceptAnalysis(this.analysis.request(this.document.text, this.document.version, this.services));
+    this.acceptAnalysis(this.analysis.request(this.document.text, this.document.version, this.services, this.settings.wireReach));
   }
 
   /**
@@ -494,6 +494,9 @@ export class ProjectSession {
         const trimmed = name.trim().slice(0, PROJECT_NAME_LIMIT);
         if (trimmed !== "" && trimmed !== this.settings.name) this.settings = { ...this.settings, name: trimmed };
       }),
+      setWireReach: changing((wireReach) => {
+        if (isWireReach(wireReach) && wireReach !== this.settings.wireReach) this.applySettings({ ...this.settings, wireReach });
+      }),
 
       newProject: () => this.replaceProject(async (api) => {
         const created = await api.newProject();
@@ -508,14 +511,19 @@ export class ProjectSession {
 
   // Project settings and files
 
-  /** New settings: signals are judged against the new module set and the simulation gets the matching environment. The text is not touched. */
+  /**
+   * New settings: signals are judged against the new module set, the simulation gets the matching environment and wires are
+   * measured against the new reach. The text is not touched.
+   */
   private applySettings(settings: ProjectSettings): void {
     const modulesChanged = settings.modules !== this.settings.modules;
+    const reachChanged = settings.wireReach !== this.settings.wireReach;
     this.settings = settings;
-    if (!modulesChanged) return;
-    this.services = new CatalogService(this.catalog, settings.modules);
-    this.simulation.setEnvironment(createCatalogEnvironment(this.catalog, this.services.enabled));
-    this.analyze();
+    if (modulesChanged) {
+      this.services = new CatalogService(this.catalog, settings.modules);
+      this.simulation.setEnvironment(createCatalogEnvironment(this.catalog, this.services.enabled));
+    }
+    if (modulesChanged || reachChanged) this.analyze();
   }
 
   /** Replaces everything with `project`: a new document with an empty history, no selection, simulation at tick 0. */

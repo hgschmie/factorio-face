@@ -1,7 +1,10 @@
 // Right panel: identity and primary actions of the selection (rename, delete) at the top, then the description, the per-kind
-// settings form and the connections. A selected wire shows its color and its two ends; several things selected are summed up.
+// settings form and the connections. A selected wire shows its color, its two ends and, between two entities with a tile, its
+// length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
-import { canRotate, DIRECTIONS, facingOf, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor } from "@face/model";
+import {
+  canRotate, DIRECTIONS, exceedsWireReach, facingOf, formatWireLength, wireKey, wireLength, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor,
+} from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
 import { KIND_INFO } from "../entities/kindInfo.ts";
@@ -34,6 +37,8 @@ export interface InspectorProps {
   readonly editable: boolean;
   /** The footer says where the entity stands on the blueprint board (its `tile`) instead of where its card is. */
   readonly showTile?: boolean;
+  /** The wire reach of the project in tiles; a selected wire between two entities with a tile shows its length against it. */
+  readonly wireReach: number;
   readonly resolveEntityIcon?: EntityIconResolver;
   /** Catalog-backed signal picker for all signal fields; without it they are validated text inputs. */
   readonly renderSignalPicker?: SignalPickerRenderer;
@@ -211,9 +216,28 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
   );
 }
 
-/** One selected wire: its color, its two ends (a click selects the entity) and Delete. The output end comes first. */
-function WireInspector({ wire, names, editable, onSelect, onDelete }: { readonly wire: Wire; readonly names: EntityNames; readonly editable: boolean; onSelect(ids: readonly EntityId[]): void; onDelete(): void }) {
+interface WireInspectorProps {
+  readonly wire: Wire;
+  readonly names: EntityNames;
+  /** In tiles; undefined for a feedback wire and while one of the two entities has no tile. */
+  readonly length: number | undefined;
+  readonly wireReach: number;
+  readonly editable: boolean;
+  onSelect(ids: readonly EntityId[]): void;
+  onDelete(): void;
+}
+
+/** The length of a wire between two different entities of the circuit that both have a tile. */
+function lengthOf(wire: Wire, circuit: Circuit): number | undefined {
+  const a = circuit.entities.find((entity) => entity.id === wire.a.entity);
+  const b = circuit.entities.find((entity) => entity.id === wire.b.entity);
+  return a && b && a !== b ? wireLength(a, b) : undefined;
+}
+
+/** One selected wire: its color, its two ends (a click selects the entity), its length against the wire reach and Delete. The output end comes first. */
+function WireInspector({ wire, names, length, wireReach, editable, onSelect, onDelete }: WireInspectorProps) {
   const ends = wire.a.side === "in" && wire.b.side === "out" ? [wire.b, wire.a] : [wire.a, wire.b];
+  const tooLong = exceedsWireReach(length, wireReach);
   return (
     <div className="inspector-wire" data-wire={wireKey(wire)} data-color={wire.color}>
       <header className="inspector-identity">
@@ -246,6 +270,22 @@ function WireInspector({ wire, names, editable, onSelect, onDelete }: { readonly
           })}
         </ul>
       </section>
+      {length !== undefined && (
+        <section className="wire-length" data-too-long={tooLong || undefined}>
+          <div className="section-label">
+            <span>Length</span>
+            <span>Reach {wireReach}</span>
+          </div>
+          <p>
+            <b>{formatWireLength(length, wireReach)}</b> tiles between the centers of the two entities
+          </p>
+          {tooLong && (
+            <p className="wire-length-warning" role="status">
+              <b>Longer than the wire reach.</b> Move the entities closer together or connect them through an entity in between. The reach is a project setting.
+            </p>
+          )}
+        </section>
+      )}
       <button type="button" className="danger-button delete-entity" disabled={!editable} onClick={onDelete} aria-label="Delete wire" title="Delete this wire">
         <Icon name="trash" size={14} />
         Delete
@@ -373,7 +413,17 @@ export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
       <SignalInfoContext value={props.describeSignal}>
       <SignalPickerContext value={props.renderSignalPicker}>
         {single && <EntityInspector key={single.id} {...props} entity={single} />}
-        {singleWire && names && <WireInspector wire={singleWire} names={names} editable={editable} onSelect={props.onSelect} onDelete={props.onDeleteSelection} />}
+        {singleWire && names && (
+          <WireInspector
+            wire={singleWire}
+            names={names}
+            length={lengthOf(singleWire, circuit)}
+            wireReach={props.wireReach}
+            editable={editable}
+            onSelect={props.onSelect}
+            onDelete={props.onDeleteSelection}
+          />
+        )}
         {count > 1 && (
           <div className="inspector-multi">
             <h2>{countLabel(selected.length, selectedWires.length)} selected</h2>

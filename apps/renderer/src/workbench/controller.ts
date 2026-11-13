@@ -115,6 +115,8 @@ export interface ProjectView {
   readonly fileName: string;
   /** True while the source or the project settings differ from what is on disk. */
   readonly dirty: boolean;
+  /** The longest a circuit wire may be, in tiles: a project setting. Longer wires between placed entities are flagged, never refused. */
+  readonly wireReach: number;
   /** Counts loaded projects. Views drop what they remember about the previous project (the camera) when it changes. */
   readonly epoch: number;
 }
@@ -388,6 +390,8 @@ export interface WorkbenchCommands {
   /** Enables or disables a standard module together with the modules that depend on it or that it requires. */
   setModuleEnabled(name: string, enabled: boolean): void;
   setProjectName(name: string): void;
+  /** Sets the wire reach in tiles and measures the wires again. A value outside `WIRE_REACH_RANGE` is ignored. */
+  setWireReach(wireReach: number): void;
 
   // Project lifecycle. Replacing a project with unsaved changes asks the user first.
   newProject(): Promise<void>;

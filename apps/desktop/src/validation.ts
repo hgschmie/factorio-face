@@ -1,4 +1,5 @@
 // Validators for everything that crosses the IPC boundary or is read from disk. Pure: no Electron, no filesystem access.
+import { isWireReach, WIRE_REACH_RANGE } from "@face/model";
 import { basename, isAbsolute, normalize } from "node:path";
 import {
   CIRCUIT_FILE_EXTENSION,
@@ -119,7 +120,11 @@ function parseCustomSignalGroup(value: unknown): CustomSignalGroup {
   };
 }
 
-const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits"]);
+function parseWireReach(value: unknown): number {
+  return isWireReach(value) ? value : fail(`Wire reach must be a number from ${WIRE_REACH_RANGE.min} to ${WIRE_REACH_RANGE.max}`);
+}
+
+const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach"]);
 
 function parseJsonValue(value: unknown, what: string, depth: number): JsonValue {
   if (value === null || typeof value === "boolean" || typeof value === "string") return value;
@@ -160,6 +165,7 @@ export function parseManifest(value: unknown): ProjectManifest {
     modules: parseArray(value.modules, "Module list", LIMITS.modules).map((module) => parseString(module, "Module name", LIMITS.identifierLength)),
     customSignalGroups: parseArray(value.customSignalGroups ?? [], "Custom signal groups", LIMITS.customSignalGroups).map(parseCustomSignalGroup),
     circuits,
+    ...(value.wireReach === undefined ? {} : { wireReach: parseWireReach(value.wireReach) }),
     ...(extras ? { extras } : {}),
   };
 }

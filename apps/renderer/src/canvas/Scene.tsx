@@ -2,7 +2,7 @@
 // board the footprints below and the wires above them, as the game draws them. Memoized as a whole, so camera changes that
 // stay inside the current culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved
 // entities and wires and a selection only the entities and wires whose state changed. Hovering a wire is CSS only.
-import { terminalKey, wireKey, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { exceedsWireReach, formatWireLength, terminalKey, wireKey, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
@@ -19,6 +19,8 @@ export interface SceneProps {
   readonly circuit: Circuit;
   /** Where the entities and their pins are; a new one while a drag is in progress. */
   readonly layout: Layout;
+  /** The wire reach of the project in tiles: on the board a longer wire between two entities with a tile is flagged. */
+  readonly wireReach: number;
   readonly selection: ReadonlySet<EntityId>;
   /** The selected wires, as `wireKey`s. */
   readonly wireSelection: ReadonlySet<string>;
@@ -39,37 +41,55 @@ interface RoutedWire {
   readonly path: string;
   readonly bounds: Rect;
   readonly title: string;
+  /** On the board: longer than the wire reach. */
+  readonly tooLong: boolean;
+}
+
+interface WireViewProps {
+  readonly id: string;
+  readonly color: string;
+  readonly path: string;
+  readonly title: string;
+  readonly selected: boolean;
+  readonly tooLong: boolean;
 }
 
 /**
  * One wire. `wire-hit` is the wide stroke that takes the pointer while the select tool is active (the canvas reads `data-wire`
- * from the group); it is also what lights up on hover and for a selected wire.
+ * from the group); it is also what lights up on hover and for a selected wire. A wire that is longer than the wire reach has
+ * `data-too-long` and a dashed band in the warning color under its core.
  */
-const WireView = memo(function WireView({ id, color, path, title, selected }: { readonly id: string; readonly color: string; readonly path: string; readonly title: string; readonly selected: boolean }) {
+const WireView = memo(function WireView({ id, color, path, title, selected, tooLong }: WireViewProps) {
   return (
-    <g className={`wire ${color}${selected ? " selected" : ""}`} data-wire={id} data-color={color}>
+    <g className={`wire ${color}${selected ? " selected" : ""}${tooLong ? " too-long" : ""}`} data-wire={id} data-color={color} data-too-long={tooLong || undefined}>
       <path className="wire-hit" d={path} />
       <path className="wire-casing" d={path} />
+      {tooLong && <path className="wire-flag" d={path} />}
       <path className="wire-core" d={path} />
       <title>{title}</title>
     </g>
   );
 });
 
-function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layout: Layout): RoutedWire[] {
+function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layout: Layout, wireReach: number): RoutedWire[] {
   const routed: RoutedWire[] = [];
   for (const wire of circuit.wires) {
     const a = byId.get(wire.a.entity);
     const b = byId.get(wire.b.entity);
     if (!a || !b || terminalKey(wire.a) === terminalKey(wire.b)) continue;
-    routed.push({ key: wireKey(wire), wire, ...layout.route(wire, a, b), title: `${wire.color}: ${a.name}.${wire.a.side} <-> ${b.name}.${wire.b.side}` });
+    // Only the board knows tiles; the edit canvas shows every wire as it always did.
+    const length = layout.mode === "blueprint" ? layout.wireLength(a, b) : undefined;
+    const tooLong = exceedsWireReach(length, wireReach);
+    const measure = length === undefined ? "" : tooLong ? ` (${formatWireLength(length, wireReach)} tiles, over the wire reach of ${wireReach})` : ` (${formatWireLength(length, wireReach)} tiles)`;
+    routed.push({ key: wireKey(wire), wire, ...layout.route(wire, a, b), title: `${wire.color}: ${a.name}.${wire.a.side} <-> ${b.name}.${wire.b.side}${measure}`, tooLong });
   }
   return routed;
 }
 
-export const Scene = memo(function Scene({ circuit, layout, selection, wireSelection, visible, outline, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon }: SceneProps) {
+export const Scene = memo(function Scene(props: SceneProps) {
+  const { circuit, layout, wireReach, selection, wireSelection, visible, outline, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon } = props;
   const byId = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
-  const wires = useMemo(() => routeWires(circuit, byId, layout), [circuit, byId, layout]);
+  const wires = useMemo(() => routeWires(circuit, byId, layout, wireReach), [circuit, byId, layout, wireReach]);
 
   const inView = wires.filter((wire) => rectsIntersect(wire.bounds, visible));
   // Selected wires are drawn last, above the others.
@@ -86,7 +106,7 @@ export const Scene = memo(function Scene({ circuit, layout, selection, wireSelec
   const wireGroup = (
     <g className="wires" key="wires">
       {visibleWires.map((wire) => (
-        <WireView key={wire.key} id={wire.key} color={wire.wire.color} path={wire.path} title={wire.title} selected={wireSelection.has(wire.key)} />
+        <WireView key={wire.key} id={wire.key} color={wire.wire.color} path={wire.path} title={wire.title} selected={wireSelection.has(wire.key)} tooLong={wire.tooLong} />
       ))}
     </g>
   );

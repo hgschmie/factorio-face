@@ -28,6 +28,7 @@ export const DIAGNOSTIC_SEVERITY = {
   "tile-off-grid": "warning",
   "tile-overlap": "warning",
   "unused-facing": "warning",
+  "wire-too-long": "warning",
 } as const satisfies Record<string, Severity>;
 
 export type DiagnosticCode = keyof typeof DIAGNOSTIC_SEVERITY;

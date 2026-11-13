@@ -96,6 +96,16 @@
   stroke-width: 3.6;
 }
 
+/* Longer than the wire reach of the project (the board only): dashes in the warning color on both sides of the core, which
+   keeps its color. Dashed and yellow, so it is neither the solid orange outline of a selected wire nor a red wire. */
+.wire-flag {
+  fill: none;
+  stroke: var(--status-warning);
+  stroke-width: 8;
+  stroke-dasharray: 10 8;
+  pointer-events: none;
+}
+
 .wire-preview {
   fill: none;
   stroke-width: 2.2;

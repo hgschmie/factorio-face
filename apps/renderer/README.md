@@ -72,7 +72,8 @@ src/
   picker/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
   settings/
-    ProjectSettings.tsx  project name and the five standard modules as signal groups
+    ProjectSettings.tsx  project name, wire reach and the five standard modules as signal groups
+    wireReach.ts       the text of the wire reach field as a number in range   (pure)
   shortcuts/
     shortcuts.ts       the shortcut table: every key of the app, key matching, labels per platform, the arrow distance   (pure)
     ShortcutOverview.tsx  the modal overview of all shortcuts
@@ -101,7 +102,7 @@ interface WorkbenchController {
 }
 ```
 
-`WorkbenchState`: `project` (name, path, fileName, dirty, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
+`WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
 `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
@@ -111,7 +112,7 @@ below).
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
 `toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `snapToTiles`, `clearTiles`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
-`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`) and project (`newProject`, `openProject`,
+`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
 `loadProject`, `save`, `saveAs`).
 
 ## How the session works
@@ -202,7 +203,8 @@ simulation (`run`, `pause`,
   inside the session: the same text, the same names (`gate2`), the same place (40 units right of and below the original, further
   on while that is taken), one undo step, the copies are the selection and the select tool is active. No clipboard is involved.
   With no entity selected, and while the source has errors, both do nothing and report nothing.
-- **Analysis.** Every document change bumps a version and runs `analyze(source, previous, { signals, version })` synchronously.
+- **Analysis.** Every document change bumps a version and runs `analyze(source, previous, { signals, wireReach, version })` synchronously;
+  a change of the module set or of the wire reach runs it again for the same text.
   `Analysis.accept` only takes the result of the latest request, so the same code path works when the analysis moves to a worker;
   `ProjectSession.acceptAnalysis` is the entry point for that. With errors, `editable` is false, the last valid circuit stays, and
   commands and simulation are blocked. Entities whose declaration text did not change keep their object identity, which is what lets the
@@ -240,7 +242,8 @@ simulation (`run`, `pause`,
   nothing. A status is cached per entity record of the snapshot and the map per entity table. The engine replaces a record
   exactly when what the entity reads, emits or lights changes, so a card gets a new status object, and renders, only then.
 - **Project files.** New project (the example circuit), open, save, save as and open recent go through `window.face`. Dirty means: the text
-  or the settings (name, module set) differ from what was saved. Manifest fields this version does not edit (custom signal groups, unknown
+  or the settings (name, module set, wire reach) differ from what was saved. The wire reach is written to `face.json` only when it is not
+  the default (9), so a project that never changed it has no such field. Manifest fields this version does not edit (custom signal groups, unknown
   fields in `extras`, other circuit files) are written back as loaded.
 
 `window.faceSession` (`getState()`, `commands`) exposes the controller for the end-to-end tests and measurements; it adds no behaviour.
@@ -429,6 +432,37 @@ pins on the top or the bottom end.
   32 units beside the line (`SELF_WIRE_SAG`), just outside the long edge on the side of its color. Because wires are on top, a
   click where a wire crosses an entity selects the wire; with a tool other than select, wires take no pointer events on the
   board, so they never cover a pin.
+
+**Wire reach.** In the game a circuit wire has a longest length; the game data says 9 tiles for every entity the editor knows
+(`docs/factorio-audit.md` 5.4). Here it is a project setting, because there is more than one way to measure it:
+`project.wireReach`, 9 (`DEFAULT_WIRE_REACH`) unless the project file says otherwise, from 1 to 100 tiles, fractions allowed
+(`WIRE_REACH_RANGE`, `isWireReach`). It is edited in the project settings (`WireReachField`: the label "Wire reach", a text
+field that is written with Enter or by leaving it, "A number from 1 to 100" under a text that is none, and the button "Reset to
+9") through `commands.setWireReach(value)`, which ignores a value out of range. Like the name and the modules it is not part of
+the document: not undoable, and a change makes the project dirty.
+
+- The measure is `wireLength(a, b)` of `@face/model` (`wireReach.ts`): the straight line between the center positions
+  (`placement.tile`) of the two entities, in tiles. This is the editor's definition; the game's exact rule (from where it
+  measures) is not verified. A wire is too long when its length is greater than the reach (`exceedsWireReach`); exactly the
+  reach is fine. A wire with an end that has no `tile` has no length, and a wire of an entity to itself has the length 0, so
+  neither is ever flagged. `formatWireLength(length, reach)` is the length for display: one decimal, more where that would
+  hide on which side of the reach it is ("9.01" next to a reach of 9).
+- Flagging never blocks: a move, a turn or a new entity that makes a wire too long is carried out, and the simulation does not
+  know the reach.
+- The problems list: the analysis gets the reach as an option (`Analysis.request(..., wireReach)`, `AnalyzeOptions.wireReach`)
+  and reports `wire-too-long` (a warning) on the wire statement. `setWireReach` analyzes again; the circuit object, the text
+  and the simulation stay as they are.
+- The board: `BlueprintLayout.wireLength(a, b)` measures the entities as they stand, so an entity of a drag in progress counts
+  with the tile the drag would give it, also one that has no tile yet. `Scene` flags a wire that is too long: `g.wire.too-long`
+  with `data-too-long="true"` and an extra `path.wire-flag` between casing and core, dashes in `--status-warning` (yellow)
+  that show on both sides of the core, which keeps the color of the wire. That is neither the solid orange outline of a
+  selected wire nor a red wire, and a selected wire that is too long has both. The `<title>` of a wire with a length ends in
+  `(4.0 tiles)` or `(12.4 tiles, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
+  follow the drag: a wire that would become too long at the previewed place is flagged before the drop, one that would become
+  fine is not. An entity without a tile that is dragged out and back to where it stood shows its wires measured although the
+  drop writes nothing. The edit canvas shows every wire as before, without a length.
+- The inspector: a selected wire between two different entities that both have a tile shows `section.wire-length` (in both
+  display modes): the length, "Reach 9" and, when it is too long, `data-too-long` and a notice (`role="status"`).
 
 **The bubble.** While exactly one entity (and no wire) is selected on the board, `EntityBubble` shows its full card next to it:
 `CardFace`, the same component the card of the edit canvas draws (kind, description marker, icon, name, summary, the three

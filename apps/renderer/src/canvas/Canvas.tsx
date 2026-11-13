@@ -40,6 +40,8 @@ export interface CanvasProps {
   readonly tool: Tool;
   /** The edit canvas or the blueprint board. The camera is kept per mode. */
   readonly displayMode: DisplayMode;
+  /** The wire reach of the project in tiles; the board flags wires that are longer. */
+  readonly wireReach: number;
   /** When false the circuit is shown but cannot be changed (the source has errors). */
   readonly editable: boolean;
   readonly entityStatus?: ReadonlyMap<EntityId, EntityStatus>;
@@ -589,6 +591,7 @@ export function Canvas(props: CanvasProps) {
         <Scene
           circuit={circuit}
           layout={layout}
+          wireReach={props.wireReach}
           selection={selectionSet}
           wireSelection={wireSelectionSet}
           visible={stableCullRect}

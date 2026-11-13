@@ -1,13 +1,16 @@
-// Project settings panel: the project name and the standard modules, shown as the signal groups they contribute.
+// Project settings panel: the project name, the wire reach and the standard modules, shown as the signal groups they contribute.
 // Presentational; enabling and disabling (with dependencies) is decided by the session.
+import { DEFAULT_WIRE_REACH } from "@face/model";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../icons/Icon.tsx";
 import type { CatalogView, ModuleView, ProjectView } from "../workbench/controller.ts";
+import { parseWireReach, WIRE_REACH_ERROR } from "./wireReach.ts";
 
 export interface ProjectSettingsProps {
   readonly project: ProjectView;
   readonly catalog: CatalogView;
   onRename(name: string): void;
+  onWireReachChange(wireReach: number): void;
   onModuleChange(name: string, enabled: boolean): void;
   close(): void;
 }
@@ -58,7 +61,72 @@ function NameField({ name, onRename }: { readonly name: string; onRename(name: s
   );
 }
 
-export function ProjectSettings({ project, catalog, onRename, onModuleChange, close }: ProjectSettingsProps) {
+/**
+ * The wire reach in tiles. Like the name it is written when the field is left or with Enter; a text that is not a reach in
+ * range says so while it is typed and is dropped when the field is left.
+ */
+function WireReachField({ wireReach, onChange }: { readonly wireReach: number; onChange(wireReach: number): void }) {
+  const id = useId();
+  const [draft, setDraft] = useState<string | null>(null);
+  const parsed = draft === null ? wireReach : parseWireReach(draft);
+  const commit = (): void => {
+    if (draft !== null && parsed !== undefined) onChange(parsed);
+    setDraft(null);
+  };
+  return (
+    <div className="field wire-reach-field">
+      <label className="field-label" htmlFor={id}>
+        Wire reach
+      </label>
+      <div className="wire-reach-row">
+        <input
+          id={id}
+          type="text"
+          inputMode="decimal"
+          maxLength={12}
+          spellCheck={false}
+          autoComplete="off"
+          aria-invalid={parsed === undefined}
+          aria-describedby={`${id}-note`}
+          value={draft ?? String(wireReach)}
+          onChange={(event) => setDraft(event.target.value)}
+          onBlur={commit}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") commit();
+            if (event.key === "Escape" && draft !== null) {
+              event.stopPropagation();
+              setDraft(null);
+            }
+          }}
+        />
+        <span className="unit">tiles</span>
+        <button
+          type="button"
+          className="reset-wire-reach"
+          disabled={draft === null && wireReach === DEFAULT_WIRE_REACH}
+          title={`Back to the reach of the game, ${DEFAULT_WIRE_REACH} tiles`}
+          onClick={() => {
+            setDraft(null);
+            onChange(DEFAULT_WIRE_REACH);
+          }}
+        >
+          Reset to {DEFAULT_WIRE_REACH}
+        </button>
+      </div>
+      {parsed === undefined && (
+        <small className="field-error" role="alert">
+          {WIRE_REACH_ERROR}
+        </small>
+      )}
+      <p className="muted-note" id={`${id}-note`}>
+        The longest a circuit wire may be in the blueprint, measured between the centers of the two entities it connects. A longer wire is flagged, on the board and in
+        the problems list; nothing is refused. In the game the reach is {DEFAULT_WIRE_REACH} tiles.
+      </p>
+    </div>
+  );
+}
+
+export function ProjectSettings({ project, catalog, onRename, onWireReachChange, onModuleChange, close }: ProjectSettingsProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -93,6 +161,7 @@ export function ProjectSettings({ project, catalog, onRename, onModuleChange, cl
       </header>
 
       <NameField name={project.name} onRename={onRename} />
+      <WireReachField wireReach={project.wireReach} onChange={onWireReachChange} />
 
       <div className="section-label">
         <span>Signal groups</span>

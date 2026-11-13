@@ -138,7 +138,7 @@ export function arrangeBoard(entities: readonly Entity[], moved?: ReadonlyMap<En
 }
 
 /** The entity with the `tile` of a footprint whose top-left tile is `origin`; the entity itself without one. */
-function withOrigin(entity: Entity, origin: Point | undefined): Entity {
+export function withOrigin(entity: Entity, origin: Point | undefined): Entity {
   return origin ? { ...entity, placement: { ...entity.placement, tile: tileCenter(entity.kind, facingOf(entity), origin) } } : entity;
 }
 

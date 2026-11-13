@@ -1,8 +1,8 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, facingOf, findTileOverlaps, hasTerminal, isInt32, isTileCenter, normalizeWire, signalKey, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal,
-  WILDCARDS, wireKey,
+  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, exceedsWireReach, facingOf, findTileOverlaps, formatWireLength, hasTerminal, isInt32, isTileCenter, normalizeWire,
+  signalKey, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireKey, wireLength,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
   type Entity, type EntityId, type EntityKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type RgbColor, type SelectorMode,
   type SelectorOperation, type SignalId, type TerminalSide, type Wildcard, type Wire, type WireColor,
@@ -21,6 +21,8 @@ export interface SignalResolver {
 
 export interface AnalyzeOptions {
   readonly signals?: SignalResolver;
+  /** The wire reach of the project in tiles: a wire between two placed entities that is longer gets a warning. Defaults to `DEFAULT_WIRE_REACH`. */
+  readonly wireReach?: number;
   /** Opaque document version, copied to the result. */
   readonly version?: number;
 }
@@ -837,6 +839,21 @@ function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[]
   }
 }
 
+/**
+ * A warning for every wire between two entities with a `tile` that is longer than the reach (`wireLength`), on its first
+ * declaration. Like the placement warnings it is for a circuit only and does not touch the simulation.
+ */
+function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readonly Entity[], reach: number, analyzer: Analyzer): void {
+  const byId = new Map(entities.map((entity) => [entity.id, entity]));
+  for (const { declarations } of wires.values()) {
+    const { range, a, b } = declarations[0]!;
+    const [from, to] = [byId.get(a.entity)!, byId.get(b.entity)!];
+    const length = wireLength(from, to);
+    if (length === undefined || !exceedsWireReach(length, reach)) continue;
+    analyzer.report(range, "wire-too-long", `Wire from '${from.name}.${a.side}' to '${to.name}.${b.side}' is ${formatWireLength(length, reach)} tiles long; the wire reach of the project is ${reach}`);
+  }
+}
+
 function sortDiagnostics(...lists: readonly (readonly Diagnostic[])[]): Diagnostic[] {
   return lists.flat().sort((x, y) => x.from - y.from || x.to - y.to);
 }
@@ -850,6 +867,7 @@ export function analyze(source: string, previous?: ParseResult, options: Analyze
   const analyzer = new Analyzer(options.signals);
   const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], analyzer, previous?.identity);
   checkPlacement(entityNodes, entities, analyzer);
+  checkWireReach(sources.wires, entities, options.wireReach ?? DEFAULT_WIRE_REACH, analyzer);
 
   const diagnostics = sortDiagnostics(syntax.diagnostics, analyzer.diagnostics);
   const hasErrors = diagnostics.some((d) => d.severity === "error");

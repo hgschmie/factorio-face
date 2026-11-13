@@ -317,7 +317,16 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         onToggleSettings={() => setSettingsOpen((open) => !open)}
         onSave={() => void save()}
       />
-      {settingsOpen && <ProjectSettings project={project} catalog={state.catalog} onRename={commands.setProjectName} onModuleChange={commands.setModuleEnabled} close={closeSettings} />}
+      {settingsOpen && (
+        <ProjectSettings
+          project={project}
+          catalog={state.catalog}
+          onRename={commands.setProjectName}
+          onWireReachChange={commands.setWireReach}
+          onModuleChange={commands.setModuleEnabled}
+          close={closeSettings}
+        />
+      )}
 
       <div className={`workbench mode-${mode}`}>
         {showCanvas && <Palette tool={tool} canPlace={editable && capabilities.place} canWire={editable && capabilities.wire} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} resolveWireIcon={resolveWireIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
@@ -334,6 +343,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
                   wireSelection={wireSelection}
                   tool={tool}
                   displayMode={displayMode}
+                  wireReach={project.wireReach}
                   editable={editable}
                   entityStatus={simulation.entityStatus}
                   resolveEntityIcon={resolveEntityIcon}
@@ -378,6 +388,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
           wireSelection={wireSelection}
           editable={editable}
           showTile={capabilities.tiles}
+          wireReach={project.wireReach}
           resolveEntityIcon={resolveEntityIcon}
           renderSignalPicker={renderSignalPicker}
           describeSignal={describeSignal}

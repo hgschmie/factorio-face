@@ -118,6 +118,8 @@ Progress:
 - Found in the native check: a click or right click on an entity lands on a wire wherever one crosses it, which is often on the board. The user decided that this stays: the wire is on top and takes the click. The refusal message stayed on screen after later successful actions (fixed in package D). Wires drawn over entities cover icons and names when several cross. The bubble covers neighbors on its side. An unplaced entity jumps to another place when a placed one is dragged onto it (by the rule that it gives way).
 - Done (package D, after the user's decisions): paste and duplicate work on the board and leave the copies without a tile (dashed, selected, one undo step; their edit position follows the paste rules without a corner, because a point on the board is not an edit position). A place tool carries a direction: R and Shift+R turn the footprint outline before the click, the entity is placed with that facing, also on the edit canvas, where only the hint line shows it; picking the tool again starts facing east. A message about a refused action goes away with the next change of the document, the one about a refused turn also when the selection changes; messages about files stay until dismissed. A test pins that a click where a wire crosses an entity selects the wire. Language: `addEntity` takes an optional `facing`.
 - Follow-ups from package D: no preview of the direction on the edit canvas; east and west look the same for a 2x1 outline apart from the arrow; a new entity facing east gets no `facing` clause while rotating an existing one always writes it.
+- Done (package E): wire reach. A project setting `wireReach` in `face.json` (optional, absent means 9, a number from 1 to 100 with fractions, written only when it is not 9; a file with a value out of range is refused on open), edited in the Settings dialog with "Reset to 9", not undoable like the other settings. The length of a wire is the straight line between the centers of its two entities (`packages/model/src/wireReach.ts`); longer than the reach is flagged, exactly the reach is fine, a self-wire and a wire to an entity without a tile are not measured. Flagged in three places: a warning `wire-too-long` in the problems list (the analyzer gets the reach as an option and runs again when the setting changes), yellow dashes along the wire on the board that follow a drag live, and the length with the reach in the inspector of a selected wire. Nothing is blocked.
+- Follow-ups from package E: the game's exact measuring rule is not verified (Milestone 4 fixtures); no quick fix for `wire-too-long`; an unplaced entity dragged out and back in one gesture shows its wires measured although nothing is written; the edit canvas does not show the length of a wire; the settings field writes on Enter or blur.
 
 Decided by the user on 2026-11-12:
 - Paste and duplicate on the board leave the copies unplaced ("leave them unplaced").
@@ -125,10 +127,11 @@ Decided by the user on 2026-11-12:
 - A click where a wire crosses an entity selects the wire ("it's on top"); the entity does not win inside its footprint.
 - The board keeps rectangles with the item icons; no entity sprites.
 - The labels "Snap all", "Snap to tile grid" and "Release from tile grid" are fine and get no shortcuts.
-- Wire reach is a project setting with the default 9; a wire longer than the reach is flagged, not blocked (in progress).
+- Wire reach is a project setting with the default 9; a wire longer than the reach is flagged, not blocked.
 
 Open for the user:
 - Wiring and placing new entities work in blueprint mode; say if that mode should only arrange.
+- Whether center to center is the wanted measure for wire reach (alternatives: nearest tile edges, the connection pins), and whether a project file with a reach out of range should be refused, as now, or opened with the default.
 - Whether the derived layout of unplaced entities (92 edit units per tile) and the bubble size (a card at 100 %) are right.
 
 ## Conformance (Milestone 4)

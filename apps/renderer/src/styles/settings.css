@@ -33,6 +33,35 @@
   font-size: var(--text-base);
 }
 
+.wire-reach-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.project-settings .wire-reach-row input {
+  width: 76px;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+}
+
+.wire-reach-row .unit {
+  flex: 1;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+}
+
+.reset-wire-reach {
+  padding: 4px 9px;
+  border-color: var(--border-input);
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.project-settings .wire-reach-field .muted-note {
+  margin-top: 0;
+}
+
 .project-settings .section-label {
   margin-top: 4px;
 }
