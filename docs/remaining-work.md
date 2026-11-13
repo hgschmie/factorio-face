@@ -140,6 +140,20 @@ Open for the user:
 - Wiring and placing new entities work in blueprint mode; say if that mode should only arrange.
 - Whether the derived layout of unplaced entities (92 edit units per tile) and the bubble size (a card at 100 %) are right.
 
+## More entities (requested 2026-11-12)
+
+Requested by the user after the wire reach work: the electric poles (small, medium, big, substation) as entities in the blueprint and the edit view, so wires can span more; the programmable speaker as another entity driven by a circuit; a rework of the entity selector on the left, which keeps the combinators in view. Later every entity that connects to the circuit network is to follow; the user's overview is `~/factorio/entity-categorization.md` (98 prototypes of 2.1.24: 22 send only, 53 send and receive, 4 combinators, 14 receive only, 5 relays; read-only, outside the workspace). So kinds, footprints, wire reach, connection points and the selector are to be driven by data per prototype.
+
+Decided by the user on 2026-11-12:
+- Wire reach is per kind as in the game: a pole uses its own reach (small 7.5, medium 9, substation 18, big 32), the project setting is the reach of every other entity, and a wire spans the smaller reach of its two ends.
+- The selector keeps the combinators on top and shows the other entities in collapsible groups in the same sidebar ("Groups in the sidebar sounds reasonable"), not on a separate screen.
+- The speaker gets every setting the game has; the editor plays no sound.
+- The location of the game installation becomes a setting of the application on this machine (not of the project), and in a first step the app takes files only from it: the icon images. No game process is started; sizes, signals and recipes stay in the catalog that ships with the app. The installation in use here is `/Applications/factorio.app/Contents/data`.
+
+Decided by the coordinator: two kinds, `pole` (which carries its prototype) and `speaker`, not one keyword per prototype. Only the arithmetic, decider and selector combinators have an input and an output; a pole has one connection point that is neither, written as the bare entity name in a wire. Circuit wires only, no copper wires between poles. The digit keys 1 to 5 stay as they are; the new entities get none.
+
+Packages: G (model, language, simulation, wire reach per kind, speaker data; the renderer only keeps working), H (selector groups, cards and board drawing for the new kinds, inspector forms), I (game location setting and icons from the installation).
+
 ## Conformance (Milestone 4)
 
 - A fixture for N-NONE (operand, decider output and lamp with both networks unchecked) is missing from the list below.
