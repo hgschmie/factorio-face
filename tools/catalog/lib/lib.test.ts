@@ -1,84 +1,130 @@
-// Tests for the generator's pure parts. The libraries are plain .mjs (run by node without a build step), so they are
+// Tests for the generator's pure parts and its icon outputs. The .mjs libraries (run by node without a build step) are
 // loaded dynamically and given their types here.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { STANDARD_CATALOG_VERSION } from "@face/catalog";
+import { parseIconTable, type IconEntry, type IconTableGame } from "@face/catalog/icons";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { iconSource, renderIcon } from "../../../apps/desktop/src/gameIcons/iconRenderer.ts";
+import { COMPACT_ENCODING, decodePng, encodePng, type RgbaImage } from "../../../apps/desktop/src/gameIcons/png.ts";
+import { iconFileRenderer, iconTableText } from "./iconFiles.ts";
+import { iconLayers, normaliseColor } from "./prototypeIcons.ts";
 
-interface Image { width: number; height: number; data: Uint8Array }
-interface Layer { icon: string; size: number; scale?: number; shift?: number[]; tint?: number[] }
 interface ModuleInfo { name: string; requires: string[]; recommends: string[] }
 type Records = Record<string, unknown>[];
 interface Built {
-  catalog: { signals: Record<string, Records>; groups: Records; subgroups: Records; qualities: Records; speakers: Records; constants: Record<string, unknown> };
-  icons: Map<string, { layers: Layer[]; expected: number }>;
+  catalog: { game: IconTableGame; signals: Record<string, Records>; groups: Records; subgroups: Records; qualities: Records; speakers: Records; constants: Record<string, unknown> };
+  icons: Map<string, IconEntry>;
 }
 
 const load = (file: string): Promise<unknown> => import(/* @vite-ignore */ new URL(file, import.meta.url).href);
-const png = (await load("./png.mjs")) as { decodePng(buffer: Buffer): Image; encodePng(image: Image): Buffer };
-const icons = (await load("./icons.mjs")) as {
-  IconRenderer: new (dataDir: string) => { render(layers: Layer[], options?: { expected?: number; output?: number }): Image };
-  iconLayers(proto: object): Layer[] | undefined;
-  normaliseColor(color: object): number[];
+const dump = (await load("./dump.mjs")) as {
+  locateGame(): { dataDir: string };
+  parseDependency(text: string): { name: string; kind: string; constraint: string };
+  readModuleInfos(dataDir: string): ModuleInfo[];
+  validModSets(infos: ModuleInfo[]): string[][];
 };
-const dump = (await load("./dump.mjs")) as { parseDependency(text: string): { name: string; kind: string; constraint: string }; validModSets(infos: ModuleInfo[]): string[][] };
 const build = (await load("./build.mjs")) as { buildCatalog(input: object): Built; visibilityOf(signal: object): string };
+const sets = (await load("./sets.mjs")) as { completeDumps(dumpRoot: string, modules: ModuleInfo[]): { game: IconTableGame } | undefined; buildFromDumps(input: object): Built };
 const locale = (await load("./locale.mjs")) as {
   parseLocale(text: string, sections: string[]): Record<string, Record<string, string>>;
   readLocaleSections(dataDir: string, modules: string[], sections: string[]): Record<string, Record<string, string>>;
 };
 
+const ROOT = resolve(import.meta.dirname, "../../..");
 const scratch = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "face-catalog-test-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-describe("png codec", () => {
-  it("round-trips RGBA images", () => {
-    const image = { width: 5, height: 3, data: Uint8Array.from({ length: 60 }, (_, i) => (i * 37 + 11) % 256) };
-    const decoded = png.decodePng(png.encodePng(image));
-    expect([decoded.width, decoded.height]).toEqual([5, 3]);
-    expect([...decoded.data]).toEqual([...image.data]);
+describe("prototype icons", () => {
+  it("normalises icon definitions and colours", () => {
+    expect(iconLayers({ icon: "__mod__/a.png" })).toEqual([{ icon: "__mod__/a.png", size: 64 }]);
+    const layered = { icons: [{ icon: "__mod__/a.png", icon_size: 32, tint: { r: 255, g: 0, b: 0 }, shift: [0, 0] }], icon: "ignored" };
+    expect(iconLayers(layered)).toEqual([{ icon: "__mod__/a.png", size: 32, tint: [1, 0, 0, 1] }]);
+    expect(iconLayers({})).toBeUndefined();
+    expect(iconLayers({ icons: [] })).toBeUndefined();
+    expect(normaliseColor([0.5, 0.25, 1])).toEqual([0.5, 0.25, 1, 1]);
+    expect(normaliseColor({ r: 51, g: 102, b: 255, a: 255 })).toEqual([0.2, 0.4, 1, 1]);
   });
 
-  it("rejects data that is not a PNG", () => {
-    expect(() => png.decodePng(Buffer.alloc(32))).toThrow(/Not a PNG/);
+  it("keeps scale, shift and the floating flag, and drops what changes nothing", () => {
+    const layers = iconLayers({ icons: [{ icon: "__mod__/a.png", scale: 0.5, shift: { x: 4, y: -4 }, floating: true }, { icon: "__mod__/b.png", tint: [1, 1, 1, 1], shift: [8] }] });
+    expect(layers).toEqual([{ icon: "__mod__/a.png", size: 64, scale: 0.5, shift: [4, -4], floating: true }, { icon: "__mod__/b.png", size: 64, shift: [8, 0] }]);
+    // Identical icons are told apart by this serialisation, so the order of the fields is part of the contract.
+    expect(JSON.stringify(layers?.[0])).toBe('{"icon":"__mod__/a.png","size":64,"scale":0.5,"shift":[4,-4],"floating":true}');
   });
 });
 
-describe("icon renderer", () => {
-  const pixel = (image: Image, x: number, y: number) => [...image.data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
-  mkdirSync(join(scratch, "mod"), { recursive: true });
+describe("icon files", () => {
+  const data = join(scratch, "game");
+  const image = (width: number, color: (x: number) => number[]): RgbaImage => ({ width, height: 4, data: Uint8Array.from({ length: width * 16 }, (_, i) => color((i >> 2) % width)[i % 4]!) });
   // 4x4 opaque red with a 2x2 mip level to its right, and a 4x4 half-transparent white.
-  const red = { width: 6, height: 4, data: new Uint8Array(6 * 4 * 4) };
-  for (let i = 0; i < 24; i++) red.data.set(i % 6 < 4 ? [255, 0, 0, 255] : [0, 255, 0, 255], i * 4);
-  writeFileSync(join(scratch, "mod", "red.png"), png.encodePng(red));
-  writeFileSync(join(scratch, "mod", "white.png"), png.encodePng({ width: 4, height: 4, data: new Uint8Array(64).fill(255).map((v, i) => (i % 4 === 3 ? 128 : v)) }));
-  const renderer = new icons.IconRenderer(scratch);
+  const red = image(6, (x) => (x < 4 ? [255, 0, 0, 255] : [0, 255, 0, 255])), white = image(4, () => [255, 255, 255, 128]);
+  mkdirSync(join(data, "base", "graphics", "icons"), { recursive: true });
+  mkdirSync(join(data, "core"));
+  writeFileSync(join(data, "base", "graphics", "icons", "red.png"), encodePng(red));
+  writeFileSync(join(data, "core", "white.png"), encodePng(white));
+  const layers = [{ icon: "__base__/graphics/icons/red.png", size: 4 }, { icon: "__core__/white.png", size: 4, scale: 0.25, shift: [0.5, 0.5], tint: [0, 0, 1, 1] }] as const;
+  const render = iconFileRenderer(data);
 
-  it("uses the first mip level and scales it to the output size", () => {
-    const image = renderer.render([{ icon: "__mod__/red.png", size: 4 }], { expected: 4, output: 8 });
-    expect([image.width, image.height]).toEqual([8, 8]);
-    expect(pixel(image, 0, 0)).toEqual([255, 0, 0, 255]);
-    expect(pixel(image, 7, 7)).toEqual([255, 0, 0, 255]);
+  it("composites the first mip levels of the files below the data directory, in the compact encoding", () => {
+    const png = render({ expected: 4, layers }, 8);
+    const direct = renderIcon(layers, [iconSource(red, 4), iconSource(white, 4)], { expected: 4, output: 8 });
+    expect(Buffer.compare(png, encodePng(direct, COMPACT_ENCODING))).toBe(0);
+    const decoded = decodePng(png);
+    expect([decoded.width, decoded.height]).toEqual([8, 8]);
+    expect([...decoded.data.subarray(0, 4)]).toEqual([255, 0, 0, 255]);
+    // The same again, now from the kept sources.
+    expect(Buffer.compare(render({ expected: 4, layers }, 8), png)).toBe(0);
   });
 
-  it("composites scaled, shifted and tinted layers in order", () => {
-    const layers = [{ icon: "__mod__/red.png", size: 4 }, { icon: "__mod__/white.png", size: 4, scale: 0.25, shift: [0.5, 0.5], tint: [0, 0, 1, 1] }];
-    const image = renderer.render(layers, { expected: 4, output: 8 });
-    expect(pixel(image, 1, 1)).toEqual([255, 0, 0, 255]);
-    // Bottom-right quadrant: blue-tinted white at about 50% over red.
-    const [r, g, b, a] = pixel(image, 6, 6);
-    expect(a).toBe(255);
-    expect(g).toBe(0);
-    expect(Math.abs((r ?? 0) - 127)).toBeLessThanOrEqual(1);
-    expect(Math.abs((b ?? 0) - 128)).toBeLessThanOrEqual(1);
+  it("names the file it cannot use", () => {
+    expect(() => render({ expected: 4, layers: [{ icon: "__base__/graphics/icons/missing.png", size: 4 }] }, 8)).toThrow(/__base__\/graphics\/icons\/missing\.png: .*ENOENT/);
+    expect(() => render({ expected: 4, layers: [{ icon: "__base__/graphics/icons/red.png", size: 8 }] }, 8)).toThrow(/red\.png: .*smaller than icon size 8/);
+    expect(() => render({ expected: 4, layers: [{ icon: "__mymod__/red.png", size: 4 }] }, 8)).toThrow(/Not an image file of the game/);
+    expect(() => render({ expected: 4, layers: [{ icon: "__base__/../core/white.png", size: 4 }] }, 8)).toThrow(/Not an image file of the game/);
+  });
+});
+
+describe("icon table file", () => {
+  const lamp = "__base__/graphics/icons/small-lamp.png";
+  const game = { version: "2.1.24", build: 87808 };
+  const icons = new Map<string, IconEntry>([
+    ["item/b", { expected: 64, layers: [{ icon: lamp, size: 64 }] }],
+    ["group/g", { expected: 128, layers: [{ icon: lamp, size: 128 }] }],
+    ["item/a", { expected: 64, layers: [{ icon: lamp, size: 64 }, { icon: lamp, size: 64, scale: 0.5, shift: [0, -8], tint: [0.2, 0.4, 1, 0.75] }] }],
+    ["item/B", { expected: 64, layers: [{ icon: lamp, size: 64, floating: true }] }],
+  ]);
+  const text = iconTableText(game, icons);
+
+  it("has one icon per line, sorted by id, in the compact form", () => {
+    expect(text.split("\n")).toEqual([
+      "{",
+      '  "schema": 1,',
+      '  "game": {"version":"2.1.24","build":87808},',
+      '  "icons": {',
+      `    "group/g": {"expected":128,"layers":[{"icon":"${lamp}","size":128}]},`,
+      `    "item/B": [{"icon":"${lamp}","size":64,"floating":true}],`,
+      `    "item/a": ["${lamp}",{"icon":"${lamp}","size":64,"scale":0.5,"shift":[0,-8],"tint":[0.2,0.4,1,0.75]}],`,
+      `    "item/b": ["${lamp}"]`,
+      "  }",
+      "}",
+      "",
+    ]);
   });
 
-  it("normalises icon definitions and colours", () => {
-    expect(icons.iconLayers({ icon: "__mod__/a.png" })).toEqual([{ icon: "__mod__/a.png", size: 64 }]);
-    expect(icons.iconLayers({ icons: [{ icon: "__mod__/a.png", icon_size: 32, tint: { r: 255, g: 0, b: 0 }, shift: [0, 0] }], icon: "ignored" })).toEqual([{ icon: "__mod__/a.png", size: 32, tint: [1, 0, 0, 1] }]);
-    expect(icons.iconLayers({})).toBeUndefined();
-    expect(icons.normaliseColor([0.5, 0.25, 1])).toEqual([0.5, 0.25, 1, 1]);
-    expect(icons.normaliseColor({ r: 51, g: 102, b: 255, a: 255 })).toEqual([0.2, 0.4, 1, 1]);
+  it("reads back as the table it was written from, whatever order the icons came in", () => {
+    const parsed = parseIconTable(JSON.parse(text));
+    expect(parsed.game).toEqual(game);
+    expect(new Map([...parsed.icons].reverse())).toEqual(icons);
+    expect(iconTableText(game, new Map([...icons].reverse()))).toBe(text);
+    // Only what the table knows of the game is written.
+    expect(iconTableText({ ...game, variant: "mac-arm64, full" } as IconTableGame, icons)).toBe(text);
+  });
+
+  it("refuses a table the app would refuse", () => {
+    expect(() => iconTableText(game, new Map([["item/a", { expected: 64, layers: [{ icon: "__mymod__/a.png", size: 64 }] }]]))).toThrow(/does not name an image file of the game/);
+    expect(() => iconTableText(game, new Map([["item/a b", { expected: 64, layers: [{ icon: lamp, size: 64 }] }]]))).toThrow(/Malformed icon id/);
   });
 });
 
@@ -194,5 +240,26 @@ describe("locale files", () => {
     writeFileSync(join(dir("extra"), "extra.cfg"), "[note]\nc=extra\n");
     expect(locale.readLocaleSections(join(scratch, "data"), ["base"], ["note", "instrument"])).toEqual({ note: { a: "core", b: "base", c: "base" }, instrument: {} });
     expect(locale.readLocaleSections(join(scratch, "data"), ["base", "extra", "missing"], ["note"])).toEqual({ note: { a: "core", b: "base", c: "extra" } });
+  });
+});
+
+// Local only: needs the game's data directory and the dumps of the last generator run, both outside the repository's history.
+const local = (() => {
+  try {
+    const { dataDir } = dump.locateGame();
+    const modules = dump.readModuleInfos(dataDir);
+    const dumpRoot = resolve(ROOT, ".runtime/factorio-dump");
+    const game = sets.completeDumps(dumpRoot, modules)?.game;
+    return game?.version === STANDARD_CATALOG_VERSION ? { dumpRoot, dataDir, modules, game } : undefined;
+  } catch {
+    return undefined;
+  }
+})();
+
+describe.skipIf(!local)("committed icon table", () => {
+  it("is the one the generator builds from the dumps", () => {
+    const { catalog, icons } = sets.buildFromDumps(local!);
+    expect(icons.size).toBe(1138);
+    expect(readFileSync(resolve(ROOT, `packages/catalog/data/icons-${STANDARD_CATALOG_VERSION}.json`), "utf8")).toBe(iconTableText(catalog.game, icons));
   });
 });

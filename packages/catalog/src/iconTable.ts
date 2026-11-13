@@ -1,6 +1,7 @@
 // The icon table: which image files of the game make up each catalog icon. The app reads these files from the user's
-// installation; an icon id that is not a key of the table is never looked up. No Node imports: this module is to move
-// into the catalog package, next to the table the generator writes.
+// installation; an icon id that is not a key of the table is never looked up. The generator writes the table with
+// `iconTableFile` and the app reads it with `parseIconTable`; the table itself is in standardIconTable.ts, so that neither
+// the generator nor the renderer bundle loads it. Exported as `@face/catalog/icons`.
 
 /** The game's own modules. A layer may only name a file inside one of them. */
 export const GAME_MODULES = ["base", "core", "space-age", "quality", "elevated-rails", "recycler"] as const;

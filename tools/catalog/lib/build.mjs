@@ -1,5 +1,5 @@
 // Pure transformation: per-module-set dumps -> catalog data. No file or process access, so it can be unit tested.
-import { iconLayers, normaliseColor } from "./icons.mjs";
+import { iconLayers, normaliseColor } from "./prototypeIcons.ts";
 
 /** Signal kinds in catalog order, with the runtime dump section, the locale/prototype name and the default prototype type. */
 export const KINDS = [

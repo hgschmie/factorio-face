@@ -1,6 +1,6 @@
+import type { IconLayer } from "@face/catalog/icons";
 import { describe, expect, it } from "vitest";
-import { iconLayers, iconSource, normaliseColor, renderIcon, renderIconPng } from "../../src/gameIcons/iconRenderer.ts";
-import type { IconLayer } from "../../src/gameIcons/iconTable.ts";
+import { iconSource, renderIcon, renderIconPng } from "../../src/gameIcons/iconRenderer.ts";
 import { COMPACT_ENCODING, decodePng, encodePng, type RgbaImage } from "../../src/gameIcons/png.ts";
 
 const pixel = (image: RgbaImage, x: number, y: number): number[] => [...image.data.subarray((y * image.width + x) * 4, (y * image.width + x) * 4 + 4)];
@@ -117,24 +117,5 @@ describe("icon renderer", () => {
     const image = renderIcon(layers, [red, white], { expected: 4, output: 8 });
     expect([...decodePng(renderIconPng(layers, [red, white], { expected: 4, output: 8 })).data]).toEqual([...image.data]);
     expect([...renderIconPng(layers, [red, white], { expected: 4, output: 8 }, COMPACT_ENCODING)]).toEqual([...encodePng(image, COMPACT_ENCODING)]);
-  });
-});
-
-describe("prototype icons", () => {
-  it("normalises icon definitions and colours", () => {
-    expect(iconLayers({ icon: "__mod__/a.png" })).toEqual([{ icon: "__mod__/a.png", size: 64 }]);
-    const layered = { icons: [{ icon: "__mod__/a.png", icon_size: 32, tint: { r: 255, g: 0, b: 0 }, shift: [0, 0] }], icon: "ignored" };
-    expect(iconLayers(layered)).toEqual([{ icon: "__mod__/a.png", size: 32, tint: [1, 0, 0, 1] }]);
-    expect(iconLayers({})).toBeUndefined();
-    expect(iconLayers({ icons: [] })).toBeUndefined();
-    expect(normaliseColor([0.5, 0.25, 1])).toEqual([0.5, 0.25, 1, 1]);
-    expect(normaliseColor({ r: 51, g: 102, b: 255, a: 255 })).toEqual([0.2, 0.4, 1, 1]);
-  });
-
-  it("keeps scale, shift and the floating flag, and drops what changes nothing", () => {
-    const layers = iconLayers({ icons: [{ icon: "__mod__/a.png", scale: 0.5, shift: { x: 4, y: -4 }, floating: true }, { icon: "__mod__/b.png", tint: [1, 1, 1, 1], shift: [8] }] });
-    expect(layers).toEqual([{ icon: "__mod__/a.png", size: 64, scale: 0.5, shift: [4, -4], floating: true }, { icon: "__mod__/b.png", size: 64, shift: [8, 0] }]);
-    // The generator tells identical icons apart by this serialisation, so the order of the fields is part of the contract.
-    expect(JSON.stringify(layers?.[0])).toBe('{"icon":"__mod__/a.png","size":64,"scale":0.5,"shift":[4,-4],"floating":true}');
   });
 });

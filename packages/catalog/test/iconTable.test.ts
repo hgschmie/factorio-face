@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ICON_TABLE_LIMITS, iconFileLocation, iconTableFile, IconTableError, parseIconTable } from "../../src/gameIcons/iconTable.ts";
+import { ICON_TABLE_LIMITS, iconFileLocation, iconTableFile, IconTableError, parseIconTable } from "../src/iconTable.ts";
 
 const lamp = "__base__/graphics/icons/small-lamp.png";
 const game = { version: "2.1.24", build: 87808 };

@@ -3,7 +3,7 @@
 // tested on any machine; file access never throws, a folder that cannot be read is simply not an installation.
 import { stat } from "node:fs/promises";
 import path from "node:path";
-import { GAME_MODULES, type GameModuleName } from "./gameIcons/iconTable.ts";
+import { GAME_MODULES, type GameModuleName } from "@face/catalog/icons";
 import { readRegularFile } from "./regularFile.ts";
 
 export interface Host {

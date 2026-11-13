@@ -4,8 +4,8 @@
 // the graphics stack, which makes macOS touch its Metal shader cache outside the workspace (see README).
 import fs from "node:fs";
 import path from "node:path";
+import { decodePng } from "../../apps/desktop/src/gameIcons/png.ts";
 import { availableSignals, iconPath, loadStandardCatalog } from "../../packages/catalog/src/index.ts";
-import { decodePng } from "./lib/png.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const SETS = path.join(ROOT, ".runtime", "factorio-dump", "sets");

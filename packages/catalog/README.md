@@ -4,8 +4,11 @@ Signal catalog of Factorio 2.1.24 for the five standard modules `base`, `elevate
 every prototype that can be a circuit signal, with English name, order, group/subgroup, flags, icon reference and module provenance.
 
 - `data/catalog-2.1.24.json` - generated, committed. No image data.
+- `data/icons-2.1.24.json` - generated, committed: the icon table, which says for every icon id which image files of the game it is
+  composited from. Paths and numbers only, no image data.
 - `generated/icons/**.png`, `generated/manifest.json` - generated, git-ignored (Wube artwork; local builds only).
-- `src/` - browser-safe TypeScript API (no Node APIs; imports the JSON).
+- `src/` - browser-safe TypeScript API (no Node APIs; imports the JSON). The icon table has its own entry points
+  (`@face/catalog/icons`, `@face/catalog/icons/standard`), so the renderer bundle does not carry it.
 - Generator: `tools/catalog/` (`make catalog` or `npm run catalog`).
 
 ## Regenerating
@@ -13,21 +16,27 @@ every prototype that can be a circuit signal, with English name, order, group/su
 ```
 make catalog                                        # runs the game 25 times headless (under a minute), writes JSON, icons, manifest
 node tools/catalog/generate.mjs --reuse-dumps       # rebuild from the dumps in .runtime/factorio-dump without starting the game
-node tools/catalog/generate.mjs --reuse-dumps --check   # exit 1 if the committed JSON is out of date
+node tools/catalog/generate.mjs --reuse-dumps --check   # exit 1 if the committed catalog or icon table is out of date
 node tools/catalog/generate.mjs --from-dumps --no-icons # never starts the game: fails when the dumps are missing or of another version
+node tools/catalog/generate.mjs --from-dumps --output .runtime/catalog-compare   # everything into a scratch directory, to compare
 node tools/catalog/compare-icons.mjs                # compare rendered icons with a game icon dump, if one is present
 ```
 
-Options: `--accept-version`, `--reuse-dumps`, `--from-dumps`, `--no-icons`, `--no-sandbox`, `--check`. Environment: `FACTORIO_BIN`, `FACTORIO_DATA`.
+Options: `--accept-version`, `--reuse-dumps`, `--from-dumps`, `--no-icons`, `--no-sandbox`, `--check`, `--output <dir>`. Environment:
+`FACTORIO_BIN`, `FACTORIO_DATA`.
+
+`--output <dir>` writes `data/` and `generated/` below `<dir>` instead of this package and touches nothing here; `diff -r` against
+`generated/icons` then shows whether a change to the generator or the compositor changes a single byte.
 
 `--reuse-dumps` starts the game after all when a dump is missing or stale; `--from-dumps` is the way to rebuild where the game cannot run
 (an agent session, CI): it reads the dumps and the game's data files (`info.json`, the locale files for the speaker) and nothing else.
 With `--no-icons` it leaves `generated/icons` as it is.
 
 The generator is pinned to 2.1.24. It reads the `info.json` of all five modules and the binary's `--version`; any other version stops it
-with a clear message unless `--accept-version` is given, in which case it writes `data/catalog-<version>.json` (then update the import in
-`src/standard.ts` and the pinned numbers in `test/catalog.test.ts`). The run is idempotent: the JSON is rewritten only when its content
-changes (`provenance.generatedAt` is the time of the last content change), and icons are byte-identical between runs.
+with a clear message unless `--accept-version` is given, in which case it writes `data/catalog-<version>.json` and
+`data/icons-<version>.json` (then update the imports in `src/standard.ts` and `src/standardIconTable.ts` and the pinned numbers in the
+tests). The run is idempotent: the catalog is rewritten only when its content changes (`provenance.generatedAt` is the time of the last
+content change), the icon table has no timestamp and is rewritten only when its text changes, and icons are byte-identical between runs.
 
 ## Extraction method
 
@@ -55,10 +64,23 @@ means Space Age runs without Quality, so there are eight valid sets, not seven; 
 
 ### Icons
 
-Icons are rendered by `tools/catalog/lib/icons.mjs` from the game's source PNGs according to the `IconData` rules (first mip level, layers in
-order, premultiplied tint, scale and shift relative to an `expected_icon_size / 2` slot), with a small PNG codec on `node:zlib`. Output is
-64 px straight-alpha RGBA, also for item groups (128 px sources). Identical layer stacks share one file: a recipe or entity that uses the
-icon of its item refers to `item/<name>`; 2252 signals and 12 groups need 1138 files (about 10 MB).
+Icons are composited from the game's source PNGs according to the `IconData` rules (first mip level, layers in order, premultiplied tint,
+scale and shift relative to an `expected_icon_size / 2` slot). Output is 64 px straight-alpha RGBA, also for item groups (128 px sources).
+Identical layer stacks share one icon id: a recipe or entity that uses the icon of its item refers to `item/<name>`; 2252 signals and 12
+groups need 1138 icons (about 10 MB as files).
+
+There is one implementation of this, shared by the generator and the app, in three places:
+
+| What | Where | Why there |
+| --- | --- | --- |
+| Icon table: `IconLayer`, `IconEntry`, `IconTable`, `parseIconTable`, `iconTableFile`, `iconFileLocation` | `src/iconTable.ts` (`@face/catalog/icons`) | no Node APIs; it describes the committed file |
+| PNG codec and compositor: `decodePng`, `encodePng`, `iconSource`, `renderIcon`, `renderIconPng` | `apps/desktop/src/gameIcons/png.ts`, `iconRenderer.ts` | the codec needs `node:zlib`, which a package must not import; the generator imports the two files as they are |
+| Prototype to layers (`iconLayers`), the table's text (`iconTableText`), rendering from a data directory (`iconFileRenderer`) | `tools/catalog/lib/prototypeIcons.ts`, `iconFiles.ts` | only the generator sees prototypes and writes files |
+
+The generator writes the files with the codec's `COMPACT_ENCODING` (best of four row filters, deflate level 9); the app renders the same
+pixels from the user's installation while it runs and encodes them with `FAST_ENCODING`. The codec reads what the game's icon files use:
+8 bits per sample, not interlaced, at most 1024 pixels on a side. A layer may only name a `.png` inside one of the game's own modules
+(`base`, `core`, `space-age`, `quality`, `elevated-rails`, `recycler`); the generator refuses to write a table with anything else.
 
 `--dump-icon-sprites` is not used, see "Isolation". One such dump of the `base` set exists from the pilot run and serves as reference:
 `compare-icons.mjs` finds a mean absolute error of 0.24/255 per channel over 1141 base icons, worst case 0.65/255 (`lane-splitter`, a
@@ -140,6 +162,14 @@ before name). Groups and subgroups without signals (`tiles`, `effects` for the d
 
 ## Data format
 
+`data/icons-2.1.24.json` (147 kB, 1138 icons): `{ "schema": 1, "game": { "version", "build" }, "icons": { "<icon id>": ... } }`, one icon
+per line and sorted by id, so a changed icon is a changed line. An icon is its list of layers, bottom first, or
+`{ "expected": 128, "layers": [...] }` when the prototype expects another icon size than 64 (the item groups). A layer is its path
+(`"__base__/graphics/icons/small-lamp.png"`) when its first mip level is 64 px and nothing modifies it, otherwise
+`{ "icon", "size", "scale"?, "shift"?: [x, y], "tint"?: [r, g, b, a] in 0..1, "floating"?: true }`. `parseIconTable` validates every
+field and is the only reader; `iconTableFile` writes this form. `test/standardIconTable.test.ts` checks the committed table against the
+catalog, and `tools/catalog/lib/lib.test.ts` against what the generator builds from the dumps, where they exist.
+
 `data/catalog-2.1.24.json` (480 kB): `schema`, `game`, `provenance` (generator, date, command templates, module sets), `modules`
 (dependencies, feature flags), `constants` (default item weight, rocket lift weight, rocket silos), `groups`, `subgroups`, `qualities`
 `speakers` and `signals` per kind, one record per line, sorted by name. Defaults are omitted: false flags, `visibility: "normal"`, the prototype
@@ -176,6 +206,17 @@ disableModule(catalog.modules, enabled, "recycler");         // removes the modu
 iconPath(signal, iconRoot);                                  // "<iconRoot>/item/iron-plate.png"
 speakerInstruments(catalog, enabled);                        // SpeakerInstrumentInfo[]: instruments with notes, names and display names
 speakerInstrumentNames(catalog, enabled);                    // the names only: what the language and the simulation environment take
+```
+
+The icon table is not part of the main entry:
+
+```ts
+import { parseIconTable, iconTableFile, iconFileLocation, type IconTable, type IconEntry, type IconLayer } from "@face/catalog/icons";
+import { loadStandardIconTable } from "@face/catalog/icons/standard";   // imports data/icons-2.1.24.json
+
+const table = loadStandardIconTable();                       // { game: { version, build }, icons: ReadonlyMap<id, { expected, layers }> }
+table.icons.get(signal.icon);                                // the layers of a catalog icon; undefined for anything else
+iconFileLocation("__base__/graphics/icons/small-lamp.png");  // { module: "base", segments: ["graphics", "icons", "small-lamp.png"] }
 ```
 
 Types: `Catalog`, `CatalogSignal`, `CatalogGroup`, `CatalogSubgroup`, `ModuleInfo`, `QualityInfo`, `CatalogData` (the JSON shape),
@@ -227,4 +268,5 @@ Signals per module set (all / offered by the default picker, i.e. `normal` and `
 - Ties in the picker order (same subgroup and order string, different kind) are broken by kind, then name; the engine's tie-break is unknown.
 - Item weights are the engine's float values (`raw-fish` is 3333.3333282470703).
 - The generator's defaults and the sandbox are macOS-specific; other platforms need `FACTORIO_BIN`, `FACTORIO_DATA` and `--no-sandbox`.
-- The catalog is tied to one game version; `src/standard.ts` imports `catalog-2.1.24.json` statically.
+- The catalog is tied to one game version; `src/standard.ts` imports `catalog-2.1.24.json` statically, `src/standardIconTable.ts`
+  `icons-2.1.24.json`.

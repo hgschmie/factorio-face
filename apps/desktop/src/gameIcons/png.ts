@@ -1,8 +1,8 @@
 // PNG codec for icon images on top of node:zlib (no image dependency is installed). Decodes to straight RGBA8 and encodes
 // RGBA8. The decoder reads files from a folder the user chose, so every length is checked before it is used and the image
 // data is never inflated beyond the size the header declares. Chunk checksums are not verified; zlib verifies the one of
-// the image data. Kept free of syntax that Node's type stripping cannot run: the catalog generator is to import this file
-// as it is.
+// the image data. Kept free of syntax that Node's type stripping cannot run: the catalog generator imports this file as it
+// is (tools/catalog/lib/iconFiles.ts).
 import { deflateSync, inflateSync } from "node:zlib";
 
 /** Straight (non-premultiplied) RGBA8, rows top to bottom. */

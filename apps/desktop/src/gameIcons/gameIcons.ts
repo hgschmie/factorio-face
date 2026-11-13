@@ -1,12 +1,12 @@
 // Renders catalog icons on demand from the user's installation of the game and keeps them in memory. A caller names an
 // icon id and gets PNG bytes or nothing; which files are read is decided by the icon table alone, and each of them must
 // really lie inside the installation's data directory.
+import { DEFAULT_ICON_SIZE, iconFileLocation, type IconEntry, type IconTable } from "@face/catalog/icons";
 import { realpath } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { isInsideDirectory } from "../assetPath.ts";
 import { readRegularFile } from "../regularFile.ts";
 import { iconSource, renderIcon } from "./iconRenderer.ts";
-import { DEFAULT_ICON_SIZE, iconFileLocation, type IconEntry, type IconTable } from "./iconTable.ts";
 import { decodePng, encodePng, FAST_ENCODING, type RgbaImage } from "./png.ts";
 
 /** The largest source image read. The game's icon files are below 50 KiB. */

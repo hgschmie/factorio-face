@@ -3,7 +3,7 @@
   "game": {"version":"2.1.24","build":87808},
   "provenance": {
     "generator": "tools/catalog/generate.mjs",
-    "generatedAt": "2026-11-13T05:44:23Z",
+    "generatedAt": "2026-11-13T06:11:52Z",
     "locale": "en",
     "commands": [
       "factorio --config <dump>/sets/<set>/config/config.ini --mod-directory <dump>/sets/<set>/mods --no-log-rotation --dump-data",
@@ -20,7 +20,7 @@
       "base+elevated-rails+recycler+space-age",
       "base+elevated-rails+recycler+quality+space-age"
     ],
-    "icons": "rendered from the game's icon PNGs by tools/catalog/lib/icons.mjs; not part of this file"
+    "icons": "icons-2.1.24.json names the image files of the game that each icon is composited from; no image is part of either file"
   },
   "modules": [
     {"name":"base","title":"Base Mod","version":"2.1.24","requires":[],"recommends":[],"featureFlags":[]},

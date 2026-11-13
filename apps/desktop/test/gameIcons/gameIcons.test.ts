@@ -1,9 +1,9 @@
+import { parseIconTable, type IconLayer } from "@face/catalog/icons";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { GameIcons, MAX_SOURCE_FILE_BYTES } from "../../src/gameIcons/gameIcons.ts";
 import { iconSource, renderIcon } from "../../src/gameIcons/iconRenderer.ts";
-import { parseIconTable, type IconLayer } from "../../src/gameIcons/iconTable.ts";
 import { decodePng, encodePng, type RgbaImage } from "../../src/gameIcons/png.ts";
 import { useScratch } from "../support/scratch.ts";
 
