@@ -28,6 +28,22 @@ export function Modal({ title, closeLabel, className, children, close }: ModalPr
     };
   }, []);
 
+  // The focus can leave the dialog without a key: the control that held it is disabled, or a native sheet took it and gave it
+  // back to the page. The next key then brings it back and does not reach the page behind; Escape still closes.
+  useEffect(() => {
+    const onStrayKey = (event: globalThis.KeyboardEvent): void => {
+      const panel = panelRef.current;
+      if (!panel || panel.contains(document.activeElement)) return;
+      panel.focus();
+      event.stopPropagation();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      close();
+    };
+    document.addEventListener("keydown", onStrayKey, true);
+    return () => document.removeEventListener("keydown", onStrayKey, true);
+  }, [close]);
+
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
     if (event.key === "Escape") {
       // Handled here for good: the key must not go on to cancel a tool behind the dialog.

@@ -219,6 +219,40 @@ test("refuses a folder without the game with its reason, and takes no folder fro
   }
 });
 
+test("keeps the keyboard in the settings dialog after the chooser has closed", async () => {
+  const game = await writeFakeGame({ icons: BASE_ICONS });
+  const { app, page } = await launch({ gameFolder: game.folder });
+  try {
+    const dialog = await openSettings(app, page);
+    const choose = dialog.getByRole("button", { name: "Choose..." });
+    const displayMode = () => page.evaluate(() => window.faceSession!.getState().displayMode);
+    const focusInDialog = () => page.evaluate(() => document.activeElement?.closest('[role="dialog"]') != null);
+    await stubDialogs(app, {});
+    expect(await displayMode()).toBe("edit");
+
+    // The button that opened the chooser is disabled while it is open, which takes the focus from it and out of the dialog.
+    await choose.click();
+    await expect(choose).toBeEnabled();
+    // A key of the circuit then does not reach the page behind the dialog, and brings the focus back into it.
+    await page.keyboard.press("b");
+    expect(await displayMode()).toBe("edit");
+    await expect(dialog).toBeVisible();
+    expect(await focusInDialog()).toBe(true);
+    // Tab goes on inside the dialog.
+    await page.keyboard.press("Tab");
+    expect(await focusInDialog()).toBe(true);
+
+    // And Escape closes it from there, as it does with the focus inside.
+    await choose.click();
+    await expect(choose).toBeEnabled();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    expect(await displayMode()).toBe("edit");
+  } finally {
+    await closeApp(app);
+  }
+});
+
 test("uses an installation of another version and says so", async () => {
   const older = await writeFakeGame({ version: "2.0.72", icons: BASE_ICONS });
   const patch = await writeFakeGame({ version: "2.1.30" });
