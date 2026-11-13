@@ -167,7 +167,6 @@ describe("error recovery", () => {
       "Expected a wire color (red or green) but found 'a'",
       "Expected '<->' but found 'wire'",
       "Expected an entity name but found 'wire'",
-      "Expected '.' but found '<->'",
       "'in' is a reserved keyword and cannot be an entity name",
     ]);
     expect(result.cst.circuit!.members).toHaveLength(7);

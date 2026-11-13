@@ -46,4 +46,10 @@ describe("wire reach fixture", () => {
     const text = readFileSync(new URL("../../../tests/fixtures/game/F-24-wire-reach.json", import.meta.url), "utf8");
     expect(serialiseFixture(JSON.parse(text) as Fixture)).toBe(text);
   });
+
+  it("asks the game about every prototype the editor has", async () => {
+    const { PROTOTYPE_NAMES } = await import("@face/model");
+    const scenario = readFileSync(new URL("../wire-reach.lua", import.meta.url), "utf8");
+    for (const name of PROTOTYPE_NAMES) expect(scenario, name).toContain(`"${name}"`);
+  });
 });

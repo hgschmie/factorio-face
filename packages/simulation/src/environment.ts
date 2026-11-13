@@ -1,6 +1,6 @@
 // Everything the engine needs from game data. The catalog package is not imported; an adapter builds this from it.
 
-import { NORMAL_QUALITY, type SignalId } from "@face/model";
+import { NORMAL_QUALITY, type SignalId, type SpeakerInstrument } from "@face/model";
 
 export interface QualityLevel {
   readonly name: string;
@@ -30,6 +30,8 @@ export interface SimulationEnvironment {
   rocketCapacity(signal: SignalId): number | undefined;
   readonly qualities: readonly QualityLevel[];
   readonly time: TimeParameters;
+  /** The instruments of the game's speaker with their notes, in the game's order; empty when unknown (a pitch signal then picks nothing). */
+  readonly instruments: readonly SpeakerInstrument[];
 }
 
 /** Plain-data description of an environment, also used by conformance fixtures. Table keys are signal keys without quality. */
@@ -40,6 +42,7 @@ export interface EnvironmentData {
   readonly rocketCapacities?: Readonly<Record<string, number>>;
   readonly qualities?: readonly QualityLevel[];
   readonly time?: Partial<TimeParameters>;
+  readonly instruments?: readonly SpeakerInstrument[];
 }
 
 export const DEFAULT_QUALITIES: readonly QualityLevel[] = [
@@ -80,8 +83,9 @@ export function createEnvironment(data: EnvironmentData = {}): SimulationEnviron
     rocketCapacity: (id) => (id.kind === "item" ? rocketCapacities.get(baseKey(id)) : undefined),
     qualities,
     time: { ...DEFAULT_TIME, ...data.time },
+    instruments: data.instruments ?? [],
   };
 }
 
-/** Orders signals by key (quality variants by level), knows no stack sizes or rocket capacities, and uses the standard five qualities. */
+/** Orders signals by key (quality variants by level), knows no stack sizes, rocket capacities or speaker instruments, and uses the standard five qualities. */
 export const defaultEnvironment: SimulationEnvironment = createEnvironment();

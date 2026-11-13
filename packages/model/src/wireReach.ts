@@ -1,21 +1,22 @@
-// Wire reach: how far apart two entities may be for a circuit wire between them, a project setting. Game data: 9 tiles for every
-// entity in scope (docs/factorio-audit.md 5.4).
+// Wire reach: how far apart two entities may be for a circuit wire between them.
+//
+// The reach is per entity, as in the game: an electric pole has its own (`PROTOTYPES`: 7.5 tiles for a small one, 32 for a big
+// one), every other entity has the reach of the project, a setting (9 tiles in the game for all of them; docs/factorio-audit.md
+// 5.4). A wire may span the smaller reach of its two ends. The project's reach may be set to "unlimited"; an end that is
+// unlimited does not limit, so a wire between two such ends is never too long and one to a pole has the pole's reach.
 //
 // The measure is the game's rule, verified against Factorio 2.1.24 by fixture F-24 (tests/fixtures/game/F-24-wire-reach.json,
 // recorded by tools/game-probe/wire-reach.mjs): the straight line between the nearest points of the two tile footprints, that is
 // per axis the gap between the footprints in tiles (0 where they overlap on that axis) and then the hypotenuse. A wire connects
 // when that distance is at most the reach. Neither the facing beyond the footprint, nor the connector, nor the collision box matter.
-//
-// The game takes the smaller of the two entities' reaches. One value for the project is enough while every entity of the editor
-// has the same reach; power poles (7.5 for a small one) would need a reach per kind.
 
-import type { Entity } from "./circuit.ts";
-import { facingOf, footprintBox, type TileBox } from "./footprint.ts";
+import { facingOf, footprintBox, type PlacedShape, type TileBox } from "./footprint.ts";
+import { prototypeData, prototypeOf, PROTOTYPES, withArticle, type EntityShape, type PrototypeName } from "./prototypes.ts";
 
 /** The reach of a project that does not set one. */
 export const DEFAULT_WIRE_REACH = 9;
 
-/** The reach that stands for "no limit": no wire is ever flagged. */
+/** The reach that stands for "no limit". */
 export const UNLIMITED_WIRE_REACH = 0;
 
 /** The values a project may set, in tiles; fractions are allowed and the minimum means unlimited. */
@@ -41,14 +42,50 @@ export function footprintDistance(a: TileBox, b: TileBox): number {
  * What a wire between two entities has to span, in tiles: the distance between their footprints. Undefined when one of them has
  * no `tile`: its place on the board is only derived. A wire from an entity to itself spans 0.
  */
-export function wireDistance(a: Pick<Entity, "kind" | "placement">, b: Pick<Entity, "kind" | "placement">): number | undefined {
+export function wireDistance(a: PlacedShape, b: PlacedShape): number | undefined {
   const from = a.placement?.tile;
   const to = b.placement?.tile;
-  return from && to ? footprintDistance(footprintBox(a.kind, facingOf(a), from), footprintBox(b.kind, facingOf(b), to)) : undefined;
+  return from && to ? footprintDistance(footprintBox(a, facingOf(a), from), footprintBox(b, facingOf(b), to)) : undefined;
 }
 
-/** True for a wire whose entities are further apart than the reach. Exactly the reach is fine, and so is everything without a distance or with an unlimited reach. */
-export function exceedsWireReach(distance: number | undefined, reach: number): boolean {
+/** How far a wire may span and whose limit that is. */
+export interface WireReach {
+  /** In tiles; `UNLIMITED_WIRE_REACH` when neither end limits. */
+  readonly reach: number;
+  /** The prototype of the end whose own reach it is, or "project" for the setting. */
+  readonly of: PrototypeName | "project";
+}
+
+/**
+ * The reach of a wire between two entities: the smaller of the reaches of its two ends, where an end without a reach of its own
+ * has `projectReach` and an unlimited one does not limit. Of two equal reaches the one an entity has by itself is named.
+ */
+export function wireReachBetween(a: EntityShape, b: EntityShape, projectReach: number): WireReach {
+  const [first, second] = [a, b].map((end): WireReach => {
+    const own = prototypeData(end).wireReach;
+    return own === undefined ? { reach: projectReach, of: "project" } : { reach: own, of: prototypeOf(end) };
+  }) as [WireReach, WireReach];
+  if (second.reach === UNLIMITED_WIRE_REACH) return first;
+  if (first.reach === UNLIMITED_WIRE_REACH || second.reach < first.reach) return second;
+  return second.reach === first.reach && first.of === "project" ? second : first;
+}
+
+/** A wire between two entities measured against its reach. */
+export interface WireSpan extends WireReach {
+  /** `wireDistance`; undefined when an end has no `tile`. */
+  readonly distance?: number;
+  /** Further apart than the reach. Exactly the reach is fine, and so is everything without a distance or with an unlimited reach. */
+  readonly tooLong: boolean;
+}
+
+/** Distance, reach and verdict for a wire between two entities in a project whose wire reach is `projectReach`. */
+export function wireSpan(a: PlacedShape, b: PlacedShape, projectReach: number): WireSpan {
+  const limit = wireReachBetween(a, b, projectReach);
+  const distance = wireDistance(a, b);
+  return { ...limit, ...(distance !== undefined && { distance }), tooLong: exceeds(distance, limit.reach) };
+}
+
+function exceeds(distance: number | undefined, reach: number): boolean {
   return distance !== undefined && reach !== UNLIMITED_WIRE_REACH && distance > reach;
 }
 
@@ -59,7 +96,7 @@ export function exceedsWireReach(distance: number | undefined, reach: number): b
  */
 export function formatWireDistance(distance: number, reach: number): string {
   if (Number.isInteger(distance)) return String(distance);
-  const sameSide = (text: string): boolean => exceedsWireReach(Number(text), reach) === exceedsWireReach(distance, reach);
+  const sameSide = (text: string): boolean => exceeds(Number(text), reach) === exceeds(distance, reach);
   return [1, 2].map((digits) => distance.toFixed(digits)).find(sameSide) ?? distance.toFixed(3);
 }
 
@@ -71,4 +108,14 @@ export function tileUnit(distance: number): string {
 /** A reach for display: the number, or "unlimited". */
 export function formatWireReach(reach: number): string {
   return reach === UNLIMITED_WIRE_REACH ? "unlimited" : String(reach);
+}
+
+/** Whose reach it is, for a sentence: "the project", "a small electric pole". */
+export function wireReachOwner(limit: WireReach): string {
+  return limit.of === "project" ? "the project" : withArticle(PROTOTYPES[limit.of].label);
+}
+
+/** The reach that applied and why, as a clause: "the wire reach of the project is 9", "the wire reach of a small electric pole is 7.5". */
+export function describeWireReach(limit: WireReach): string {
+  return `the wire reach of ${wireReachOwner(limit)} is ${formatWireReach(limit.reach)}`;
 }

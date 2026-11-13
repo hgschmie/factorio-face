@@ -1,17 +1,18 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, exceedsWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isTileCenter, normalizeWire,
-  signalKey, tileCenter, tileOrigin, tileSize, tileUnit, wildcardOf, wildcardSignal, WILDCARDS, wireDistance, wireKey,
+  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isTileCenter, normalizeWire,
+  prototypeData, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, tileUnit, wildcardOf, wildcardSignal, WILDCARDS, wireKey, wireSpan, withArticle,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
-  type Entity, type EntityId, type EntityKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type RgbColor, type SelectorMode,
-  type SelectorOperation, type SignalId, type TerminalSide, type Wildcard, type Wire, type WireColor,
+  type Entity, type EntityId, type EntityKind, type EntityOfKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeOfKind, type RgbColor,
+  type SelectorMode, type SelectorOperation, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
 import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
-import { lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, type PropertySpec, type SignalSlot, type StatementForm } from "./schema.ts";
+import { printTerminal } from "./printer.ts";
+import { lookupProperty, NO_NETWORK, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_FORMS, type PropertySpec, type SignalSlot, type StatementForm } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
 
 /** Catalog awareness is injected; the language itself knows no signal names. */
@@ -21,7 +22,13 @@ export interface SignalResolver {
 
 export interface AnalyzeOptions {
   readonly signals?: SignalResolver;
-  /** The wire reach of the project in tiles: a wire between two placed entities that are further apart gets a warning; 0 means unlimited. Defaults to `DEFAULT_WIRE_REACH`. */
+  /** The instruments of the game's speaker with their notes (game data); without them the names in a speaker are not checked. */
+  readonly instruments?: readonly SpeakerInstrument[];
+  /**
+   * The wire reach of the project in tiles, which every entity without a reach of its own has (a pole has its own): a wire between
+   * two placed entities that are further apart than the smaller reach of its two ends gets a warning; 0 means unlimited. Defaults to
+   * `DEFAULT_WIRE_REACH`.
+   */
   readonly wireReach?: number;
   /** Opaque document version, copied to the result. */
   readonly version?: number;
@@ -108,7 +115,12 @@ export interface ParseResult {
   readonly identity: IdentityState;
 }
 
-const KIND_LABEL: Readonly<Record<EntityKind, string>> = { constant: "constant combinator", arithmetic: "arithmetic combinator", decider: "decider combinator", selector: "selector combinator", lamp: "lamp" };
+const KIND_LABEL: Readonly<Record<EntityKind, string>> = {
+  constant: "constant combinator", arithmetic: "arithmetic combinator", decider: "decider combinator", selector: "selector combinator", lamp: "lamp", pole: "electric pole", speaker: "programmable speaker",
+};
+/** "A lamp", "An electric pole". */
+const aKind = (kind: EntityKind): string => capitalize(withArticle(KIND_LABEL[kind]));
+const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 const FORM_LABEL: Readonly<Record<StatementForm, string>> = { property: "properties", assign: "signal assignments", when: "a 'when' statement", output: "'output' statements", section: "'section' blocks" };
 const MAX_LOST = 256;
 
@@ -130,6 +142,7 @@ type PropertyValue =
   | { readonly type: "color"; readonly value: RgbColor }
   | { readonly type: "comparator"; readonly value: Comparator }
   | { readonly type: "quality"; readonly value: string }
+  | { readonly type: "name"; readonly value: string }
   | { readonly type: "signal"; readonly value: SignalId }
   | { readonly type: "enum"; readonly value: string };
 
@@ -172,6 +185,7 @@ function describeValues(spec: PropertySpec): string {
         case "color": return "a color (#rrggbb)";
         case "comparator": return `a comparator (${COMPARATORS.join(", ")})`;
         case "quality": return "a quality name";
+        case "name": return `${withArticle(v.of)} name`;
         case "signal": return "a signal";
         case "enum": return v.values.length === 1 ? `'${v.values[0]}'` : `one of ${v.values.join(", ")}`;
       }
@@ -182,7 +196,7 @@ function describeValues(spec: PropertySpec): string {
 class Analyzer {
   readonly diagnostics: Diagnostic[] = [];
 
-  constructor(private readonly resolver: SignalResolver | undefined) {}
+  constructor(private readonly resolver: SignalResolver | undefined, private readonly instruments?: readonly SpeakerInstrument[]) {}
 
   report(range: Range, code: DiagnosticCode, message: string): void {
     this.diagnostics.push(diagnostic(range, code, message));
@@ -229,7 +243,7 @@ class Analyzer {
 
   slot(token: Token | undefined, slot: SignalSlot): SignalId | undefined {
     const kind = slot.slice(0, slot.indexOf(".")) as EntityKind;
-    return this.signal(token, SIGNAL_SLOTS[slot], `here in a ${KIND_LABEL[kind]}`);
+    return this.signal(token, SIGNAL_SLOTS[slot], `here in ${withArticle(KIND_LABEL[kind])}`);
   }
 
   networks(networks: CstNetworks | undefined): NetworkSelection {
@@ -289,6 +303,11 @@ class Analyzer {
           }
           break;
         }
+        case "name": {
+          const name = token.kind === "ident" || token.kind === "word" ? token.text : token.kind === "string" ? decodeString(token.text) : "";
+          if (name) return { type: "name", value: name };
+          break;
+        }
         case "signal":
           if (token.kind === "signal" || (token.kind === "keyword" && (WILDCARDS as readonly string[]).includes(token.text))) {
             const value = this.signal(token, alternative.wildcards, `in '${spec.name}'`);
@@ -310,7 +329,7 @@ class Analyzer {
     const forms: readonly StatementForm[] = inSection ? ["property", "assign"] : STATEMENT_FORMS[kind];
     for (const statement of statements) {
       if (!forms.includes(statement.type)) {
-        this.report(statement, "invalid-statement", `A ${inSection ? "section" : KIND_LABEL[kind]} does not take ${FORM_LABEL[statement.type]}`);
+        this.report(statement, "invalid-statement", `${inSection ? "A section" : aKind(kind)} does not take ${FORM_LABEL[statement.type]}`);
         continue;
       }
       switch (statement.type) {
@@ -318,7 +337,7 @@ class Analyzer {
           const name = statement.name.text;
           const lookup = lookupProperty(kind, name, operation, inSection);
           if (lookup.status === "unknown") {
-            this.report(statement.name, "unknown-property", `Unknown property '${name}' in a ${inSection ? "section" : KIND_LABEL[kind]}; expected one of ${propertyNames(kind, undefined, inSection).join(", ")}`);
+            this.report(statement.name, "unknown-property", `Unknown property '${name}' in ${inSection ? "a section" : withArticle(KIND_LABEL[kind])}; expected one of ${propertyNames(kind, undefined, inSection).join(", ")}`);
           } else if (lookup.status === "inapplicable") {
             this.report(statement.name, "contradictory-statement", `Property '${name}' does not apply to operation '${operation}'; it belongs to ${lookup.operations.join(", ")}`);
           } else if (sorted.properties.has(name)) {
@@ -373,6 +392,8 @@ class Analyzer {
       case "decider": return { ...base, ...this.decider(sorted, label) };
       case "selector": return { ...base, kind: "selector", mode: this.selector(sorted, operation ?? "select") };
       case "lamp": return { ...base, ...this.lamp(sorted) };
+      case "pole": return { ...base, kind: "pole", prototype: (sorted.values.get(PROTOTYPE_PROPERTY)?.value as PrototypeOfKind<"pole"> | undefined) ?? DEFAULT_ENTITY.pole.prototype };
+      case "speaker": return { ...base, ...this.speaker(sorted, label) };
     }
   }
 
@@ -515,19 +536,20 @@ class Analyzer {
     }
   }
 
-  private lampCondition(when: CstWhen): Condition | undefined {
+  /** The circuit condition of an entity with one connector: a single comparison whose signals take no network selection. */
+  private circuitCondition(when: CstWhen, kind: "lamp" | "speaker"): Condition | undefined {
     const [condition, ...extra] = when.conditions as readonly [CstCondition | undefined, ...CstCondition[]];
-    for (const other of extra) this.report(other, "syntax-error", "A lamp condition is a single comparison");
+    for (const other of extra) this.report(other, "syntax-error", `A ${kind} condition is a single comparison`);
     if (!condition) return undefined;
-    const first = this.slot(condition.first?.signal, "lamp.condition");
-    this.noNetworks(condition.first, "A lamp condition signal (use the lamp's 'networks' property)");
+    const first = this.slot(condition.first?.signal, `${kind}.condition`);
+    this.noNetworks(condition.first, kind === "lamp" ? "A lamp condition signal (use the lamp's 'networks' property)" : "A speaker condition signal");
     let second: Condition["second"] | undefined;
     if (condition.second?.type === "int") {
       const value = this.int(condition.second.token);
       if (value !== undefined) second = { type: "constant", value };
     } else if (condition.second) {
-      const signal = this.slot(condition.second.ref.signal, "lamp.operand");
-      this.noNetworks(condition.second.ref, "A lamp condition signal");
+      const signal = this.slot(condition.second.ref.signal, `${kind}.operand`);
+      this.noNetworks(condition.second.ref, `A ${kind} condition signal`);
       if (signal) second = { type: "signal", signal };
     }
     return first && second && condition.comparator ? { first, comparator: condition.comparator.text as Comparator, second } : undefined;
@@ -540,7 +562,7 @@ class Analyzer {
     const colors = value<LampColorMode>("colors");
     return compact({
       kind: "lamp" as const,
-      condition: when && this.lampCondition(when),
+      condition: when && this.circuitCondition(when, "lamp"),
       inputNetworks: networkSelection(networks),
       alwaysOn: value<boolean>("always-on") ?? false,
       useColors: colors !== undefined,
@@ -551,6 +573,47 @@ class Analyzer {
       rgbSignal: value<SignalId>("rgb"),
       color: value<RgbColor>("color"),
     });
+  }
+
+  private speaker(sorted: Sorted, label: Range): Omit<EntityOfKind<"speaker">, "id" | "name" | "position"> {
+    const when = sorted.whens[0];
+    const value = <T>(name: string) => sorted.values.get(name)?.value as T | undefined;
+    const node = (name: string): Range | undefined => sorted.properties.get(name)?.value;
+    const pitch = sorted.properties.get("pitch");
+    if (when && pitch) this.report(pitch, "contradictory-statement", "'pitch' takes the place of the 'when' condition: the value of the signal picks the note; remove one of the two");
+    else if (!when && !pitch) this.report(label, "unconfigured", "This programmable speaker has neither a 'when' condition nor a 'pitch' signal; it never plays");
+    const volume = value<number>("volume");
+    const { min, max } = SPEAKER_VOLUME_RANGE;
+    if (volume !== undefined && !(volume >= min && volume <= max)) this.report(node("volume")!, "invalid-value", `The volume is a percentage from ${min} to ${max}`);
+    const instrument = value<string>("instrument");
+    const note = value<string>("note");
+    this.checkSound(instrument, note, node("instrument"), node("note"));
+    const fallback = DEFAULT_ENTITY.speaker;
+    return compact({
+      kind: "speaker" as const,
+      condition: when && this.circuitCondition(when, "speaker"),
+      pitchSignal: value<SignalId>("pitch"),
+      instrument,
+      note,
+      volume: volume ?? fallback.volume,
+      volumeSignal: value<SignalId>("volume-signal"),
+      playbackMode: value<SpeakerPlaybackMode>("playback") ?? fallback.playbackMode,
+      allowPolyphony: value<boolean>("polyphony") ?? fallback.allowPolyphony,
+      stopPlayingSounds: value<boolean>("stop-playing-sounds") ?? fallback.stopPlayingSounds,
+      showAlert: value<boolean>("show-alert") ?? fallback.showAlert,
+      showOnMap: value<boolean>("show-on-map") ?? fallback.showOnMap,
+      alertIcon: value<SignalId>("alert-icon"),
+      alertMessage: value<string>("alert-message") ?? fallback.alertMessage,
+    });
+  }
+
+  /** Instrument and note against the game data, when there is any: a note belongs to the instrument named, or to the first one. */
+  private checkSound(instrument: string | undefined, note: string | undefined, instrumentRange: Range | undefined, noteRange: Range | undefined): void {
+    const known = this.instruments;
+    if (!known?.length) return;
+    const found = instrument === undefined ? known[0]! : known.find((candidate) => candidate.name === instrument);
+    if (!found) this.report(instrumentRange!, "unknown-instrument", `Unknown instrument '${instrument}'; the game has ${known.map((candidate) => candidate.name).join(", ")}`);
+    else if (note !== undefined && !found.notes.includes(note)) this.report(noteRange!, "unknown-note", `The instrument '${found.name}' has no note '${note}'`);
   }
 }
 
@@ -761,14 +824,17 @@ function analyzeMembers(members: readonly CstMember[], analyzer: Analyzer, previ
         analyzer.report(cst.name, "unknown-entity", `Unknown entity '${cst.name.text}'`);
         return undefined;
       }
-      if (!cst.side) return undefined;
-      if (cst.side.text !== "in" && cst.side.text !== "out") {
+      // After a dot without a side the parser has reported the error.
+      if (cst.dot && !cst.side) return undefined;
+      if (cst.side && cst.side.text !== "in" && cst.side.text !== "out") {
         analyzer.report(cst.side, "unknown-terminal", `Unknown terminal '${cst.side.text}'; expected 'in' or 'out'`);
         return undefined;
       }
-      const side = cst.side.text;
+      // The bare name is the one connection point of an entity that has neither an input nor an output.
+      const side: TerminalSide = cst.side ? (cst.side.text as "in" | "out") : "io";
       if (!hasTerminal(entity.kind, side)) {
-        analyzer.report(cst, "invalid-terminal", `A ${KIND_LABEL[entity.kind]} has no '${side}' terminal`);
+        const has = TERMINALS[entity.kind].map((own) => `'${printTerminal(entity.name, own)}'`).join(" or ");
+        analyzer.report(cst, "invalid-terminal", side === "io" ? `${aKind(entity.kind)} is wired at a terminal: write ${has}` : `${aKind(entity.kind)} has no '${side}' terminal${hasTerminal(entity.kind, "io") ? `; write the bare name ${has}` : ""}`);
         return undefined;
       }
       return { range: range(cst), nameRange: range(cst.name), entity: entity.id, side };
@@ -809,15 +875,18 @@ function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[]
   const nodeOf = new Map(entities.map((entity, i) => [entity.id, nodes[i]!]));
   for (const entity of entities) {
     const node = nodeOf.get(entity.id)!;
-    if (node.facing?.direction && !canRotate(entity.kind)) analyzer.report(node.facing, "unused-facing", `A ${KIND_LABEL[entity.kind]} cannot be rotated; 'facing' is ignored`);
+    if (node.facing?.direction && !canRotate(entity)) analyzer.report(node.facing, "unused-facing", `${aKind(entity.kind)} cannot be rotated; 'facing' is ignored`);
     const tile = entity.placement?.tile;
     const facing = facingOf(entity);
-    if (!node.tile || !tile || isTileCenter(entity.kind, facing, tile)) continue;
-    const { width, height } = tileSize(entity.kind, facing);
-    const nearest = tileCenter(entity.kind, facing, tileOrigin(entity.kind, facing, tile));
-    const rule = width > 1 ? "a whole x and a y ending in .5" : height > 1 ? "an x ending in .5 and a whole y" : "x and y ending in .5";
-    const turned = width + height > 2 ? `facing ${facing}, ` : "";
-    analyzer.report(node.tile, "tile-off-grid", `Not on the tile grid: ${turned}the center of this ${KIND_LABEL[entity.kind]} needs ${rule}; the nearest is (${nearest.x}, ${nearest.y})`);
+    if (!node.tile || !tile || isTileCenter(entity, facing, tile)) continue;
+    const { width, height } = tileSize(entity, facing);
+    const nearest = tileCenter(entity, facing, tileOrigin(entity, facing, tile));
+    // Along an axis with an odd number of tiles the center is in the middle of a tile, along one with an even number between two.
+    const [wholeX, wholeY] = [width % 2 === 0, height % 2 === 0];
+    const rule = wholeX && wholeY ? "a whole x and a whole y" : wholeX ? "a whole x and a y ending in .5" : wholeY ? "an x ending in .5 and a whole y" : "x and y ending in .5";
+    const turned = canRotate(entity) && width !== height ? `facing ${facing}, ` : "";
+    const size = width * height > 2 ? `, which covers ${width} x ${height} tiles,` : "";
+    analyzer.report(node.tile, "tile-off-grid", `Not on the tile grid: ${turned}the center of this ${prototypeData(entity).label}${size} needs ${rule}; the nearest is (${nearest.x}, ${nearest.y})`);
   }
 
   const others = new Map<EntityId, Set<EntityId>>();
@@ -840,17 +909,19 @@ function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[]
 }
 
 /**
- * A warning for every wire between two entities with a `tile` that are further apart than the reach (`wireDistance`), on its
- * first declaration. Like the placement warnings it is for a circuit only and does not touch the simulation.
+ * A warning for every wire between two entities with a `tile` that are further apart than the wire may span (`wireSpan`: the
+ * smaller reach of its two ends, a pole having its own and every other entity the project's), on its first declaration. Like the
+ * placement warnings it is for a circuit only and does not touch the simulation.
  */
-function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readonly Entity[], reach: number, analyzer: Analyzer): void {
+function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readonly Entity[], projectReach: number, analyzer: Analyzer): void {
   const byId = new Map(entities.map((entity) => [entity.id, entity]));
   for (const { declarations } of wires.values()) {
     const { range, a, b } = declarations[0]!;
     const [from, to] = [byId.get(a.entity)!, byId.get(b.entity)!];
-    const distance = wireDistance(from, to);
-    if (distance === undefined || !exceedsWireReach(distance, reach)) continue;
-    analyzer.report(range, "wire-too-long", `Wire from '${from.name}.${a.side}' to '${to.name}.${b.side}': the entities are ${formatWireDistance(distance, reach)} ${tileUnit(distance)} apart; the wire reach of the project is ${reach}`);
+    const span = wireSpan(from, to, projectReach);
+    if (!span.tooLong || span.distance === undefined) continue;
+    const apart = `${formatWireDistance(span.distance, span.reach)} ${tileUnit(span.distance)} apart`;
+    analyzer.report(range, "wire-too-long", `Wire from '${printTerminal(from.name, a.side)}' to '${printTerminal(to.name, b.side)}': the entities are ${apart}; ${describeWireReach(span)}`);
   }
 }
 
@@ -864,7 +935,7 @@ function sortDiagnostics(...lists: readonly (readonly Diagnostic[])[]): Diagnost
  */
 export function analyze(source: string, previous?: ParseResult, options: AnalyzeOptions = {}): ParseResult {
   const syntax = parse(source);
-  const analyzer = new Analyzer(options.signals);
+  const analyzer = new Analyzer(options.signals, options.instruments);
   const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], analyzer, previous?.identity);
   checkPlacement(entityNodes, entities, analyzer);
   checkWireReach(sources.wires, entities, options.wireReach ?? DEFAULT_WIRE_REACH, analyzer);

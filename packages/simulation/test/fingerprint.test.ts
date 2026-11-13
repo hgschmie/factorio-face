@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Circuit, Entity } from "@face/model";
 import { compile, semanticCanonicalForm, semanticFingerprint } from "../src/index.ts";
-import { GREEN, RED, arithmetic, circuit, cond, constant, decider, lamp, operand, out, section, selector, sig, wire } from "./helpers.ts";
+import { GREEN, RED, arithmetic, circuit, cond, constant, decider, lamp, operand, out, pole, section, selector, sig, speaker, wire } from "./helpers.ts";
 
 const base = (): Circuit =>
   circuit(
@@ -101,5 +101,34 @@ describe("semantic fingerprint", () => {
     expect(form).not.toContain("position");
     expect(JSON.parse(form)).toHaveLength(2);
     expect(semanticCanonicalForm(circuit([]))).toBe("[[],[]]");
+  });
+
+  it("ignores which pole a pole is, and changes with the wires on it", () => {
+    const relay = (prototype: Parameters<typeof pole>[1], wires = [wire("red", "c.out", "p"), wire("red", "p", "l.in")]): Circuit => circuit([constant("c", [section({ A: 1 })]), pole("p", prototype), lamp("l")], wires);
+    const small = semanticFingerprint(relay("small-electric-pole"));
+    expect(semanticFingerprint(relay("big-electric-pole"))).toBe(small);
+    expect(semanticFingerprint(relay("substation"))).toBe(small);
+    expect(semanticFingerprint(relay("small-electric-pole", [wire("red", "c.out", "p")]))).not.toBe(small);
+    expect(semanticFingerprint(relay("small-electric-pole", [wire("green", "c.out", "p"), wire("red", "p", "l.in")]))).not.toBe(small);
+    expect(semanticCanonicalForm(relay("substation"))).toContain('["p","pole"]');
+  });
+
+  it("changes with what a speaker plays and when, not with how the sound is heard", () => {
+    const condition = { first: sig("A"), comparator: ">" as const, second: { type: "constant" as const, value: 0 } };
+    const of = (props: Parameters<typeof speaker>[1]): string => semanticFingerprint(circuit([speaker("s", { condition, ...props })]));
+    const plain = of({});
+    const relevant: Parameters<typeof speaker>[1][] = [
+      { condition: { ...condition, comparator: "<" } },
+      { condition: undefined },
+      { condition: undefined, pitchSignal: sig("A") },
+      { instrument: "piano" },
+      { note: "F3" },
+      { volume: 50 },
+      { volumeSignal: sig("V") },
+      { showAlert: true },
+    ];
+    for (const props of relevant) expect(of(props), JSON.stringify(props)).not.toBe(plain);
+    expect(new Set(relevant.map(of)).size).toBe(relevant.length);
+    for (const props of [{ playbackMode: "global" }, { allowPolyphony: true }, { stopPlayingSounds: true }, { showOnMap: false }, { alertMessage: "text" }, { alertIcon: sig("A") }] as const) expect(of(props), JSON.stringify(props)).toBe(plain);
   });
 });

@@ -264,7 +264,7 @@ describe("snapshots", () => {
 
   it("report totals", () => {
     const c = circuit([constant("c", { A: 1, B: 2 }), arithmetic("a", "A", "+", 0, "A"), lamp("on", { alwaysOn: true }), lamp("off")], [wire("red", "c.out", "a.in"), wire("green", "a.out", "on.in")]);
-    expect(simulate(c, 1).snapshot().totals).toEqual({ entities: 4, networks: 2, signals: 3, emitting: 2, lampsLit: 1 });
+    expect(simulate(c, 1).snapshot().totals).toEqual({ entities: 4, networks: 2, signals: 3, emitting: 2, lampsLit: 1, speakersPlaying: 0 });
   });
 
   it("probe reads networks and terminals without a snapshot", () => {

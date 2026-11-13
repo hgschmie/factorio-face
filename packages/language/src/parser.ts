@@ -446,7 +446,7 @@ class Parser {
     else this.expected("a wire color (red or green)");
     let b: CstTerminal | undefined;
     const a = this.terminal();
-    if (a?.side) {
+    if (a && (!a.dot || a.side)) {
       this.keywords("<->");
       if (this.take("<->")) b = this.terminal();
     }
@@ -465,14 +465,17 @@ class Parser {
       this.expected("an entity name");
       return undefined;
     }
+    // Without a dot the name alone is the terminal: the one connection point of an entity that has neither input nor output.
+    let dot: Token | undefined;
     let side: Token | undefined;
-    if (this.take(".")) {
+    if (this.is(".")) {
+      dot = this.next();
       this.note({ type: "side", entity: name.text });
       const candidate = this.tok;
       if (this.is("in") || this.is("out") || candidate.kind === "ident" || candidate.kind === "word") side = this.next();
       else this.expected("'in' or 'out'");
     }
-    return { from: name.from, to: this.lastEnd, name, side };
+    return { from: name.from, to: this.lastEnd, name, dot, side };
   }
 }
 

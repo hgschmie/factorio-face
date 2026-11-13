@@ -1,6 +1,6 @@
 // The shortcut table: one binding per key, a label on every platform, the native menu's accelerators all listed, and the matching
 // of key events including modifiers and physical keys.
-import { ENTITY_KINDS } from "@face/model";
+import { PALETTE_KINDS } from "../src/entities/kindInfo.ts";
 import { describe, expect, it } from "vitest";
 import { MENU_ACCELERATORS, menuAccelerator, platformAccelerator } from "../../desktop/src/accelerators.ts";
 import { SIMPLE_MENU_COMMANDS } from "../../desktop/src/ipc.ts";
@@ -84,8 +84,8 @@ describe("shortcut table", () => {
   });
 
   it("gives the building blocks the digits in palette order", () => {
-    expect(ENTITY_KINDS.map((kind) => shortcutLabel(`tool.place.${kind}`, true))).toEqual(["1", "2", "3", "4", "5"]);
-    ENTITY_KINDS.forEach((kind, index) => expect(shortcutFor(stroke(String(index + 1)), false)?.tool).toEqual({ type: "place", kind }));
+    expect(PALETTE_KINDS.map((kind) => shortcutLabel(`tool.place.${kind}`, true))).toEqual(["1", "2", "3", "4", "5"]);
+    PALETTE_KINDS.forEach((kind, index) => expect(shortcutFor(stroke(String(index + 1)), false)?.tool).toEqual({ type: "place", kind }));
   });
 });
 

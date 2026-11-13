@@ -5,7 +5,7 @@ import type { ParseResult } from "./analyze.ts";
 import type { CstEntity } from "./cst.ts";
 import { expectationsAfter } from "./parser.ts";
 import { enumValues, lookupProperty, propertyNames, SIGNAL_SLOTS, STATEMENT_KEYWORDS } from "./schema.ts";
-import type { Token } from "./tokens.ts";
+import { decodeString, type Token } from "./tokens.ts";
 
 export interface TerminalCandidate {
   readonly name: string;
@@ -20,6 +20,9 @@ export type Completion =
   | { readonly type: "signal"; readonly wildcards: readonly Wildcard[] }
   | { readonly type: "terminal"; readonly entities: readonly TerminalCandidate[] }
   | { readonly type: "side"; readonly entity: string; readonly sides: readonly TerminalSide[] }
+  /** A speaker instrument, or a note of `instrument` (of the first instrument when absent); the names are game data. */
+  | { readonly type: "instrument" }
+  | { readonly type: "note"; readonly instrument?: string }
   | { readonly type: "literal"; readonly kind: "integer" | "number" | "string" | "color" | "name" | "quality" };
 
 export interface CompletionContext {
@@ -56,6 +59,15 @@ function operationOf(entity: CstEntity | undefined): SelectorOperation | undefin
     }
   }
   return "select";
+}
+
+/** The instrument a speaker declaration names, for the notes that fit it. */
+function instrumentOf(entity: CstEntity | undefined): { instrument?: string } {
+  for (const statement of entity?.body?.statements ?? []) {
+    if (statement.type !== "property" || statement.name.text !== "instrument" || !statement.value) continue;
+    return { instrument: statement.value.kind === "string" ? decodeString(statement.value.text) : statement.value.text };
+  }
+  return {};
 }
 
 export function completionContext(parse: ParseResult, offset: number): CompletionContext {
@@ -97,6 +109,7 @@ export function completionContext(parse: ParseResult, offset: number): Completio
           if (alternative.type === "signal") expected.push({ type: "signal", wildcards: alternative.wildcards });
           else if (alternative.type === "int") expected.push({ type: "literal", kind: "integer" });
           else if (alternative.type === "number" || alternative.type === "string" || alternative.type === "color" || alternative.type === "quality") expected.push({ type: "literal", kind: alternative.type });
+          else if (alternative.type === "name") expected.push(alternative.of === "instrument" ? { type: "instrument" } : { type: "note", ...instrumentOf(entity) });
         }
         break;
       }
@@ -108,7 +121,8 @@ export function completionContext(parse: ParseResult, offset: number): Completio
         break;
       case "side": {
         const target = [...parse.sourceMap.entities.values()].find((e) => e.name === expectation.entity);
-        expected.push({ type: "side", entity: expectation.entity, sides: target ? TERMINALS[target.kind] : TERMINAL_SIDES });
+        // Only `in` and `out` are written behind a dot; the one point of a pole is its bare name.
+        expected.push({ type: "side", entity: expectation.entity, sides: (target ? TERMINALS[target.kind] : TERMINAL_SIDES).filter((side) => side !== "io") });
         break;
       }
       case "literal":

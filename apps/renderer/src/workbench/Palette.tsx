@@ -1,6 +1,6 @@
 // Left panel: canvas tools, the five building blocks, and the list of entities in the circuit.
-import { ENTITY_KINDS, type Entity, type EntityId, type WireColor } from "@face/model";
-import { KIND_INFO } from "../entities/kindInfo.ts";
+import type { Entity, EntityId, WireColor } from "@face/model";
+import { KIND_INFO, PALETTE_KINDS } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
@@ -38,7 +38,7 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
     <aside className="palette" aria-label="Components">
       <div className="palette-heading">
         <span>COMPONENTS</span>
-        <span className="count-badge">{String(ENTITY_KINDS.length).padStart(2, "0")}</span>
+        <span className="count-badge">{String(PALETTE_KINDS.length).padStart(2, "0")}</span>
       </div>
 
       <div className="section-label">Tools</div>
@@ -56,7 +56,7 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
 
       <div className="section-label">Building blocks</div>
       <div className="palette-items">
-        {ENTITY_KINDS.map((kind) => {
+        {PALETTE_KINDS.map((kind) => {
           const place: Tool = { type: "place", kind };
           return (
             <button key={kind} type="button" className="palette-item" data-kind={kind} title={withShortcut(`Place: ${KIND_INFO[kind].label}`, `tool.place.${kind}`)} aria-pressed={sameTool(tool, place)} disabled={!canPlace} onClick={() => toggle(place)}>

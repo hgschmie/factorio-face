@@ -1,6 +1,6 @@
 import { BOTH_NETWORKS, DEFAULT_ENTITY, SELECTOR_OPERATIONS, wildcardSignal, wireKey, type Entity, type SelectorCombinator, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type DiagnosticCode, type SignalResolver } from "../src/index.ts";
+import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type AnalyzeOptions, type DiagnosticCode, type SignalResolver } from "../src/index.ts";
 import { circuit, codes, fixture, idOf, valid } from "./helpers.ts";
 
 const RED = { red: true, green: false };
@@ -268,8 +268,8 @@ describe("wires", () => {
 
 describe("diagnostics", () => {
   const seen = new Set<string>();
-  const expectCodes = (source: string, expected: DiagnosticCode[]) => {
-    const result = analyze(source);
+  const expectCodes = (source: string, expected: DiagnosticCode[], options?: AnalyzeOptions) => {
+    const result = analyze(source, undefined, options);
     expect(result.diagnostics.map((d) => d.code)).toEqual(expected);
     for (const d of result.diagnostics) {
       expect(d.severity).toBe(DIAGNOSTIC_SEVERITY[d.code]);
@@ -549,6 +549,16 @@ describe("diagnostics", () => {
   it("checks the placement of a circuit only: a fragment loses its tiles when it is pasted", () => {
     expect(analyzeFragment("lamp a tile (0, 0) facing north { }\nlamp b tile (0, 0) { }").diagnostics).toEqual([]);
     expect(analyzeFragment("constant c tile (0.5, 0.5) { item:a = 1 }\nlamp l tile (40.5, 0.5) { }\nwire red c.out <-> l.in").diagnostics).toEqual([]);
+  });
+
+  it("unknown-instrument, unknown-note", () => {
+    const instruments = [{ name: "piano", notes: ["F3", "F#3"] }];
+    const speaker = (settings: string) => circuit(`speaker s { pitch = virtual:signal-A ${settings} }`);
+    expectCodes(speaker("instrument = organ"), ["unknown-instrument"], { instruments });
+    expectCodes(speaker('instrument = piano note = "C#9"'), ["unknown-note"], { instruments });
+    expectCodes(speaker('instrument = piano note = "F#3"'), [], { instruments });
+    // The language knows no instrument by itself.
+    expectCodes(speaker("instrument = organ note = x"), []);
   });
 
   it("has a test for every diagnostic code", () => {

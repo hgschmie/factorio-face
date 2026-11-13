@@ -2,7 +2,7 @@
 // the rules of editing on the board (moving, turning, placing), and where the connection pins sit on a footprint. Built on
 // the footprints of `@face/model`. Pure.
 import {
-  canRotate, DEFAULT_FACING, facingOf, findTileOverlaps, isTileCenter, occupiedTiles, rotateTile, tileCenter, tileHalves, tileOrigin, tileSize, type Direction, type Entity, type EntityId, type EntityKind, type Point,
+  canRotate, DEFAULT_FACING, facingOf, findTileOverlaps, isTileCenter, occupiedTiles, rotateTile, tileCenter, tileHalves, tileOrigin, tileSize, type Direction, type Entity, type EntityId, type EntityShape, type Point,
   type TerminalSide, type TileSize, type WireColor,
 } from "@face/model";
 import { snapPoint } from "./drag.ts";
@@ -83,7 +83,7 @@ function takenTiles(entities: readonly Entity[], except?: ReadonlyMap<EntityId, 
   for (const entity of entities) {
     const tile = entity.placement?.tile;
     if (!tile || except?.has(entity.id)) continue;
-    for (const covered of occupiedTiles(entity.kind, facingOf(entity), tile)) taken.add(tileKey(covered.x, covered.y));
+    for (const covered of occupiedTiles(entity, facingOf(entity), tile)) taken.add(tileKey(covered.x, covered.y));
   }
   return taken;
 }
@@ -98,18 +98,18 @@ function takenTiles(entities: readonly Entity[], except?: ReadonlyMap<EntityId, 
  */
 export function derivedTiles(entities: readonly Entity[]): Map<EntityId, Point> {
   const taken = new Set<string>();
-  const take = (kind: EntityKind, facing: Direction, center: Point): void => {
-    for (const tile of occupiedTiles(kind, facing, center)) taken.add(tileKey(tile.x, tile.y));
+  const take = (entity: Entity, facing: Direction, center: Point): void => {
+    for (const tile of occupiedTiles(entity, facing, center)) taken.add(tileKey(tile.x, tile.y));
   };
-  for (const entity of entities) if (entity.placement?.tile) take(entity.kind, facingOf(entity), entity.placement.tile);
+  for (const entity of entities) if (entity.placement?.tile) take(entity, facingOf(entity), entity.placement.tile);
   const derived = new Map<EntityId, Point>();
   for (const entity of entities) {
     if (entity.placement?.tile) continue;
     const facing = facingOf(entity);
     // `|| 0`: Math.round gives -0 for small negative values.
     const wanted = { x: Math.round(entity.position.x / EDIT_UNITS_PER_TILE) || 0, y: Math.round(entity.position.y / EDIT_UNITS_PER_TILE) || 0 };
-    const center = tileCenter(entity.kind, facing, nearestFree(wanted, tileSize(entity.kind, facing), taken));
-    take(entity.kind, facing, center);
+    const center = tileCenter(entity, facing, nearestFree(wanted, tileSize(entity, facing), taken));
+    take(entity, facing, center);
     derived.set(entity.id, center);
   }
   return derived;
@@ -130,16 +130,16 @@ export function arrangeBoard(entities: readonly Entity[], moved?: ReadonlyMap<En
   entities.forEach((entity, index) => {
     const facing = facingOf(entity);
     const tile = standing[index]!.placement?.tile;
-    const origin = tileOrigin(entity.kind, facing, tile ?? derived.get(entity.id)!);
-    const conflict = tile !== undefined && (!isTileCenter(entity.kind, facing, tile) || overlapping.has(entity.id));
-    placements.set(entity.id, { origin, size: tileSize(entity.kind, facing), facing, placed: entity.placement?.tile !== undefined, conflict, moving: moved?.has(entity.id) ?? false, blocked: blocked?.has(entity.id) ?? false });
+    const origin = tileOrigin(entity, facing, tile ?? derived.get(entity.id)!);
+    const conflict = tile !== undefined && (!isTileCenter(entity, facing, tile) || overlapping.has(entity.id));
+    placements.set(entity.id, { origin, size: tileSize(entity, facing), facing, placed: entity.placement?.tile !== undefined, conflict, moving: moved?.has(entity.id) ?? false, blocked: blocked?.has(entity.id) ?? false });
   });
   return placements;
 }
 
 /** The entity with the `tile` of a footprint whose top-left tile is `origin`; the entity itself without one. */
 export function withOrigin(entity: Entity, origin: Point | undefined): Entity {
-  return origin ? { ...entity, placement: { ...entity.placement, tile: tileCenter(entity.kind, facingOf(entity), origin) } } : entity;
+  return origin ? { ...entity, placement: { ...entity.placement, tile: tileCenter(entity, facingOf(entity), origin) } } : entity;
 }
 
 // The rules of editing on the board. They all rest on one: only an entity with a `tile` takes tiles. An entity without one
@@ -155,20 +155,20 @@ export function blockedMoves(entities: readonly Entity[], origins: ReadonlyMap<E
   const blocked = new Set<EntityId>();
   for (const entity of entities) {
     const origin = origins.get(entity.id);
-    if (origin && !isFree(origin, tileSize(entity.kind, facingOf(entity)), taken)) blocked.add(entity.id);
+    if (origin && !isFree(origin, tileSize(entity, facingOf(entity)), taken)) blocked.add(entity.id);
   }
   return blocked;
 }
 
 /**
  * Turning: `facings` are the directions the turned entities would get. A turned entity with a `tile` keeps its top-left tile
- * (`rotateTile`), so a 2x1 entity comes to cover one new tile with a quarter turn. The turn is blocked, for all of them, when
+ * (`rotateTile`), so a 2x1 entity comes to cover one new tile with a quarter turn (a square one covers the same tiles). The turn is blocked, for all of them, when
  * one would newly cover a tile on which another entity with a `tile` stands after the turn; the first such pair is returned.
  * Tiles an entity covers already do not count, so one that stands in a conflict can still be turned out of it.
  */
 export function blockedTurn(entities: readonly Entity[], facings: ReadonlyMap<EntityId, Direction>): BlockedTurn | undefined {
-  const turned = (entity: Entity): Direction => (canRotate(entity.kind) ? (facings.get(entity.id) ?? facingOf(entity)) : facingOf(entity));
-  const after = (entity: Entity, tile: Point): Point[] => occupiedTiles(entity.kind, turned(entity), rotateTile(entity.kind, tile, facingOf(entity), turned(entity)));
+  const turned = (entity: Entity): Direction => (canRotate(entity) ? (facings.get(entity.id) ?? facingOf(entity)) : facingOf(entity));
+  const after = (entity: Entity, tile: Point): Point[] => occupiedTiles(entity, turned(entity), rotateTile(entity, tile, facingOf(entity), turned(entity)));
   const standing = new Map<string, EntityId[]>();
   for (const entity of entities) {
     const tile = entity.placement?.tile;
@@ -181,7 +181,7 @@ export function blockedTurn(entities: readonly Entity[], facings: ReadonlyMap<En
   for (const entity of entities) {
     const tile = entity.placement?.tile;
     if (!tile || !facings.has(entity.id)) continue;
-    const before = new Set(occupiedTiles(entity.kind, facingOf(entity), tile).map((covered) => tileKey(covered.x, covered.y)));
+    const before = new Set(occupiedTiles(entity, facingOf(entity), tile).map((covered) => tileKey(covered.x, covered.y)));
     for (const covered of after(entity, tile)) {
       const key = tileKey(covered.x, covered.y);
       const obstacle = before.has(key) ? undefined : standing.get(key)?.find((id) => id !== entity.id);
@@ -192,20 +192,20 @@ export function blockedTurn(entities: readonly Entity[], facings: ReadonlyMap<En
 }
 
 /** Placing a new entity with the pointer: the top-left tile of a footprint that has `point` (canvas units) in its middle. A new entity faces east unless its place tool was turned. */
-export function footprintOriginAt(point: Point, kind: EntityKind, facing: Direction = DEFAULT_FACING): Point {
-  const size = tileSize(kind, facing);
+export function footprintOriginAt(point: Point, entity: EntityShape, facing: Direction = DEFAULT_FACING): Point {
+  const size = tileSize(entity, facing);
   // `|| 0`: Math.round gives -0 for small negative values.
   return { x: Math.round(point.x / TILE - size.width / 2) || 0, y: Math.round(point.y / TILE - size.height / 2) || 0 };
 }
 
-/** True when a new entity of `kind` can stand with its top-left tile at `origin`: it would cover no tile of an entity that has a `tile`. */
-export function canStandAt(entities: readonly Entity[], kind: EntityKind, origin: Point, facing: Direction = DEFAULT_FACING): boolean {
-  return isFree(origin, tileSize(kind, facing), takenTiles(entities));
+/** True when a new entity can stand with its top-left tile at `origin`: it would cover no tile of an entity that has a `tile`. */
+export function canStandAt(entities: readonly Entity[], entity: EntityShape, origin: Point, facing: Direction = DEFAULT_FACING): boolean {
+  return isFree(origin, tileSize(entity, facing), takenTiles(entities));
 }
 
 /** Placing a new entity with the keyboard: the top-left tile nearest to `wanted` at which it can stand, in the order `derivedTiles` looks for a free place. */
-export function freeOriginNear(entities: readonly Entity[], kind: EntityKind, wanted: Point, facing: Direction = DEFAULT_FACING): Point {
-  return nearestFree(wanted, tileSize(kind, facing), takenTiles(entities));
+export function freeOriginNear(entities: readonly Entity[], entity: EntityShape, wanted: Point, facing: Direction = DEFAULT_FACING): Point {
+  return nearestFree(wanted, tileSize(entity, facing), takenTiles(entities));
 }
 
 /** The edit position for a new entity placed on the board: the one from which `derivedTiles` would give it the top-left tile `origin`, on the grid of the edit canvas. */
@@ -215,16 +215,19 @@ export function editPositionOf(origin: Point): Point {
 
 /**
  * Center of a connection pin relative to the top-left corner of the footprint, in canvas units. The input pins are on the
- * input half and the output pins on the output half, each at the outer end of its tile; red is on the left seen along the
- * facing, as on the cards (facing east: red above green).
+ * input half and the output pins on the output half (`tileHalves`), each at the outer end of it; red is on the left seen along
+ * the facing, as on the cards (facing east: red above green). An entity without halves has its pins at the end of the whole
+ * footprint its one terminal points to: a lamp, a speaker and a pole on the left, in the middle of that edge also for 2x2 tiles.
  */
-export function boardPinOffset(kind: EntityKind, facing: Direction, side: TerminalSide, color: WireColor): Point {
-  const halves = tileHalves(kind, facing, tileCenter(kind, facing, { x: 0, y: 0 }));
+export function boardPinOffset(entity: EntityShape, facing: Direction, side: TerminalSide, color: WireColor): Point {
+  const halves = tileHalves(entity, facing, tileCenter(entity, facing, { x: 0, y: 0 }));
   const half = side === "out" ? halves.output : halves.input;
   const heading = DIRECTION_VECTOR[pinHeading(side, facing)];
   const forward = DIRECTION_VECTOR[facing];
-  const reach = TILE / 2 - BOARD_PIN.inset;
+  const middle = { x: (half.x + half.width / 2) * TILE, y: (half.y + half.height / 2) * TILE };
+  // From the middle of the half to its end along the heading, less the inset.
+  const reach = ((heading.x !== 0 ? half.width : half.height) * TILE) / 2 - BOARD_PIN.inset;
   const across = (color === "red" ? 1 : -1) * (PIN_SPACING / 2);
   // The left of (x, y) is (y, -x) where y grows downwards.
-  return { x: (half.x + 0.5) * TILE + heading.x * reach + forward.y * across, y: (half.y + 0.5) * TILE + heading.y * reach - forward.x * across };
+  return { x: middle.x + heading.x * reach + forward.y * across, y: middle.y + heading.y * reach - forward.x * across };
 }

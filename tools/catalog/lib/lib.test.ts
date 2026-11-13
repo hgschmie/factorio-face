@@ -10,7 +10,7 @@ interface Layer { icon: string; size: number; scale?: number; shift?: number[]; 
 interface ModuleInfo { name: string; requires: string[]; recommends: string[] }
 type Records = Record<string, unknown>[];
 interface Built {
-  catalog: { signals: Record<string, Records>; groups: Records; subgroups: Records; qualities: Records; constants: Record<string, unknown> };
+  catalog: { signals: Record<string, Records>; groups: Records; subgroups: Records; qualities: Records; speakers: Records; constants: Record<string, unknown> };
   icons: Map<string, { layers: Layer[]; expected: number }>;
 }
 
@@ -23,6 +23,10 @@ const icons = (await load("./icons.mjs")) as {
 };
 const dump = (await load("./dump.mjs")) as { parseDependency(text: string): { name: string; kind: string; constraint: string }; validModSets(infos: ModuleInfo[]): string[][] };
 const build = (await load("./build.mjs")) as { buildCatalog(input: object): Built; visibilityOf(signal: object): string };
+const locale = (await load("./locale.mjs")) as {
+  parseLocale(text: string, sections: string[]): Record<string, Record<string, string>>;
+  readLocaleSections(dataDir: string, modules: string[], sections: string[]): Record<string, Record<string, string>>;
+};
 
 const scratch = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "face-catalog-test-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -145,6 +149,24 @@ describe("catalog build", () => {
     expect(iconMap.get("group/g")).toEqual({ layers: [{ icon: "__base__/g.png", size: 128 }], expected: 128 });
   });
 
+  it("lists a speaker's instruments and notes in the prototype's order, with the names that differ from the display names", () => {
+    const speaker = { name: "speaker", maximum_polyphony: 4, instruments: [{ name: "kit", notes: [{ name: "kick-1", sound: {} }, { name: "F#3", sound: {} }] }, { name: "empty", notes: {} }] };
+    const withSpeaker = (set: typeof baseSet, names: Record<string, Record<string, string>>) => ({ ...set, raw: { ...set.raw, "programmable-speaker": { speaker } }, locale: { ...set.locale, ...names } });
+    const names = { "programmable-speaker-instrument": { kit: "Drumkit" }, "programmable-speaker-note": { "kick-1": "Kick 1", "F#3": "F#3" } };
+    const built = build.buildCatalog({ sets: [withSpeaker(baseSet, names), withSpeaker(extraSet, { ...names, "programmable-speaker-instrument": { kit: "Kit" } })], modules, game: { version: "1" } });
+    expect(built.catalog.speakers).toEqual([
+      {
+        name: "speaker",
+        maximumPolyphony: 4,
+        instruments: [{ name: "kit", displayName: "Drumkit", notes: ["kick-1", "F#3"], noteNames: { "kick-1": "Kick 1" } }, { name: "empty", displayName: "empty", notes: [] }],
+        modules: ["base"],
+        variants: [{ when: ["extra"], instruments: [{ name: "kit", displayName: "Kit", notes: ["kick-1", "F#3"], noteNames: { "kick-1": "Kick 1" } }, { name: "empty", displayName: "empty", notes: [] }] }],
+      },
+    ]);
+    // A set without a speaker prototype has none.
+    expect(catalog.speakers).toEqual([]);
+  });
+
   it("classifies signal picker visibility", () => {
     expect(build.visibilityOf({})).toBe("normal");
     expect(build.visibilityOf({ wildcard: "each", special: true })).toBe("wildcard");
@@ -153,5 +175,24 @@ describe("catalog build", () => {
     expect(build.visibilityOf({ special: true, hidden: true })).toBe("hidden");
     expect(build.visibilityOf({ hideFromSignalGui: true })).toBe("hidden");
     expect(build.visibilityOf({ placedBy: ["x"] })).toBe("hidden");
+  });
+});
+
+describe("locale files", () => {
+  const text = "; comment\n[other]\nkit=Wrong\n\n[instrument]\nkit=Drumkit\n# comment\nodd=a=b\n\n[note]\nF#3=F#3\nkick-1=Kick 1\r\n[more]\nF#3=Wrong\n";
+
+  it("reads the key=value lines of the named sections, keys with a # included", () => {
+    expect(locale.parseLocale(text, ["instrument", "note"])).toEqual({ instrument: { kit: "Drumkit", odd: "a=b" }, note: { "F#3": "F#3", "kick-1": "Kick 1" } });
+    expect(locale.parseLocale(text, ["absent"])).toEqual({});
+  });
+
+  it("lets a later module override an earlier one, core coming first", () => {
+    const dir = (module: string) => join(scratch, "data", module, "locale", "en");
+    for (const module of ["core", "base", "extra"]) mkdirSync(dir(module), { recursive: true });
+    writeFileSync(join(dir("core"), "core.cfg"), "[note]\na=core\nb=core\n");
+    writeFileSync(join(dir("base"), "base.cfg"), "[note]\nb=base\nc=base\n");
+    writeFileSync(join(dir("extra"), "extra.cfg"), "[note]\nc=extra\n");
+    expect(locale.readLocaleSections(join(scratch, "data"), ["base"], ["note", "instrument"])).toEqual({ note: { a: "core", b: "base", c: "base" }, instrument: {} });
+    expect(locale.readLocaleSections(join(scratch, "data"), ["base", "extra", "missing"], ["note"])).toEqual({ note: { a: "core", b: "base", c: "extra" } });
   });
 });

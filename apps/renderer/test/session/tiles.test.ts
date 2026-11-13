@@ -271,7 +271,7 @@ describe("placeEntityOnTile", () => {
     expect(tiles()).toMatchObject({ gate: at(3, 0.5), arithmetic1: at(4, 1.5) });
     // A center that belongs to the other orientation is refused by the language.
     session.commands.placeEntityOnTile("decider", at(8, 8.5), "south");
-    expect(session.state.error).toBe("tile (8, 8.5) is not on the tile grid for a new decider facing south");
+    expect(session.state.error).toBe("tile (8, 8.5) is not on the tile grid for a new decider combinator facing south");
   });
 
   it("moves the edit position on while it is exactly the one of another entity, as a paste does", () => {

@@ -362,7 +362,7 @@ export class ProjectSession {
     const centers = new Map(tiles.map(({ id, tile }) => [id, tile]));
     const moved = this.entities([...centers.keys()]);
     if (!this.editable || moved.length === 0) return;
-    const origins = new Map(moved.map((entity) => [entity.id, tileOrigin(entity.kind, facingOf(entity), centers.get(entity.id)!)]));
+    const origins = new Map(moved.map((entity) => [entity.id, tileOrigin(entity, facingOf(entity), centers.get(entity.id)!)]));
     if (blockedMoves(circuit, origins).size === 0) this.perform({ type: "setTiles", tiles: moved.map(({ id }) => ({ id, tile: centers.get(id)! })) });
   }
 
@@ -443,7 +443,7 @@ export class ProjectSession {
         this.setTiles(
           this.entities(this.selection).map((entity) => {
             const { origin, facing } = board.get(entity.id)!;
-            return { id: entity.id, tile: tileCenter(entity.kind, facing, { x: origin.x + delta.x, y: origin.y + delta.y }) };
+            return { id: entity.id, tile: tileCenter(entity, facing, { x: origin.x + delta.x, y: origin.y + delta.y }) };
           }),
         );
       }),
@@ -459,9 +459,9 @@ export class ProjectSession {
       }),
       placeEntityOnTile: changing((kind, tile, facing = DEFAULT_FACING) => {
         const circuit = this.analysis.circuit.entities;
-        const direction = canRotate(kind) ? facing : DEFAULT_FACING;
-        const origin = tileOrigin(kind, direction, tile);
-        if (!this.editable || !canStandAt(circuit, kind, origin, direction)) return;
+        const direction = canRotate({ kind }) ? facing : DEFAULT_FACING;
+        const origin = tileOrigin({ kind }, direction, tile);
+        if (!this.editable || !canStandAt(circuit, { kind }, origin, direction)) return;
         const position = editPositionOf(origin);
         const shift = pasteShift({ entities: [{ position }] }, circuit);
         this.addEntity(kind, { x: position.x + shift.x, y: position.y + shift.y }, direction, tile);

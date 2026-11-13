@@ -1,6 +1,7 @@
 # Factorio 2.1.24 circuit audit and support matrix
 
 Audit date: 2026-11-11. Scope: constant, arithmetic, decider and selector combinators, lamps, circuit wires, signals and the blueprint string format.
+Added 2026-11-12: electric poles (3.9, 6.9, 9.9) and the programmable speaker (3.10, 6.10, 9.10). Where an older section says "the five entities" it means the four combinators and the lamp; what holds for the two additions is said in their own sections.
 This document drives the model types, the DSL, the blueprint importer/exporter and the simulator of "face".
 
 ## 0. How to read this document
@@ -200,7 +201,8 @@ Note the level gap: legendary is 5, not 4 [data]. Quality comparisons (`<`, `>`,
 
 ### 3.1 Prototypes
 
-Complete list across core, base, space-age, quality, recycler, elevated-rails. There is exactly one prototype per type; no module adds variants or copies [data: grep over all six modules].
+Complete list across core, base, space-age, quality, recycler, elevated-rails. For the four combinators and the lamp there is exactly one prototype per type; no module adds variants or copies [data: grep over all six modules].
+The type `electric-pole` has four prototypes and `programmable-speaker` one, all from base and the same in all eight module sets [data: dump, `data-raw-dump.json` of every set]. The editor keeps these values in one table, `PROTOTYPES` in `packages/model/src/prototypes.ts`.
 
 | Name | Type | Module | Collision box | Tile size (north) | Rotatable | Power | Wire reach | Provenance |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -209,6 +211,11 @@ Complete list across core, base, space-age, quality, recycler, elevated-rails. T
 | `decider-combinator` | decider-combinator | base | +-0.35 x +-0.65 | 1 wide x 2 tall | 4-way | electric, primary-input, 1 kW | 9 | same |
 | `selector-combinator` | selector-combinator | base | +-0.35 x +-0.65 | 1 wide x 2 tall | 4-way | electric, primary-input, 1 kW | 9 | same |
 | `small-lamp` | lamp | base | +-0.15 x +-0.15 | 1 x 1 | no | electric, usage priority `lamp`, 5 kW | 9 | [data: base/prototypes/entity/entities.lua] |
+| `small-electric-pole` | electric-pole | base | +-0.15 x +-0.15 | 1 x 1 | no | carries power | 7.5 | [data: base/prototypes/entity/entities.lua `maximum_wire_distance`] [data: dump] [game: fixture F-24] |
+| `medium-electric-pole` | electric-pole | base | +-0.15 x +-0.15 | 1 x 1 | no | carries power | 9 | same |
+| `big-electric-pole` | electric-pole | base | +-0.65 x +-0.65 | 2 x 2 | no | carries power | 32 | same |
+| `substation` | electric-pole | base | +-0.7 x +-0.7 | 2 x 2 | no | carries power | 18 | [data: entities.lua] [data: dump]; not in the recording F-24 yet |
+| `programmable-speaker` | programmable-speaker | base | +-0.3 x +-0.3 | 1 x 1 | no | electric, secondary-input, 2 kW | 9 | [data: base/prototypes/entity/circuit-network.lua] [data: dump `circuit_wire_max_distance`] |
 
 Module-specific modifications: space-age only adds `heating_energy` (50 kW arithmetic and decider, 100 kW selector), so these three freeze on cold surfaces; constant combinator and lamp use the
 unheated collision default [data: space-age/base-data-updates.lua, core/lualib/collision-mask-defaults.lua]. Not simulated; see section 9.
@@ -559,6 +566,69 @@ Circuit-controlled example from the API schema [api]; exported form [unverified]
 }
 ```
 
+### 3.9 Electric poles
+
+Four prototypes of the type `electric-pole`: `small-electric-pole`, `medium-electric-pole`, `big-electric-pole`, `substation` (table in 3.1).
+
+| Fact | Value | Provenance |
+| --- | --- | --- |
+| Wire reach | `maximum_wire_distance`: 7.5, 9, 32, 18. A pole has no `circuit_wire_max_distance`; the one value is the reach for copper and for circuit wires | [data: entities.lua] [data: dump]; for circuit wires [game: fixture F-24] for the small, medium and big pole (`get_max_wire_distance`, 7.5 / 9 / 32); the substation's 18 is [data: dump] until it is recorded |
+| Tile size | small and medium 1 x 1 (collision box +-0.15), big 2 x 2 (+-0.65), substation 2 x 2 (+-0.7) | [data: dump `collision_box`]; big pole 2 x 2 [game: fixture F-24, `tile_width`, `tile_height`] |
+| Rotation | none: no `direction` in a blueprint; the picture has four variations for the wire angle only | [data: entities.lua] |
+| Connectors | one connection point: `circuit_red` = 1, `circuit_green` = 2, and `pole_copper` = 5 for the power wire. No input and no output | [web: https://wiki.factorio.com/Talk:Blueprint_string_format] (see 4.2) |
+| Blueprint record | common fields only (`entity_number`, `name`, `position`, `quality`); no `control_behavior`, no settings | [api: BlueprintEntity has no variant `electric-pole`] |
+| Supply area | `supply_area_distance` 2.5, 3.5, 2, 9: power only, not modeled | [data: entities.lua] |
+| Quality | "Increases the wire reach at higher qualities" for an entity of higher quality; the editor has no entity quality, so the reach is that of normal quality | [data: core/locale/en/core.cfg `wire-reach`]; amount [unverified] |
+
+A pole relays circuit signals: every circuit wire of one color attached to it belongs to one network (4.1). It is the game's way to span more than the 9 tiles of the other entities.
+In a blueprint a pole also carries copper wires (connector 5), which the editor does not model.
+
+### 3.10 Programmable speaker (`programmable-speaker`)
+
+Entity fields: common fields plus [api: BlueprintEntity variant programmable-speaker]. Defaults are those of a new speaker; the API marks the three objects and their members as not optional and names no defaults.
+
+| Path | Type | Default | Notes | Provenance |
+| --- | --- | --- | --- | --- |
+| `parameters.playback_volume` | float 0..1 | 1 | "Volume" slider | [api: ProgrammableSpeakerParameters]; default [unverified] |
+| `parameters.playback_mode` | `"local"` \| `"surface"` \| `"global"` | local | "Sounds ... heard within the audible range of the speaker" / "everywhere on the speaker's surface" / "everywhere". The GUI calls `global` "Universe" since 2.1.10; before 2.0 the field was the boolean `playback_globally` | [api: ProgrammableSpeakerPlaybackMode] [data: core.cfg gui-programmable-speaker] [changelog 2.1.10]; default [unverified] |
+| `parameters.allow_polyphony` | boolean | false | "Allow up to 10 sounds to be played at the same time. Disable to only allow one sound at the same time (useful for factory alerts)." 10 is the prototype's `maximum_polyphony` | [api] [data: core.cfg] [data: dump]; default [unverified] |
+| `parameters.volume_controlled_by_signal` | boolean | false | "Signal value is volume": "The value of the input circuit network signal determines the volume of the sound played, in percents, in the range between 0 and 100. Values outside of the range are clamped." | [api] [data: core.cfg] [changelog 2.0.36] |
+| `parameters.volume_signal_id` | SignalID | none | the signal for it | [api] |
+| `alert_parameters.show_alert` | boolean | false | "Show an alert with a message in the GUI when a sound is played." | [api: ProgrammableSpeakerAlertParameters] [data: core.cfg] |
+| `alert_parameters.show_on_map` | boolean | true | "Show icon on map" | [api] [data: core.cfg]; default [unverified] |
+| `alert_parameters.icon_signal_id` | SignalID | none | icon of the alert | [api] |
+| `alert_parameters.alert_message` | string | "" | text of the alert, up to 150 characters; takes part in blueprint parametrisation | [api] [web: https://wiki.factorio.com/Programmable_speaker] [changelog 2.0.x "alert text ... parametrisation"] |
+| `control_behavior.circuit_condition` | CircuitCondition | blank | the condition; with `signal_value_is_pitch` its `first_signal` is the pitch signal | [api: ProgrammableSpeakerBlueprintControlBehavior]; pitch signal slot [unverified] |
+| `control_behavior.circuit_parameters.signal_value_is_pitch` | boolean | false | "The value of the input circuit network signal determines the musical note that will be played." | [api: ProgrammableSpeakerCircuitParameters] [data: core.cfg] |
+| `control_behavior.circuit_parameters.stop_playing_sounds` | boolean | false | "Change of the input circuit network signal will stop currently playing sounds immediately instead of waiting for them to finish." | [api] [data: core.cfg] [changelog 2.0.36] |
+| `control_behavior.circuit_parameters.instrument_id` | uint32 | 0 | index into the prototype's `instruments`, from 0 | [api]; base [unverified] (`LuaEntity.play_note` takes the same two numbers) |
+| `control_behavior.circuit_parameters.note_id` | uint32 | 0 | index into the instrument's `notes`, from 0 | same |
+
+There is no `circuit_enabled` and no `input_networks`: a wired speaker always evaluates its condition, on the sum of both wires [api: no such fields].
+Terminals: a single connection point, `circuit_red` = 1 and `circuit_green` = 2 [data: dump `circuit_connector` with one set of wire points]. The speaker only reads. No `direction` [data: one sprite].
+
+Instruments and notes [data: base/prototypes/entity/circuit-network.lua `instruments`] [data: dump, identical in all eight module sets]: 12 instruments in this order, with the number of notes:
+`alarms` 7, `miscellaneous` 24, `drum-kit` 17, `piano` 48 (F3 to E7), `bass` 36 (F2 to E5), `lead` 36, `saw` 36, `square` 36, `celesta` 36 (F5 to E8), `vibraphone` 36, `plucked` 36 (F4 to E7), `steel-drum` 36 (F3 to E6).
+Each has a `name`, each note a `name` and a `sound`; the display names are in `base/locale/en/base.cfg`, sections `programmable-speaker-instrument` and `programmable-speaker-note` ("Drumkit", "Sawtooth", "Hi-hat 1", ...).
+"Added several new notes to Miscellaneous" [changelog 2.1.10] shows that the lists change between versions, which is why the editor writes names and not positions (`docs/dsl.md`, speaker); the catalog carries the lists in order (`packages/catalog`, `speakers`).
+A note may have a `cyclic_sound` [changelog 2.0.36]; no note of 2.1.24 has one [data: dump].
+
+Shipped examples: none found in the embedded blueprint strings [data: grep]. Example from the API schema [api]; exported form [unverified]:
+
+```json
+{
+  "entity_number": 3,
+  "name": "programmable-speaker",
+  "position": {"x": 4.5, "y": 0.5},
+  "parameters": {"playback_volume": 0.8, "playback_mode": "global", "allow_polyphony": false, "volume_controlled_by_signal": false},
+  "alert_parameters": {"show_alert": true, "show_on_map": true, "icon_signal_id": {"name": "iron-plate"}, "alert_message": "Iron is running out"},
+  "control_behavior": {
+    "circuit_condition": {"first_signal": {"name": "iron-plate"}, "constant": 100, "comparator": "<"},
+    "circuit_parameters": {"signal_value_is_pitch": false, "stop_playing_sounds": false, "instrument_id": 0, "note_id": 6}
+  }
+}
+```
+
 ## 4. Wires
 
 ### 4.1 Encoding in 2.x
@@ -609,6 +679,10 @@ Connectors available per entity in scope:
 | constant-combinator | red (output) | green (output) | - | - |
 | arithmetic / decider / selector | red input | green input | red output | green output |
 | small-lamp | red (input) | green (input) | - | - |
+| programmable-speaker | red (input) | green (input) | - | - |
+| electric poles | red | green | - | - |
+
+A pole's connector neither reads nor writes: it only joins the wires on it. The editor names the three roles `in`, `out` and `io` (`TERMINAL_SIDES` in `@face/model`); `io` is written in the circuit language as the bare entity name.
 
 ### 4.3 Differences from the 1.1 `connections` format
 
@@ -721,7 +795,8 @@ The value exceeds 2^32 but stays below 2^53, so a JavaScript number holds it exa
 | Topic | Rule | Provenance |
 | --- | --- | --- |
 | Position | center of the entity, in tiles, relative to an arbitrary blueprint origin; fixed-point with 1/256 tile resolution | [api: MapPosition]; "0 is the center" [web: Blueprint_string_format] |
-| 1x1 entity (constant combinator, lamp) | both coordinates end in .5 | [data: shipped lamps and constant combinator] |
+| 1x1 entity (constant combinator, lamp, speaker, small and medium pole) | both coordinates end in .5 | [data: shipped lamps and constant combinator]; the others by the same rule |
+| 2x2 entity (big pole, substation) | both coordinates are integers (the center is the corner the four tiles share) | [game: fixture F-24: the probe places a big pole on a center of whole numbers and the game leaves it there]; substation [unverified], same size |
 | 2x1 combinator facing north or south (0, 8) | x ends in .5, y is an integer (center lies on the tile boundary) | [data: shipped selector at (6.5, -21), direction 8] |
 | 2x1 combinator facing east or west (4, 12) | x is an integer, y ends in .5 | [unverified], follows from rotation |
 | Tiles occupied, north-facing, center (x, y) | output half: tile containing (x, y - 0.5); input half: tile containing (x, y + 0.5) | [data: connection bounding boxes, see 3.1] |
@@ -731,7 +806,7 @@ The value exceeds 2^32 but stays below 2^53, so a JavaScript number holds it exa
 | `snap-to-grid` etc. | blueprint-level, do not change entity coordinates' meaning | [web] |
 
 The exporter must emit positions that respect tile alignment, otherwise the game re-snaps or rejects; `set_blueprint_entities` has a `fix_positions` option at runtime [api].
-Wire reach is 9 tiles for all five entities [data: core/lualib/circuit-connector-sprites.lua]; a layout generator must keep wired entities within reach (the game drops or refuses over-long wires [unverified]).
+Wire reach is 9 tiles for the four combinators, the lamp and the speaker [data: core/lualib/circuit-connector-sprites.lua: every `*_circuit_wire_max_distance` of the game is 9]; an electric pole has its own (3.9); a layout generator must keep wired entities within reach (the game drops or refuses over-long wires [unverified]).
 How the game measures [game: fixture F-24, 2.1.24, `LuaWireConnector.can_wire_reach` and `connect_to` with the reach check, no mismatch in any recorded placement]:
 
 - The distance of a wire is the straight line between the nearest points of the two entities' tile footprints: per axis the gap between the footprints in tiles, 0 where they overlap on that axis, then the hypotenuse of
@@ -740,7 +815,9 @@ How the game measures [game: fixture F-24, 2.1.24, `LuaWireConnector.can_wire_re
 - Nothing else matters: not the facing beyond the footprint it gives, not the connector that is wired (input or output of a combinator), not the collision box (a lamp, +-0.15, behaves like a constant combinator, +-0.35).
 - The reach of a wire is the smaller of the two entities' reaches: a constant combinator (9) and a small electric pole (7.5) connect up to 7.5, a constant combinator and a big electric pole (32) up to 9.
 
-The editor implements this in `packages/model/src/wireReach.ts` with one reach for the project, which is enough while all of its entities have the same reach.
+The editor implements this in `packages/model/src/wireReach.ts` (`wireSpan`): a pole has the reach of its prototype (`PROTOTYPES`), every other entity the reach of the project (a setting, 9 by default, 0 for unlimited),
+and a wire may span the smaller of the two; an unlimited end does not limit. `packages/model/test/wireReachGame.test.ts` checks this against every placement of the recording with the editor's own entities.
+Not recorded yet: the substation, the speaker, and pole against pole (the smaller of two reaches when neither is 9, a reach above 9); `tools/game-probe/wire-reach.lua` has these cases since 2026-11-12 and the fixture gets them with the next `make probe-wire-reach`.
 
 ## 6. Simulation semantics
 
@@ -956,7 +1033,43 @@ reading results through `LuaCombinatorControlBehavior.signals_last_tick`, `LuaEn
 | F-21 | Lamp: condition true / false / default, `circuit_enabled` false with wire, `always_on`, daylight | lighting rules |
 | F-22 | Lamp colors: several mapping signals at once; components and packed RGB with 0, 255, 256, -1, 0xFFFFFF, 0x1000000; `input_networks` selection | color rules |
 | F-23 | Import round-trip: face export -> `import_stack` -> `export_stack` for each entity type, including 2x1 entities in all four directions and self-wires | exporter correctness, position rules, wire normalization |
+| F-25 | Programmable speaker: condition true / false / blank and held for many ticks (how often the sound starts again, with and without polyphony), no wire, `signal_value_is_pitch` with the values 0, 1, the last note and one beyond, both wires, a wildcard in the condition, volume from a signal below 0 and above 100, alert on and off; read back through `LuaEntity.parameters`, `alert_parameters`, the control behavior and the alerts of the force | every rule SP-* of `packages/simulation/CONFORMANCE.md`, the defaults of 3.10 |
+| F-26 | Electric pole relay: constant -> pole -> pole -> lamp with red and green on the same poles, a combinator behind a pole; `LuaEntity.get_signals` on the pole | one network per color through a pole, no tick added (6.9) |
 | F-24 | Wire reach: an entity B on every tile of a 29 x 29 grid around an entity A, asking `can_wire_reach` and `connect_to`: 1x1 and 2x1 entities in all four directions, both connectors, lamp, small / medium / big electric pole, steel chest. Recorded: `tests/fixtures/game/F-24-wire-reach.json` by `tools/game-probe/wire-reach.mjs` (`make probe-wire-reach`), checked by `packages/model/test/wireReachGame.test.ts` | the measure of wire reach (5.4): from where, inclusive or not, which of two reaches |
+
+### 6.9 Electric poles
+
+| Statement | Provenance |
+| --- | --- |
+| A pole has one circuit connector per color; all circuit wires of one color on it are one network (the network is the set of connectors joined by wires, 4.1) | [api: `defines.wire_connector_id.circuit_red`, `circuit_green` on a pole] [web: https://wiki.factorio.com/Circuit_network] |
+| Red and green stay separate networks on a pole | follows from 4.1 |
+| A pole adds no latency: only combinators have the one tick of 6.1 | follows from 6.1; [unverified] against the game (F-26) |
+| A pole reads and emits nothing | [api: no control behavior for electric-pole] |
+| The copper wire and the power a pole carries have no effect on signals | [unverified] |
+
+The simulator treats a pole as a connection point without behaviour (rule P-RELAY). Its snapshot shows what is on the red and on the green network it joins.
+
+### 6.10 Programmable speaker
+
+| Statement | Provenance |
+| --- | --- |
+| "it shows alerts and plays sounds based on circuit network signals" | [changelog 0.15.0] |
+| Without a circuit wire the speaker makes no sound: "Fixed programmable speaker continuing to make sounds without a wire connected" | [changelog 0.15.x] |
+| The speaker plays when its circuit condition is true; it emits nothing | [web: https://wiki.factorio.com/Programmable_speaker]; evaluated from the current tick like a lamp [unverified] |
+| A blank condition (no first signal) is false | [unverified], as for the lamp |
+| While the condition stays true the sound is started again and again: "sounds will repeat extremely rapidly (10 per second or so)" with polyphony, about one every half second without | [web: same page]; the exact rule (per tick, per sample length) [unverified] |
+| "Allow polyphony": up to `maximum_polyphony` = 10 sounds at once; without it one sound at a time | [data: core.cfg] [data: dump]; what happens to a trigger while a sound plays [unverified] |
+| "Stop playing sounds": a change of the input signal stops the playing sounds instead of letting them finish | [data: core.cfg] [changelog 2.0.36] |
+| "Signal value is pitch": the value of the (first) signal picks the note of the instrument | [data: core.cfg]; that the value 1 is the first note and that 0 or a value beyond the list is silent [unverified] |
+| With "signal value is pitch" the comparator and the right side of the condition are not used | [unverified] |
+| "Signal value is volume": the signal value is the volume in percent, clamped to 0..100 | [data: core.cfg]; that it replaces the slider instead of scaling it [unverified] |
+| The alert is shown "when a sound is played", with icon and message, optionally on the map | [data: core.cfg]; for how long [unverified] |
+| Playback mode decides where the sound is heard, not whether it plays; global and surface sounds are per force since 2.1.7 | [api] [changelog 2.1.7] |
+| everything / anything in the condition | [unverified], as for the lamp |
+| Runtime read-back for fixtures: `LuaEntity.parameters`, `LuaEntity.alert_parameters`, `LuaProgrammableSpeakerControlBehavior.circuit_condition` (with `fulfilled`) and `.circuit_parameters`, `LuaEntity.play_note` ("The sound may or may not be played depending on polyphony settings") | [api] |
+
+The simulator produces no sound and has no time within a sound. It reports per tick whether the speaker is triggered (condition true, or a pitch value with a note), with which instrument, note and volume, and whether the alert shows;
+polyphony, stop-playing-sounds and the playback mode are kept in the model and do not change that report (rules SP-* in `packages/simulation/CONFORMANCE.md`, all pending F-25).
 
 ## 7. Changes between 2.0 and 2.1 affecting circuits, signals and blueprints
 
@@ -1098,9 +1211,10 @@ before it can be called conformant.
 | `label_color`, `icons`, `snap-to-grid`, `absolute-snapping`, `position-relative-to-grid` | preserved-on-roundtrip-only | No effect on circuit behavior |
 | `tiles`, `schedules`, `stock_connections`, `parameters`, `branch_version`, unknown root keys | preserved-on-roundtrip-only | Out of scope; dropping them would damage user blueprints |
 | Blueprint parameters (`parameter-N` signals, parametrised numbers) | preserved-on-roundtrip-only; simulated as ordinary signals with a warning | Parameter substitution happens at build time in game |
-| Entities other than the five types | preserved-on-roundtrip-only with a diagnostic; not simulated (their connectors emit nothing) | Out of scope; keeping them lets mixed blueprints survive an edit |
+| Entities other than the five types, electric poles and the programmable speaker | preserved-on-roundtrip-only with a diagnostic; not simulated (their connectors emit nothing) | Out of scope; keeping them lets mixed blueprints survive an edit |
 | Wires with connector 1..4 between supported entities | supported | |
-| Wires touching a preserved entity; copper wires (5, 6) | preserved-on-roundtrip-only with a diagnostic | Other end is not simulated |
+| Wires with connector 1 or 2 on an electric pole or a speaker | supported | |
+| Wires touching a preserved entity; copper wires (5, 6), also those between two poles | preserved-on-roundtrip-only with a diagnostic | Other end is not simulated; power is not modeled |
 | Wires referencing a missing entity number or an invalid connector for the entity type | unsupported-with-diagnostic (wire dropped) | Malformed input |
 
 ### 9.2 Common entity fields
@@ -1110,7 +1224,8 @@ before it can be called conformant.
 | all five | `entity_number`, `name`, `position` | supported | |
 | combinators | `direction` 0, 4, 8, 12 | supported | |
 | combinators | `direction` other values | unsupported-with-diagnostic (snap to nearest of four) | Not producible in game |
-| small-lamp | `direction` | preserved-on-roundtrip-only | Lamp is not rotatable |
+| small-lamp, electric poles, programmable-speaker | `direction` | preserved-on-roundtrip-only | Not rotatable |
+| electric poles, programmable-speaker | `entity_number`, `name`, `position`, signals as for the five | supported | |
 | all five | `quality` (entity quality) | preserved-on-roundtrip-only | No circuit effect |
 | all five | `mirror`, `tags`, `items`, unknown entity keys | preserved-on-roundtrip-only | No circuit effect |
 | combinators | `player_description` | supported | |
@@ -1196,6 +1311,8 @@ before it can be called conformant.
 
 ### 9.8 Cross-cutting
 
+Sections 9.9 and 9.10 follow the cross-cutting table.
+
 | Item | Proposed status | Reason when not supported |
 | --- | --- | --- |
 | int32 wrap on every sum and product | supported | |
@@ -1208,6 +1325,35 @@ before it can be called conformant.
 Simulation assumptions that have no blueprint representation and therefore no status (proposal): every entity is powered and not frozen; entity health and quality have no effect; there is no day/night cycle,
 so a lamp without circuit control is displayed as "ambient" (lit only if `always_on`); the game tick and day length used by the selector `time` mode are simulation settings.
 
+### 9.9 Electric poles
+
+| Setting | Proposed status | Reason when not supported |
+| --- | --- | --- |
+| `name`: `small-electric-pole`, `medium-electric-pole`, `big-electric-pole`, `substation` | supported (`pole` with `prototype`) | |
+| Circuit wires on the one connection point (connectors 1, 2) | supported, relay pending F-26 | |
+| Tile size 1 x 1 / 2 x 2, no rotation | supported | |
+| Own wire reach 7.5 / 9 / 32 / 18 | supported (warning `wire-too-long`); substation pending the next recording of F-24 | |
+| Copper wires (connector 5), supply area, power | preserved-on-roundtrip-only | No power network in the simulator |
+| Entity `quality` raising the wire reach | preserved-on-roundtrip-only; the reach of normal quality is used | No entity quality in the editor |
+| Poles of other modules or mods | unsupported-with-diagnostic (kept as a preserved entity) | No reach and size in the prototype table |
+
+### 9.10 Programmable speaker
+
+| Setting | Proposed status | Reason when not supported |
+| --- | --- | --- |
+| `circuit_condition` | supported, pending F-25 | |
+| everything / anything in the condition | supported, pending F-25 | |
+| `signal_value_is_pitch` with the pitch signal | supported, value-to-note mapping pending F-25 | |
+| A comparator and right side kept next to `signal_value_is_pitch` | unsupported-with-diagnostic (dropped) | Without effect in that mode [unverified]; the language has one of `when` and `pitch` |
+| `instrument_id`, `note_id` | supported as names through the catalog's lists | |
+| An id beyond the catalog's lists (mod, other version) | unsupported-with-diagnostic | No name for it |
+| `playback_volume`, `volume_controlled_by_signal`, `volume_signal_id` | supported, pending F-25 | |
+| `volume_controlled_by_signal` true without a signal, or a signal kept while it is false | unsupported-with-diagnostic (normalized) | The language marks the mode by the presence of `volume-signal` |
+| `playback_mode`, `allow_polyphony`, `stop_playing_sounds` | supported in the model and the language; no effect in the simulator | No sound and no time within a sound |
+| `show_alert` | supported (reported while playing), pending F-25 | |
+| `show_on_map`, `icon_signal_id`, `alert_message` | supported in the model and the language; not part of a snapshot | Display only |
+| Sound itself | unsupported (non-goal) | The editor plays no audio |
+
 ## 10. Open questions for the coordinator
 
 1. Selector `control_behavior` wire format (flat per API versus `selector_conditions` wrapper seen in game data) blocks the exporter until F-01 is run.
@@ -1215,6 +1361,7 @@ so a lamp without circuit control is displayed as "ambient" (lit only if `always
 3. Rocket capacity needs runtime item weights (`LuaItemPrototype` at runtime), which a `--dump-data-raw` style dump does not contain. Either extend the dump task or keep the mode non-simulated.
 4. Whether 1.x strings should be converted rather than rejected: the game still imports them, so users may hold such strings.
 5. The DSL needs a way to say "group" as OR-of-ANDs only; a richer boolean syntax must be normalized or rejected.
+6. Programmable speaker: everything the simulator reports rests on F-25 (6.10). The probe needs a scenario that holds a condition for many ticks and reads back what the game plays; whether the game exposes "is playing" to Lua at all is open.
 
 ## 11. Errata from the engine data dump (2026-11-11)
 

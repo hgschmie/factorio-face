@@ -8,9 +8,14 @@
 // Work is change-driven: a network is re-summed only when one of its emitters changed, and a combinator is re-evaluated only
 // when a network on its input changed (clock and random selectors every tick). The results are identical to evaluating
 // everything every tick because evaluators are pure functions of their input.
+//
+// An entity is not assumed to have an input and an output: `POINT_ROLES` says from which of its connection points a kind reads
+// and to which it writes, if any. A pole only reads, and only for the snapshot; lamps and speakers are evaluated for the
+// snapshot from what they read and emit nothing.
 
-import { terminalKey, type EntityId, type EntityKind, type WireColor } from "@face/model";
+import { terminalKey, type EntityId, type EntityKind, type TerminalSide, type WireColor } from "@face/model";
 import { planArithmetic } from "./arithmetic.ts";
+import { POINT_ROLES } from "./compile.ts";
 import { constantOutput } from "./constant.ts";
 import { planDecider } from "./decider.ts";
 import { defaultEnvironment, qualityLevels, type SimulationEnvironment } from "./environment.ts";
@@ -18,6 +23,7 @@ import { DARK_LAMP, planLamp, type LampPlan } from "./lamp.ts";
 import { levelLookup, type Evaluator, type PlanContext } from "./plan.ts";
 import { planSelector } from "./selector.ts";
 import { EMPTY, InputView, SignalTable, sameMap, type SignalMap } from "./signals.ts";
+import { SILENT_SPEAKER, planSpeaker, type SpeakerPlan } from "./speaker.ts";
 import type { CompiledCircuit, EntityInput, EntitySnapshot, NetworkSnapshot, SignalList, SignalTarget, SimulationNote, TickSnapshot } from "./types.ts";
 
 export interface SimulationOptions {
@@ -56,12 +62,16 @@ class Engine implements Simulation {
   private readonly networkIndex: ReadonlyMap<string, number>;
   private readonly evaluators: (Evaluator | undefined)[] = [];
   private readonly lamps: (LampPlan | undefined)[] = [];
+  private readonly speakers: (SpeakerPlan | undefined)[] = [];
   private readonly fixed: SignalMap[] = [];
   private readonly volatile: number[] = [];
-  private readonly inRed: Int32Array;
-  private readonly inGreen: Int32Array;
-  private readonly outRed: Int32Array;
-  private readonly outGreen: Int32Array;
+  /** Per entity the network (index, -1 for none) of each color on the point it reads from and on the point it writes to. */
+  private readonly readRed: Int32Array;
+  private readonly readGreen: Int32Array;
+  private readonly writeRed: Int32Array;
+  private readonly writeGreen: Int32Array;
+  /** Whether the entity emits at all: its snapshot then has an `output`. */
+  private readonly writes: readonly boolean[];
   private readonly emitters: number[][];
   private readonly readers: number[][];
 
@@ -96,14 +106,17 @@ class Engine implements Simulation {
     this.entityIndex = new Map(this.ids.map((id, i) => [id, i]));
     this.networkIndex = new Map(compiled.networks.map((n, k) => [n.id, k]));
 
-    const terminal = (i: number, side: "in" | "out", color: WireColor): number => {
-      const id = compiled.terminals[terminalKey({ entity: this.ids[i]!, side })]?.[color];
-      return id === undefined ? -1 : this.networkIndex.get(id)!;
-    };
-    this.inRed = Int32Array.from({ length: count }, (_, i) => terminal(i, "in", "red"));
-    this.inGreen = Int32Array.from({ length: count }, (_, i) => terminal(i, "in", "green"));
-    this.outRed = Int32Array.from({ length: count }, (_, i) => terminal(i, "out", "red"));
-    this.outGreen = Int32Array.from({ length: count }, (_, i) => terminal(i, "out", "green"));
+    const networks = (role: "reads" | "writes", color: WireColor): Int32Array =>
+      Int32Array.from({ length: count }, (_, i) => {
+        const side: TerminalSide | undefined = POINT_ROLES[this.kinds[i]!][role];
+        const id = side === undefined ? undefined : compiled.terminals[terminalKey({ entity: this.ids[i]!, side })]?.[color];
+        return id === undefined ? -1 : this.networkIndex.get(id)!;
+      });
+    this.readRed = networks("reads", "red");
+    this.readGreen = networks("reads", "green");
+    this.writeRed = networks("writes", "red");
+    this.writeGreen = networks("writes", "green");
+    this.writes = this.kinds.map((kind) => POINT_ROLES[kind].writes !== undefined);
     this.emitters = compiled.networks.map((n) => n.emitters.map((id) => this.entityIndex.get(id)!));
     this.readers = compiled.networks.map((n) => n.readers.map((id) => this.entityIndex.get(id)!));
 
@@ -120,6 +133,7 @@ class Engine implements Simulation {
       const silent = invalid.has(entity.id);
       this.fixed[i] = entity.kind === "constant" ? constantOutput(entity, this.signals) : EMPTY;
       if (entity.kind === "lamp") this.lamps[i] = silent ? DARK_LAMP : planLamp(entity, this.signals);
+      else if (entity.kind === "speaker") this.speakers[i] = silent ? SILENT_SPEAKER : planSpeaker(entity, this.signals, env);
       else if (!silent && entity.kind === "arithmetic") this.evaluators[i] = planArithmetic(entity, context);
       else if (!silent && entity.kind === "decider") this.evaluators[i] = planDecider(entity, context);
       else if (!silent && entity.kind === "selector") this.evaluators[i] = planSelector(entity, context);
@@ -128,7 +142,7 @@ class Engine implements Simulation {
 
     this.outputs = new Array<SignalMap>(count).fill(EMPTY);
     this.content = new Array<SignalMap>(compiled.networks.length).fill(EMPTY);
-    this.views = entities.map((e) => (e.kind === "constant" ? undefined : new InputView()));
+    this.views = entities.map((e) => (POINT_ROLES[e.kind].reads === undefined ? undefined : new InputView()));
     this.queued = new Uint8Array(count);
     this.isDirty = new Uint8Array(compiled.networks.length);
     this.reset();
@@ -179,8 +193,8 @@ class Engine implements Simulation {
     for (let n = 0; n < changed.length; n++) {
       const i = changed[n]!;
       this.outputs[i] = next[n]!;
-      this.touch(this.outRed[i]!);
-      this.touch(this.outGreen[i]!);
+      this.touch(this.writeRed[i]!);
+      this.touch(this.writeGreen[i]!);
     }
     this.time++;
     this.settle();
@@ -214,7 +228,7 @@ class Engine implements Simulation {
     }
     // Views are refreshed after all networks are final, so a reader on two changed networks never sees a mixed state.
     for (const k of dirty) {
-      for (const i of this.readers[k]!) this.views[i]!.set(this.networkContent(this.inRed[i]!), this.networkContent(this.inGreen[i]!));
+      for (const i of this.readers[k]!) this.views[i]!.set(this.networkContent(this.readRed[i]!), this.networkContent(this.readGreen[i]!));
     }
   }
 
@@ -305,24 +319,27 @@ class Engine implements Simulation {
 
     let emitting = 0;
     let lampsLit = 0;
+    let speakersPlaying = 0;
     changed = this.entitySnaps.length !== this.ids.length;
     for (let i = 0; i < this.ids.length; i++) {
       const previous = this.entitySnaps[i];
       const view = this.views[i];
-      const lampPlan = this.lamps[i];
       const input = view && this.input(view, previous?.input);
-      const output = lampPlan ? undefined : this.list(this.outputs[i]!);
-      const lamp = lampPlan?.evaluate(view!, this.inRed[i]! >= 0 || this.inGreen[i]! >= 0);
+      const output = this.writes[i] ? this.list(this.outputs[i]!) : undefined;
+      const wired = this.readRed[i]! >= 0 || this.readGreen[i]! >= 0;
+      const lamp = this.lamps[i]?.evaluate(view!, wired);
+      const speaker = this.speakers[i]?.evaluate(view!, wired);
       if (output && output.length > 0) emitting++;
       if (lamp?.lit) lampsLit++;
-      if (previous && previous.input === input && previous.output === output && previous.lamp === lamp) continue;
-      const kind = this.kinds[i]!;
-      this.entitySnaps[i] = Object.freeze(lamp ? { kind, input, lamp } : input ? { kind, input, output } : { kind, output });
+      if (speaker?.playing) speakersPlaying++;
+      if (previous && previous.input === input && previous.output === output && previous.lamp === lamp && previous.speaker === speaker) continue;
+      // Only the parts the entity has: an entity that reads nothing has no `input`, one that emits nothing no `output`.
+      this.entitySnaps[i] = Object.freeze({ kind: this.kinds[i]!, ...(input && { input }), ...(output && { output }), ...(lamp && { lamp }), ...(speaker && { speaker }) });
       changed = true;
     }
     if (changed) this.entityRecord = Object.freeze(Object.fromEntries(this.ids.map((id, i) => [id, this.entitySnaps[i]!])));
 
-    const totals = Object.freeze({ entities: this.ids.length, networks: compiled.networks.length, signals, emitting, lampsLit });
+    const totals = Object.freeze({ entities: this.ids.length, networks: compiled.networks.length, signals, emitting, lampsLit, speakersPlaying });
     return (this.current = Object.freeze({ tick: this.time, networks: this.networkArray, entities: this.entityRecord, totals }));
   }
 }

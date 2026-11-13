@@ -3,8 +3,9 @@
 // length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
 import {
-  canRotate, DIRECTIONS, exceedsWireReach, facingOf, formatWireDistance, formatWireReach, tileUnit, wireDistance, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor,
+  canRotate, describeWireReach, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, tileUnit, wireKey, wireSpan, type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type Wire, type WireColor,
 } from "@face/model";
+import { printTerminal } from "@face/language";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
 import { KIND_INFO } from "../entities/kindInfo.ts";
@@ -192,16 +193,16 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
           const mine = mineIsA ? wire.a : wire.b;
           const other = mineIsA ? wire.b : wire.a;
           const otherName = names.get(other.entity) ?? other.entity;
-          const description = `${wire.color} wire from ${mine.side} to ${otherName}.${other.side}`;
+          const otherEnd = printTerminal(otherName, other.side);
+          const from = END_LABEL[mine.side];
+          const description = `${wire.color} wire from ${mine.side === "io" ? from : mine.side} to ${otherEnd}`;
           return (
             <li key={wireKey(wire)} className="connection" data-connection={wireKey(wire)}>
               <span className={`wire-dot ${wire.color}`} />
               <button type="button" className="connection-target" title={`Select ${otherName}`} onClick={() => onSelect([other.entity])}>
-                <span>
-                  {otherName}.{other.side}
-                </span>
+                <span>{otherEnd}</span>
                 <small>
-                  {wire.color}, from {mine.side}
+                  {wire.color}, from {mine.side === "io" ? from : mine.side}
                   {other.entity === entity.id ? " (feedback)" : ""}
                 </small>
               </button>
@@ -219,25 +220,28 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
 interface WireInspectorProps {
   readonly wire: Wire;
   readonly names: EntityNames;
-  /** How far apart the two entities are, in tiles; undefined for a feedback wire and while one of the two entities has no tile. */
-  readonly distance: number | undefined;
-  readonly wireReach: number;
+  /** The wire against its reach; undefined for a feedback wire. Without a distance while one of the two entities has no tile. */
+  readonly span: WireSpan | undefined;
   readonly editable: boolean;
   onSelect(ids: readonly EntityId[]): void;
   onDelete(): void;
 }
 
-/** The distance a wire spans between two different entities of the circuit that both have a tile. */
-function distanceOf(wire: Wire, circuit: Circuit): number | undefined {
+/** A wire between two different entities of the circuit against the reach that applies to it in a project with the wire reach `projectReach`. */
+function spanOf(wire: Wire, circuit: Circuit, projectReach: number): WireSpan | undefined {
   const a = circuit.entities.find((entity) => entity.id === wire.a.entity);
   const b = circuit.entities.find((entity) => entity.id === wire.b.entity);
-  return a && b && a !== b ? wireDistance(a, b) : undefined;
+  return a && b && a !== b ? wireSpan(a, b, projectReach) : undefined;
 }
 
+const capitalized = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
+const END_LABEL = { out: "output", in: "input", io: "connection" } as const;
+
 /** One selected wire: its color, its two ends (a click selects the entity), the distance of its entities against the wire reach and Delete. The output end comes first. */
-function WireInspector({ wire, names, distance, wireReach, editable, onSelect, onDelete }: WireInspectorProps) {
-  const ends = wire.a.side === "in" && wire.b.side === "out" ? [wire.b, wire.a] : [wire.a, wire.b];
-  const tooLong = exceedsWireReach(distance, wireReach);
+function WireInspector({ wire, names, span, editable, onSelect, onDelete }: WireInspectorProps) {
+  const ends = wire.a.side !== "out" && wire.b.side === "out" ? [wire.b, wire.a] : [wire.a, wire.b];
+  const distance = span?.distance;
+  const tooLong = span?.tooLong ?? false;
   return (
     <div className="inspector-wire" data-wire={wireKey(wire)} data-color={wire.color}>
       <header className="inspector-identity">
@@ -263,25 +267,31 @@ function WireInspector({ wire, names, distance, wireReach, editable, onSelect, o
                 <span className={`wire-dot ${wire.color}`} />
                 <button type="button" className="connection-target wire-end" data-side={end.side} title={`Select ${name}`} onClick={() => onSelect([end.entity])}>
                   <span>{name}</span>
-                  <small>{end.side === "out" ? "output" : "input"}</small>
+                  <small>{END_LABEL[end.side]}</small>
                 </button>
               </li>
             );
           })}
         </ul>
       </section>
-      {distance !== undefined && (
-        <section className="wire-distance" data-too-long={tooLong || undefined}>
+      {span && distance !== undefined && (
+        <section className="wire-distance" data-too-long={tooLong || undefined} data-reach-of={span.of}>
           <div className="section-label">
             <span>Distance</span>
-            <span>Reach {formatWireReach(wireReach)}</span>
+            <span>Reach {formatWireReach(span.reach)}</span>
           </div>
           <p>
-            The two entities are <b>{formatWireDistance(distance, wireReach)}</b> {tileUnit(distance)} apart
+            The two entities are <b>{formatWireDistance(distance, span.reach)}</b> {tileUnit(distance)} apart
+          </p>
+          {/* Which reach applied and why: a wire spans the smaller reach of its two ends. */}
+          <p className="muted-note wire-reach-source">
+            {capitalized(describeWireReach(span))}
+            {span.of === "project" ? "." : ": a pole has its own reach, and a wire spans the smaller reach of its two ends."}
           </p>
           {tooLong && (
             <p className="wire-distance-warning" role="status">
-              <b>Further apart than the wire reach.</b> Move the entities closer together or connect them through an entity in between. The reach is a project setting.
+              <b>Further apart than the wire reach.</b> Move the entities closer together or connect them through an entity in between.{" "}
+              {span.of === "project" ? "The reach is a project setting." : "The reach of a pole is the game's and not a setting."}
             </p>
           )}
         </section>
@@ -299,9 +309,9 @@ function editsContinuously(target: EventTarget): boolean {
   return target instanceof HTMLInputElement && target.type !== "checkbox" && target.type !== "radio";
 }
 
-/** Which wire colors are connected to the input terminal of `entity`. */
+/** Which wire colors are connected to the terminal `entity` reads from: its input, or the one point of a pole. */
 function inputWires(circuit: Circuit, entity: EntityId): NetworkSelection {
-  const connected = (color: WireColor): boolean => circuit.wires.some((wire) => wire.color === color && [wire.a, wire.b].some((end) => end.entity === entity && end.side === "in"));
+  const connected = (color: WireColor): boolean => circuit.wires.some((wire) => wire.color === color && [wire.a, wire.b].some((end) => end.entity === entity && end.side !== "out"));
   return { red: connected("red"), green: connected("green") };
 }
 
@@ -333,7 +343,7 @@ function EntityInspector(props: EntityInspectorProps) {
             Delete
           </button>
         </div>
-        {props.onFace && canRotate(entity.kind) && <FacingField entity={entity} onFace={(direction) => props.onFace?.([entity.id], direction)} />}
+        {props.onFace && canRotate(entity) && <FacingField entity={entity} onFace={(direction) => props.onFace?.([entity.id], direction)} />}
         {/* Not through `change`: the text is written once per stay, and that is a step of its own in the history. */}
         <DescriptionField entity={shown} onCommit={(description) => props.onChange({ ...shown, description })} />
         {draft && (
@@ -417,8 +427,7 @@ export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
           <WireInspector
             wire={singleWire}
             names={names}
-            distance={distanceOf(singleWire, circuit)}
-            wireReach={props.wireReach}
+            span={spanOf(singleWire, circuit, props.wireReach)}
             editable={editable}
             onSelect={props.onSelect}
             onDelete={props.onDeleteSelection}

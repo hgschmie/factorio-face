@@ -16,6 +16,8 @@ import {
   requiredModules,
   resolveModules,
   resolveSignal,
+  speakerInstrumentNames,
+  speakerInstruments,
   type CatalogSignal,
 } from "../src/index.ts";
 
@@ -47,6 +49,27 @@ describe("standard catalog data (pinned to Factorio 2.1.24)", () => {
     expect(catalog.modules.find((m) => m.name === "space-age")?.recommends).toEqual(["quality"]);
     expect(catalog.provenance.modSets).toHaveLength(8);
     expect(catalog.provenance.commands.join(" ")).toContain("--dump-data");
+  });
+
+  it("has the speaker with its twelve instruments and their notes in the game's order", () => {
+    expect(catalog.speakers.map((speaker) => [speaker.name, speaker.maximumPolyphony, speaker.modules])).toEqual([["programmable-speaker", 10, ["base"]]]);
+    const instruments = speakerInstruments(catalog);
+    expect(instruments.map((instrument) => `${instrument.name} ${instrument.notes.length}`)).toEqual([
+      "alarms 7", "miscellaneous 24", "drum-kit 17", "piano 48", "bass 36", "lead 36", "saw 36", "square 36", "celesta 36", "vibraphone 36", "plucked 36", "steel-drum 36",
+    ]);
+    expect(instruments.map((instrument) => instrument.displayName)).toEqual(["Alarms", "Miscellaneous", "Drumkit", "Piano", "Bass", "Lead", "Sawtooth", "Square", "Celesta", "Vibraphone", "Plucked strings", "Steel drum"]);
+    // The position in the lists is what a blueprint stores: instrument 0 note 0 is the default sound.
+    expect(instruments[0]!.notes[0]).toEqual({ name: "alarm-1", displayName: "Alarm 1" });
+    expect(instruments[3]!.notes.slice(0, 3)).toEqual([{ name: "F3", displayName: "F3" }, { name: "F#3", displayName: "F#3" }, { name: "G3", displayName: "G3" }]);
+    expect(instruments[3]!.notes.at(-1)!.name).toBe("E7");
+    expect(instruments[2]!.notes.find((note) => note.name === "hat-1")!.displayName).toBe("Hi-hat 1");
+    expect(instruments[1]!.notes.find((note) => note.name === "console-player-joined")!.displayName).toBe("Console message - player joined");
+    // No module changes the speaker, and the names alone are what the language and the simulation take.
+    for (const enabled of [["base"], ALL]) expect(speakerInstruments(catalog, enabled)).toEqual(instruments);
+    expect(speakerInstruments(catalog, [])).toEqual([]);
+    expect(speakerInstruments(catalog, ALL, "other-speaker")).toEqual([]);
+    expect(speakerInstrumentNames(catalog, ALL)[3]).toEqual({ name: "piano", notes: instruments[3]!.notes.map((note) => note.name) });
+    expect(instruments.every((instrument) => instrument.notes.every((note) => note.name.length > 0 && note.displayName.length > 0))).toBe(true);
   });
 
   it("has the pinned number of signals per kind", () => {

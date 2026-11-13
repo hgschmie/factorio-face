@@ -1,12 +1,34 @@
-// Topology: one network per connected set of same-colored terminals, found with union-find. Red and green never mix.
+// Topology: one network per connected set of same-colored connection points, found with union-find. Red and green never mix.
+// Every connection point an entity has (`TERMINALS`) is a member in its own right: the two of a combinator, the one of a lamp,
+// and the one of a pole, on which all wires of a color so become one network.
 
-import { WIRE_COLORS, hasTerminal, terminalKey, type Circuit, type Entity, type TerminalRef, type WireColor } from "@face/model";
+import { TERMINALS, WIRE_COLORS, terminalKey, type Circuit, type Entity, type EntityKind, type TerminalRef, type TerminalSide, type WireColor } from "@face/model";
 import { defaultEnvironment, type SimulationEnvironment } from "./environment.ts";
 import { semanticFingerprint } from "./fingerprint.ts";
 import type { CompiledCircuit, CompiledNetwork, SimulationNote, TerminalNetworks } from "./types.ts";
 import { validateEntity } from "./validate.ts";
 
 const compareText = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+/**
+ * What an entity kind does on its connection points: from which one it reads the networks and to which one it writes what it
+ * emits. Nothing here assumes an input and an output: a kind may read and write on the same point or do neither.
+ */
+export interface PointRoles {
+  readonly reads?: TerminalSide;
+  readonly writes?: TerminalSide;
+}
+
+export const POINT_ROLES: Readonly<Record<EntityKind, PointRoles>> = {
+  constant: { writes: "out" },
+  arithmetic: { reads: "in", writes: "out" },
+  decider: { reads: "in", writes: "out" },
+  selector: { reads: "in", writes: "out" },
+  lamp: { reads: "in" },
+  // P-RELAY: a pole has no behaviour. Its point is read only so that a snapshot can show what is on the two networks it joins.
+  pole: { reads: "io" },
+  speaker: { reads: "in" },
+};
 
 function find(parent: Int32Array, i: number): number {
   let root = i;
@@ -34,18 +56,23 @@ export function compile(circuit: Circuit, env: SimulationEnvironment = defaultEn
   const index = new Map(entities.map((entity, i) => [entity.id, i]));
   for (const entity of entities) notes.push(...validateEntity(entity, env));
 
-  // Terminal index: entity index * 2, plus 1 for the output side.
-  const slot = (t: TerminalRef): number | undefined => {
-    const i = index.get(t.entity);
-    return i === undefined || !hasTerminal(entities[i]!.kind, t.side) ? undefined : i * 2 + (t.side === "out" ? 1 : 0);
-  };
-  const terminalAt = (n: number): TerminalRef => ({ entity: entities[n >> 1]!.id, side: n & 1 ? "out" : "in" });
+  // Every connection point of every entity gets a number; a wire joins two of them.
+  const points: TerminalRef[] = [];
+  const pointIndex = new Map<string, number>();
+  for (const entity of entities) {
+    for (const side of TERMINALS[entity.kind]) {
+      const point = { entity: entity.id, side };
+      pointIndex.set(terminalKey(point), points.length);
+      points.push(point);
+    }
+  }
+  const slot = (t: TerminalRef): number | undefined => pointIndex.get(terminalKey(t));
 
   const parents = {} as Record<WireColor, Int32Array>;
   const wired = {} as Record<WireColor, Uint8Array>;
   for (const color of WIRE_COLORS) {
-    parents[color] = Int32Array.from({ length: entities.length * 2 }, (_, i) => i);
-    wired[color] = new Uint8Array(entities.length * 2);
+    parents[color] = Int32Array.from({ length: points.length }, (_, i) => i);
+    wired[color] = new Uint8Array(points.length);
   }
   for (const wire of circuit.wires) {
     const a = slot(wire.a);
@@ -63,17 +90,17 @@ export function compile(circuit: Circuit, env: SimulationEnvironment = defaultEn
   const networks: CompiledNetwork[] = [];
   for (const color of WIRE_COLORS) {
     const members = new Map<number, TerminalRef[]>();
-    for (let n = 0; n < entities.length * 2; n++) {
+    for (let n = 0; n < points.length; n++) {
       if (!wired[color][n]) continue;
       const root = find(parents[color], n);
       const list = members.get(root);
-      if (list) list.push(terminalAt(n));
-      else members.set(root, [terminalAt(n)]);
+      if (list) list.push(points[n]!);
+      else members.set(root, [points[n]!]);
     }
     for (const list of members.values()) {
       const terminals = list.sort((a, b) => compareText(terminalKey(a), terminalKey(b)));
-      const side = (s: TerminalRef["side"]): string[] => terminals.filter((t) => t.side === s).map((t) => t.entity);
-      networks.push({ id: `${color}:${terminalKey(terminals[0]!)}`, color, terminals, emitters: side("out"), readers: side("in") });
+      const having = (role: keyof PointRoles): string[] => terminals.filter((t) => POINT_ROLES[entities[index.get(t.entity)!]!.kind][role] === t.side).map((t) => t.entity);
+      networks.push({ id: `${color}:${terminalKey(terminals[0]!)}`, color, terminals, emitters: having("writes"), readers: having("reads") });
     }
   }
   networks.sort((a, b) => compareText(a.id, b.id));

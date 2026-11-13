@@ -14,4 +14,12 @@ export const KIND_INFO: Readonly<Record<EntityKind, KindInfo>> = {
   decider: { label: "Decider", description: "Compare and decide", category: "Combinator" },
   selector: { label: "Selector", description: "Pick, count and sort signals", category: "Combinator" },
   lamp: { label: "Lamp", description: "See a condition light up", category: "Condition indicator" },
+  pole: { label: "Pole", description: "Relay signals over a distance", category: "Signal relay" },
+  speaker: { label: "Speaker", description: "Sound an alert on a condition", category: "Condition indicator" },
 };
+
+/**
+ * The kinds the palette offers and the digit keys 1 to 5 place. Poles and speakers are not among them yet: package H gives the
+ * palette groups and adds them there. Until then they come into a circuit through the source.
+ */
+export const PALETTE_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp"] as const satisfies readonly EntityKind[];

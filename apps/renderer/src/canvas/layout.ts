@@ -1,10 +1,10 @@
 // Where an entity and its pins are in a display mode. The canvas asks a layout instead of assuming cards: hit testing, the
 // marquee, culling, Fit, the pending wire and the wires all go through it. Two implementations: the edit canvas (cards at
 // `entity.position`, routed wires) and the blueprint board (footprints on tiles, straight wires). Pure.
-import { facingOf, wireDistance, type Entity, type EntityId, type Point, type TerminalSide, type Wire, type WireColor } from "@face/model";
+import { facingOf, wireSpan, type Entity, type EntityId, type Point, type TerminalSide, type Wire, type WireColor, type WireSpan } from "@face/model";
 import type { DisplayMode } from "../workbench/controller.ts";
 import { arrangeBoard, boardPinOffset, TILE, withOrigin, type BoardPlacement } from "./board.ts";
-import { boundsOfPoints, cardRect, DIRECTION_VECTOR, entitiesBounds, GRID, pinPoint, type Rect } from "./geometry.ts";
+import { boundsOfPoints, cardRect, DIRECTION_VECTOR, drawnSide, entitiesBounds, GRID, pinPoint, type Rect } from "./geometry.ts";
 import { FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire } from "./wireRouting.ts";
 
 export interface WireRoute {
@@ -40,10 +40,11 @@ export interface BlueprintLayout extends CanvasLayout {
   /** Tiles, facing and whether the entity has a place of its own. */
   placement(entity: Entity): BoardPlacement;
   /**
-   * How far apart two entities are for a wire, in tiles (`wireDistance`), as they stand: an entity of a move in progress counts
-   * with the tile the move would give it, also one that has none yet. Undefined while one of them has no tile.
+   * A wire between two entities against its reach (`wireSpan`: how far apart they are in tiles, how far the wire may span in a
+   * project with the wire reach `projectReach`, and whether it is too long), as they stand: an entity of a move in progress
+   * counts with the tile the move would give it, also one that has none yet. Without a distance while one of them has no tile.
    */
-  wireDistance(a: Entity, b: Entity): number | undefined;
+  wireSpan(a: Entity, b: Entity, projectReach: number): WireSpan;
 }
 
 export type Layout = EditLayout | BlueprintLayout;
@@ -73,7 +74,7 @@ export function editLayout(entities: readonly Entity[], preview?: PreviewPositio
     rect: (entity) => cardRect(positionOf(entity)),
     pin: (entity, side, color) => pinPoint(positionOf(entity), side, color, facingOf(entity)),
     route: (wire, a, b) => {
-      const route = routeWire(wire.color, { position: positionOf(a), side: wire.a.side, facing: facingOf(a) }, { position: positionOf(b), side: wire.b.side, facing: facingOf(b) }, a.id === b.id);
+      const route = routeWire(wire.color, { position: positionOf(a), side: drawnSide(wire.a.side), facing: facingOf(a) }, { position: positionOf(b), side: drawnSide(wire.b.side), facing: facingOf(b) }, a.id === b.id);
       return { path: routePath(route), bounds: routeBounds(route) };
     },
     bounds: () => entitiesBounds(entities),
@@ -97,7 +98,7 @@ export function blueprintLayout(entities: readonly Entity[], preview?: PreviewPo
   };
   const pin = (entity: Entity, side: TerminalSide, color: WireColor): Point => {
     const { origin, facing } = placement(entity);
-    const offset = boardPinOffset(entity.kind, facing, side, color);
+    const offset = boardPinOffset(entity, facing, side, color);
     return { x: origin.x * TILE + offset.x, y: origin.y * TILE + offset.y };
   };
   return {
@@ -106,7 +107,7 @@ export function blueprintLayout(entities: readonly Entity[], preview?: PreviewPo
     fitMargin: TILE / 2,
     detailZoom: BLUEPRINT_DETAIL_ZOOM,
     placement,
-    wireDistance: (a, b) => wireDistance(standing(a), standing(b)),
+    wireSpan: (a, b, projectReach) => wireSpan(standing(a), standing(b), projectReach),
     rect,
     pin,
     route: (wire, a, b) => {

@@ -1,6 +1,6 @@
 // Turns engine snapshots into what the dock and the cards show. Pure functions over snapshots and history.
 import { signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
-import type { CompiledCircuit, EntitySnapshot, History, SignalList, TerminalNetworks, TickSnapshot } from "@face/simulation";
+import { POINT_ROLES, type CompiledCircuit, type EntitySnapshot, type History, type SignalList, type TerminalNetworks, type TickSnapshot } from "@face/simulation";
 import { shortSignal, signalListText } from "../entities/signalText.ts";
 import type { EntityStatus, SignalTrace } from "../workbench/controller.ts";
 
@@ -19,7 +19,7 @@ function listText(list: SignalList | undefined): string {
   return signalListText(list ?? []) || "nothing";
 }
 
-/** The status of one entity; `wires` are the networks on its input terminal (absent without any wire). */
+/** The status of one entity; `wires` are the networks on the connection point it reads (absent without any wire). */
 function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined): EntityStatus {
   const input = snapshot.input && {
     red: { wired: wires?.red !== undefined, signals: snapshot.input.red },
@@ -30,6 +30,12 @@ function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined)
     const color = lit && snapshot.lamp.color ? colorHex(snapshot.lamp.color) : undefined;
     return { label: lit ? (color ? `lit ${color}` : "lit") : "off", active: lit, input, lamp: { lit, color } };
   }
+  // Minimal for the two new kinds until package H gives them cards of their own: the networks they read and one word.
+  if (snapshot.speaker) {
+    const { playing, note } = snapshot.speaker;
+    return { label: playing ? (note === undefined ? "playing" : `playing ${note}`) : "silent", active: playing, input };
+  }
+  if (snapshot.kind === "pole") return { label: "relay", active: false, input };
   const output = snapshot.output ?? [];
   return { label: signalListText(output, LABEL_SIGNALS) || "no output", active: false, input, output };
 }
@@ -52,7 +58,8 @@ export class StatusCache {
         const entity = snapshot.entities[id]!;
         let status = this.statuses.get(entity);
         if (!status) {
-          status = statusOf(entity, entity.input && terminals[terminalKey({ entity: id, side: "in" })]);
+          const reads = POINT_ROLES[entity.kind].reads;
+          status = statusOf(entity, reads && terminals[terminalKey({ entity: id, side: reads })]);
           this.statuses.set(entity, status);
         }
         built.set(id, status);
@@ -78,6 +85,7 @@ export function tracedEntities(circuit: Circuit, selection: readonly EntityId[])
 
 function inputsText(snapshot: EntitySnapshot | undefined): string {
   if (!snapshot?.input) return "No input terminal";
+  if (snapshot.kind === "pole") return `Red: ${listText(snapshot.input.red)}\nGreen: ${listText(snapshot.input.green)}`;
   return `Input red: ${listText(snapshot.input.red)}\nInput green: ${listText(snapshot.input.green)}\nInput sum: ${listText(snapshot.input.combined)}`;
 }
 

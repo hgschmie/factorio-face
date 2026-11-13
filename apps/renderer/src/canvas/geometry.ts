@@ -27,6 +27,11 @@ export function arrowPath(x: number, y: number, forward: Point, scale = 1): stri
   return `M ${x + forward.x * tip} ${y + forward.y * tip} L ${base.x + forward.y * half} ${base.y - forward.x * half} L ${base.x - forward.y * half} ${base.y + forward.x * half} Z`;
 }
 
+/** The side a terminal is drawn and routed as: an output, or an input, which is also where the one point of a pole sits for now. */
+export function drawnSide(side: TerminalSide): "in" | "out" {
+  return side === "out" ? "out" : "in";
+}
+
 export type CardEdge = "left" | "right" | "top" | "bottom";
 
 const EDGE_TOWARDS: Readonly<Record<Direction, CardEdge>> = { east: "right", south: "bottom", west: "left", north: "top" };
@@ -43,8 +48,12 @@ export function cardRect(position: Point): Rect {
   return { x: position.x, y: position.y, width: CARD.width, height: CARD.height };
 }
 
-/** The direction in which a wire leaves a terminal: an output points where its entity faces, an input the other way. */
+/**
+ * The direction in which a wire leaves a terminal: an output points where its entity faces, an input the other way. The one
+ * point of a pole (`io`) is drawn where an input is; package H gives it a place of its own.
+ */
 export function pinHeading(side: TerminalSide, facing: Direction = DEFAULT_FACING): Direction {
+  // Everything but an output: `in` and `io`.
   return side === "out" ? facing : opposite(facing);
 }
 

@@ -236,6 +236,14 @@ kbd {
   --kind-color: var(--kind-lamp);
 }
 
+.kind-pole {
+  --kind-color: var(--kind-pole);
+}
+
+.kind-speaker {
+  --kind-color: var(--kind-speaker);
+}
+
 /* Placeholder entity pictograms (icons/EntityIcon.tsx) */
 .entity-glyph .frame {
   fill: var(--surface-inset);

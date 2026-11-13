@@ -14,7 +14,10 @@ function at(marked: string): { prefix: string; from: number; to: number; expecte
 describe("language tables", () => {
   it("exposes keywords and per-kind properties from one table", () => {
     expect(KEYWORDS).toContain("circuit");
-    expect(KEYWORDS).toHaveLength(36);
+    expect(KEYWORDS).toHaveLength(38);
+    for (const kind of ENTITY_KINDS) expect(KEYWORDS).toContain(kind);
+    expect(propertyNames("pole")).toEqual(["description", "prototype"]);
+    expect(propertyNames("speaker")).toEqual(["description", "pitch", "instrument", "note", "volume", "volume-signal", "playback", "polyphony", "stop-playing-sounds", "show-alert", "show-on-map", "alert-icon", "alert-message"]);
     for (const kind of ENTITY_KINDS) expect(propertyNames(kind)).toContain("description");
     expect(propertyNames("constant")).toEqual(["description", "enabled"]);
     expect(propertyNames("constant", undefined, true)).toEqual(["active", "multiplier"]);

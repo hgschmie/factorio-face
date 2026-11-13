@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "F-25-speaker",
+  "covers": ["F-25"],
+  "title": "Programmable speaker: condition true / false / blank, no wire, pitch from a counting signal with values below and beyond the note list, volume fixed and from a signal, alert",
+  "provenance": "assumed",
+  "source": "Derived by hand from the rules SP-* of packages/simulation/CONFORMANCE.md; not checked against the game. The instrument table is a cut of the game's.",
+  "environment": {"instruments": [{"name": "alarms", "notes": ["alarm-1", "alarm-2", "buzzer-1"]}, {"name": "piano", "notes": ["F3", "F#3", "G3", "G#3", "A3"]}]},
+  "circuit": {
+    "name": "F-25-speaker",
+    "entities": [
+      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-P"}, "count": 1}, {"signal": {"kind": "virtual", "name": "signal-V"}, "count": 140}]}]},
+      {"id": "count", "name": "count", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-P"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 0}, "output": {"kind": "virtual", "name": "signal-P"}},
+      {"id": "true", "name": "true", "position": {"x": 0, "y": 0}, "kind": "speaker", "volume": 62.5, "playbackMode": "local", "allowPolyphony": false, "stopPlayingSounds": false, "showAlert": true, "showOnMap": true, "alertMessage": "now", "condition": {"first": {"kind": "virtual", "name": "signal-P"}, "comparator": ">", "second": {"type": "constant", "value": 0}}, "instrument": "piano", "note": "A3"},
+      {"id": "false", "name": "false", "position": {"x": 0, "y": 0}, "kind": "speaker", "volume": 100, "playbackMode": "local", "allowPolyphony": false, "stopPlayingSounds": false, "showAlert": false, "showOnMap": true, "alertMessage": "", "condition": {"first": {"kind": "virtual", "name": "signal-P"}, "comparator": ">", "second": {"type": "constant", "value": 9}}},
+      {"id": "blank", "name": "blank", "position": {"x": 0, "y": 0}, "kind": "speaker", "volume": 100, "playbackMode": "local", "allowPolyphony": false, "stopPlayingSounds": false, "showAlert": false, "showOnMap": true, "alertMessage": "", "condition": {"comparator": "<", "second": {"type": "constant", "value": 1}}},
+      {"id": "unwired", "name": "unwired", "position": {"x": 0, "y": 0}, "kind": "speaker", "volume": 100, "playbackMode": "local", "allowPolyphony": false, "stopPlayingSounds": false, "showAlert": false, "showOnMap": true, "alertMessage": "", "condition": {"first": {"kind": "virtual", "name": "signal-P"}, "comparator": "=", "second": {"type": "constant", "value": 0}}},
+      {"id": "default", "name": "default", "position": {"x": 0, "y": 0}, "kind": "speaker", "volume": 100, "playbackMode": "local", "allowPolyphony": false, "stopPlayingSounds": false, "showAlert": false, "showOnMap": true, "alertMessage": "", "condition": {"first": {"kind": "virtual", "name": "signal-V"}, "comparator": ">", "second": {"type": "constant", "value": 100}}, "volumeSignal": {"kind": "virtual", "name": "signal-V"}},
+      {"id": "tune", "name": "tune", "position": {"x": 0, "y": 0}, "kind": "speaker", "volume": 100, "playbackMode": "local", "allowPolyphony": false, "stopPlayingSounds": false, "showAlert": false, "showOnMap": true, "alertMessage": "", "pitchSignal": {"kind": "virtual", "name": "signal-P"}, "instrument": "piano", "volumeSignal": {"kind": "virtual", "name": "signal-Q"}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "count", "side": "in"}},
+      {"color": "green", "a": {"entity": "count", "side": "out"}, "b": {"entity": "count", "side": "in"}},
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "true", "side": "in"}},
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "false", "side": "in"}},
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "blank", "side": "in"}},
+      {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "default", "side": "in"}},
+      {"color": "green", "a": {"entity": "count", "side": "out"}, "b": {"entity": "tune", "side": "in"}}
+    ]
+  },
+  "ticks": 7,
+  "expect": [
+    {"tick": 0, "through": 7, "speakers": {"true": {"playing": true, "instrument": "piano", "note": "A3", "volume": 62.5, "alert": true}, "false": {"playing": false}, "blank": {"playing": false}, "unwired": {"playing": false}, "default": {"playing": true, "instrument": "alarms", "note": "alarm-1", "volume": 100, "alert": false}}},
+    {"tick": 0, "speakers": {"tune": {"playing": false}}},
+    {"tick": 1, "speakers": {"tune": {"playing": true, "instrument": "piano", "note": "F3", "volume": 0}}, "outputs": {"count": {"virtual:signal-P": 1}}},
+    {"tick": 2, "speakers": {"tune": {"playing": true, "note": "F#3"}}},
+    {"tick": 5, "speakers": {"tune": {"playing": true, "note": "A3"}}, "outputs": {"count": {"virtual:signal-P": 5}}},
+    {"tick": 6, "through": 7, "speakers": {"tune": {"playing": false}}}
+  ]
+}

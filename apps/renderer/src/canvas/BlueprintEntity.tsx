@@ -1,7 +1,7 @@
 // One entity on the blueprint board: its footprint on the tiles with compact content. The counterpart of EntityCard, and like
 // it purely presentational and memoized; the canvas finds it and its pins through the same data attributes. Coordinates are
 // canvas units from the top-left corner of the footprint.
-import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
+import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type TerminalSide, type TileBox, type WireColor } from "@face/model";
 import { memo } from "react";
 import { truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -47,12 +47,14 @@ const OUTPUT_CHARS = { wide: 20, tall: 12 } as const;
 
 export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, tileY, placed, conflict, moving, blocked, selected, outline, pendingSide, pendingColor, status, resolveIcon }: BlueprintEntityProps) {
   const facing = facingOf(entity);
-  const size = tileSize(entity.kind, facing);
+  const size = tileSize(entity, facing);
   const width = size.width * TILE;
   const height = size.height * TILE;
-  const long = size.width + size.height > 2;
   const forward = DIRECTION_VECTOR[facing];
-  const halves = tileHalves(entity.kind, facing, tileCenter(entity.kind, facing, { x: 0, y: 0 }));
+  const halves = tileHalves(entity, facing, tileCenter(entity, facing, { x: 0, y: 0 }));
+  // Laid out along its two halves; an entity without them (one tile, or the 2x2 of a big pole) has its content in the middle.
+  const long = halves.input.x !== halves.output.x || halves.input.y !== halves.output.y;
+  const middle = (half: TileBox) => ({ x: (half.x + half.width / 2) * TILE, y: (half.y + half.height / 2) * TILE });
   // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end.
   const pinsTowards = long ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
   const center = { x: width / 2, y: height / 2 - pinsTowards.y * PIN_ROOM };
@@ -94,8 +96,8 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
           {/* Where the input half ends and the output half begins: a notch on both long edges, clear of the icon and the text. */}
           <path className="board-divider" d={size.width === 2 ? `M ${TILE} ${INSET} v ${NOTCH} M ${TILE} ${height - INSET} v ${-NOTCH}` : `M ${INSET} ${TILE} h ${NOTCH} M ${width - INSET} ${TILE} h ${-NOTCH}`} />
           {/* As the game marks a combinator: an arrow into the input end and one out of the output end, both along the facing. */}
-          <path className="board-arrow in" d={arrowPath((halves.input.x + 0.5) * TILE - forward.x * ARROW_SHIFT, (halves.input.y + 0.5) * TILE - forward.y * ARROW_SHIFT, forward)} />
-          <path className="board-arrow out" d={arrowPath((halves.output.x + 0.5) * TILE + forward.x * ARROW_SHIFT, (halves.output.y + 0.5) * TILE + forward.y * ARROW_SHIFT, forward)} />
+          <path className="board-arrow in" d={arrowPath(middle(halves.input).x - forward.x * ARROW_SHIFT, middle(halves.input).y - forward.y * ARROW_SHIFT, forward)} />
+          <path className="board-arrow out" d={arrowPath(middle(halves.output).x + forward.x * ARROW_SHIFT, middle(halves.output).y + forward.y * ARROW_SHIFT, forward)} />
         </>
       )}
       <EntityIconSvg kind={entity.kind} x={center.x - icon / 2} y={iconTop} size={icon} resolveIcon={resolveIcon} />
@@ -113,7 +115,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       )}
       {TERMINALS[entity.kind].flatMap((side) =>
         WIRE_COLORS.map((color) => (
-          <Pin key={`${side}-${color}`} side={side} color={color} {...boardPinOffset(entity.kind, facing, side, color)} radius={BOARD_PIN.radius} edge={pinEdge(side, facing)} pending={pendingSide === side && pendingColor === color} />
+          <Pin key={`${side}-${color}`} side={side} color={color} {...boardPinOffset(entity, facing, side, color)} radius={BOARD_PIN.radius} edge={pinEdge(side, facing)} pending={pendingSide === side && pendingColor === color} />
         )),
       )}
     </g>

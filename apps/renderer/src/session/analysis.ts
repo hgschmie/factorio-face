@@ -3,8 +3,11 @@
 // `request` analyzes synchronously today. The result still passes through `accept`, which drops everything that is not the
 // answer to the latest request, so the analysis can move to a worker without changing the callers.
 import { analyze, type ParseResult, type SignalResolver } from "@face/language";
-import type { Circuit, Entity, EntityId, Wire } from "@face/model";
+import type { Circuit, Entity, EntityId, SpeakerInstrument, Wire } from "@face/model";
 import { wireKey } from "@face/model";
+
+/** What the analysis takes from the game data: the status of signals and the instruments of the speaker. */
+export type GameData = SignalResolver & { readonly instruments?: readonly SpeakerInstrument[] };
 
 const EMPTY_CIRCUIT: Circuit = { name: "", entities: [], wires: [] };
 
@@ -41,9 +44,9 @@ export class Analysis {
   }
 
   /** Analyzes `source` under the project settings and returns the result, tagged with a fresh request number. The caller hands it to `accept`. */
-  request(source: string, documentVersion: number, signals: SignalResolver | undefined, wireReach?: number): ParseResult {
+  request(source: string, documentVersion: number, game: GameData | undefined, wireReach?: number): ParseResult {
     this.requestedDocument = documentVersion;
-    return analyze(source, this.accepted, { signals, wireReach, version: ++this.requested });
+    return analyze(source, this.accepted, { signals: game, instruments: game?.instruments, wireReach, version: ++this.requested });
   }
 
   /** Takes a result over unless a newer request was made in the meantime. Returns whether it was accepted. */

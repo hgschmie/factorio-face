@@ -16,7 +16,7 @@ function entitiesOf(source: string): readonly Entity[] {
 /** The tiles every entity covers, by name. */
 function tilesByName(entities: readonly Entity[]): Record<string, Point[]> {
   const derived = derivedTiles(entities);
-  return Object.fromEntries(entities.map((entity) => [entity.name, occupiedTiles(entity.kind, facingOf(entity), entity.placement?.tile ?? derived.get(entity.id)!)]));
+  return Object.fromEntries(entities.map((entity) => [entity.name, occupiedTiles(entity, facingOf(entity), entity.placement?.tile ?? derived.get(entity.id)!)]));
 }
 
 function expectNoOverlap(entities: readonly Entity[]): void {
@@ -39,7 +39,7 @@ describe("derivedTiles", () => {
     const entities = entitiesOf(`constant c at (-100, -100) facing north { }\ndecider d at (0, 0) facing south { }\nselector s at (0, 400) facing west { }\nlamp l at (400, 0) { }\narithmetic placed at (0, 0) tile (20, 0.5) { }`);
     const derived = derivedTiles(entities);
     expect([...derived.keys()]).toEqual(entities.slice(0, 4).map((entity) => entity.id));
-    for (const entity of entities.slice(0, 4)) expect(isTileCenter(entity.kind, facingOf(entity), derived.get(entity.id)!), entity.name).toBe(true);
+    for (const entity of entities.slice(0, 4)) expect(isTileCenter(entity, facingOf(entity), derived.get(entity.id)!), entity.name).toBe(true);
     expect(tilesByName(entities)).toMatchObject({ c: [at(-1, -1)], d: [at(0, 0), at(0, 1)], s: [at(0, 4), at(1, 4)], l: [at(4, 0)] });
   });
 
@@ -72,7 +72,7 @@ describe("derivedTiles", () => {
     expectNoOverlap(grid);
     // Cards that do not overlap in the edit layout keep their place: nothing had to give way.
     const derived = derivedTiles(grid);
-    for (const entity of grid) expect(tileOrigin(entity.kind, "east", derived.get(entity.id)!)).toEqual(at(Math.round(entity.position.x / EDIT_UNITS_PER_TILE), Math.round(entity.position.y / EDIT_UNITS_PER_TILE)));
+    for (const entity of grid) expect(tileOrigin(entity, "east", derived.get(entity.id)!)).toEqual(at(Math.round(entity.position.x / EDIT_UNITS_PER_TILE), Math.round(entity.position.y / EDIT_UNITS_PER_TILE)));
   });
 });
 
@@ -219,31 +219,31 @@ describe("the rules of editing on the board", () => {
 
   it("puts the footprint of a new entity around the pointer and lets it stand on free tiles only", () => {
     // One tile: the tile under the point. Two tiles: the point is in the middle, so it snaps where a tile ends.
-    expect(footprintOriginAt({ x: 10, y: 150 }, "lamp")).toEqual(at(0, 1));
-    expect(footprintOriginAt({ x: -10, y: -1 }, "constant")).toEqual(at(-1, -1));
-    expect(footprintOriginAt({ x: 100, y: 40 }, "decider")).toEqual(at(0, 0));
-    expect(footprintOriginAt({ x: 130, y: 40 }, "decider")).toEqual(at(1, 0));
-    expect(footprintOriginAt({ x: 40, y: 100 }, "decider", "south")).toEqual(at(0, 0));
-    expect(canStandAt(entities, "lamp", at(2, 0))).toBe(true);
-    expect(canStandAt(entities, "lamp", at(1, 0))).toBe(false);
-    expect(canStandAt(entities, "decider", at(2, 0))).toBe(false);
-    expect(canStandAt(entities, "decider", at(4, 1))).toBe(false);
+    expect(footprintOriginAt({ x: 10, y: 150 }, { kind: "lamp" })).toEqual(at(0, 1));
+    expect(footprintOriginAt({ x: -10, y: -1 }, { kind: "constant" })).toEqual(at(-1, -1));
+    expect(footprintOriginAt({ x: 100, y: 40 }, { kind: "decider" })).toEqual(at(0, 0));
+    expect(footprintOriginAt({ x: 130, y: 40 }, { kind: "decider" })).toEqual(at(1, 0));
+    expect(footprintOriginAt({ x: 40, y: 100 }, { kind: "decider" }, "south")).toEqual(at(0, 0));
+    expect(canStandAt(entities, { kind: "lamp" }, at(2, 0))).toBe(true);
+    expect(canStandAt(entities, { kind: "lamp" }, at(1, 0))).toBe(false);
+    expect(canStandAt(entities, { kind: "decider" }, at(2, 0))).toBe(false);
+    expect(canStandAt(entities, { kind: "decider" }, at(4, 1))).toBe(false);
     // Where an entity without a tile is shown, a new one can stand.
-    expect(canStandAt(entities, "decider", at(2, 1))).toBe(true);
+    expect(canStandAt(entities, { kind: "decider" }, at(2, 1))).toBe(true);
     // Turned, it is the upright footprint that has to be free: (2, 0) and (2, 1) are, (3, -1) and (3, 0) are not.
-    expect(canStandAt(entities, "decider", at(2, 0), "south")).toBe(true);
-    expect(canStandAt(entities, "decider", at(3, -1), "north")).toBe(false);
+    expect(canStandAt(entities, { kind: "decider" }, at(2, 0), "south")).toBe(true);
+    expect(canStandAt(entities, { kind: "decider" }, at(3, -1), "north")).toBe(false);
   });
 
   it("finds the free place nearest to a wanted one for a new entity", () => {
-    expect(freeOriginNear(entities, "lamp", at(9, 9))).toEqual(at(9, 9));
+    expect(freeOriginNear(entities, { kind: "lamp" }, at(9, 9))).toEqual(at(9, 9));
     // (3, 0) is the lamp: the upper of the nearest tiles. A 2x1 entity on (0, 0) has to leave d: up as well.
-    expect(freeOriginNear(entities, "lamp", at(3, 0))).toEqual(at(3, -1));
-    expect(freeOriginNear(entities, "decider", at(0, 0))).toEqual(at(0, -1));
-    expect(freeOriginNear([], "decider", at(-4, 2))).toEqual(at(-4, 2));
+    expect(freeOriginNear(entities, { kind: "lamp" }, at(3, 0))).toEqual(at(3, -1));
+    expect(freeOriginNear(entities, { kind: "decider" }, at(0, 0))).toEqual(at(0, -1));
+    expect(freeOriginNear([], { kind: "decider" }, at(-4, 2))).toEqual(at(-4, 2));
     // Upright, the decider fits where it does not fit lying.
-    expect(freeOriginNear(entities, "decider", at(2, 0), "north")).toEqual(at(2, 0));
-    expect(freeOriginNear(entities, "decider", at(2, 0))).not.toEqual(at(2, 0));
+    expect(freeOriginNear(entities, { kind: "decider" }, at(2, 0), "north")).toEqual(at(2, 0));
+    expect(freeOriginNear(entities, { kind: "decider" }, at(2, 0))).not.toEqual(at(2, 0));
   });
 
   it("gives a new entity the edit position its tile is derived from, on the grid of the edit canvas", () => {
@@ -262,13 +262,13 @@ describe("pins on a footprint", () => {
   it("puts the input pins on the input half and the output pins on the output half, at the outer end of the tile", () => {
     for (const kind of kinds) {
       for (const facing of kind === "lamp" ? (["east"] as const) : DIRECTIONS) {
-        const halves = tileHalves(kind, facing, tileCenter(kind, facing, at(0, 0)));
+        const halves = tileHalves({ kind }, facing, tileCenter({ kind }, facing, at(0, 0)));
         for (const side of TERMINALS[kind]) {
           const half = side === "out" ? halves.output : halves.input;
           for (const color of WIRE_COLORS) {
-            const pin = boardPinOffset(kind, facing, side, color);
-            expect({ x: Math.floor(pin.x / TILE), y: Math.floor(pin.y / TILE) }, `${kind} ${facing} ${side} ${color}`).toEqual(half);
-            const size = tileSize(kind, facing);
+            const pin = boardPinOffset({ kind }, facing, side, color);
+            expect({ x: Math.floor(pin.x / TILE), y: Math.floor(pin.y / TILE), width: 1, height: 1 }, `${kind} ${facing} ${side} ${color}`).toEqual(half);
+            const size = tileSize({ kind }, facing);
             // One pin inset away from exactly one end of the footprint, never on its border.
             const ends = [pin.x, size.width * TILE - pin.x, pin.y, size.height * TILE - pin.y];
             expect(ends.filter((distance) => distance === BOARD_PIN.inset).length).toBe(1);
@@ -281,25 +281,54 @@ describe("pins on a footprint", () => {
 
   it("turns with the facing as the pins of a card do: red on the left seen along the facing", () => {
     // Facing east: input on the left tile, output on the right tile, red above green.
-    expect(boardPinOffset("decider", "east", "in", "red")).toEqual(at(12, 30));
-    expect(boardPinOffset("decider", "east", "in", "green")).toEqual(at(12, 50));
-    expect(boardPinOffset("decider", "east", "out", "red")).toEqual(at(148, 30));
-    expect(boardPinOffset("decider", "east", "out", "green")).toEqual(at(148, 50));
+    expect(boardPinOffset({ kind: "decider" }, "east", "in", "red")).toEqual(at(12, 30));
+    expect(boardPinOffset({ kind: "decider" }, "east", "in", "green")).toEqual(at(12, 50));
+    expect(boardPinOffset({ kind: "decider" }, "east", "out", "red")).toEqual(at(148, 30));
+    expect(boardPinOffset({ kind: "decider" }, "east", "out", "green")).toEqual(at(148, 50));
     // Facing south: output at the bottom, red right of green.
-    expect(boardPinOffset("decider", "south", "out", "red")).toEqual(at(50, 148));
-    expect(boardPinOffset("decider", "south", "in", "green")).toEqual(at(30, 12));
+    expect(boardPinOffset({ kind: "decider" }, "south", "out", "red")).toEqual(at(50, 148));
+    expect(boardPinOffset({ kind: "decider" }, "south", "in", "green")).toEqual(at(30, 12));
     // Facing west: output on the left, red below green.
-    expect(boardPinOffset("decider", "west", "out", "red")).toEqual(at(12, 50));
-    expect(boardPinOffset("decider", "west", "in", "red")).toEqual(at(148, 50));
+    expect(boardPinOffset({ kind: "decider" }, "west", "out", "red")).toEqual(at(12, 50));
+    expect(boardPinOffset({ kind: "decider" }, "west", "in", "red")).toEqual(at(148, 50));
     // Facing north: output on top, red left of green.
-    expect(boardPinOffset("decider", "north", "out", "red")).toEqual(at(30, 12));
-    expect(boardPinOffset("decider", "north", "in", "green")).toEqual(at(50, 148));
+    expect(boardPinOffset({ kind: "decider" }, "north", "out", "red")).toEqual(at(30, 12));
+    expect(boardPinOffset({ kind: "decider" }, "north", "in", "green")).toEqual(at(50, 148));
     for (const facing of DIRECTIONS) {
-      const [red, green] = WIRE_COLORS.map((color) => boardPinOffset("constant", facing, "out", color));
+      const [red, green] = WIRE_COLORS.map((color) => boardPinOffset({ kind: "constant" }, facing, "out", color));
       expect(Math.hypot(red!.x - green!.x, red!.y - green!.y)).toBe(PIN_SPACING);
     }
     // A lamp has its input on the west end of its tile, a constant its output where it faces.
-    expect(boardPinOffset("lamp", "east", "in", "red")).toEqual(at(12, 30));
-    expect(boardPinOffset("constant", "north", "out", "green")).toEqual(at(50, 12));
+    expect(boardPinOffset({ kind: "lamp" }, "east", "in", "red")).toEqual(at(12, 30));
+    expect(boardPinOffset({ kind: "constant" }, "north", "out", "green")).toEqual(at(50, 12));
+  });
+
+  it("puts the pins of a speaker and of a pole where a lamp has them, in the middle of the west edge also on 2x2 tiles", () => {
+    expect(boardPinOffset({ kind: "speaker" }, "east", "in", "red")).toEqual(at(12, 30));
+    expect(boardPinOffset({ kind: "pole" }, "east", "io", "red")).toEqual(at(12, 30));
+    expect(boardPinOffset({ kind: "pole" }, "east", "io", "green")).toEqual(at(12, 50));
+    for (const prototype of ["big-electric-pole", "substation"] as const) {
+      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "red")).toEqual(at(12, 70));
+      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "green")).toEqual(at(12, 90));
+    }
+  });
+
+  it("arranges poles and speakers on the board with the tiles their prototype covers", () => {
+    const circuit = { entities: entitiesOf("pole big at (0, 0) tile (1, 1) { prototype = big-electric-pole }\npole small at (0, 0) tile (3.5, 0.5) { }\nspeaker s at (0, 0) { }\npole loose at (0, 0) { prototype = substation }") };
+    const placements = arrangeBoard(circuit.entities);
+    const [big, small, speaker, loose] = circuit.entities.map((entity) => placements.get(entity.id)!);
+    expect([big!.origin, big!.size, big!.conflict]).toEqual([at(0, 0), { width: 2, height: 2 }, false]);
+    expect([small!.origin, small!.size]).toEqual([at(3, 0), { width: 1, height: 1 }]);
+    // Without a tile they give way: the speaker to the big pole, the substation with all four of its tiles to everything.
+    expect([speaker!.placed, speaker!.size]).toEqual([false, { width: 1, height: 1 }]);
+    expect(loose!.size).toEqual({ width: 2, height: 2 });
+    const taken = new Set(circuit.entities.flatMap((entity) => occupiedTiles(entity, "east", entity.placement?.tile ?? derivedTiles(circuit.entities).get(entity.id)!).map((tile) => `${tile.x},${tile.y}`)));
+    expect(taken.size).toBe(4 + 1 + 1 + 4);
+    // A lamp cannot be put onto a tile of the big pole, and a turn does nothing to it.
+    expect(canStandAt(circuit.entities, { kind: "lamp" }, at(1, 1))).toBe(false);
+    expect(canStandAt(circuit.entities, { kind: "pole", prototype: "big-electric-pole" }, at(2, 0))).toBe(false);
+    expect(canStandAt(circuit.entities, { kind: "pole", prototype: "big-electric-pole" }, at(4, 0))).toBe(true);
+    expect(blockedTurn(circuit.entities, new Map([[circuit.entities[0]!.id, "south"]]))).toBeUndefined();
+    expect(footprintOriginAt({ x: 160, y: 160 }, { kind: "pole", prototype: "substation" })).toEqual(at(1, 1));
   });
 });

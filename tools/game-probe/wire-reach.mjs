@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 // Records fixture F-24 from the locally installed game: which placements of one entity a circuit wire from another reaches.
+// The cases are in wire-reach.lua: the combinators and the lamp in every direction, the four electric poles (each with its own
+// reach, also against each other) and the programmable speaker. A case added there is in the fixture after the next run.
 // The game runs headless and sandboxed like the catalog dump (tools/catalog/lib/dump.mjs); the scenario is wire-reach.lua.
 import fs from "node:fs";
 import path from "node:path";

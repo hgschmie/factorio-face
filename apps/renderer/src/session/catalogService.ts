@@ -1,11 +1,11 @@
 // Catalog services for one set of enabled modules: signal status for the language, display data for the views, the picker
 // tree and the module list of the project settings. Instances are immutable; a module change creates a new one.
 import {
-  availableQualities, availableSignals, dependentModules, disableModule, enableModule, findSignal, isAvailable, pickerTree, resolveModules,
-  type Catalog, type PickerGroup,
+  availableQualities, availableSignals, dependentModules, disableModule, enableModule, findSignal, isAvailable, pickerTree, resolveModules, speakerInstruments,
+  type Catalog, type PickerGroup, type SpeakerInstrumentInfo,
 } from "@face/catalog";
 import type { SignalResolver } from "@face/language";
-import { NORMAL_QUALITY, signalKey, type SignalId } from "@face/model";
+import { NORMAL_QUALITY, signalKey, type SignalId, type SpeakerInstrument } from "@face/model";
 import type { CatalogView, ModuleView, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
 
 export class CatalogService implements CatalogView, SignalResolver {
@@ -15,6 +15,9 @@ export class CatalogService implements CatalogView, SignalResolver {
   readonly unknownModules: readonly string[];
   readonly modules: readonly ModuleView[];
   readonly qualities: readonly QualityOption[];
+  /** The instruments of the speaker with their notes for these modules: with display names, and by name only as the language takes them. */
+  readonly speakerInstruments: readonly SpeakerInstrumentInfo[];
+  readonly instruments: readonly SpeakerInstrument[];
   private readonly active: ReadonlySet<string>;
   private readonly infos = new Map<string, SignalInfo>();
   private tree: readonly PickerGroup[] | undefined;
@@ -29,6 +32,8 @@ export class CatalogService implements CatalogView, SignalResolver {
     const selectable = availableQualities(catalog, this.active).filter((quality) => !quality.hidden);
     // Without the quality module only "normal" exists, and a choice of one is no choice.
     this.qualities = selectable.length > 1 ? selectable.map(({ name, displayName, icon, color }) => ({ name, displayName, icon, color })) : [];
+    this.speakerInstruments = speakerInstruments(catalog, this.active);
+    this.instruments = this.speakerInstruments.map((instrument) => ({ name: instrument.name, notes: instrument.notes.map((note) => note.name) }));
     this.modules = catalog.modules.map((module): ModuleView => {
       const enabled = this.active.has(module.name);
       return {

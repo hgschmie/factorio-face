@@ -89,12 +89,14 @@
   --wire-green-surface: #27412a;
   --wire-green-border: #4c8c53;
 
-  /* Entity kind accents: five hues away from the accent orange and both wire colors */
+  /* Entity kind accents: five hues away from the accent orange and both wire colors; a gray for the pole and sand for the speaker until the palette is regrouped */
   --kind-constant: #ee8fb8;
   --kind-arithmetic: #5cc6cc;
   --kind-decider: #c09af0;
   --kind-selector: #8ea6f2;
   --kind-lamp: #f0e05a;
+  --kind-pole: #b4b4b4;
+  --kind-speaker: #d6c3a8;
 
   /* Status */
   --status-ok: var(--confirm);

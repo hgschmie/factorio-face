@@ -3,7 +3,7 @@
 import { isSignalKind, signal, type SignalId } from "@face/model";
 
 export const KEYWORDS = [
-  "circuit", "constant", "arithmetic", "decider", "selector", "lamp", "wire", "red", "green", "at", "tile", "facing", "north", "east", "south", "west",
+  "circuit", "constant", "arithmetic", "decider", "selector", "lamp", "pole", "speaker", "wire", "red", "green", "at", "tile", "facing", "north", "east", "south", "west",
   "in", "out", "when", "and", "or", "output", "else", "input", "section", "each", "anything", "everything", "true", "false", "AND", "OR", "XOR",
   "import", "component", "port",
 ] as const;

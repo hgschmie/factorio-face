@@ -1,5 +1,5 @@
 // One-line configuration summaries shown on entity cards. Pure.
-import type { ArithmeticCombinator, ConstantCombinator, DeciderCombinator, Entity, Lamp, Operand, SelectorCombinator, SignalId } from "@face/model";
+import { prototypeData, type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type Operand, type SelectorCombinator, type SignalId, type Speaker } from "@face/model";
 import { shortSignal } from "./signalText.ts";
 
 const OPERATOR_SYMBOLS: Readonly<Record<string, string>> = { "*": "×", "/": "÷", "-": "−", "!=": "≠", "<=": "≤", ">=": "≥" };
@@ -71,6 +71,13 @@ function lampSummary(entity: Lamp): string {
   return `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}`;
 }
 
+// Minimal until package H lays out the speaker card: when it plays, or which signal picks the note.
+function speakerSummary(entity: Speaker): string {
+  if (entity.pitchSignal) return `pitch ${shortSignal(entity.pitchSignal)}`;
+  const condition = entity.condition;
+  return condition ? `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}` : "no condition";
+}
+
 export function entitySummary(entity: Entity): string {
   switch (entity.kind) {
     case "constant":
@@ -83,6 +90,10 @@ export function entitySummary(entity: Entity): string {
       return selectorSummary(entity);
     case "lamp":
       return lampSummary(entity);
+    case "pole":
+      return prototypeData(entity).label;
+    case "speaker":
+      return speakerSummary(entity);
   }
 }
 

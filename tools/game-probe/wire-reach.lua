@@ -68,6 +68,8 @@ local function run()
   surface.force_generate_chunk_requests()
   local constant = spec("constant-combinator")
   local lamp = spec("small-lamp")
+  local small, medium, big, substation = spec("small-electric-pole"), spec("medium-electric-pole"), spec("big-electric-pole"), spec("substation")
+  local speaker = spec("programmable-speaker")
   local function decider(direction, side) return spec("decider-combinator", direction, side) end
   local cases = {
     probe(surface, "constant - constant", constant, constant),
@@ -82,10 +84,21 @@ local function run()
     probe(surface, "constant - arithmetic east output", constant, spec("arithmetic-combinator", d.east, "out")),
     probe(surface, "selector south output - lamp", spec("selector-combinator", d.south, "out"), lamp),
     probe(surface, "arithmetic west input - selector north output", spec("arithmetic-combinator", d.west, "in"), spec("selector-combinator", d.north, "out")),
-    probe(surface, "constant - small pole", constant, spec("small-electric-pole")),
-    probe(surface, "constant - medium pole", constant, spec("medium-electric-pole")),
-    probe(surface, "constant - big pole", constant, spec("big-electric-pole")),
+    probe(surface, "constant - small pole", constant, small),
+    probe(surface, "constant - medium pole", constant, medium),
+    probe(surface, "constant - big pole", constant, big),
     probe(surface, "constant - steel chest", constant, spec("steel-chest")),
+    -- Added with the poles and the speaker of the editor; not in the recording of 2.1.24 yet (rerun `make probe-wire-reach`).
+    -- Pole to pole, where neither end has the 9 tiles of the other entities: the smaller of two reaches, and a reach above 9.
+    probe(surface, "constant - substation", constant, substation),
+    probe(surface, "constant - speaker", constant, speaker),
+    probe(surface, "speaker - small pole", speaker, small),
+    probe(surface, "small pole - small pole", small, small),
+    probe(surface, "small pole - big pole", small, big),
+    probe(surface, "medium pole - substation", medium, substation),
+    probe(surface, "substation - substation", substation, substation),
+    probe(surface, "big pole - substation", big, substation),
+    probe(surface, "big pole - big pole", big, big),
   }
   helpers.write_file("face-wire-reach.json", helpers.table_to_json({ game_version = helpers.game_version, range = RANGE, cases = cases }))
 end

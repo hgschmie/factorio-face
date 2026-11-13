@@ -38,7 +38,7 @@ const CHROMATIC_TOKENS: ReadonlySet<string> = new Set([
   // green: see GREEN_TOKENS
   "--confirm", "--confirm-bright", "--confirm-edge", "--wire-green", "--wire-green-ui", "--wire-green-surface", "--wire-green-border",
   // entity kinds, traces and syntax
-  "--kind-constant", "--kind-arithmetic", "--kind-decider", "--kind-selector", "--kind-lamp",
+  "--kind-constant", "--kind-arithmetic", "--kind-decider", "--kind-selector", "--kind-lamp", "--kind-speaker",
   "--trace-2", "--trace-3", "--syntax-signal", "--syntax-number", "--syntax-string", "--syntax-atom",
 ]);
 

@@ -124,7 +124,7 @@ export function Pin({ side, color, x, y, radius = PIN_RADIUS, edge, pending }: P
     <g className={`pin ${color} ${side}${pending ? " pending" : ""}`} data-terminal={side} data-wire-color={color} data-edge={edge}>
       <circle className="pin-hit" cx={x} cy={y} r={PIN_SPACING / 2} />
       <circle className="pin-dot" cx={x} cy={y} r={radius} />
-      <title>{`${color === "red" ? "Red" : "Green"} ${side === "out" ? "output" : "input"}`}</title>
+      <title>{`${color === "red" ? "Red" : "Green"} ${side === "out" ? "output" : side === "in" ? "input" : "connection"}`}</title>
     </g>
   );
 }

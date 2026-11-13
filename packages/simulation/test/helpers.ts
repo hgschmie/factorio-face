@@ -19,14 +19,17 @@ import {
   type Lamp,
   type NetworkSelection,
   type Operand,
+  type Pole,
   type SelectorCombinator,
   type SelectorMode,
   type SignalId,
+  type Speaker,
+  type SpeakerInstrument,
   type TerminalRef,
   type Wire,
   type WireColor,
 } from "@face/model";
-import { compile, createSimulation, networkOf, type LampState, type SignalList, type Simulation, type SimulationEnvironment, type SimulationOptions } from "../src/index.ts";
+import { compile, createEnvironment, createSimulation, networkOf, type LampState, type SignalList, type Simulation, type SimulationEnvironment, type SimulationOptions, type SpeakerState } from "../src/index.ts";
 
 export const EACH = wildcardSignal("each");
 export const ANYTHING = wildcardSignal("anything");
@@ -109,9 +112,25 @@ export function lamp(id: string, props: Partial<Omit<Lamp, "id" | "name" | "kind
   return { ...base(id), ...DEFAULT_ENTITY.lamp, ...props };
 }
 
+export function pole(id: string, prototype: Pole["prototype"] = "small-electric-pole"): Pole {
+  return { ...base(id), kind: "pole", prototype };
+}
+
+export function speaker(id: string, props: Partial<Omit<Speaker, "id" | "name" | "kind" | "position">> = {}): Speaker {
+  return { ...base(id), ...DEFAULT_ENTITY.speaker, ...props };
+}
+
+/** A cut of the game's instrument table: enough to tell the first instrument, the first note and the end of a list. */
+export const INSTRUMENTS: readonly SpeakerInstrument[] = [
+  { name: "alarms", notes: ["alarm-1", "alarm-2", "siren"] },
+  { name: "piano", notes: ["F3", "F#3", "G3", "G#3"] },
+];
+export const WITH_INSTRUMENTS: SimulationEnvironment = createEnvironment({ instruments: INSTRUMENTS });
+
+/** "gate.in", "gate.out", or the bare id for the one point of a pole. */
 export function terminal(text: string): TerminalRef {
   const dot = text.lastIndexOf(".");
-  return { entity: text.slice(0, dot), side: text.slice(dot + 1) as TerminalRef["side"] };
+  return dot < 0 ? { entity: text, side: "io" } : { entity: text.slice(0, dot), side: text.slice(dot + 1) as TerminalRef["side"] };
 }
 
 export function wire(color: WireColor, a: string, b: string): Wire {
@@ -162,8 +181,13 @@ export function fed(entity: Entity, feed: Feed): Circuit {
 }
 
 /** Output of a combinator one tick after its input (given per wire color) appears. */
-export function evaluate(entity: Exclude<Entity, Lamp | ConstantCombinator>, feed: Feed = {}): Record<string, number> {
+export function evaluate(entity: Exclude<Entity, Lamp | ConstantCombinator | Pole | Speaker>, feed: Feed = {}): Record<string, number> {
   return outputOf(simulate(fed(entity, feed), 1, feed), entity.id);
+}
+
+/** State of a speaker for the given input; like a lamp it is evaluated from the current content. */
+export function speakerState(entity: Speaker, feed: Feed = {}): SpeakerState {
+  return simulate(fed(entity, feed), 0, feed).snapshot().entities[entity.id]!.speaker!;
 }
 
 /** State of a lamp for the given input; lamps evaluate from the current content, so no tick has to pass. */

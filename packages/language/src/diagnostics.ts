@@ -23,6 +23,8 @@ export const DIAGNOSTIC_SEVERITY = {
   "duplicate-wire": "warning",
   "unknown-signal": "warning",
   "disabled-signal": "warning",
+  "unknown-instrument": "warning",
+  "unknown-note": "warning",
   "unconfigured": "warning",
   "unused-else-output": "warning",
   "tile-off-grid": "warning",

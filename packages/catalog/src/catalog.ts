@@ -1,8 +1,10 @@
 // Catalog construction from stored data, lookups, module-dependent views and the signal picker tree.
 
-import { STANDARD_SIGNAL_KINDS, parseSignalKey, signal, signalKey, type SignalId, type SignalKind } from "@face/model";
+import { STANDARD_SIGNAL_KINDS, parseSignalKey, signal, signalKey, type SignalId, type SignalKind, type SpeakerInstrument } from "@face/model";
 import { isAvailable } from "./modules.ts";
-import type { Catalog, CatalogData, CatalogGroup, CatalogSignal, CatalogSubgroup, ModuleScoped, QualityInfo, SignalVisibility, Variant } from "./types.ts";
+import type {
+  Catalog, CatalogData, CatalogGroup, CatalogSignal, CatalogSubgroup, ModuleScoped, QualityInfo, SignalVisibility, SpeakerInfo, SpeakerInstrumentInfo, StoredInstrument, Variant,
+} from "./types.ts";
 
 const PROTOTYPE_OF_KIND: Readonly<Record<string, string>> = { virtual: "virtual-signal" };
 const KIND_INDEX = new Map<string, number>(STANDARD_SIGNAL_KINDS.map((kind, index) => [kind, index]));
@@ -26,6 +28,10 @@ function signalDefaults(kind: SignalKind, name: string): Pick<CatalogSignal, "pr
   return { prototype: PROTOTYPE_OF_KIND[kind] ?? kind, visibility: "normal", hidden: false, parameter: false, special: false, icon: `${kind}/${name}` };
 }
 
+function expandInstrument(stored: StoredInstrument): SpeakerInstrumentInfo {
+  return { name: stored.name, displayName: stored.displayName, notes: stored.notes.map((name) => ({ name, displayName: stored.noteNames?.[name] ?? name })) };
+}
+
 /** Expands stored catalog data (defaults omitted) into a catalog with lookup indexes. */
 export function createCatalog(data: CatalogData): Catalog {
   if (data.schema !== 1) throw new Error(`Unsupported catalog schema ${data.schema}`);
@@ -40,6 +46,11 @@ export function createCatalog(data: CatalogData): Catalog {
   const groups = data.groups.map((group): CatalogGroup => ({ origin: "standard", icon: `group/${group.name}`, ...group }));
   const subgroups = data.subgroups.map((subgroup): CatalogSubgroup => ({ origin: "standard", ...subgroup }));
   const qualities = data.qualities.map((quality): QualityInfo => ({ hidden: false, icon: `quality/${quality.name}`, ...quality }));
+  const speakers = (data.speakers ?? []).map(({ instruments, variants, ...rest }): SpeakerInfo => ({
+    ...rest,
+    instruments: instruments.map(expandInstrument),
+    ...(variants && { variants: variants.map(({ instruments: changed, ...patch }) => ({ ...patch, ...(changed !== undefined && { instruments: changed && changed.map(expandInstrument) }) })) }),
+  }));
   return {
     game: data.game,
     provenance: data.provenance,
@@ -48,6 +59,7 @@ export function createCatalog(data: CatalogData): Catalog {
     groups,
     subgroups,
     qualities,
+    speakers,
     signals,
     signalsByKey: new Map(signals.map((entry) => [entry.key, entry])),
     groupsByName: new Map(groups.map((entry) => [entry.name, entry])),
@@ -119,6 +131,26 @@ export function availableSignals(catalog: Catalog, enabled: Iterable<string>, fi
 export function availableQualities(catalog: Catalog, enabled: Iterable<string>): QualityInfo[] {
   const active = enabledSet(enabled);
   return catalog.qualities.filter((quality) => isAvailable(quality, active)).map((quality) => applyVariants(quality, active, { hidden: false }));
+}
+
+/** The standard speaker of the game; a mod may add others. */
+export const STANDARD_SPEAKER = "programmable-speaker";
+
+/**
+ * The instruments of a speaker prototype with their notes, in the game's order, as they are with the given modules enabled
+ * (without `enabled`: as the prototype is defined by the modules it needs). Empty when the prototype does not exist.
+ */
+export function speakerInstruments(catalog: Catalog, enabled?: Iterable<string>, prototype: string = STANDARD_SPEAKER): readonly SpeakerInstrumentInfo[] {
+  const entry = catalog.speakers.find((speaker) => speaker.name === prototype);
+  if (!entry) return [];
+  if (enabled === undefined) return entry.instruments;
+  const active = enabledSet(enabled);
+  return isAvailable(entry, active) ? applyVariants(entry, active).instruments : [];
+}
+
+/** The same by name only: the form the circuit language (`AnalyzeOptions.instruments`) and the simulation environment take. */
+export function speakerInstrumentNames(catalog: Catalog, enabled?: Iterable<string>, prototype: string = STANDARD_SPEAKER): SpeakerInstrument[] {
+  return speakerInstruments(catalog, enabled, prototype).map((instrument) => ({ name: instrument.name, notes: instrument.notes.map((note) => note.name) }));
 }
 
 export interface PickerOptions {

@@ -62,6 +62,9 @@ function hint(entity: Entity, fallback: string): string {
     case "lamp":
       if (entity.condition && !entity.condition.first) return "The light condition needs a signal.";
       break;
+    case "speaker":
+      if (entity.condition && !entity.condition.first) return "The condition needs a signal.";
+      break;
     default:
       break;
   }

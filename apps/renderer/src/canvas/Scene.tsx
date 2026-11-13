@@ -2,7 +2,8 @@
 // board the footprints below and the wires above them, as the game draws them. Memoized as a whole, so camera changes that
 // stay inside the current culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved
 // entities and wires and a selection only the entities and wires whose state changed. Hovering a wire is CSS only.
-import { exceedsWireReach, formatWireDistance, terminalKey, tileUnit, wireKey, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { formatWireDistance, formatWireReach, terminalKey, tileUnit, wireKey, wireReachOwner, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor, type WireSpan } from "@face/model";
+import { printTerminal } from "@face/language";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
@@ -71,6 +72,13 @@ const WireView = memo(function WireView({ id, color, path, title, selected, tooL
   );
 });
 
+/** "(10 tiles apart, over the wire reach of 9)"; a reach that an entity has by itself is named: "over the wire reach of a small electric pole, 7.5". */
+function measureText(span: WireSpan | undefined): string {
+  if (span?.distance === undefined) return "";
+  const reach = span.of === "project" ? formatWireReach(span.reach) : `${wireReachOwner(span)}, ${formatWireReach(span.reach)}`;
+  return ` (${formatWireDistance(span.distance, span.reach)} ${tileUnit(span.distance)} apart${span.tooLong ? `, over the wire reach of ${reach}` : ""})`;
+}
+
 function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layout: Layout, wireReach: number): RoutedWire[] {
   const routed: RoutedWire[] = [];
   for (const wire of circuit.wires) {
@@ -78,10 +86,9 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layou
     const b = byId.get(wire.b.entity);
     if (!a || !b || terminalKey(wire.a) === terminalKey(wire.b)) continue;
     // Only the board knows tiles; the edit canvas shows every wire as it always did.
-    const distance = layout.mode === "blueprint" ? layout.wireDistance(a, b) : undefined;
-    const tooLong = exceedsWireReach(distance, wireReach);
-    const measure = distance === undefined ? "" : ` (${formatWireDistance(distance, wireReach)} ${tileUnit(distance)} apart${tooLong ? `, over the wire reach of ${wireReach}` : ""})`;
-    routed.push({ key: wireKey(wire), wire, ...layout.route(wire, a, b), title: `${wire.color}: ${a.name}.${wire.a.side} <-> ${b.name}.${wire.b.side}${measure}`, tooLong });
+    const span = layout.mode === "blueprint" ? layout.wireSpan(a, b, wireReach) : undefined;
+    const title = `${wire.color}: ${printTerminal(a.name, wire.a.side)} <-> ${printTerminal(b.name, wire.b.side)}${measureText(span)}`;
+    routed.push({ key: wireKey(wire), wire, ...layout.route(wire, a, b), title, tooLong: span?.tooLong ?? false });
   }
   return routed;
 }

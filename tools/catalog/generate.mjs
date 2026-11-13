@@ -3,10 +3,11 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { KINDS, LOCALE_SECTIONS, buildCatalog } from "./lib/build.mjs";
+import { KINDS, LOCALE_SECTIONS, SPEAKER_LOCALE_SECTIONS, buildCatalog } from "./lib/build.mjs";
 import { DUMP_COMMANDS, DUMP_OUTPUTS, RUNTIME_DUMP_FILE, gameVersion, locateGame, modSetId, readModuleInfos, runDump, validModSets } from "./lib/dump.mjs";
 import { IconRenderer } from "./lib/icons.mjs";
 import { watchedLocations } from "./lib/isolation.mjs";
+import { readLocaleSections } from "./lib/locale.mjs";
 
 const EXPECTED_VERSION = "2.1.24";
 const ICON_SIZE = 64;
@@ -19,6 +20,8 @@ const USAGE = `Usage: node tools/catalog/generate.mjs [options]
 
   --accept-version   generate for the installed game version even if it is not ${EXPECTED_VERSION}
   --reuse-dumps      do not start the game when dumps of the same version exist in .runtime/factorio-dump
+  --from-dumps       never start the game: build from the dumps in .runtime/factorio-dump and the game's data files,
+                     and fail when the dumps are missing or of another version
   --no-icons         skip rendering packages/catalog/generated/icons
   --no-sandbox       run the game without sandbox-exec (the before/after isolation check still applies)
   --check            fail if the committed catalog differs from the generated one; write nothing
@@ -27,7 +30,7 @@ const USAGE = `Usage: node tools/catalog/generate.mjs [options]
 Environment: FACTORIO_BIN (default /Applications/factorio.app/Contents/MacOS/factorio), FACTORIO_DATA (default: the
 "data" directory next to the binary's parent).`;
 
-const FLAGS = ["--accept-version", "--reuse-dumps", "--no-icons", "--no-sandbox", "--check", "--help"];
+const FLAGS = ["--accept-version", "--reuse-dumps", "--from-dumps", "--no-icons", "--no-sandbox", "--check", "--help"];
 const SIGNAL_FIELDS = ["name", "displayName", "order", "subgroup", "group", "prototype", "hidden", "parameter", "special", "wildcard", "visibility", "hideFromSignalGui", "placedBy", "itemAlias",
   "stackSize", "weight", "level", "color", "next", "icon", "liftWeight", "rocketPartsRequired", "modules", "removedBy", "variants"];
 
@@ -59,18 +62,24 @@ function serialise(catalog) {
     `"groups": ${list(catalog.groups, "  ")}`,
     `"subgroups": ${list(catalog.subgroups, "  ")}`,
     `"qualities": ${list(catalog.qualities, "  ")}`,
+    `"speakers": [\n${catalog.speakers.map(serialiseSpeaker).join(",\n")}\n  ]`,
     `"signals": {\n${KINDS.map(({ kind }) => `    ${JSON.stringify(kind)}: ${list(catalog.signals[kind], "    ")}`).join(",\n")}\n  }`,
   ];
   return `{\n  ${parts.join(",\n  ")}\n}\n`;
+}
+
+/** One instrument per line; everything else of the record before them. */
+function serialiseSpeaker({ instruments, ...rest }) {
+  return `    {${JSON.stringify(rest).slice(1, -1)},"instruments":[\n${instruments.map((instrument) => `      ${JSON.stringify(instrument)}`).join(",\n")}\n    ]}`;
 }
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
-function loadSet(mods) {
+function loadSet(mods, dataDir) {
   const output = path.join(DUMP_ROOT, "sets", modSetId(mods), "script-output");
-  const locale = {};
+  const locale = readLocaleSections(dataDir, mods, SPEAKER_LOCALE_SECTIONS);
   for (const section of LOCALE_SECTIONS) {
     const file = path.join(output, `${section}-locale.json`);
     if (fs.existsSync(file)) locale[section] = readJson(file).names;
@@ -113,13 +122,15 @@ function main() {
   }
   if (running) console.log(`catalog: note: a game instance is already running (pid ${running.split("\n").join(", ")}); the dump uses its own write directory and does not touch it.`);
 
-  const reuse = option("--reuse-dumps");
+  const fromDumps = option("--from-dumps");
+  const reuse = option("--reuse-dumps") || fromDumps;
   const stampFile = path.join(dumpRoot, "dump-info.json");
   const stamp = fs.existsSync(stampFile) ? readJson(stampFile) : undefined;
   const sets = validModSets(modules);
   const stale = !stamp || stamp.versions !== versions || sets.some((mods) => Object.values(DUMP_OUTPUTS).some((file) => !fs.existsSync(path.join(dumpRoot, "sets", modSetId(mods), "script-output", file))));
   let game = stamp?.game;
   let runs = stamp?.runs ?? [];
+  if (fromDumps && stale) fail(`--from-dumps: ${path.relative(ROOT, dumpRoot)} has no complete dumps of ${versions}; run without the option to dump from the game`);
   if (!reuse || stale) {
     console.log(`catalog: dumping ${sets.length} module sets with ${binary}`);
     const probe = gameVersion(common);
@@ -138,7 +149,7 @@ function main() {
   }
 
   // 2. Build the catalog from all sets and prove the provenance rules reproduce each of them.
-  const loaded = sets.map(loadSet);
+  const loaded = sets.map((mods) => loadSet(mods, dataDir));
   for (const set of loaded) {
     if (set.runtime.game_version !== game.version) fail(`${set.id}: runtime dump is from ${set.runtime.game_version}, expected ${game.version}`);
     const active = Object.keys(set.runtime.active_mods).sort().join();

@@ -45,6 +45,24 @@ function canonicalEntity(e: Entity): Json {
         e.color ? [e.color.r, e.color.g, e.color.b] : null,
       ];
     }
+    case "pole":
+      // The prototype decides the size and the wire reach, neither of which the simulation knows.
+      return [e.id, e.kind];
+    case "speaker": {
+      const c = e.condition;
+      // Playback mode, polyphony, stop-playing-sounds and the look of the alert do not change what a snapshot reports.
+      return [
+        e.id,
+        e.kind,
+        c ? [key(c.first), c.comparator, c.second.type === "constant" ? [c.second.value] : [key(c.second.signal)]] : null,
+        key(e.pitchSignal),
+        e.instrument ?? null,
+        e.note ?? null,
+        e.volume,
+        key(e.volumeSignal),
+        e.showAlert,
+      ];
+    }
   }
 }
 

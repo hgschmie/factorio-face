@@ -2,10 +2,11 @@
 // for every circuit the language can express (see `checkEntity` in commands.ts for the exceptions).
 
 import {
-  isValidSignalName, NORMAL_QUALITY, wildcardOf,
-  type Circuit, type ConstantSection, type DeciderOutput, type Entity, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type TerminalRef, type WireColor,
+  DEFAULT_ENTITY, isValidSignalName, NORMAL_QUALITY, prototypeOf, prototypesOf, wildcardOf,
+  type Circuit, type Condition, type ConstantSection, type DeciderOutput, type Entity, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type TerminalRef, type TerminalSide,
+  type WireColor,
 } from "@face/model";
-import { NO_NETWORK } from "./schema.ts";
+import { NO_NETWORK, PROTOTYPE_PROPERTY } from "./schema.ts";
 import { encodeString, isKeyword } from "./tokens.ts";
 
 export interface PrintOptions {
@@ -43,8 +44,20 @@ export function printNumber(value: number): string {
   return text.includes("e") ? value.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 20 }) : text;
 }
 
+/** A name from the game data: bare where it reads as one word, quoted otherwise ("F#3"). */
+export function printName(name: string): string {
+  return BARE_WORD.test(name) && !isKeyword(name) ? name : encodeString(name);
+}
+
 function printQuality(name: string): string {
-  return BARE_WORD.test(name) && !isKeyword(name) && name !== "signal" ? name : encodeString(name);
+  return name === "signal" ? encodeString(name) : printName(name);
+}
+
+/** `when S > 5`: the circuit condition of a lamp or a speaker; nothing for one without a first signal. */
+function conditionItem(condition: Condition | undefined): StatementItem[] {
+  if (!condition?.first) return [];
+  const second = condition.second.type === "constant" ? printInteger(condition.second.value) : printSignal(condition.second.signal);
+  return [{ key: "when", text: `when ${printSignal(condition.first)} ${condition.comparator} ${second}`, implicit: false }];
 }
 
 /** The word for a selection other than the default of both networks. */
@@ -144,6 +157,8 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
   const unit = options.unit ?? "    ";
   const items: StatementItem[] = [];
   if (entity.description !== undefined) items.push(property("description", encodeString(entity.description)));
+  // A kind with several game prototypes says which one it is; the first of the kind goes without saying.
+  if (prototypesOf(entity.kind).length > 1) items.push(property(PROTOTYPE_PROPERTY, prototypeOf(entity), prototypeOf(entity) === prototypesOf(entity.kind)[0]));
   const signal = (key: string, id: SignalId | undefined) => {
     if (id) items.push(property(key, printSignal(id)));
   };
@@ -173,11 +188,7 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
       items.push(...selectorItems(entity.mode));
       break;
     case "lamp": {
-      const condition = entity.condition;
-      if (condition?.first) {
-        const second = condition.second.type === "constant" ? printInteger(condition.second.value) : printSignal(condition.second.signal);
-        items.push({ key: "when", text: `when ${printSignal(condition.first)} ${condition.comparator} ${second}`, implicit: false });
-      }
+      items.push(...conditionItem(entity.condition));
       const networks = networkWord(entity.inputNetworks);
       if (networks !== undefined) items.push(property("networks", networks));
       items.push(property("always-on", String(entity.alwaysOn), !entity.alwaysOn));
@@ -187,6 +198,26 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
       signal("blue", entity.blueSignal);
       signal("rgb", entity.rgbSignal);
       if (entity.color) items.push(property("color", `#${hex(entity.color.r)}${hex(entity.color.g)}${hex(entity.color.b)}`));
+      break;
+    }
+    case "pole":
+      break;
+    case "speaker": {
+      const defaults = DEFAULT_ENTITY.speaker;
+      const flag = (key: string, value: boolean, fallback: boolean) => items.push(property(key, String(value), value === fallback));
+      items.push(...conditionItem(entity.condition));
+      signal("pitch", entity.pitchSignal);
+      if (entity.instrument !== undefined) items.push(property("instrument", printName(entity.instrument)));
+      if (entity.note !== undefined) items.push(property("note", printName(entity.note)));
+      items.push(property("volume", printNumber(entity.volume), entity.volume === defaults.volume));
+      signal("volume-signal", entity.volumeSignal);
+      items.push(property("playback", entity.playbackMode, entity.playbackMode === defaults.playbackMode));
+      flag("polyphony", entity.allowPolyphony, defaults.allowPolyphony);
+      flag("stop-playing-sounds", entity.stopPlayingSounds, defaults.stopPlayingSounds);
+      flag("show-alert", entity.showAlert, defaults.showAlert);
+      flag("show-on-map", entity.showOnMap, defaults.showOnMap);
+      signal("alert-icon", entity.alertIcon);
+      items.push(property("alert-message", encodeString(entity.alertMessage), entity.alertMessage === defaults.alertMessage));
       break;
     }
   }
@@ -210,8 +241,13 @@ export function printEntity(entity: Entity, options: PrintOptions = {}): string 
   return [`${entity.kind} ${entity.name}${printClauses(entity)} {`, ...statements, "}"].join("\n");
 }
 
-export function printWire(color: WireColor, a: { readonly name: string; readonly side: string }, b: { readonly name: string; readonly side: string }): string {
-  return `wire ${color} ${a.name}.${a.side} <-> ${b.name}.${b.side}`;
+/** A wire end as the language writes it: `name.in`, `name.out`, or the bare name for the one connection point of a pole (`io`). */
+export function printTerminal(name: string, side: TerminalSide): string {
+  return side === "io" ? name : `${name}.${side}`;
+}
+
+export function printWire(color: WireColor, a: { readonly name: string; readonly side: TerminalSide }, b: { readonly name: string; readonly side: TerminalSide }): string {
+  return `wire ${color} ${printTerminal(a.name, a.side)} <-> ${printTerminal(b.name, b.side)}`;
 }
 
 /**

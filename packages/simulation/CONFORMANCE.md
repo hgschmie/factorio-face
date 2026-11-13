@@ -16,9 +16,13 @@ When a game fixture disagrees: change the place named in the table, update the t
 - **Two-phase tick.** State is the output held by every arithmetic, decider and selector combinator. The content of a network at tick t is the int32-wrapping sum of the outputs held by its emitters.
   `step()` lets every combinator read the content of tick t, then commits all new outputs at once; they are on the networks at tick t + 1. Evaluation order has no effect.
 - **Tick 0 / reset state.** After `createSimulation` and after `reset()`: tick is 0, every arithmetic, decider and selector output is empty, constant combinators emit their configured signals,
-  random generators are re-seeded, runtime notes are cleared. A snapshot of tick t shows the network content of tick t, what every entity reads and holds at tick t, and lamp states computed from the content of tick t.
+  random generators are re-seeded, runtime notes are cleared. A snapshot of tick t shows the network content of tick t, what every entity reads and holds at tick t, and lamp and speaker states computed from the content of tick t.
+- **Connection points.** A network is the set of connection points joined by wires of one color. An entity is not assumed to have an input and an output: every point a kind has
+  (`TERMINALS` in `@face/model`) is a member in its own right, and `POINT_ROLES` in `compile.ts` says per kind from which point it reads and to which it writes, if any. The three
+  combinators with two connectors read on `in` and write on `out`; a constant combinator only writes, a lamp and a speaker only read, a pole (one point, `io`) does neither.
+  A snapshot shows for every entity that reads what is on the networks of that point (`input`), and for a pole what is on the two networks it joins.
 - **Clock.** The selector's time mode reads `environment.time.startTick + tick`. The random mode draws on simulation ticks (since reset) and is seeded per entity from `options.seed` and the entity id.
-- **Scope limits.** Every entity is powered and not frozen; there is no day/night cycle; logistic groups are not shared between combinators; a circuit is immutable while it runs
+- **Scope limits.** Every entity is powered and not frozen; there is no day/night cycle; there is no sound and no time in a sound (a speaker is reported as triggered or not per tick); logistic groups are not shared between combinators; a circuit is immutable while it runs
   (an edit means `compile` again; `semanticFingerprint` tells whether the running simulation must be reset). Fixture F-04 (editing a constant combinator at a known tick) therefore has no counterpart in the engine yet.
 - **Signal order.** `SimulationEnvironment.compareSignals` supplies the order used by anything outputs, selector ties and snapshot lists; remaining ties are broken by signal key.
   The default environment orders by `kind:name`, then quality level. The catalog adapter is expected to compare group order, subgroup order, `order` string, name and quality level (audit open question 2, pending F-13 / F-16).
@@ -43,6 +47,7 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 | T-POWER | Everything is always powered and not frozen | 6.1 | none | assumed | not modeled |
 | N-INT32 | Values are int32; sums over the emitters of a network wrap | 6.2 | F-05 | documented | `engine.ts` `sum` |
 | N-COLORS | Same-colored wires form one network; red and green are separate; a combinator output goes to both colors | 6.2 | F-07 | documented | `compile.ts` |
+| P-RELAY | An electric pole has one connection point per color; every wire of one color on it belongs to one network, so a signal passes through any number of poles without a tick. A pole reads and emits nothing; the prototype (size, wire reach) does not reach the engine | 3.9, 6.9 | F-26 | documented | `compile.ts` `POINT_ROLES` |
 | N-REDGREEN | An input with both networks selected reads the wrapping sum of red and green | 6.2 | F-07 | assumed (wrap) | `signals.ts` `sumMaps` |
 | N-ZERO | A signal whose sum is 0 does not exist: red +3 and green -3 hide it from each, anything, everything, count and select | 6.2 | F-07 | assumed | `signals.ts` `sumMaps` |
 | N-NONE | A network selection with neither color (the game allows unchecking both) reads nothing: a signal is 0, wildcards and each find no signals, a copied output count is 0, a lamp sees no condition or color signal | 3.3 | none | assumed | `signals.ts` `InputView.select` |
@@ -159,6 +164,26 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 | L-QUALITY | Color signals of a quality other than normal do not count | 6.7 | F-22 | assumed | `lamp.ts` `planLamp` |
 | L-COLOR-WIRE | Use-colors needs a circuit wire but no enable condition | 6.7 | F-22 | assumed | `lamp.ts` `planLamp` |
 
+### Programmable speaker
+
+No sound is produced. `EntitySnapshot.speaker` says per tick whether the speaker is triggered and with what: `playing`, `instrument`, `note`, `volume` (percent), `alert`; `totals.speakersPlaying` counts.
+None of this is validated against the game: fixture F-25 is the probe that has to decide the rules marked assumed.
+
+| Rule | Chosen behavior | Audit | Fixture | Status | Source |
+| --- | --- | --- | --- | --- | --- |
+| SP-ENABLE | A speaker evaluates its condition from the current tick's content, like a lamp, and emits nothing; it is reported as playing at every tick at which the condition holds | 6.10 | F-25 | assumed | `engine.ts` `snapshot`, `speaker.ts` |
+| SP-UNWIRED | Without a circuit wire (any color) a speaker makes no sound, whatever its condition | 6.10 | F-25 | documented (changelog 0.15) | `speaker.ts` `planSpeaker` |
+| SP-BLANK | The condition of a new speaker (no first signal) is false, and so is a speaker without a condition | 6.10 | F-25 | assumed | `rules.ts` `blankFirstSignalResult` |
+| SP-NETWORKS | Both operands of the condition, the pitch signal and the volume signal read the wrapping sum of red and green; a speaker has no network selection | 3.10 | F-25 | documented (no such field), assumed (sum) | `speaker.ts` `planSpeaker` |
+| SP-WILDCARD | everything / anything work in the condition as in a lamp (L-WILDCARD); each, a wildcard right-hand side, and a wildcard as pitch or volume signal make the speaker invalid (silent) | 2.4 | F-25 | assumed | `speaker.ts`, `validate.ts` |
+| SP-HELD | While the trigger holds, the speaker is reported as playing at every tick. How often the game starts the sound again, how long a sample sounds, the limit of sounds at a time (`allow_polyphony`, 10 per speaker), `stop_playing_sounds` and `playback_mode` are not modelled and do not change the snapshot | 6.10 | F-25 | assumed (simulator convention) | `speaker.ts` `planSpeaker` |
+| SP-PITCH | "Signal value is pitch": the value v of the pitch signal plays the note at position v of the instrument's list, 1 being the first; 0, a negative value and a value beyond the list play nothing; the condition is not evaluated and `note` is not used | 6.10 | F-25 | assumed | `rules.ts` `speakerPitchStartsAtOne`, `speaker.ts` |
+| SP-PITCH-NOTES | The note lists are game data from the environment (`instruments`); a pitch signal on an instrument the environment does not have plays nothing (static note `missing-instruments`) | 6.10 | none | assumed (simulator convention) | `validate.ts` `checkSpeaker` |
+| SP-DEFAULT-SOUND | A speaker without an instrument plays the first instrument of the environment, one without a note the first note of its instrument (the ids 0 of a blueprint); names the environment does not know are reported as written | 3.10 | F-25 | assumed | `speaker.ts` `planSpeaker` |
+| SP-VOLUME | The volume is the fixed percentage; with a volume signal it is that signal's value clamped to 0..100, and the fixed volume is not used | 6.10 | F-25 | documented (clamping, percent), assumed (replaces the fixed volume) | `speaker.ts` `signalVolume` |
+| SP-VOLUME-ZERO | A volume of 0, also from an absent volume signal, still counts as playing | 6.10 | F-25 | assumed | `speaker.ts` `planSpeaker` |
+| SP-ALERT | The alert is shown at exactly the ticks at which the speaker is reported as playing, when `show_alert` is set; icon, message and `show_on_map` are not part of the snapshot | 6.10 | F-25 | documented (when), assumed (per tick) | `speaker.ts` `planSpeaker` |
+
 ## Fixture format
 
 Files: `tests/fixtures/conformance/*.json` at the repository root, one fixture per file. `packages/simulation/test/fixtures.test.ts` validates and runs every file in that directory,
@@ -172,7 +197,7 @@ so game-recorded fixtures only have to be dropped in. Types: `ConformanceFixture
 | `title` | string | One-line description |
 | `provenance` | `"assumed"` \| `"documented"` \| `"game"` | `game`: recorded from the running game. `documented`: every asserted value follows from sourced statements. `assumed`: at least one asserted value rests on an engine assumption |
 | `source` | string, optional | How the expectations were derived or recorded (game version, scenario, command line) |
-| `environment` | `EnvironmentData`, optional | `signalOrder` (signal keys without quality, lowest first), `stackSizes`, `rocketCapacities` (by `kind:name`), `qualities` (`{name, level}`), `time` (`dayLength`, `startTick`) |
+| `environment` | `EnvironmentData`, optional | `signalOrder` (signal keys without quality, lowest first), `stackSizes`, `rocketCapacities` (by `kind:name`), `qualities` (`{name, level}`), `time` (`dayLength`, `startTick`), `instruments` (`{name, notes}` of the speaker, in the game's order) |
 | `seed` | number, optional | Seed for the random selector mode |
 | `circuit` | `Circuit` | Model JSON of `@face/model` (`entities` with `id`, `name`, `position`, `kind` and settings; `wires`) |
 | `ticks` | number | Ticks to simulate; expectations may address ticks 0..`ticks` |
@@ -180,8 +205,9 @@ so game-recorded fixtures only have to be dropped in. Types: `ConformanceFixture
 | `expect[]` | array | Expectations, each for one tick or an inclusive range |
 | `expect[].tick`, `.through` | number | The tick, and optionally the last tick of a range |
 | `expect[].outputs` | `{ [entityId]: { [signalKey]: value } }` | Signals an entity emits on its output terminal at that tick |
-| `expect[].networks[]` | `{ terminal: {entity, side}, color, signals }` | Content of the network of that color on any of its member terminals |
+| `expect[].networks[]` | `{ terminal: {entity, side}, color, signals }` | Content of the network of that color on any of its member terminals; the point of a pole has the side `io` |
 | `expect[].lamps` | `{ [entityId]: { lit, color? } }` | Lamp state; `color` omitted = not checked, `null` = no color, `{r, g, b}` = 0..255 |
+| `expect[].speakers` | `{ [entityId]: { playing, instrument?, note?, volume?, alert? } }` | Speaker state; a field that is omitted is not checked |
 
 Signal keys are `kind:name` or `kind:name@quality` (`signalKey` of `@face/model`). Tick 0 is the reset state described above; a game recording has to be aligned to it
 (game tick at which the blueprint's combinators have just been built and have not yet produced output).
@@ -210,6 +236,8 @@ Fixtures marked `documented` assert steady-state ticks only, so they do not depe
 | `F-20-constant-multiplier` | F-20 | assumed |
 | `F-21-lamp-enable` | F-21 | assumed |
 | `F-22-lamp-colors` | F-22 | assumed |
+| `F-25-speaker` | F-25 | assumed |
+| `F-26-pole-relay` | F-26 | documented |
 
 Not covered by a fixture file, by nature: F-01, F-02, F-23 (blueprint export, `packages/blueprints`), F-04 (constant edit timing, see scope limits),
 F-08, F-09, F-14 (else with wildcards), F-15 (covered by unit tests named after the fixture id in `packages/simulation/test`).

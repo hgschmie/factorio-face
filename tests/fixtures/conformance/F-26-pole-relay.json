@@ -1,0 +1,39 @@
+{
+  "format": 1,
+  "id": "F-26-pole-relay",
+  "covers": ["F-26"],
+  "title": "Electric poles: every wire of one color on a pole is one network, red and green stay apart, a pole adds no tick",
+  "provenance": "documented",
+  "source": "A pole has one circuit connector per color (docs/factorio-audit.md 3.9) and a network is the set of connectors joined by wires of one color (4.1). Steady-state ticks only; not checked against the game.",
+  "circuit": {
+    "name": "F-26-pole-relay",
+    "entities": [
+      {"id": "red", "name": "red", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 3}]}]},
+      {"id": "green", "name": "green", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}]},
+      {"id": "p1", "name": "p1", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "small-electric-pole"},
+      {"id": "p2", "name": "p2", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "big-electric-pole"},
+      {"id": "p3", "name": "p3", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "substation"},
+      {"id": "alone", "name": "alone", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "medium-electric-pole"},
+      {"id": "plus", "name": "plus", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "far", "name": "far", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": ">", "second": {"type": "constant", "value": 0}}},
+      {"id": "both", "name": "both", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 7}}},
+      {"id": "behind", "name": "behind", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 4}}}
+    ],
+    "wires": [
+      {"color": "red", "a": {"entity": "red", "side": "out"}, "b": {"entity": "p1", "side": "io"}},
+      {"color": "red", "a": {"entity": "p1", "side": "io"}, "b": {"entity": "p2", "side": "io"}},
+      {"color": "red", "a": {"entity": "p2", "side": "io"}, "b": {"entity": "p3", "side": "io"}},
+      {"color": "red", "a": {"entity": "p3", "side": "io"}, "b": {"entity": "far", "side": "in"}},
+      {"color": "green", "a": {"entity": "green", "side": "out"}, "b": {"entity": "p2", "side": "io"}},
+      {"color": "green", "a": {"entity": "p2", "side": "io"}, "b": {"entity": "both", "side": "in"}},
+      {"color": "red", "a": {"entity": "p1", "side": "io"}, "b": {"entity": "both", "side": "in"}},
+      {"color": "red", "a": {"entity": "p3", "side": "io"}, "b": {"entity": "plus", "side": "in"}},
+      {"color": "green", "a": {"entity": "plus", "side": "out"}, "b": {"entity": "p1", "side": "io"}},
+      {"color": "green", "a": {"entity": "p1", "side": "io"}, "b": {"entity": "behind", "side": "in"}}
+    ]
+  },
+  "ticks": 3,
+  "expect": [
+    {"tick": 1, "through": 3, "networks": [{"terminal": {"entity": "p3", "side": "io"}, "color": "red", "signals": {"virtual:signal-A": 3}}, {"terminal": {"entity": "far", "side": "in"}, "color": "red", "signals": {"virtual:signal-A": 3}}, {"terminal": {"entity": "p2", "side": "io"}, "color": "green", "signals": {"virtual:signal-A": 4, "virtual:signal-B": 1}}, {"terminal": {"entity": "p1", "side": "io"}, "color": "green", "signals": {"virtual:signal-A": 4}}], "outputs": {"plus": {"virtual:signal-A": 4}}, "lamps": {"far": {"lit": true}, "both": {"lit": true}, "behind": {"lit": true}}}
+  ]
+}

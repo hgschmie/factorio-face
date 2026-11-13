@@ -13,7 +13,8 @@ export type NoteCode =
   | "unknown-quality"
   | "random-not-reproducible"
   | "missing-stack-size"
-  | "missing-rocket-capacity";
+  | "missing-rocket-capacity"
+  | "missing-instruments";
 
 /**
  * A finding about a circuit. Static notes come from `compile`, runtime notes from a running simulation.
@@ -35,11 +36,11 @@ export type NetworkId = string;
 export interface CompiledNetwork {
   readonly id: NetworkId;
   readonly color: WireColor;
-  /** Member terminals, sorted by terminal key. */
+  /** Member connection points, sorted by terminal key. */
   readonly terminals: readonly TerminalRef[];
-  /** Entities whose output terminal is a member, sorted by id. */
+  /** Entities that write their output to a member point (`POINT_ROLES`), sorted by id. */
   readonly emitters: readonly EntityId[];
-  /** Entities whose input terminal is a member, sorted by id. */
+  /** Entities that read the network from a member point, sorted by id. A pole is one: it does nothing with it, but its snapshot shows it. */
   readonly readers: readonly EntityId[];
 }
 
@@ -84,6 +85,19 @@ export interface LampState {
   readonly color?: RgbColor;
 }
 
+/** What a speaker does at one tick. There is no sound: this is what the game would start to play. */
+export interface SpeakerState {
+  /** The circuit condition holds, or the pitch signal picks a note, at this tick. */
+  readonly playing: boolean;
+  /** While playing: the names of the sound, where they are known (the speaker names them, or the environment has the game's lists). */
+  readonly instrument?: string;
+  readonly note?: string;
+  /** While playing: the volume in percent, 0..100. */
+  readonly volume?: number;
+  /** While playing: an alert is shown. */
+  readonly alert?: boolean;
+}
+
 export interface EntityInput {
   readonly red: SignalList;
   readonly green: SignalList;
@@ -93,12 +107,17 @@ export interface EntityInput {
 
 export interface EntitySnapshot {
   readonly kind: EntityKind;
-  /** Content of the networks on the input terminal. Absent for constant combinators. */
+  /**
+   * Content of the networks on the connection point the entity reads: the input terminal of a combinator, a lamp or a speaker,
+   * and the one point of a pole, which only joins the networks. Absent for an entity that reads nothing (a constant combinator).
+   */
   readonly input?: EntityInput;
-  /** Signals the entity emits on its output terminal at this tick. Absent for lamps. */
+  /** Signals the entity emits at this tick. Absent for an entity that emits nothing (a lamp, a pole, a speaker). */
   readonly output?: SignalList;
   /** Lamps only. */
   readonly lamp?: LampState;
+  /** Speakers only. */
+  readonly speaker?: SpeakerState;
 }
 
 export interface SnapshotTotals {
@@ -109,6 +128,7 @@ export interface SnapshotTotals {
   /** Entities with a non-empty output. */
   readonly emitting: number;
   readonly lampsLit: number;
+  readonly speakersPlaying: number;
 }
 
 /** Immutable (frozen) state at one tick. Parts that did not change since the previous snapshot are shared by reference. */
@@ -121,8 +141,9 @@ export interface TickSnapshot {
 }
 
 /**
- * Addresses a signal source for probes and traces. A network is addressed by id. An input terminal yields what the entity reads
- * (one color, or the red + green sum without `color`); an output terminal yields what the entity emits (`color` is ignored).
+ * Addresses a signal source for probes and traces. A network is addressed by id. An input terminal, and the one point of a pole
+ * (`io`), yields what is on its networks (one color, or the red + green sum without `color`); an output terminal yields what the
+ * entity emits (`color` is ignored).
  */
 export type SignalTarget =
   | { readonly type: "network"; readonly id: NetworkId }

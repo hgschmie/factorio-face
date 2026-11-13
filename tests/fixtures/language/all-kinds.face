@@ -63,8 +63,39 @@ circuit "All kinds \"quoted\" \\ name" {
         color = #ff8000
     }
 
+    pole relay at (480, 480) { }
+    pole far tile (10, -4) { prototype = big-electric-pole description = "2x2" }
+    pole sub {
+        prototype = substation
+    }
+    pole mid { prototype = medium-electric-pole } pole near { prototype = small-electric-pole }
+
+    speaker quiet { }
+    speaker alarm at (480, 320) tile (12.5, 0.5) {
+        when virtual:signal-A > 0
+        instrument = alarms
+        note = siren
+        volume = 62.5
+        volume-signal = virtual:signal-V
+        playback = global
+        polyphony = true
+        stop-playing-sounds = true
+        show-alert = true
+        show-on-map = false
+        alert-icon = item:iron-plate
+        alert-message = "Out of \"plates\"\nagain"
+    }
+    speaker tune { pitch = virtual:signal-P instrument = piano note = "F#3" playback = surface volume = 0 }
+    speaker chime { when everything < virtual:signal-B instrument = "drum-kit" note = hat-1 playback = local }
+
     wire red bare.out <-> each_op.in
     wire green each_op.out <-> each_op.in
     wire red gate.in <-> each_op.out
     wire green gate.out <-> light.in
+    wire red gate.out <-> relay
+    wire red relay <-> far
+    wire green far <-> sub
+    wire green sub <-> mid; wire green near <-> mid
+    wire red far <-> alarm.in
+    wire green tune.in <-> relay
 }

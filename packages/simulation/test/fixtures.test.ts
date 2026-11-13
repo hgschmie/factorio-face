@@ -10,7 +10,7 @@ const load = (name: string): unknown => JSON.parse(readFileSync(new URL(name, di
 
 describe("conformance fixtures", () => {
   it("finds the authored fixtures", () => {
-    expect(files.length).toBeGreaterThanOrEqual(21);
+    expect(files.length).toBeGreaterThanOrEqual(23);
   });
 
   for (const name of files) {
@@ -32,7 +32,7 @@ describe("conformance fixtures", () => {
       expect(fixture.covers.every((id) => /^F-\d\d$/.test(id))).toBe(true);
     }
     const covered = new Set(fixtures.flatMap((f) => f.covers));
-    for (const id of ["F-03", "F-05", "F-06", "F-07", "F-10", "F-11", "F-12", "F-13", "F-16", "F-17", "F-18", "F-19", "F-20", "F-21", "F-22"]) expect(covered, id).toContain(id);
+    for (const id of ["F-03", "F-05", "F-06", "F-07", "F-10", "F-11", "F-12", "F-13", "F-16", "F-17", "F-18", "F-19", "F-20", "F-21", "F-22", "F-25", "F-26"]) expect(covered, id).toContain(id);
   });
 });
 

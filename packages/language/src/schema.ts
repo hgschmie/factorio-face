@@ -1,6 +1,9 @@
 // One table of statement forms, properties and legal values per entity kind. Validation, the canonical printer and completion all read it.
 
-import { ARITHMETIC_OPERATIONS, COMPARATORS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, WILDCARDS, WIRE_COLORS, type EntityKind, type SelectorOperation, type Wildcard } from "@face/model";
+import {
+  ARITHMETIC_OPERATIONS, COMPARATORS, ENTITY_KINDS, LAMP_COLOR_MODES, prototypesOf, SELECTOR_OPERATIONS, SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, WILDCARDS, WIRE_COLORS,
+  type EntityKind, type SelectorOperation, type Wildcard,
+} from "@face/model";
 
 export type ValueSpec =
   | { readonly type: "bool" }
@@ -12,6 +15,8 @@ export type ValueSpec =
   | { readonly type: "comparator" }
   /** A quality prototype name: a bare word or a quoted string. */
   | { readonly type: "quality" }
+  /** A name from the game data that the language does not know by itself: a bare word or a quoted string. */
+  | { readonly type: "name"; readonly of: "instrument" | "note" }
   | { readonly type: "signal"; readonly wildcards: readonly Wildcard[] }
   | { readonly type: "enum"; readonly values: readonly string[] };
 
@@ -36,12 +41,14 @@ export const NO_NETWORK = "none";
 
 const DESCRIPTION: PropertySpec = { name: "description", values: [{ type: "string" }], detail: "In-game entity description" };
 
-export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
-  constant: [DESCRIPTION, { name: "enabled", values: [BOOL], detail: "Whether the combinator outputs its signals (default true)" }],
-  arithmetic: [DESCRIPTION],
-  decider: [DESCRIPTION],
+/** The property that says which game prototype an entity is. */
+export const PROTOTYPE_PROPERTY = "prototype";
+
+const OWN_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
+  constant: [{ name: "enabled", values: [BOOL], detail: "Whether the combinator outputs its signals (default true)" }],
+  arithmetic: [],
+  decider: [],
   selector: [
-    DESCRIPTION,
     { name: "operation", values: [oneOf(...SELECTOR_OPERATIONS)], detail: "Selector mode (default select)" },
     { name: "order", values: [oneOf("max", "min")], operations: ["select"], detail: "Sort order (default max)" },
     { name: "index", values: [INT, SIGNAL], operations: ["select"], detail: "Index constant or signal (default 0)" },
@@ -59,7 +66,6 @@ export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpe
     { name: "game-tick", values: [SIGNAL], operations: ["time"], detail: "Signal for the game tick" },
   ],
   lamp: [
-    DESCRIPTION,
     { name: "networks", values: [oneOf(...WIRE_COLORS, NO_NETWORK)], detail: "Input network selection: one wire color or none (default both)" },
     { name: "always-on", values: [BOOL], detail: "Lit regardless of the time of day (default false)" },
     { name: "colors", values: [oneOf(...LAMP_COLOR_MODES)], detail: "Color mode; presence enables signal colors" },
@@ -69,7 +75,32 @@ export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpe
     { name: "rgb", values: [SIGNAL], detail: "Packed RGB signal" },
     { name: "color", values: [{ type: "color" }], detail: "Static color, #rrggbb" },
   ],
+  pole: [],
+  speaker: [
+    { name: "pitch", values: [SIGNAL], detail: "Signal value is pitch: the value of this signal picks the note, 1 being the first of the instrument; takes the place of 'when'" },
+    { name: "instrument", values: [{ type: "name", of: "instrument" }], detail: "Instrument (sound category) by its name in the game data (default: the first)" },
+    { name: "note", values: [{ type: "name", of: "note" }], detail: "Note (sound) of the instrument by its name in the game data (default: the first); not used with 'pitch'" },
+    { name: "volume", values: [{ type: "number" }], detail: `Playback volume in percent, ${SPEAKER_VOLUME_RANGE.min} to ${SPEAKER_VOLUME_RANGE.max} (default 100)` },
+    { name: "volume-signal", values: [SIGNAL], detail: "Signal value is volume: the value of this signal is the volume in percent, clamped to 0..100" },
+    { name: "playback", values: [oneOf(...SPEAKER_PLAYBACK_MODES)], detail: "From where the sound is heard (default local; the game calls global 'Universe')" },
+    { name: "polyphony", values: [BOOL], detail: "Allow several sounds at the same time (default false)" },
+    { name: "stop-playing-sounds", values: [BOOL], detail: "A change of the input stops playing sounds instead of letting them finish (default false)" },
+    { name: "show-alert", values: [BOOL], detail: "Show an alert with the icon and the message when a sound is played (default false)" },
+    { name: "show-on-map", values: [BOOL], detail: "Show the alert icon on the map (default true)" },
+    { name: "alert-icon", values: [SIGNAL], detail: "Icon of the alert" },
+    { name: "alert-message", values: [{ type: "string" }], detail: "Text of the alert" },
+  ],
 };
+
+/** A kind with several game prototypes takes `prototype = <name>`; the first of the kind is the default. */
+function prototypeProperty(kind: EntityKind): PropertySpec[] {
+  const names = prototypesOf(kind);
+  return names.length > 1 ? [{ name: PROTOTYPE_PROPERTY, values: [oneOf(...names)], detail: `Which ${kind} of the game this is (default ${names[0]})` }] : [];
+}
+
+export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = Object.fromEntries(
+  ENTITY_KINDS.map((kind) => [kind, [DESCRIPTION, ...prototypeProperty(kind), ...OWN_PROPERTIES[kind]]]),
+) as Record<EntityKind, PropertySpec[]>;
 
 export const SECTION_PROPERTIES: readonly PropertySpec[] = [
   { name: "active", values: [BOOL], detail: "Whether the section is active (default true)" },
@@ -85,6 +116,8 @@ export const STATEMENT_FORMS: Readonly<Record<EntityKind, readonly StatementForm
   decider: ["property", "when", "output"],
   selector: ["property"],
   lamp: ["property", "when"],
+  pole: ["property"],
+  speaker: ["property", "when"],
 };
 
 /** Keywords that start a non-property statement, per entity kind. */
@@ -94,6 +127,8 @@ export const STATEMENT_KEYWORDS: Readonly<Record<EntityKind, readonly string[]>>
   decider: ["when", "output", "else"],
   selector: [],
   lamp: ["when"],
+  pole: [],
+  speaker: ["when"],
 };
 
 /** Signal slots outside property values and the wildcards each accepts. */
@@ -106,6 +141,8 @@ export const SIGNAL_SLOTS = {
   "decider.output": WILDCARDS,
   "lamp.condition": ["anything", "everything"],
   "lamp.operand": [],
+  "speaker.condition": ["anything", "everything"],
+  "speaker.operand": [],
 } as const satisfies Record<string, readonly Wildcard[]>;
 export type SignalSlot = keyof typeof SIGNAL_SLOTS;
 

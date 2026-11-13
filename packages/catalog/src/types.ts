@@ -138,6 +138,33 @@ export interface RocketSiloInfo extends RocketSiloAttributes, ModuleScoped {
   readonly variants?: readonly Variant<RocketSiloAttributes>[];
 }
 
+export interface SpeakerNote {
+  /** The prototype's name of the note: what the circuit language writes ("F#3", "alarm-1"). */
+  readonly name: string;
+  readonly displayName: string;
+}
+
+/** One instrument (the game's GUI says "category") of a speaker with its notes, both in the prototype's order. */
+export interface SpeakerInstrumentInfo {
+  readonly name: string;
+  readonly displayName: string;
+  /** A blueprint names a note by its index here (`note_id`), and "signal value is pitch" by that index plus one. */
+  readonly notes: readonly SpeakerNote[];
+}
+
+export interface SpeakerAttributes {
+  /** How many sounds one speaker plays at the same time with polyphony allowed. */
+  readonly maximumPolyphony: number;
+  /** A blueprint names an instrument by its index here (`instrument_id`). */
+  readonly instruments: readonly SpeakerInstrumentInfo[];
+}
+
+/** A programmable speaker prototype; the game has one, `programmable-speaker`. */
+export interface SpeakerInfo extends SpeakerAttributes, ModuleScoped {
+  readonly name: string;
+  readonly variants?: readonly Variant<SpeakerAttributes>[];
+}
+
 export interface CatalogConstants {
   /** Weight of items for which the engine could not derive one. */
   readonly defaultItemWeight: number;
@@ -169,6 +196,8 @@ export interface Catalog {
   readonly subgroups: readonly CatalogSubgroup[];
   /** In game order (lowest first); also present as signals of kind "quality". */
   readonly qualities: readonly QualityInfo[];
+  /** The speaker prototypes with their instruments and notes. */
+  readonly speakers: readonly SpeakerInfo[];
   /** Every signal of every module, including hidden ones, ordered by kind and name. */
   readonly signals: readonly CatalogSignal[];
   readonly signalsByKey: ReadonlyMap<string, CatalogSignal>;
@@ -177,6 +206,21 @@ export interface Catalog {
 }
 
 type Stored<Attributes, Required extends keyof Attributes> = { readonly name: string } & Pick<Attributes, Required> & Partial<Attributes> & ModuleScoped & { readonly variants?: readonly Variant<Attributes>[] };
+
+/** A stored instrument lists its notes by name; `noteNames` has the display names that differ from the name. */
+export interface StoredInstrument {
+  readonly name: string;
+  readonly displayName: string;
+  readonly notes: readonly string[];
+  readonly noteNames?: Readonly<Record<string, string>>;
+}
+
+export interface StoredSpeaker extends ModuleScoped {
+  readonly name: string;
+  readonly maximumPolyphony: number;
+  readonly instruments: readonly StoredInstrument[];
+  readonly variants?: readonly ({ readonly when: readonly string[] } & { readonly maximumPolyphony?: number | null; readonly instruments?: readonly StoredInstrument[] | null })[];
+}
 
 /** Shape of `data/catalog-<version>.json`: defaults (false flags, "normal" visibility, default icon ids) are omitted. */
 export interface CatalogData {
@@ -188,5 +232,7 @@ export interface CatalogData {
   readonly groups: readonly Stored<GroupAttributes, "displayName" | "order">[];
   readonly subgroups: readonly Stored<SubgroupAttributes, "group" | "order">[];
   readonly qualities: readonly Stored<QualityAttributes, "displayName" | "level" | "order" | "color">[];
+  /** Absent in data generated before the speaker was added. */
+  readonly speakers?: readonly StoredSpeaker[];
   readonly signals: Readonly<Record<string, readonly Stored<SignalAttributes, "displayName" | "order" | "subgroup">[]>>;
 }

@@ -1,6 +1,7 @@
 // Semantic circuit model. Independent of source text, UI and simulation state.
 // Field names follow the editor's vocabulary; packages/blueprints maps them to Factorio's blueprint schema.
 
+import type { PrototypeOfKind } from "./prototypes.ts";
 import type { SignalId } from "./signal.ts";
 
 export type EntityId = string;
@@ -8,19 +9,27 @@ export type EntityId = string;
 export const WIRE_COLORS = ["red", "green"] as const;
 export type WireColor = (typeof WIRE_COLORS)[number];
 
-export const TERMINAL_SIDES = ["in", "out"] as const;
+/**
+ * The connection points an entity can have. `in` and `out` are the two connectors of an arithmetic, decider or selector
+ * combinator, and the one connector of an entity that only reads (`in`) or only writes (`out`). `io` is the one connector of an
+ * entity that is neither: a pole, which only joins the wires on it. In the language an `io` point is the bare entity name.
+ */
+export const TERMINAL_SIDES = ["in", "out", "io"] as const;
 export type TerminalSide = (typeof TERMINAL_SIDES)[number];
 
-export const ENTITY_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp"] as const;
+/** A kind is a family of behaviour. Which game prototype an entity is: `prototypes.ts`. */
+export const ENTITY_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp", "pole", "speaker"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 
-/** Terminals per entity kind. A constant combinator only has an output, a lamp only an input. */
+/** Connection points per entity kind. In the game only the arithmetic, decider and selector combinator have two; every other entity has one. */
 export const TERMINALS: Readonly<Record<EntityKind, readonly TerminalSide[]>> = {
   constant: ["out"],
   arithmetic: ["in", "out"],
   decider: ["in", "out"],
   selector: ["in", "out"],
   lamp: ["in"],
+  pole: ["io"],
+  speaker: ["in"],
 };
 
 export interface Point {
@@ -182,7 +191,59 @@ export interface Lamp extends EntityBase {
   readonly color?: RgbColor;
 }
 
-export type Entity = ConstantCombinator | ArithmeticCombinator | DeciderCombinator | SelectorCombinator | Lamp;
+// Electric pole
+
+/** Relays circuit signals: every wire of one color on it is one network. It has no settings; the prototype decides its size and its wire reach. */
+export interface Pole extends EntityBase {
+  readonly kind: "pole";
+  readonly prototype: PrototypeOfKind<"pole">;
+}
+
+// Programmable speaker
+
+export const SPEAKER_PLAYBACK_MODES = ["local", "surface", "global"] as const;
+/** From where the sound is heard. The game's GUI calls `global` "Universe" since 2.1.10. */
+export type SpeakerPlaybackMode = (typeof SPEAKER_PLAYBACK_MODES)[number];
+
+/** One instrument of the game's speaker prototype with its notes, both by name and in the prototype's order (game data, see `@face/catalog`). */
+export interface SpeakerInstrument {
+  readonly name: string;
+  readonly notes: readonly string[];
+}
+
+/** The range of `Speaker.volume`, in percent. */
+export const SPEAKER_VOLUME_RANGE = { min: 0, max: 100 } as const;
+
+/**
+ * Plays a sound while its circuit condition holds, or the note a signal value picks. Instrument and note are the names the game's
+ * speaker prototype gives them ("piano", "F#3"); a blueprint stores their positions in the prototype's lists instead.
+ */
+export interface Speaker extends EntityBase {
+  readonly kind: "speaker";
+  /** The circuit condition; absent is the blank condition of a new speaker, which never holds. Not used together with `pitchSignal`. */
+  readonly condition?: Condition;
+  /** "Signal value is pitch": the value of this signal picks the note of the instrument, 1 being its first; `note` is then not used. */
+  readonly pitchSignal?: SignalId;
+  /** Absent: the first instrument of the prototype. */
+  readonly instrument?: string;
+  /** Absent: the first note of the instrument. */
+  readonly note?: string;
+  /** Playback volume in percent, 0..100 (the game stores 0..1). */
+  readonly volume: number;
+  /** "Signal value is volume": the value of this signal is the volume in percent, clamped to 0..100; `volume` is then not used. */
+  readonly volumeSignal?: SignalId;
+  readonly playbackMode: SpeakerPlaybackMode;
+  readonly allowPolyphony: boolean;
+  /** A change of the input stops the sounds that are playing instead of letting them finish. */
+  readonly stopPlayingSounds: boolean;
+  /** Show an alert with `alertIcon` and `alertMessage` when a sound is played. */
+  readonly showAlert: boolean;
+  readonly showOnMap: boolean;
+  readonly alertIcon?: SignalId;
+  readonly alertMessage: string;
+}
+
+export type Entity = ConstantCombinator | ArithmeticCombinator | DeciderCombinator | SelectorCombinator | Lamp | Pole | Speaker;
 export type EntityOfKind<K extends EntityKind> = Extract<Entity, { kind: K }>;
 
 // Wires
@@ -240,4 +301,6 @@ export const DEFAULT_ENTITY: { readonly [K in EntityKind]: NewEntity<K> } = {
   decider: { kind: "decider", conditions: [], outputs: [], elseOutputs: [] },
   selector: { kind: "selector", mode: { operation: "select", max: true, index: { type: "constant", value: 0 }, indexComparator: "=" } },
   lamp: { kind: "lamp", inputNetworks: BOTH_NETWORKS, alwaysOn: false, useColors: false, colorMode: "mapping" },
+  pole: { kind: "pole", prototype: "small-electric-pole" },
+  speaker: { kind: "speaker", volume: 100, playbackMode: "local", allowPolyphony: false, stopPlayingSounds: false, showAlert: false, showOnMap: true, alertMessage: "" },
 };

@@ -1,5 +1,5 @@
 // Builds the simulation environment from the catalog for one set of enabled modules.
-import { availableQualities, availableSignals, isAvailable, pickerTree, type Catalog, type RocketSiloInfo } from "@face/catalog";
+import { availableQualities, availableSignals, isAvailable, pickerTree, speakerInstrumentNames, type Catalog, type RocketSiloInfo } from "@face/catalog";
 import { createEnvironment, type EnvironmentData, type SimulationEnvironment } from "@face/simulation";
 
 /** The engine reports 2^48 as lift weight when rockets carry no cargo weight limit (no Space Age); anything that large is "unlimited". */
@@ -36,7 +36,8 @@ function signalOrder(catalog: Catalog, enabled: ReadonlySet<string>): string[] {
 
 /**
  * Plain-data environment for the engine: signal order, stack sizes and rocket capacities of the items that exist for these
- * modules, and the qualities with their levels. Quality variants of one signal are ordered by level by the engine.
+ * modules, the qualities with their levels, and the instruments of the speaker with their notes. Quality variants of one signal
+ * are ordered by level by the engine.
  */
 export function environmentData(catalog: Catalog, enabledModules: Iterable<string>): EnvironmentData {
   const enabled = new Set(enabledModules);
@@ -53,6 +54,7 @@ export function environmentData(catalog: Catalog, enabledModules: Iterable<strin
     stackSizes,
     rocketCapacities,
     qualities: availableQualities(catalog, enabled).map((quality) => ({ name: quality.name, level: quality.level })),
+    instruments: speakerInstrumentNames(catalog, enabled),
   };
 }
 

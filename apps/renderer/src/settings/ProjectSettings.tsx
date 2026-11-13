@@ -120,8 +120,9 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
       )}
       <p className="muted-note" id={`${id}-note`}>
         How far apart two entities may be in the blueprint for a circuit wire between them, measured between the nearest points of their tiles, from {WIRE_REACH_RANGE.min} to{" "}
-        {WIRE_REACH_RANGE.max}. A wire that spans more is flagged, on the board and in the problems list; nothing is refused. {UNLIMITED_WIRE_REACH} means unlimited: no wire is flagged. In the
-        game the reach is {DEFAULT_WIRE_REACH} tiles.
+        {WIRE_REACH_RANGE.max}. A wire that spans more is flagged, on the board and in the problems list; nothing is refused. {UNLIMITED_WIRE_REACH} means unlimited. In the game the reach is{" "}
+        {DEFAULT_WIRE_REACH} tiles. An electric pole has its own reach, as in the game, whatever is set here (a small one 7.5 tiles, a big one 32): a wire spans the smaller reach of its two
+        ends, so a wire to a pole can be flagged also with {UNLIMITED_WIRE_REACH}.
       </p>
     </div>
   );

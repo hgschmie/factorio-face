@@ -27,6 +27,15 @@ export interface FixtureLampExpectation {
   readonly color?: RgbColor | null;
 }
 
+export interface FixtureSpeakerExpectation {
+  readonly playing: boolean;
+  /** Omitted: not checked. */
+  readonly instrument?: string;
+  readonly note?: string;
+  readonly volume?: number;
+  readonly alert?: boolean;
+}
+
 export interface FixtureExpectation {
   readonly tick: number;
   /** Inclusive last tick; the expectation holds for every tick from `tick` to `through`. */
@@ -35,6 +44,7 @@ export interface FixtureExpectation {
   readonly outputs?: Readonly<Record<EntityId, FixtureSignals>>;
   readonly networks?: readonly FixtureNetworkExpectation[];
   readonly lamps?: Readonly<Record<EntityId, FixtureLampExpectation>>;
+  readonly speakers?: Readonly<Record<EntityId, FixtureSpeakerExpectation>>;
 }
 
 export interface ConformanceFixture {
@@ -96,6 +106,7 @@ export function validateFixture(value: unknown): string[] {
     value.expect.forEach((e, n) => {
       const ok = isRecord(e) && Number.isInteger(e.tick) && (e.tick as number) >= 0 && (e.through === undefined || (Number.isInteger(e.through) && (e.through as number) >= (e.tick as number)));
       check(ok, `expect[${n}] needs a tick and, if given, a through >= tick`);
+      for (const [id, speaker] of Object.entries(isRecord(e) && isRecord(e.speakers) ? e.speakers : {})) check(isRecord(speaker) && typeof speaker.playing === "boolean", `expect[${n}].speakers.${id} needs playing`);
       if (ok && Number.isInteger(value.ticks)) check(((e.through ?? e.tick) as number) <= (value.ticks as number), `expect[${n}] lies beyond ticks`);
     });
   }
@@ -141,6 +152,15 @@ function checkTick(fixture: ConformanceFixture, expectation: FixtureExpectation,
     else if (lamp.lit !== expected.lit) fail(`lamp ${id}`, `expected lit ${expected.lit}, got ${lamp.lit}`);
     else if (expected.color !== undefined && JSON.stringify(lamp.color ?? null) !== JSON.stringify(expected.color && { r: expected.color.r, g: expected.color.g, b: expected.color.b })) {
       fail(`lamp ${id}`, `expected color ${JSON.stringify(expected.color)}, got ${JSON.stringify(lamp.color ?? null)}`);
+    }
+  }
+  for (const [id, expected] of Object.entries(expectation.speakers ?? {})) {
+    const speaker = snapshot.entities[id]?.speaker;
+    if (!speaker) fail(`speaker ${id}`, "no such speaker");
+    else {
+      for (const field of ["playing", "instrument", "note", "volume", "alert"] as const) {
+        if (expected[field] !== undefined && speaker[field] !== expected[field]) fail(`speaker ${id}`, `expected ${field} ${JSON.stringify(expected[field])}, got ${JSON.stringify(speaker[field])}`);
+      }
     }
   }
   return failures;

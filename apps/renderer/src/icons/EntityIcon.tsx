@@ -13,6 +13,9 @@ const MARKS: Readonly<Record<Exclude<EntityKind, "lamp">, ReactNode>> = {
   arithmetic: <path className="mark" d="m12.5 12.5 7 7m0-7-7 7" />,
   decider: <path className="mark" d="m12.5 12 7.5 4-7.5 4" />,
   selector: <path className="mark" d="M11 12.5h10M11 16h7M11 19.5h4" />,
+  // Plain marks until package H draws the new kinds: a pole with its crossbar, sound waves.
+  pole: <path className="mark" d="M16 11v10M12 13.5h8" />,
+  speaker: <path className="mark" d="M12 14v4M16 12v8M20 14v4" />,
 };
 
 function Glyph({ kind }: { readonly kind: EntityKind }) {

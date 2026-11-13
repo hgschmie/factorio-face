@@ -16,6 +16,8 @@ export interface Rules {
   readonly selectSingleInputPassesThrough: boolean;
   /** L-UNWIRED (F-21): an enable condition applies only while the lamp has a circuit wire. */
   readonly lampConditionNeedsWire: boolean;
+  /** SP-PITCH (F-25): with "signal value is pitch", does the value 1 pick the first note of the instrument (false: the value 0)? */
+  readonly speakerPitchStartsAtOne: boolean;
 }
 
 export const RULES: Rules = {
@@ -26,4 +28,5 @@ export const RULES: Rules = {
   selectIndexSignalIsSorted: true,
   selectSingleInputPassesThrough: true,
   lampConditionNeedsWire: true,
+  speakerPitchStartsAtOne: true,
 };

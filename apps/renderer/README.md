@@ -37,7 +37,7 @@ src/
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
     selectionText.ts   the selection in words: status bar text, counts, wire labels   (pure)
     TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, save state, undo, redo, fit, settings, save)
-    Palette.tsx        tools (select, red wire, green wire), the five building blocks, entity list
+    Palette.tsx        tools (select, red wire, green wire), the five building blocks (`PALETTE_KINDS`), entity list
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
     Canvas.tsx         SVG canvas: camera per display mode, gestures, pending wire, context menu, the Edit | Blueprint switch, the
@@ -272,7 +272,7 @@ green wire tokens, every `var()` resolves, the window background of the main pro
 | Accent | `--accent`, `--accent-fill`, `--accent-bright`, `--accent-border`, `--focus-ring` |
 | Confirm | `--confirm`, `--confirm-bright`, `--confirm-edge` |
 | Wires | `--wire-red`, `--wire-green`, `--wire-casing` (canvas); `--wire-red-ui`, `--wire-green-ui` and their `-surface` / `-border` (controls) |
-| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow); a `kind-<kind>` class sets `--kind-color` |
+| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow), `--kind-pole` (gray), `--kind-speaker` (sand); a `kind-<kind>` class sets `--kind-color` |
 | Status | `--status-ok`, `--status-warning`, `--status-error`, `--danger*`, `--notice-*` |
 | Traces and syntax | `--trace-1` ... `-3`, `--syntax-signal`, `-number`, `-string`, `-atom` |
 | Typography | `--font-ui`, `--font-mono`, `--text-xs` ... `--text-xl`, `--tracking-label` |
@@ -687,11 +687,31 @@ when two rows share a key on a platform or when one key event matches two rows.
 
 ## Icons
 
-`EntityIcon` / `EntityIconSvg` take an `EntityIconResolver` (`(kind) => url | undefined`). `icons/catalogEntityIcons.ts` probes the five
-item icons of the generated catalog through `face-asset://catalog/icons/item/<name>.png` and resolves only those that load.
+`EntityIcon` / `EntityIconSvg` take an `EntityIconResolver` (`(kind) => url | undefined`). `icons/catalogEntityIcons.ts` probes one
+item icon per kind (every pole shows the small one for now) of the generated catalog through `face-asset://catalog/icons/item/<name>.png` and resolves only those that load.
 `icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe; the two wire tool buttons of the palette
 take the game's `item/red-wire` and `item/green-wire` icons from it. When `packages/catalog/generated` is absent (it is git-ignored),
 entity kinds and wire tools show inline pictograms and signals are shown by name, in the picker as well.
+
+## Poles and speakers
+
+The two kinds added with the core (`pole`, `speaker`) are handled the simplest correct way; the palette, their cards and the speaker form
+are the next work package. What there is, each place marked with a comment naming package H:
+
+- They come into a circuit through the source only: `PALETTE_KINDS` (`entities/kindInfo.ts`) keeps the palette and the keys 1 to 5 to
+  the five kinds they had.
+- Cards and footprints use the general code: one icon per kind (`icons/catalogEntityIcons.ts`; every pole shows the small one), the
+  summary line (`entities/summary.ts`), kind colors, and the status rows with what the entity reads. A pole's status is `relay` with its
+  two networks, a speaker's `playing <note>` or `silent` (`session/simulationView.ts`).
+- The one connection point of a pole (`io`) is drawn and routed where an input is (`drawnSide` in `canvas/geometry.ts`). On the board
+  a footprint follows the prototype (2x2 for a big pole and a substation, `tileHalves` giving no halves), with the pins in the middle
+  of its west edge.
+- The inspector shows a note instead of a settings form (`inspector/EntitySettingsForm.tsx`); name, description, connections and
+  delete work as for every entity.
+- The wire reach is per entity (`wireSpan` of `@face/model` through `BlueprintLayout.wireSpan`): the title of a wire, the flag on the
+  board and the wire inspector name the reach that applied, also a pole's own.
+- Completion offers a pole by its bare name and the instruments and notes of the catalog (`session/completion.ts`); the analysis gets
+  the instrument list from `CatalogService.instruments`, the simulation environment from `environmentData`.
 
 ## Commands
 

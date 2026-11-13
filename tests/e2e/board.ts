@@ -66,7 +66,7 @@ export async function openBoard(page: Page, source = BOARD): Promise<void> {
 export async function openBoardProject(page: Page, source = BOARD): Promise<void> {
   await openProject(page, await writeProject({ name: "Board", source }));
   await showDisplay(page, "blueprint");
-  await expect(page.locator("g.card.board-entity")).toHaveCount((source.match(/^ {4}(constant|arithmetic|decider|selector|lamp) /gm) ?? []).length);
+  await expect(page.locator("g.card.board-entity")).toHaveCount((source.match(/^ {4}(constant|arithmetic|decider|selector|lamp|pole|speaker) /gm) ?? []).length);
 }
 
 export interface Footprint {

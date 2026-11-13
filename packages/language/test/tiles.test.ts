@@ -130,7 +130,7 @@ describe("addEntity with a tile", () => {
     };
     // Upright, a 2x1 entity has its center on a whole y.
     expect(declared(add({ kind: "decider", tile: { x: 2.5, y: 1 }, facing: "south" }))).toBe("at (20, 40) tile (2.5, 1) facing south");
-    const offGrid = { ok: false, code: "invalid-position", message: "tile (3, 0.5) is not on the tile grid for a new decider facing north" };
+    const offGrid = { ok: false, code: "invalid-position", message: "tile (3, 0.5) is not on the tile grid for a new decider combinator facing north" };
     expect(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "north" })).toMatchObject(offGrid);
     expect(declared(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "west" }))).toBe("at (20, 40) tile (3, 0.5) facing west");
     expect(declared(add({ kind: "constant", facing: "north" }))).toBe("at (20, 40) facing north");

@@ -1,9 +1,9 @@
 // Every keyboard shortcut of the app in one table: the keys the renderer listens for, the accelerators of the native menu and
 // the keys the browser handles. Key matching, the labels in tooltips and menus and the shortcut overview all read it. Pure.
-import { ENTITY_KINDS, type Point } from "@face/model";
+import type { Point } from "@face/model";
 import { MENU_ACCELERATORS, platformAccelerator, type AcceleratedCommandId, type MenuAccelerator } from "../../../desktop/src/accelerators.ts";
 import { GRID } from "../canvas/geometry.ts";
-import { KIND_INFO } from "../entities/kindInfo.ts";
+import { KIND_INFO, PALETTE_KINDS } from "../entities/kindInfo.ts";
 import { IS_MAC } from "../platform.ts";
 import { SELECT_TOOL, type Tool } from "../workbench/controller.ts";
 
@@ -76,7 +76,7 @@ export const SHORTCUTS = [
   key("tool.select", "Tools", "Select and move", "circuit", letter("Q"), { tool: SELECT_TOOL }),
   key("tool.wireRed", "Tools", "Red wire", "circuit", { alt: true, code: "KeyR", name: "R" }, { tool: { type: "wire", color: "red" } }),
   key("tool.wireGreen", "Tools", "Green wire", "circuit", { alt: true, code: "KeyG", name: "G" }, { tool: { type: "wire", color: "green" } }),
-  ...ENTITY_KINDS.map((kind, index) => key(`tool.place.${kind}`, "Tools", `Place: ${KIND_INFO[kind].label}`, "circuit", { code: `Digit${index + 1}`, name: String(index + 1) }, { tool: { type: "place", kind } })),
+  ...PALETTE_KINDS.map((kind, index) => key(`tool.place.${kind}`, "Tools", `Place: ${KIND_INFO[kind].label}`, "circuit", { code: `Digit${index + 1}`, name: String(index + 1) }, { tool: { type: "place", kind } })),
   key("tool.placeAtCenter", "Tools", "Place in the middle of the view (focus on the canvas)", "canvas", { key: ["Enter"], name: { mac: "↩", other: "Enter" } }),
   // Inside the canvas the key is the canvas's own (there it also clears the selection); elsewhere `Workbench` acts on it.
   key("tool.cancel", "Tools", "Cancel the pending wire, then the tool, then the selection", "circuit", { key: ["Escape"], name: "Esc" }),

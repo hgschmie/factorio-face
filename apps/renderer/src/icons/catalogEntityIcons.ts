@@ -12,6 +12,9 @@ const ENTITY_ICON_IDS: Readonly<Record<EntityKind, string>> = {
   decider: "item/decider-combinator",
   selector: "item/selector-combinator",
   lamp: "item/small-lamp",
+  // One icon per kind for now: every pole shows the small one. Package H draws the prototype.
+  pole: "item/small-electric-pole",
+  speaker: "item/programmable-speaker",
 };
 
 export function catalogEntityIconUrl(catalogAssetUrl: string, kind: EntityKind): string {

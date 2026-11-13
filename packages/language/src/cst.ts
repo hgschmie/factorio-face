@@ -56,8 +56,12 @@ export interface CstWire extends Range {
   readonly b?: CstTerminal;
 }
 
+/** `name.in`, `name.out`, or the bare `name` of an entity with one connection point that is neither (a pole). */
 export interface CstTerminal extends Range {
   readonly name: Token;
+  /** Absent for a bare name. */
+  readonly dot?: Token;
+  /** Absent for a bare name, and after a dot when the side is missing. */
   readonly side?: Token;
 }
 

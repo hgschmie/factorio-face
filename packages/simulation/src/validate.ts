@@ -1,6 +1,6 @@
 // Static checks per entity. A note with severity "error" silences the entity; the evaluators rely on that and do not re-check.
 
-import { signalKey, wildcardOf, type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator, type SignalId } from "@face/model";
+import { signalKey, wildcardOf, type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator, type SignalId, type Speaker } from "@face/model";
 import type { SimulationEnvironment } from "./environment.ts";
 import type { NoteCode, NoteSeverity, SimulationNote } from "./types.ts";
 
@@ -104,6 +104,31 @@ function checkLamp(entity: Lamp, report: Report): void {
   }
 }
 
+/** The instrument a speaker plays in `env`: the one it names, the first without a name; undefined when the environment does not have it. */
+export function speakerInstrument(entity: Speaker, env: SimulationEnvironment) {
+  return entity.instrument === undefined ? env.instruments[0] : env.instruments.find((instrument) => instrument.name === entity.instrument);
+}
+
+function checkSpeaker(entity: Speaker, env: SimulationEnvironment, report: Report): void {
+  const condition = entity.condition;
+  if (condition && entity.pitchSignal) report("warning", "unconfigured", "A pitch signal is set; the condition is not used.");
+  else if (condition) {
+    // SP-WILDCARD: as for a lamp.
+    if (isEach(condition.first)) report("error", "invalid-wildcard", "A speaker condition accepts no each signal.", condition.first);
+    if (condition.second.type === "signal" && isWildcard(condition.second.signal)) {
+      report("error", "invalid-wildcard", "Wildcards are not supported on the right-hand side of a condition.", condition.second.signal);
+    }
+    if (!condition.first) report("info", "unconfigured", "A condition without a first signal is false (assumed).");
+  } else if (!entity.pitchSignal) report("info", "unconfigured", "No condition and no pitch signal; the speaker never plays.");
+  for (const [id, slot] of [[entity.pitchSignal, "pitch"], [entity.volumeSignal, "volume"]] as const) {
+    if (isWildcard(id)) report("error", "invalid-wildcard", `The ${slot} signal of a speaker cannot be a wildcard.`, id);
+  }
+  // SP-PITCH-NOTES: which note a value picks is game data.
+  if (entity.pitchSignal && !speakerInstrument(entity, env)) {
+    report("warning", "missing-instruments", `The notes of ${entity.instrument === undefined ? "the first instrument" : `the instrument "${entity.instrument}"`} are not known; the pitch signal picks nothing.`);
+  }
+}
+
 export function validateEntity(entity: Entity, env: SimulationEnvironment): SimulationNote[] {
   const notes: SimulationNote[] = [];
   const report: Report = (severity, code, message, signal) => {
@@ -124,6 +149,11 @@ export function validateEntity(entity: Entity, env: SimulationEnvironment): Simu
       break;
     case "lamp":
       checkLamp(entity, report);
+      break;
+    case "pole":
+      break;
+    case "speaker":
+      checkSpeaker(entity, env, report);
       break;
   }
   return notes;

@@ -144,8 +144,8 @@ export function wires(page: Page): Locator {
 }
 
 /**
- * The key (`data-wire`) of a wire given as in the source, for example `wireKeyOf(page, "red", "source.out", "gate.in")`.
- * The order of the two ends does not matter.
+ * The key (`data-wire`) of a wire given as in the source, for example `wireKeyOf(page, "red", "source.out", "gate.in")`; the
+ * bare name of a pole is its one connection point. The order of the two ends does not matter.
  */
 export async function wireKeyOf(page: Page, color: "red" | "green", a: string, b: string): Promise<string> {
   return page.evaluate(
@@ -153,7 +153,7 @@ export async function wireKeyOf(page: Page, color: "red" | "green", a: string, b
       const ids = new Map(window.faceSession!.getState().circuit.entities.map((entity) => [entity.name, entity.id]));
       const terminals = ends.map((end) => {
         const [name = "", side] = end.split(".");
-        return `${ids.get(name) ?? name}.${side}`;
+        return `${ids.get(name) ?? name}.${side ?? "io"}`;
       });
       return [wireColor, ...terminals.sort()].join("|");
     },

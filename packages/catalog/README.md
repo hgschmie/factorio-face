@@ -14,10 +14,15 @@ every prototype that can be a circuit signal, with English name, order, group/su
 make catalog                                        # runs the game 25 times headless (under a minute), writes JSON, icons, manifest
 node tools/catalog/generate.mjs --reuse-dumps       # rebuild from the dumps in .runtime/factorio-dump without starting the game
 node tools/catalog/generate.mjs --reuse-dumps --check   # exit 1 if the committed JSON is out of date
+node tools/catalog/generate.mjs --from-dumps --no-icons # never starts the game: fails when the dumps are missing or of another version
 node tools/catalog/compare-icons.mjs                # compare rendered icons with a game icon dump, if one is present
 ```
 
-Options: `--accept-version`, `--reuse-dumps`, `--no-icons`, `--no-sandbox`, `--check`. Environment: `FACTORIO_BIN`, `FACTORIO_DATA`.
+Options: `--accept-version`, `--reuse-dumps`, `--from-dumps`, `--no-icons`, `--no-sandbox`, `--check`. Environment: `FACTORIO_BIN`, `FACTORIO_DATA`.
+
+`--reuse-dumps` starts the game after all when a dump is missing or stale; `--from-dumps` is the way to rebuild where the game cannot run
+(an agent session, CI): it reads the dumps and the game's data files (`info.json`, the locale files for the speaker) and nothing else.
+With `--no-icons` it leaves `generated/icons` as it is.
 
 The generator is pinned to 2.1.24. It reads the `info.json` of all five modules and the binary's `--version`; any other version stops it
 with a clear message unless `--accept-version` is given, in which case it writes `data/catalog-<version>.json` (then update the import in
@@ -137,12 +142,21 @@ before name). Groups and subgroups without signals (`tiles`, `effects` for the d
 
 `data/catalog-2.1.24.json` (480 kB): `schema`, `game`, `provenance` (generator, date, command templates, module sets), `modules`
 (dependencies, feature flags), `constants` (default item weight, rocket lift weight, rocket silos), `groups`, `subgroups`, `qualities`
-and `signals` per kind, one record per line, sorted by name. Defaults are omitted: false flags, `visibility: "normal"`, the prototype
+`speakers` and `signals` per kind, one record per line, sorted by name. Defaults are omitted: false flags, `visibility: "normal"`, the prototype
 type when it equals the kind, and `icon` when it equals `<kind>/<name>` (`group/<name>` for groups). `createCatalog` restores them.
 
 Per signal: `name`, `displayName`, `order`, `subgroup`, `prototype`, `hidden`, `parameter`, `special`, `wildcard`, `visibility`,
 `hideFromSignalGui`, `placedBy`, `itemAlias`, `stackSize` and `weight` (items), `level`, `color`, `next` (qualities), `icon`, `modules`,
 `removedBy`, `variants`. Rocket capacity for the selector combinator is `constants.rocketLiftWeight / weight` (1,000,000 / weight).
+
+Per speaker prototype (the game has one, `programmable-speaker`): `maximumPolyphony` and `instruments`, one per line and in the
+prototype's order, each with `name`, `displayName` and `notes` (names in order); `noteNames` has the display names that differ from the
+name. The order is data: a blueprint names a sound by position (`instrument_id`, `note_id`, from 0), and "signal value is pitch" picks the
+note at position value - 1. Instruments and notes come from `data.raw["programmable-speaker"]` of the dump. Their display names are not
+prototype names, so `--dump-prototype-locale` does not have them: the generator reads the sections `programmable-speaker-instrument` and
+`programmable-speaker-note` from the modules' own `locale/en/*.cfg` (`tools/catalog/lib/locale.mjs`), core first and then the enabled
+modules in order. Like every record a speaker carries `modules` and, where a module set differs, `variants`; in 2.1.24 it is the same in
+all eight sets.
 
 ## API
 
@@ -160,10 +174,12 @@ enableModule(catalog.modules, enabled, "space-age");         // adds hard depend
 dependentModules(catalog.modules, enabled, "recycler");      // ["quality", "space-age"]
 disableModule(catalog.modules, enabled, "recycler");         // removes the module and its dependents
 iconPath(signal, iconRoot);                                  // "<iconRoot>/item/iron-plate.png"
+speakerInstruments(catalog, enabled);                        // SpeakerInstrumentInfo[]: instruments with notes, names and display names
+speakerInstrumentNames(catalog, enabled);                    // the names only: what the language and the simulation environment take
 ```
 
 Types: `Catalog`, `CatalogSignal`, `CatalogGroup`, `CatalogSubgroup`, `ModuleInfo`, `QualityInfo`, `CatalogData` (the JSON shape),
-`SignalVisibility`, `ModuleResolution`, `PickerGroup`. Every entry has `origin: "standard" | "custom"`; only `"standard"` is generated.
+`SignalVisibility`, `ModuleResolution`, `PickerGroup`, `SpeakerInfo`, `SpeakerInstrumentInfo`, `SpeakerNote`. Every entry has `origin: "standard" | "custom"`; only `"standard"` is generated.
 Custom signals and groups are out of scope here; `createCatalog` and the functions do not assume the standard module names.
 
 ## Counts (Factorio 2.1.24)

@@ -1,6 +1,6 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import { canRotate, facingOf, tileCenter, tileSize, type Circuit, type Direction, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { canRotate, facingOf, TERMINAL_SIDES, tileCenter, tileSize, type TerminalSide, type Circuit, type Direction, type EntityId, type EntityKind, type Point, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
 import type { RotationTurn } from "../entities/facing.ts";
 import { KIND_INFO } from "../entities/kindInfo.ts";
@@ -110,7 +110,7 @@ function pinAt(target: Element): { readonly terminal: TerminalRef; readonly colo
   const side = pin?.getAttribute("data-terminal");
   const color = pin?.getAttribute("data-wire-color");
   const entity = target.closest("[data-entity-id]")?.getAttribute("data-entity-id");
-  return entity && (side === "in" || side === "out") && (color === "red" || color === "green") ? { terminal: { entity, side }, color } : null;
+  return entity && side && (TERMINAL_SIDES as readonly string[]).includes(side) && (color === "red" || color === "green") ? { terminal: { entity, side: side as TerminalSide }, color } : null;
 }
 
 function entityIdAt(target: Element): EntityId | null {
@@ -130,7 +130,7 @@ function hintFor(tool: Tool, pending: TerminalRef | null, editable: boolean, til
   if (!editable) return "Fix the source to edit the circuit. Drag to pan, scroll to zoom.";
   if (tool.type === "place") {
     // What R does with a place tool is said with the direction it has set; a lamp does not turn.
-    const what = `${KIND_INFO[tool.kind].label.toLowerCase()}${canRotate(tool.kind) ? ` facing ${placeFacing(tool)} (R turns it)` : ""}`;
+    const what = `${KIND_INFO[tool.kind].label.toLowerCase()}${canRotate(tool) ? ` facing ${placeFacing(tool)} (R turns it)` : ""}`;
     return tiles ? `Click a free tile (or press Enter on the board) to place a ${what}. Esc cancels.` : `Click the canvas (or press Enter on it) to place a ${what}. Esc cancels.`;
   }
   if (tool.type === "wire" && pending) return `Click a second ${tool.color} pin to connect. An existing ${tool.color} wire between the two is removed. Esc cancels.`;
@@ -281,14 +281,14 @@ export function Canvas(props: CanvasProps) {
   useEffect(() => {
     if (placingKind) setPointerWorld(pointerRef.current && svgRef.current ? worldPoint(pointerRef.current) : null);
   }, [placingKind]);
-  const ghostOrigin = placingKind && pointerWorld ? footprintOriginAt(pointerWorld, placingKind, facing) : null;
+  const ghostOrigin = placingKind && pointerWorld ? footprintOriginAt(pointerWorld, { kind: placingKind }, facing) : null;
   const [ghostX, ghostY] = [ghostOrigin?.x, ghostOrigin?.y];
   const ghost = useMemo(() => {
     if (!placingKind || ghostX === undefined || ghostY === undefined) return null;
-    const size = tileSize(placingKind, facing);
+    const size = tileSize({ kind: placingKind }, facing);
     const [x, y, width, height] = [ghostX * TILE, ghostY * TILE, size.width * TILE, size.height * TILE];
-    const arrow = canRotate(placingKind) ? arrowPath(x + width / 2, y + height / 2, DIRECTION_VECTOR[facing], 2) : undefined;
-    return { x, y, width, height, arrow, free: canStandAt(circuit.entities, placingKind, { x: ghostX, y: ghostY }, facing) };
+    const arrow = canRotate({ kind: placingKind }) ? arrowPath(x + width / 2, y + height / 2, DIRECTION_VECTOR[facing], 2) : undefined;
+    return { x, y, width, height, arrow, free: canStandAt(circuit.entities, { kind: placingKind }, { x: ghostX, y: ghostY }, facing) };
   }, [placingKind, facing, ghostX, ghostY, circuit.entities]);
 
   const localPoint = (event: { readonly clientX: number; readonly clientY: number }): Point => {
@@ -332,7 +332,7 @@ export function Canvas(props: CanvasProps) {
     }
     if (tool.type === "place") {
       if (!editable) return;
-      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, facing, footprintOriginAt(worldPoint(event), tool.kind, facing)), facing);
+      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool, facing, footprintOriginAt(worldPoint(event), tool, facing)), facing);
       else props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)), facing);
       return;
     }
@@ -419,7 +419,7 @@ export function Canvas(props: CanvasProps) {
         props.onSetTiles(
           positions.flatMap(({ id, position }) => {
             const entity = entityById.get(id);
-            return entity ? [{ id, tile: tileCenter(entity.kind, facingOf(entity), { x: Math.round(position.x / TILE), y: Math.round(position.y / TILE) }) }] : [];
+            return entity ? [{ id, tile: tileCenter(entity, facingOf(entity), { x: Math.round(position.x / TILE), y: Math.round(position.y / TILE) }) }] : [];
           }),
         );
       } else if (gesture.collapseTo) {
@@ -470,8 +470,8 @@ export function Canvas(props: CanvasProps) {
       event.preventDefault();
       const middle = screenToWorld(cameraRef.current, { x: size.width / 2, y: size.height / 2 });
       if (!capabilities.tiles) return props.onPlaceEntity(tool.kind, placementPosition(middle), facing);
-      const origin = freeOriginNear(circuit.entities, tool.kind, footprintOriginAt(middle, tool.kind, facing), facing);
-      props.onPlaceEntityOnTile(tool.kind, tileCenter(tool.kind, facing, origin), facing);
+      const origin = freeOriginNear(circuit.entities, tool, footprintOriginAt(middle, tool, facing), facing);
+      props.onPlaceEntityOnTile(tool.kind, tileCenter(tool, facing, origin), facing);
     } else if (event.key.toLowerCase() === "a" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       onSelect(circuit.entities.map((entity) => entity.id));
@@ -503,7 +503,7 @@ export function Canvas(props: CanvasProps) {
     props.onRotate?.(turn);
   };
   // A lamp does not rotate; with nothing else selected the two items are off. Only looked at while the menu is open.
-  const canTurn = menu !== null && circuit.entities.some((entity) => selectionSet.has(entity.id) && canRotate(entity.kind));
+  const canTurn = menu !== null && circuit.entities.some((entity) => selectionSet.has(entity.id) && canRotate(entity));
   const noRotation = !editable || !capabilities.rotate || !props.onRotate || !canTurn;
   const rotateItems: ContextMenuItem[] = [
     { id: "rotate", label: "Rotate clockwise", icon: "rotateRight", shortcut: shortcutLabel("edit.rotate"), disabled: noRotation, separatorBefore: true, onSelect: rotate("clockwise") },

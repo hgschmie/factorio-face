@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import {
-  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, TERMINALS, signal, wildcardSignal, wireKey,
+  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, SPEAKER_PLAYBACK_MODES, TERMINALS, prototypesOf, signal, wildcardSignal,
+  wireKey,
   type Circuit, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityKind, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type Wire,
 } from "@face/model";
 import { analyze, type ParseResult } from "../src/index.ts";
@@ -185,6 +186,28 @@ export class Generator {
           ...(optional().s ? { blueSignal: this.signal() } : {}),
           ...(optional().s ? { rgbSignal: this.signal() } : {}),
           ...(this.chance(0.3) ? { color: { r: this.int(0, 255), g: this.int(0, 255), b: this.int(0, 255) } } : {}),
+        };
+      }
+      case "pole":
+        return { ...base, kind, prototype: this.pick(prototypesOf("pole")) };
+      case "speaker": {
+        const pitch = this.chance(0.3);
+        const condition = { first: this.pick([this.signal(), wildcardSignal("anything"), wildcardSignal("everything")]), comparator: this.pick(COMPARATORS), second: this.chance() ? { type: "constant" as const, value: this.int32() } : { type: "signal" as const, signal: this.signal() } };
+        return {
+          ...base,
+          kind,
+          ...(pitch ? { pitchSignal: this.signal() } : this.chance(0.8) ? { condition } : {}),
+          ...(this.chance() ? { instrument: this.pick(["piano", "drum-kit", "odd name", "wire", "2x"]) } : {}),
+          ...(this.chance() ? { note: this.pick(["F#3", "C4", "alarm-1", "gui-click-2", "true", "A b"]) } : {}),
+          volume: this.pick([100, 100, 0, 12.5, 80]),
+          ...(this.chance(0.3) ? { volumeSignal: this.signal() } : {}),
+          playbackMode: this.pick(SPEAKER_PLAYBACK_MODES),
+          allowPolyphony: this.chance(),
+          stopPlayingSounds: this.chance(0.3),
+          showAlert: this.chance(),
+          showOnMap: this.chance(0.7),
+          ...(this.chance(0.3) ? { alertIcon: this.signal() } : {}),
+          alertMessage: this.pick(["", "", "Out of ore", 'with "quotes"\nand a line']),
         };
       }
     }

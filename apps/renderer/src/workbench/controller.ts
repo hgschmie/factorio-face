@@ -65,12 +65,12 @@ export function sameTool(a: Tool, b: Tool): boolean {
 
 /** The direction an entity placed with `tool` faces: east for a kind that cannot rotate (a lamp), whatever the tool says. */
 export function placeFacing(tool: Tool): Direction {
-  return tool.type === "place" && canRotate(tool.kind) ? (tool.facing ?? DEFAULT_FACING) : DEFAULT_FACING;
+  return tool.type === "place" && canRotate(tool) ? (tool.facing ?? DEFAULT_FACING) : DEFAULT_FACING;
 }
 
 /** A place tool a quarter turn on. Undefined for a tool that places nothing or something that cannot rotate (a lamp). */
 export function turnedTool(tool: Tool, turn: RotationTurn): Tool | undefined {
-  return tool.type === "place" && canRotate(tool.kind) ? { ...tool, facing: rotated(placeFacing(tool), turn) } : undefined;
+  return tool.type === "place" && canRotate(tool) ? { ...tool, facing: rotated(placeFacing(tool), turn) } : undefined;
 }
 
 export type DiagnosticSeverity = "error" | "warning" | "info";

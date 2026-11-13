@@ -13,6 +13,8 @@ export const KINDS = [
   { kind: "quality", section: "quality", locale: "quality", prototype: "quality" },
 ];
 export const LOCALE_SECTIONS = [...KINDS.map((k) => k.locale), "item-group"];
+/** Names the game shows for the instruments and notes of a speaker; they are not prototypes, so the generator reads them from the modules' locale files. */
+export const SPEAKER_LOCALE_SECTIONS = ["programmable-speaker-instrument", "programmable-speaker-note"];
 
 const WILDCARDS = { "signal-everything": "everything", "signal-anything": "anything", "signal-each": "each" };
 const UNKNOWN_ICON = [{ icon: "__core__/graphics/icons/unknown.png", size: 64 }];
@@ -36,6 +38,23 @@ export function visibilityOf(signal) {
 function hexColor(color) {
   const [r, g, b] = normaliseColor(color);
   return `#${[r, g, b].map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * The speaker prototypes of one set with their instruments and notes in the prototype's order: a blueprint names a sound by
+ * its position in these lists (`instrument_id`, `note_id`, from 0). `noteNames` has the display names that differ from the name.
+ */
+function speakersOfSet({ raw, locale }) {
+  const instrumentNames = locale["programmable-speaker-instrument"] ?? {};
+  const noteNames = locale["programmable-speaker-note"] ?? {};
+  return new Map(Object.values(raw["programmable-speaker"] ?? {}).map((proto) => {
+    const instruments = asArray(proto.instruments).map((instrument) => {
+      const notes = asArray(instrument.notes).map((note) => note.name);
+      const named = Object.fromEntries(notes.filter((note) => noteNames[note] !== undefined && noteNames[note] !== note).map((note) => [note, noteNames[note]]));
+      return { name: instrument.name, displayName: instrumentNames[instrument.name] ?? instrument.name, notes, ...(Object.keys(named).length ? { noteNames: named } : {}) };
+    });
+    return [proto.name, { name: proto.name, maximumPolyphony: proto.maximum_polyphony, instruments }];
+  }));
 }
 
 /** The records of one module set: signals per kind keyed by name, plus groups, subgroups, constants and rocket silos. */
@@ -95,7 +114,7 @@ function recordsOfSet(set, fallbackNames) {
   const constants = { name: "constants", defaultItemWeight: utility.default_item_weight, rocketLiftWeight: utility.default_rocket_lift_weight };
   if (runtime.utility_constants.default_item_weight !== utility.default_item_weight) throw new Error(`default_item_weight differs between data.raw and the runtime in ${set.id}`);
   const silos = new Map(asArray(runtime.rocket_silos).map((silo) => [silo.name, { name: silo.name, liftWeight: silo.lift_weight, rocketPartsRequired: silo.rocket_parts_required }]));
-  return { signals, groups, subgroups, constants: new Map([["constants", constants]]), silos };
+  return { signals, groups, subgroups, constants: new Map([["constants", constants]]), silos, speakers: speakersOfSet(set) };
 }
 
 /** Module helpers bound to the dependency graph read from the info.json files. */
@@ -203,6 +222,7 @@ export function buildCatalog({ sets, modules, game }) {
   const subgroups = collapsed("subgroups", "subgroup");
   const [constants] = collapsed("constants", "constants");
   const rocketSilos = collapsed("silos", "rocket silo");
+  const speakers = collapsed("speakers", "speaker");
 
   // Icon ids: identical layer stacks share one id. It is owned by the signal a user is most likely to associate with the
   // picture: visible before hidden, then kind order (an entity or recipe reuses the icon of its item), then name.
@@ -248,6 +268,7 @@ export function buildCatalog({ sets, modules, game }) {
     groups,
     subgroups,
     qualities,
+    speakers,
     signals,
   };
   delete catalog.constants.modules;
