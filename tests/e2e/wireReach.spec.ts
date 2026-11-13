@@ -51,12 +51,12 @@ test("a wire between entities further apart than the reach is flagged in the pro
   const red = await wireKeyOf(page, "red", "source.out", "light.in");
   const green = await wireKeyOf(page, "green", "source.out", "loose.in");
 
-  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in': the entities are 10.0 tiles apart; the wire reach of the project is 9");
+  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in': the entities are 10 tiles apart; the wire reach of the project is 9");
   await expect(page.locator(".statusbar")).toContainText("1 warning");
   await expect(flagged(page)).toHaveCount(1);
   await expect(wire(page, red)).toHaveAttribute("data-too-long", "true");
   await expect(wire(page, red).locator("path.wire-flag")).toHaveCount(1);
-  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10.0 tiles apart, over the wire reach of 9)");
+  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10 tiles apart, over the wire reach of 9)");
   // The entity without a tile is shown further away still, but its place is only derived: not flagged, not measured.
   await expect(card(page, "loose")).toHaveAttribute("data-placed", "false");
   await expect(wire(page, green)).not.toHaveAttribute("data-too-long");
@@ -68,7 +68,7 @@ test("a wire between entities further apart than the reach is flagged in the pro
   await dragOnBoard(page, "light", { x: -1, y: 0 }, async () => {
     await expect(card(page, "light")).toHaveAttribute("data-tile-x", "10");
     await expect(flagged(page)).toHaveCount(0);
-    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (9.0 tiles apart)");
+    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (9 tiles apart)");
     await expect(problems(page)).toHaveCount(1);
   });
   await expect(problems(page)).toHaveCount(0);
@@ -83,7 +83,7 @@ test("a wire between entities further apart than the reach is flagged in the pro
     await expect(problems(page)).toHaveCount(0);
   });
   expect((await committedTiles(page)).light).toEqual([13.5, 0.5]);
-  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in': the entities are 12.0 tiles apart; the wire reach of the project is 9");
+  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in': the entities are 12 tiles apart; the wire reach of the project is 9");
   await expect(flagged(page)).toHaveCount(1);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(flagged(page)).toHaveCount(0);
@@ -114,7 +114,7 @@ test("the inspector of a selected wire shows how far apart its entities are agai
   await selectWire(page, await wireKeyOf(page, "red", "source.out", "light.in"));
   await expect(distance).toHaveAttribute("data-too-long", "true");
   await expect(distance.locator(".section-label")).toHaveText("DistanceReach 9");
-  await expect(distance.locator("p").first()).toHaveText("The two entities are 10.0 tiles apart");
+  await expect(distance.locator("p").first()).toHaveText("The two entities are 10 tiles apart");
   await expect(distance.getByRole("status")).toContainText("Further apart than the wire reach.");
   // A selected wire that is flagged keeps both marks: the outline of the selection and the dashes.
   await expect(page.locator("g.wire.selected.too-long path.wire-flag")).toHaveCount(1);
@@ -150,12 +150,12 @@ test("the reach 0 means unlimited: nothing is flagged, and the inspector says so
   await expect(problems(page)).toHaveCount(0);
   await page.getByRole("button", { name: "Fit", exact: true }).click();
   const red = await wireKeyOf(page, "red", "source.out", "light.in");
-  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (12.0 tiles apart)");
+  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (12 tiles apart)");
   await selectWire(page, red);
   const distance = inspector(page).locator(".wire-distance");
   await expect(distance).not.toHaveAttribute("data-too-long");
   await expect(distance.locator(".section-label")).toHaveText("DistanceReach unlimited");
-  await expect(distance.locator("p").first()).toHaveText("The two entities are 12.0 tiles apart");
+  await expect(distance.locator("p").first()).toHaveText("The two entities are 12 tiles apart");
   await expect(distance.getByRole("status")).toHaveCount(0);
 });
 
@@ -210,7 +210,7 @@ test("the reach is set in the project settings, decides what is flagged, and is 
     await reachField(page).press("Tab");
     await expect(reachField(page)).toHaveValue("9.5");
     await expect(flagged(page)).toHaveCount(1);
-    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10.0 tiles apart, over the wire reach of 9.5)");
+    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10 tiles apart, over the wire reach of 9.5)");
 
     // Back to the default: as saved.
     await reset.click();

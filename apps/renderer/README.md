@@ -448,7 +448,7 @@ the document: not undoable, and a change makes the project dirty.
   (`tests/fixtures/game/F-24-wire-reach.json`). A wire is too long when that distance is greater than the reach
   (`exceedsWireReach`); exactly the reach is fine. A wire with an end that has no `tile` has no distance, and a wire of an
   entity to itself spans 0, so neither is ever flagged. `formatWireDistance(distance, reach)` is the distance for display: one
-  decimal, more where that would hide on which side of the reach it is ("9.01" next to a reach of 9); `formatWireReach(reach)`
+  decimal, more where that would hide on which side of the reach it is ("9.01" next to a reach of 9), none for a whole number of tiles ("9", with `tileUnit` for "1 tile"); `formatWireReach(reach)`
   is the reach, "unlimited" for 0.
 - Flagging never blocks: a move, a turn or a new entity that makes a wire too long is carried out, and the simulation does not
   know the reach.
@@ -460,7 +460,7 @@ the document: not undoable, and a change makes the project dirty.
   with `data-too-long="true"` and an extra `path.wire-flag` between casing and core, dashes in `--status-warning` (yellow)
   that show on both sides of the core, which keeps the color of the wire. That is neither the solid orange outline of a
   selected wire nor a red wire, and a selected wire that is too long has both. The `<title>` of a wire with a distance ends in
-  `(4.0 tiles apart)` or `(12.4 tiles apart, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
+  `(4 tiles apart)` or `(12.4 tiles apart, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
   follow the drag: a wire that would become too long at the previewed place is flagged before the drop, one that would become
   fine is not. An entity without a tile that is dragged out and back to where it stood shows its wires measured although the
   drop writes nothing. The edit canvas shows every wire as before, without a distance.

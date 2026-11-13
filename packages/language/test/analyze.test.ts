@@ -501,14 +501,14 @@ describe("diagnostics", () => {
     expectCodes(wired("tile (11.5, 0.5)"), ["wire-too-long"]);
     expect(report(wired("tile (11.5, 0.5)"))).toEqual([["wire-too-long", "wire red c.out <-> l.in"]]);
     const messages = (source: string, wireReach?: number) => analyze(source, undefined, { wireReach }).diagnostics.map((d) => d.message);
-    expect(messages(wired("tile (11.5, 0.5)"))).toEqual(["Wire from 'c.out' to 'l.in': the entities are 10.0 tiles apart; the wire reach of the project is 9"]);
+    expect(messages(wired("tile (11.5, 0.5)"))).toEqual(["Wire from 'c.out' to 'l.in': the entities are 10 tiles apart; the wire reach of the project is 9"]);
     expect(messages(wired("tile (4.5, 13.5)", "wire green l.in <-> c.out"))).toEqual(["Wire from 'l.in' to 'c.out': the entities are 12.4 tiles apart; the wire reach of the project is 9"]);
     // Diagonally the corners count: 6 and 6 empty tiles are 8.49 apart, 7 and 7 are 9.90.
     expectCodes(wired("tile (7.5, 7.5)"), []);
     expectCodes(wired("tile (-7.5, 8.5)"), ["wire-too-long"]);
     // The reach of the project decides; entities side by side are 0 apart.
     expect(messages(wired("tile (11.5, 0.5)"), 10)).toEqual([]);
-    expect(messages(wired("tile (10.5, 0.5)"), 8.5)).toEqual(["Wire from 'c.out' to 'l.in': the entities are 9.0 tiles apart; the wire reach of the project is 8.5"]);
+    expect(messages(wired("tile (10.5, 0.5)"), 8.5)).toEqual(["Wire from 'c.out' to 'l.in': the entities are 9 tiles apart; the wire reach of the project is 8.5"]);
     expect(messages(wired("tile (4.5, 0.5)"), 2.5)).toHaveLength(1);
     expect(messages(wired("tile (1.5, 1.5)"), 0.5)).toEqual([]);
     expect(messages(wired("tile (64.5, 0.5)"), 64)).toEqual([]);
@@ -521,7 +521,7 @@ describe("diagnostics", () => {
     for (const facing of ["east", "west"]) {
       expectCodes(gate(`tile (11, 0.5) facing ${facing}`), []);
       expectCodes(gate(`tile (-10, 0.5) facing ${facing}`, "out"), []);
-      expect(messages(gate(`tile (12, 0.5) facing ${facing}`))).toEqual(["Wire from 'c.out' to 'd.in': the entities are 10.0 tiles apart; the wire reach of the project is 9"]);
+      expect(messages(gate(`tile (12, 0.5) facing ${facing}`))).toEqual(["Wire from 'c.out' to 'd.in': the entities are 10 tiles apart; the wire reach of the project is 9"]);
       expectCodes(gate(`tile (-11, 0.5) facing ${facing}`, "out"), ["wire-too-long"]);
     }
     for (const facing of ["north", "south"]) {

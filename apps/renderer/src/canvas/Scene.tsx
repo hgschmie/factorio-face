@@ -2,7 +2,7 @@
 // board the footprints below and the wires above them, as the game draws them. Memoized as a whole, so camera changes that
 // stay inside the current culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved
 // entities and wires and a selection only the entities and wires whose state changed. Hovering a wire is CSS only.
-import { exceedsWireReach, formatWireDistance, terminalKey, wireKey, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { exceedsWireReach, formatWireDistance, terminalKey, tileUnit, wireKey, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
@@ -80,7 +80,7 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layou
     // Only the board knows tiles; the edit canvas shows every wire as it always did.
     const distance = layout.mode === "blueprint" ? layout.wireDistance(a, b) : undefined;
     const tooLong = exceedsWireReach(distance, wireReach);
-    const measure = distance === undefined ? "" : ` (${formatWireDistance(distance, wireReach)} tiles apart${tooLong ? `, over the wire reach of ${wireReach}` : ""})`;
+    const measure = distance === undefined ? "" : ` (${formatWireDistance(distance, wireReach)} ${tileUnit(distance)} apart${tooLong ? `, over the wire reach of ${wireReach}` : ""})`;
     routed.push({ key: wireKey(wire), wire, ...layout.route(wire, a, b), title: `${wire.color}: ${a.name}.${wire.a.side} <-> ${b.name}.${wire.b.side}${measure}`, tooLong });
   }
   return routed;

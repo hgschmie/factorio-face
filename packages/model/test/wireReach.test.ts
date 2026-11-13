@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  clampWireReach, DEFAULT_WIRE_REACH, exceedsWireReach, footprintBox, footprintDistance, formatWireDistance, formatWireReach, isWireReach, tileCenter, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE, wireDistance,
+  clampWireReach, DEFAULT_WIRE_REACH, exceedsWireReach, footprintBox, footprintDistance, formatWireDistance, formatWireReach, isWireReach, tileCenter, tileUnit, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE, wireDistance,
   type Direction, type Entity, type EntityKind, type Point, type TileBox,
 } from "../src/index.ts";
 
@@ -112,11 +112,17 @@ describe("wire reach", () => {
     expect(wireDistance(unplaced, unplaced)).toBeUndefined();
   });
 
-  it("shows a distance with one decimal, and with more where that would hide on which side of the reach it is", () => {
-    expect(formatWireDistance(0, 9)).toBe("0.0");
-    expect(formatWireDistance(4, 9)).toBe("4.0");
+  it("shows a whole distance without a decimal, any other with one, and with more where that would hide on which side of the reach it is", () => {
+    expect(formatWireDistance(0, 9)).toBe("0");
+    expect(formatWireDistance(1, 9)).toBe("1");
+    expect(formatWireDistance(4, 9)).toBe("4");
     expect(formatWireDistance(12.3693, 9)).toBe("12.4");
-    expect(formatWireDistance(9, 9)).toBe("9.0");
+    expect(formatWireDistance(9, 9)).toBe("9");
+    expect(formatWireDistance(Math.hypot(3, 4), 9)).toBe("5");
+    expect(formatWireDistance(12, UNLIMITED_WIRE_REACH)).toBe("12");
+    // Not exactly eight: the decimal stays.
+    expect(formatWireDistance(8.02, 9)).toBe("8.0");
+    expect([0, 1, 1.04, 2, 9].map(tileUnit)).toEqual(["tiles", "tile", "tiles", "tiles", "tiles"]);
     expect(formatWireDistance(Math.hypot(9, 0.5), 9)).toBe("9.01");
     expect(formatWireDistance(9.0004, 9)).toBe("9.000");
     expect(formatWireDistance(8.96, 9)).toBe("9.0");

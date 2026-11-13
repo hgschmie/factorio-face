@@ -3,7 +3,7 @@
 // length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
 import {
-  canRotate, DIRECTIONS, exceedsWireReach, facingOf, formatWireDistance, formatWireReach, wireDistance, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor,
+  canRotate, DIRECTIONS, exceedsWireReach, facingOf, formatWireDistance, formatWireReach, tileUnit, wireDistance, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor,
 } from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
@@ -277,7 +277,7 @@ function WireInspector({ wire, names, distance, wireReach, editable, onSelect, o
             <span>Reach {formatWireReach(wireReach)}</span>
           </div>
           <p>
-            The two entities are <b>{formatWireDistance(distance, wireReach)}</b> tiles apart
+            The two entities are <b>{formatWireDistance(distance, wireReach)}</b> {tileUnit(distance)} apart
           </p>
           {tooLong && (
             <p className="wire-distance-warning" role="status">

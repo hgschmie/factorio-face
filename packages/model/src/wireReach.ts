@@ -53,12 +53,19 @@ export function exceedsWireReach(distance: number | undefined, reach: number): b
 }
 
 /**
- * A distance for display: one decimal, and more (up to three) where rounding would put it on the other side of the reach, so
- * that 9.014 tiles are not shown as "9.0" next to a reach of 9. An unlimited reach has no sides: one decimal.
+ * A distance for display. A whole number of tiles, as every straight run is, has no decimal: "9". Everything else has one, and
+ * more (up to three) where rounding would put it on the other side of the reach, so that 9.014 tiles are not shown as "9.0" next
+ * to a reach of 9. So "9" is exactly nine tiles and "9.0" is not. An unlimited reach has no sides: one decimal.
  */
 export function formatWireDistance(distance: number, reach: number): string {
+  if (Number.isInteger(distance)) return String(distance);
   const sameSide = (text: string): boolean => exceedsWireReach(Number(text), reach) === exceedsWireReach(distance, reach);
   return [1, 2].map((digits) => distance.toFixed(digits)).find(sameSide) ?? distance.toFixed(3);
+}
+
+/** The word behind a distance: "1 tile apart", "9 tiles apart", "1.0 tiles apart". */
+export function tileUnit(distance: number): string {
+  return distance === 1 ? "tile" : "tiles";
 }
 
 /** A reach for display: the number, or "unlimited". */

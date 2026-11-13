@@ -2,7 +2,7 @@
 
 import {
   BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, exceedsWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isTileCenter, normalizeWire,
-  signalKey, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireDistance, wireKey,
+  signalKey, tileCenter, tileOrigin, tileSize, tileUnit, wildcardOf, wildcardSignal, WILDCARDS, wireDistance, wireKey,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
   type Entity, type EntityId, type EntityKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type RgbColor, type SelectorMode,
   type SelectorOperation, type SignalId, type TerminalSide, type Wildcard, type Wire, type WireColor,
@@ -850,7 +850,7 @@ function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readon
     const [from, to] = [byId.get(a.entity)!, byId.get(b.entity)!];
     const distance = wireDistance(from, to);
     if (distance === undefined || !exceedsWireReach(distance, reach)) continue;
-    analyzer.report(range, "wire-too-long", `Wire from '${from.name}.${a.side}' to '${to.name}.${b.side}': the entities are ${formatWireDistance(distance, reach)} tiles apart; the wire reach of the project is ${reach}`);
+    analyzer.report(range, "wire-too-long", `Wire from '${from.name}.${a.side}' to '${to.name}.${b.side}': the entities are ${formatWireDistance(distance, reach)} ${tileUnit(distance)} apart; the wire reach of the project is ${reach}`);
   }
 }
 

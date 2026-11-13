@@ -32,7 +32,7 @@ describe("wire reach", () => {
   it("is 9 tiles for a project that does not say, and warns about wires between placed entities that are further apart", () => {
     const { session } = createSession(SPREAD);
     expect(session.state.project.wireReach).toBe(DEFAULT_WIRE_REACH);
-    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in': the entities are 11.0 tiles apart; the wire reach of the project is 9"]);
+    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in': the entities are 11 tiles apart; the wire reach of the project is 9"]);
     expect(session.state.diagnostics.find((diagnostic) => diagnostic.code === "wire-too-long")).toMatchObject({ severity: "warning", line: 16 });
     // A warning: the circuit is there, can be edited and simulated.
     expect(session.state).toMatchObject({ editable: true });
@@ -53,8 +53,8 @@ describe("wire reach", () => {
     expect(tooLong(session)).toEqual([]);
     session.commands.setWireReach(2.5);
     expect(tooLong(session)).toEqual([
-      "Wire from 'source.out' to 'near.in': the entities are 3.0 tiles apart; the wire reach of the project is 2.5",
-      "Wire from 'source.out' to 'far.in': the entities are 11.0 tiles apart; the wire reach of the project is 2.5",
+      "Wire from 'source.out' to 'near.in': the entities are 3 tiles apart; the wire reach of the project is 2.5",
+      "Wire from 'source.out' to 'far.in': the entities are 11 tiles apart; the wire reach of the project is 2.5",
     ]);
     // 0 is a reach too: unlimited, nothing is flagged.
     session.commands.setWireReach(0);
@@ -86,14 +86,14 @@ describe("wire reach", () => {
     session.commands.setTiles([{ id: idOf(session, "far"), tile: { x: 13.5, y: 0.5 } }]);
     expect(tooLong(session)).toEqual([]);
     session.commands.setTiles([{ id: idOf(session, "far"), tile: { x: 14.5, y: 0.5 } }]);
-    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in': the entities are 13.0 tiles apart; the wire reach of the project is 12"]);
+    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in': the entities are 13 tiles apart; the wire reach of the project is 12"]);
     session.commands.undo();
     session.commands.undo();
     expect(tooLong(session)).toEqual([]);
     // The move is not refused, and an entity that gets a tile gets a wire that is measured.
     session.commands.setTiles([{ id: idOf(session, "loose"), tile: { x: 0.5, y: 30.5 } }]);
     expect(session.state.circuit.entities.find((entity) => entity.name === "loose")!.placement).toEqual({ tile: { x: 0.5, y: 30.5 } });
-    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'loose.in': the entities are 29.0 tiles apart; the wire reach of the project is 12"]);
+    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'loose.in': the entities are 29 tiles apart; the wire reach of the project is 12"]);
     // While the source has errors the warning waits with everything else, and comes back with the reach that is set.
     replaceText(session, "lamp near", "lamp");
     session.commands.setWireReach(40);
