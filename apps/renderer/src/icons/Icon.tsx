@@ -52,6 +52,7 @@ const GLYPHS = {
   arrowDown: <path d="M12 4v16m-6-6 6 6 6-6" />,
   arrowLeft: <path d="M20 12H4m6-6-6 6 6 6" />,
   arrowUp: <path d="M12 20V4m-6 6 6-6 6 6" />,
+  chevron: <path d="m9 6 6 6-6 6" />,
   rotateRight: <path d="M20 11a8 8 0 1 0-2 7M20 4v7h-7" />,
   rotateLeft: <path d="M4 11a8 8 0 1 1 2 7M4 4v7h7" />,
   settings: (

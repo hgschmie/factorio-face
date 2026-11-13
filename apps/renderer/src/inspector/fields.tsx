@@ -1,7 +1,7 @@
 // Small controlled form fields used by the inspector forms.
 import { COMPARATORS, WIRE_COLORS, type Comparator, type NetworkSelection, type WireColor } from "@face/model";
 import { createContext, useContext, useId, useState, type KeyboardEvent, type ReactNode } from "react";
-import { parseInt32, type ParseResult } from "./validation.ts";
+import { parseInt32, parseNumberInRange, type ParseResult } from "./validation.ts";
 
 /**
  * Counts the times the inspector dropped the text its fields hold on their own (it does on undo and redo). A field shows its
@@ -71,11 +71,22 @@ export function IntField({ label, ariaLabel = label, value, onChange, wide }: { 
   );
 }
 
-export function TextField(props: { readonly label: string; readonly value: string; readonly placeholder?: string; readonly wide?: boolean; onChange(value: string): void }) {
+/** A number that may have decimals, from `min` to `max`: a percentage. Text outside the range is kept as typed and not written, like text that is no number. */
+export function NumberField({ label, ariaLabel = label, value, min, max, onChange, wide }: { readonly label: string; readonly ariaLabel?: string; readonly value: number; readonly min: number; readonly max: number; readonly wide?: boolean; onChange(value: number): void }) {
+  const id = useId();
+  const draft = useDraft(value, String, (text) => parseNumberInRange(text, min, max), onChange);
+  return (
+    <Field label={label} htmlFor={id} wide={wide} error={draft.error}>
+      <input id={id} type="text" inputMode="decimal" aria-label={ariaLabel} aria-invalid={draft.error !== null} data-unwritten={draft.error !== null || undefined} value={draft.text} onChange={(event) => draft.onChange(event.target.value)} onBlur={draft.onBlur} onKeyDown={draft.onKeyDown} />
+    </Field>
+  );
+}
+
+export function TextField(props: { readonly label: string; readonly ariaLabel?: string; readonly value: string; readonly placeholder?: string; readonly wide?: boolean; onChange(value: string): void }) {
   const id = useId();
   return (
     <Field label={props.label} htmlFor={id} wide={props.wide}>
-      <input id={id} type="text" aria-label={props.label} value={props.value} placeholder={props.placeholder} onChange={(event) => props.onChange(event.target.value)} />
+      <input id={id} type="text" spellCheck={false} autoComplete="off" aria-label={props.ariaLabel ?? props.label} value={props.value} placeholder={props.placeholder} onChange={(event) => props.onChange(event.target.value)} />
     </Field>
   );
 }

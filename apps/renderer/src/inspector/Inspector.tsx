@@ -2,18 +2,16 @@
 // settings form and the connections. A selected wire shows its color, its two ends and, between two entities with a tile, its
 // length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
-import {
-  canRotate, describeWireReach, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, tileUnit, wireKey, wireSpan, type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type Wire, type WireColor,
-} from "@face/model";
+import { canRotate, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, tileUnit, wireKey, wireSpan, type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type Wire, type WireColor } from "@face/model";
 import { printTerminal } from "@face/language";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
-import { KIND_INFO } from "../entities/kindInfo.ts";
+import { capitalized, entityNoun, entityTitle, KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
 import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
-import { countLabel, entityNames, selectedItems, wireEndsLabel, type EntityNames } from "../workbench/selectionText.ts";
+import { countLabel, entityNames, selectedItems, wireEndsLabel, wireReachNote, type EntityNames } from "../workbench/selectionText.ts";
 import { FieldTextEpochContext, InputWiresContext, useFieldText } from "./fields.tsx";
 import { SignalInfoContext, SignalPickerContext, type SignalDescriber, type SignalPickerRenderer } from "./SignalField.tsx";
 import { entityNameError } from "./validation.ts";
@@ -47,7 +45,7 @@ export interface InspectorProps {
   readonly describeSignal?: SignalDescriber;
   /** An edit of the selected entity that is not written to the source yet; the form shows it in place of the entity. */
   readonly draft?: InspectorDraft | null;
-  /** Slot for the settings form. Defaults to the built-in forms for the five entity kinds. */
+  /** Slot for the settings form. Defaults to the built-in forms of the entity kinds. */
   readonly renderSettings?: (entity: Entity, onChange: (next: Entity) => void) => ReactNode;
   onRename(id: EntityId, name: string): void;
   onChange(next: Entity, options?: UpdateOptions): void;
@@ -131,8 +129,10 @@ function FacingField({ entity, onFace }: { readonly entity: Entity; onFace(direc
   );
 }
 
-/** Lamps have no description in the game: theirs is a note of the project. */
-const LAMP_DESCRIPTION_NOTE = "Lamps have no description in the game. This text stays in the project.";
+/** The game has "Add description" on the combinators only: on every other entity the text is a note of the project. */
+function descriptionNote(entity: Entity): string | undefined {
+  return KIND_INFO[entity.kind].describedInGame ? undefined : `${capitalized(entityNoun(entity))} has no description in the game. This text stays in the project.`;
+}
 
 /**
  * The free text of an entity, as the game's "Add description". Return is a line break here, so the text is written when the
@@ -157,7 +157,7 @@ function DescriptionField({ entity, onCommit }: { readonly entity: Entity; onCom
         rows={1}
         spellCheck={false}
         placeholder="Add description"
-        title={entity.kind === "lamp" ? LAMP_DESCRIPTION_NOTE : undefined}
+        title={descriptionNote(entity)}
         data-unwritten={unwritten || undefined}
         value={draft ?? value}
         onChange={(event) => setDraft(event.target.value)}
@@ -194,15 +194,16 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
           const other = mineIsA ? wire.b : wire.a;
           const otherName = names.get(other.entity) ?? other.entity;
           const otherEnd = printTerminal(otherName, other.side);
-          const from = END_LABEL[mine.side];
-          const description = `${wire.color} wire from ${mine.side === "io" ? from : mine.side} to ${otherEnd}`;
+          // An entity with one connection point has nothing to tell apart: its end is the connection, not an input or an output.
+          const from = mine.side === "io" ? "connection" : `from ${mine.side}`;
+          const description = `${wire.color} wire ${mine.side === "io" ? "from the connection" : from} to ${otherEnd}`;
           return (
             <li key={wireKey(wire)} className="connection" data-connection={wireKey(wire)}>
               <span className={`wire-dot ${wire.color}`} />
               <button type="button" className="connection-target" title={`Select ${otherName}`} onClick={() => onSelect([other.entity])}>
                 <span>{otherEnd}</span>
                 <small>
-                  {wire.color}, from {mine.side === "io" ? from : mine.side}
+                  {wire.color}, {from}
                   {other.entity === entity.id ? " (feedback)" : ""}
                 </small>
               </button>
@@ -221,20 +222,24 @@ interface WireInspectorProps {
   readonly wire: Wire;
   readonly names: EntityNames;
   /** The wire against its reach; undefined for a feedback wire. Without a distance while one of the two entities has no tile. */
-  readonly span: WireSpan | undefined;
+  readonly span: (WireSpan & { readonly note: string }) | undefined;
   readonly editable: boolean;
   onSelect(ids: readonly EntityId[]): void;
   onDelete(): void;
 }
 
-/** A wire between two different entities of the circuit against the reach that applies to it in a project with the wire reach `projectReach`. */
-function spanOf(wire: Wire, circuit: Circuit, projectReach: number): WireSpan | undefined {
+/**
+ * A wire between two different entities of the circuit against the reach that applies to it in a project with the wire reach
+ * `projectReach`, and in a sentence whose reach that is.
+ */
+function spanOf(wire: Wire, circuit: Circuit, projectReach: number): (WireSpan & { readonly note: string }) | undefined {
   const a = circuit.entities.find((entity) => entity.id === wire.a.entity);
   const b = circuit.entities.find((entity) => entity.id === wire.b.entity);
-  return a && b && a !== b ? wireSpan(a, b, projectReach) : undefined;
+  if (!a || !b || a === b) return undefined;
+  const span = wireSpan(a, b, projectReach);
+  return { ...span, note: wireReachNote(a, b, span) };
 }
 
-const capitalized = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 const END_LABEL = { out: "output", in: "input", io: "connection" } as const;
 
 /** One selected wire: its color, its two ends (a click selects the entity), the distance of its entities against the wire reach and Delete. The output end comes first. */
@@ -284,10 +289,7 @@ function WireInspector({ wire, names, span, editable, onSelect, onDelete }: Wire
             The two entities are <b>{formatWireDistance(distance, span.reach)}</b> {tileUnit(distance)} apart
           </p>
           {/* Which reach applied and why: a wire spans the smaller reach of its two ends. */}
-          <p className="muted-note wire-reach-source">
-            {capitalized(describeWireReach(span))}
-            {span.of === "project" ? "." : ": a pole has its own reach, and a wire spans the smaller reach of its two ends."}
-          </p>
+          <p className="muted-note wire-reach-source">{span.note}</p>
           {tooLong && (
             <p className="wire-distance-warning" role="status">
               <b>Further apart than the wire reach.</b> Move the entities closer together or connect them through an entity in between.{" "}
@@ -327,11 +329,11 @@ function EntityInspector(props: EntityInspectorProps) {
     <>
       <header className="inspector-identity">
         <div className="inspector-icon">
-          <EntityIcon kind={entity.kind} size={40} resolveIcon={props.resolveEntityIcon} />
+          <EntityIcon entity={entity} size={40} resolveIcon={props.resolveEntityIcon} />
         </div>
         <div>
           <span className="eyebrow">{info.category}</span>
-          <h2>{info.label}</h2>
+          <h2>{entityTitle(entity)}</h2>
           <p>{info.description}</p>
         </div>
       </header>
@@ -366,7 +368,7 @@ function EntityInspector(props: EntityInspectorProps) {
           }}
         >
           <InputWiresContext value={inputWires(circuit, entity.id)}>
-            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} onChange={change} />}
+            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} resolveEntityIcon={props.resolveEntityIcon} onChange={change} />}
           </InputWiresContext>
         </div>
         <Connections entity={entity} circuit={circuit} onRemoveWire={props.onRemoveWire} onSelect={props.onSelect} />

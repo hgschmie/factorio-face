@@ -1,13 +1,16 @@
 // Reference screenshots of the workbench for visual review, written to .runtime/screenshots/.
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { card, cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, test } from "./app.ts";
+import { card, cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, showDisplay, test } from "./app.ts";
+import { selectOnBoard } from "./board.ts";
+import { openRelay } from "./fixtures.ts";
 
 test("captures the workbench in its main states", async ({ page }) => {
   // The game's icons are generated locally and git-ignored; without them the inline placeholders are shown.
   const hasCatalogIcons = existsSync(resolve(ROOT, "packages/catalog/generated/icons/item/constant-combinator.png"));
-  if (hasCatalogIcons) await expect(page.locator(".palette-item img.entity-icon")).toHaveCount(5);
-  else await expect(page.locator(".palette-item svg.entity-icon")).toHaveCount(5);
+  // The four combinators and the two entries of the group that starts open.
+  if (hasCatalogIcons) await expect(page.locator(".palette-item img.entity-icon")).toHaveCount(6);
+  else await expect(page.locator(".palette-item svg.entity-icon")).toHaveCount(6);
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-circuit.png") });
 
   const gate = await cardGrabPoint(page, "gate");
@@ -76,4 +79,75 @@ test("captures the integrated session: running simulation, diagnostics, signal p
   await expect(page.locator(".diagnostics li.severity-error")).not.toHaveCount(0);
   await page.mouse.move(10, 10);
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "integration-split-diagnostics.png") });
+});
+
+test("captures the entity selector, poles and the speaker", async ({ page, app }) => {
+  const shots = resolve(SCREENSHOT_DIR, "package-h");
+  const group = (name: string) => page.locator(".palette-group-header", { hasText: name });
+  await openRelay(page);
+  await page.getByRole("button", { name: "Fit circuit" }).click();
+
+  // The sidebar: every group closed, then every group open.
+  await group("Lights and sound").click();
+  await expect(page.locator(".palette-item.compact")).toHaveCount(0);
+  // The chevrons turn.
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: resolve(shots, "sidebar-groups-closed.png") });
+  await group("Lights and sound").click();
+  await group("Power poles").click();
+  await expect(page.locator(".palette-item.compact")).toHaveCount(6);
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(200);
+  await page.screenshot({ path: resolve(shots, "sidebar-groups-open.png") });
+  await page.locator(".palette").screenshot({ path: resolve(shots, "sidebar-groups-open-panel.png") });
+
+  // A chain through the poles on the edit canvas, with the simulation's status rows.
+  await page.screenshot({ path: resolve(shots, "edit-pole-chain.png") });
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "edit-pole-chain-canvas.png") });
+
+  // The inspectors of a pole and of the speaker.
+  await selectEntity(page, "big");
+  await page.screenshot({ path: resolve(shots, "inspector-pole.png") });
+  await selectEntity(page, "alarm");
+  await page.screenshot({ path: resolve(shots, "inspector-speaker.png") });
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await inspector.getByRole("checkbox", { name: "Show alert" }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: resolve(shots, "inspector-speaker-lower.png") });
+
+  // The board: a small, a medium and a big pole and a substation with their wires, and the bubble of a selected pole.
+  await page.keyboard.press("Escape");
+  await showDisplay(page, "blueprint");
+  await page.getByRole("button", { name: "Fit circuit" }).click();
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await page.mouse.move(10, 10);
+  await page.screenshot({ path: resolve(shots, "board-poles.png") });
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "board-poles-canvas.png") });
+  await selectOnBoard(page, "station");
+  await page.screenshot({ path: resolve(shots, "board-substation-selected.png") });
+
+  // A big pole in hand: its footprint of two by two tiles under the pointer.
+  await page.locator('.palette-item[data-prototype="big-electric-pole"]').click();
+  const box = (await page.locator("svg.canvas-svg").boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height * 0.75);
+  await expect(page.locator("rect.board-ghost")).toBeVisible();
+  // The pressed colors fade in.
+  await page.waitForTimeout(250);
+  await page.screenshot({ path: resolve(shots, "board-big-pole-ghost.png") });
+
+  // A tall window has room for all of it at once (as tall as the screen allows).
+  await page.keyboard.press("Escape");
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.setSize(1510, 1300));
+  await page.waitForTimeout(300);
+  await page.locator(".palette").screenshot({ path: resolve(shots, "sidebar-groups-open-tall-panel.png") });
+
+  // The smallest window: the sidebar with every group open still shows the groups and the entity list, each scrolling.
+  await app.evaluate(({ BrowserWindow }) => {
+    const [window] = BrowserWindow.getAllWindows();
+    const [width = 0, height = 0] = window!.getMinimumSize();
+    window!.setSize(width, height);
+  });
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: resolve(shots, "sidebar-minimum-window.png") });
+  await page.locator(".palette").screenshot({ path: resolve(shots, "sidebar-minimum-window-panel.png") });
 });

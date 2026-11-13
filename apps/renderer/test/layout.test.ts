@@ -4,7 +4,7 @@ import { analyze } from "@face/language";
 import { facingOf, TERMINALS, WIRE_COLORS, type Circuit, type Entity, type Wire } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { TILE } from "../src/canvas/board.ts";
-import { cardRect, entitiesBounds, GRID, pinPoint, rectsIntersect } from "../src/canvas/geometry.ts";
+import { cardRect, entitiesBounds, GRID, pinPlaces, pinPoint, rectsIntersect } from "../src/canvas/geometry.ts";
 import { blueprintLayout, editLayout, layoutFor, SELF_WIRE_SAG } from "../src/canvas/layout.ts";
 import { FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire } from "../src/canvas/wireRouting.ts";
 import { STARTER_SOURCE } from "../src/session/starter.ts";
@@ -44,7 +44,7 @@ describe("edit layout", () => {
     expect(layout).toMatchObject({ mode: "edit", step: GRID, fitMargin: FEEDBACK_CLEARANCE.green });
     for (const entity of circuit.entities) {
       expect(layout.rect(entity)).toEqual(cardRect(entity.position));
-      for (const side of TERMINALS[entity.kind]) for (const color of WIRE_COLORS) expect(layout.pin(entity, side, color)).toEqual(pinPoint(entity.position, side, color, facingOf(entity)));
+      for (const side of TERMINALS[entity.kind]) for (const color of WIRE_COLORS) expect(layout.pin(entity, side, color)).toEqual(pinPoint(entity.position, pinPlaces(side)[0]!, color, facingOf(entity)));
     }
     expect(layout.bounds()).toEqual(entitiesBounds(circuit.entities));
     expect(editLayout([]).bounds()).toBeUndefined();

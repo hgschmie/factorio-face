@@ -1,6 +1,6 @@
 // The shortcut table: one binding per key, a label on every platform, the native menu's accelerators all listed, and the matching
 // of key events including modifiers and physical keys.
-import { PALETTE_KINDS } from "../src/entities/kindInfo.ts";
+import { KEYED_KINDS } from "../src/entities/registry.ts";
 import { describe, expect, it } from "vitest";
 import { MENU_ACCELERATORS, menuAccelerator, platformAccelerator } from "../../desktop/src/accelerators.ts";
 import { SIMPLE_MENU_COMMANDS } from "../../desktop/src/ipc.ts";
@@ -83,9 +83,12 @@ describe("shortcut table", () => {
     }
   });
 
-  it("gives the building blocks the digits in palette order", () => {
-    expect(PALETTE_KINDS.map((kind) => shortcutLabel(`tool.place.${kind}`, true))).toEqual(["1", "2", "3", "4", "5"]);
-    PALETTE_KINDS.forEach((kind, index) => expect(shortcutFor(stroke(String(index + 1)), false)?.tool).toEqual({ type: "place", kind }));
+  it("gives the four combinators and the lamp the digits 1 to 5, and no other entity a key", () => {
+    expect(KEYED_KINDS).toEqual(["constant", "arithmetic", "decider", "selector", "lamp"]);
+    expect(KEYED_KINDS.map((kind) => shortcutLabel(`tool.place.${kind}`, true))).toEqual(["1", "2", "3", "4", "5"]);
+    expect(ALL.filter((shortcut) => shortcut.id.startsWith("tool.place.")).map((shortcut) => shortcut.id)).toEqual(KEYED_KINDS.map((kind) => `tool.place.${kind}`));
+    for (const digit of ["6", "7", "8", "9", "0"]) expect(shortcutFor(stroke(digit), false)).toBeUndefined();
+    KEYED_KINDS.forEach((kind, index) => expect(shortcutFor(stroke(String(index + 1)), false)?.tool).toEqual({ type: "place", kind }));
   });
 });
 

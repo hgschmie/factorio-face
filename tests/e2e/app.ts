@@ -105,9 +105,12 @@ export function card(page: Page, name: string): Locator {
   return page.locator(`g.card[data-entity-name="${name}"]`);
 }
 
-/** The connection pin of one wire color on one terminal side of an entity. */
-export function pin(page: Page, name: string, side: "in" | "out", color: "red" | "green"): Locator {
-  return card(page, name).locator(`[data-terminal="${side}"][data-wire-color="${color}"]`);
+/**
+ * The connection pin of one wire color on one terminal of an entity. The one connection point of a pole (`io`) has a pin on
+ * the left and on the right edge of its card: `edge` says which one (on the board it has one, at the top).
+ */
+export function pin(page: Page, name: string, side: "in" | "out" | "io", color: "red" | "green", edge?: "left" | "right" | "top" | "bottom"): Locator {
+  return card(page, name).locator(`[data-terminal="${side}"][data-wire-color="${color}"]${edge ? `[data-edge="${edge}"]` : ""}`);
 }
 
 export type DisplayMode = "edit" | "blueprint";

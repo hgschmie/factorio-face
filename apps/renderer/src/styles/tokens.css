@@ -89,7 +89,8 @@
   --wire-green-surface: #27412a;
   --wire-green-border: #4c8c53;
 
-  /* Entity kind accents: five hues away from the accent orange and both wire colors; a gray for the pole and sand for the speaker until the palette is regrouped */
+  /* Entity kind accents: hues away from the accent orange and both wire colors. A pole does nothing of its own and is a neutral
+     gray; the speaker is a warm sand next to the lamp it is grouped with, without being a second yellow. */
   --kind-constant: #ee8fb8;
   --kind-arithmetic: #5cc6cc;
   --kind-decider: #c09af0;

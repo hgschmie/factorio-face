@@ -37,7 +37,9 @@ src/
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
     selectionText.ts   the selection in words: status bar text, counts, wire labels   (pure)
     TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, save state, undo, redo, fit, settings, save)
-    Palette.tsx        tools (select, red wire, green wire), the five building blocks (`PALETTE_KINDS`), entity list
+    Palette.tsx        tools (select, red wire, green wire), the entity selector (`PALETTE_GROUPS`: the combinators as rows, the
+                       other entities in groups that open and close), entity list
+    paletteGroups.ts   which groups are open, remembered in the browser storage of the profile   (pure apart from `browserStore`)
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
     Canvas.tsx         SVG canvas: camera per display mode, gestures, pending wire, context menu, the Edit | Blueprint switch, the
@@ -45,17 +47,19 @@ src/
     Scene.tsx          memoized wires (with their click target) and entities in the layout of the display mode, culled to the visible area
     layout.ts          `CanvasLayout`: where an entity and its pins are in a display mode; `editLayout`, `blueprintLayout`   (pure)
     board.ts           the blueprint board: tile size, `derivedTiles`, `arrangeBoard`, the rules of editing on it, pins on a footprint   (pure)
-    EntityCard.tsx     one memoized card (kind, description marker, icon, name, summary, live status rows, a red and a green pin per side in
-                       TERMINALS, on the edges the entity's facing gives them); `CardFace` is the card without pins and place, `Pin` one pin
+    EntityCard.tsx     one memoized card (what the entity is, description marker, icon, name, summary, live status rows, a red and a green
+                       pin per place of its terminals, on the edges the entity's facing gives them); `CardFace` is the card without pins
+                       and place, `Pin` one pin
     BlueprintEntity.tsx  one memoized entity on the board: footprint, icon, name, arrows, pins, compact live state
     EntityBubble.tsx   the bubble of the selected entity on the board: `CardFace` and the description as an HTML overlay
     bubble.ts          where the bubble goes (`placeBubble`)   (pure)
     statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text, the compact output of the board   (pure)
     ContextMenu.tsx    keyboard-navigable popup menu
-    geometry.ts        card and pin geometry (`pinPoint`, `pinEdge`, `pinHeading`), rectangles  (pure)
+    geometry.ts        card and pin geometry (`pinPlaces`, `pinPoint`, `pinEdge`, `pinHeading`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
     drag.ts            snap, drag threshold, group drag, placement     (pure)
-    wireRouting.ts     wire routes for every combination of pin edges, SVG path data   (pure)
+    wireRouting.ts     wire routes for every combination of pin edges, the edge a connection point without a direction is wired at
+                       (`wirePlaces`), SVG path data   (pure)
   editor/
     SourceEditor.tsx   CodeMirror view over an `EditorBinding`; owns no state
     extensions.ts      editor chrome: gutters, selection, indentation, keys, theme
@@ -65,10 +69,14 @@ src/
   inspector/
     Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; a selected wire;
                        the summary of several selected things; undo and redo from its fields
-    EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm
+    EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm / SpeakerForm
+    PrototypeField.tsx which entity of its kind an entity is, for a kind with several game prototypes (a pole)
+    speakerEdits.ts    instrument and note of a speaker against the game's lists: what is a default and is not written   (pure)
+    instruments.ts     `InstrumentsContext`: the speaker's instruments and notes from the catalog, for the form and the cards
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
-    fields.tsx         text, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
-    formParts.tsx, immutable.ts, validation.ts
+    fields.tsx         text, integer, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
+    formParts.tsx      sections, list items, the operand and the circuit condition (`ConditionFields`: lamp and speaker)
+    immutable.ts, validation.ts
   picker/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
   settings/
@@ -80,9 +88,10 @@ src/
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
-  entities/            kind labels, signal text forms (short names, lists, compact numbers), card summaries, the quarter turns of
-                       the direction an entity faces (`facing.ts`)  (pure)
-  icons/               interface glyphs, entity icons, catalog icon resolvers (with probes for the git-ignored artwork)
+  entities/            kind labels and the names an entity goes by (`kindInfo.ts`), the registry of what the palette offers
+                       (`registry.ts`), signal text forms (short names, lists, compact numbers), card summaries, the quarter turns
+                       of the direction an entity faces (`facing.ts`)  (pure)
+  icons/               interface glyphs, entity icons per prototype, catalog icon resolvers (with probes for the git-ignored artwork)
   styles/              tokens.css and one stylesheet per area
 test/                  vitest: pure view modules
 test/session/          vitest: the session, headless (commands, invalid source, simulation, catalog, persistence, drafts)
@@ -104,8 +113,8 @@ interface WorkbenchController {
 
 `WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
-(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities, `picker()`,
-`describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
+(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities,
+`speakerInstruments`, `picker()`, `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
@@ -143,8 +152,9 @@ simulation (`run`, `pause`,
   first undo. Text of blanks only is written as no description, which removes the property from the source. The box edits the
   pending draft like any settings field, so a description added to an incomplete edit waits with it. In the source the text is
   one line, `description = "..."` with `\n` between the lines (`docs/dsl.md`). A card with a description shows the `note` glyph in
-  its top right corner (`g.card-note`); the text itself is in the inspector only. Lamps have no description in the game; the box
-  says so in its tooltip and the text stays in the project.
+  its top right corner (`g.card-note`); the text itself is in the inspector only. The game has a description on the four
+  combinators only (`KIND_INFO[kind].describedInGame`); for a lamp, a pole and a speaker the box says so in its tooltip ("A lamp
+  has no description in the game. This text stays in the project.") and the text stays in the project.
 - **Saving while a field holds unwritten text.** A name or a description is written when its field is left. Save and Save As
   (menu, key, the close prompt) first leave and re-enter the focused field when it carries `data-unwritten` (`writeFocusedField`
   in `Workbench.tsx`), so the saved file has the text and the caret stays where it was.
@@ -161,16 +171,21 @@ simulation (`run`, `pause`,
   source says, so its pins never move (a `facing` clause typed on a lamp gets the warning `unused-facing`). An entity with a
   `tile` gets its tile corrected in the same transaction: a 2x1 combinator keeps the top-left tile of its footprint, so a half turn
   keeps both tiles and swaps input and output (`rotateTile`).
-- **Placing with a direction.** A place tool holds the direction of what it places: `Tool` is `{ type: "place", kind, facing? }`,
-  east without `facing` (`placeFacing(tool)`; always east for a lamp). `R` and `Shift+R` turn it while the tool is active
-  (`turnedTool(tool, turn)`, set with `setTool`), in both display modes, instead of turning the selection; a lamp tool does
-  not turn and the keys then do nothing. `sameTool` does not look at the direction (it is the same button of the palette), but
-  `setTool` does: the tool picked again by its key, or after another tool, comes without `facing` and so faces east again. A
-  click that places nothing (a taken tile) keeps the tool and its direction. `placeEntity(kind, position, facing?)` and
-  `placeEntityOnTile(kind, tile, facing?)` pass it to the language command `addEntity`, which writes ` facing <direction>`
-  behind `at` or `tile` for every direction but east (a new entity that faces east has no clause, as before) and never for a
-  lamp. The hint line says the direction and the key ("to place a decider facing south (R turns it)"); on the edit canvas that
-  is the only sign of it before the click, on the board the outline turns as well.
+- **Placing with a direction.** A place tool says what it places and holds its direction: `Tool` is
+  `{ type: "place", kind, prototype?, facing? }`. It is an `EntityShape` of the model: the first prototype of the kind without
+  `prototype` (the tools of the digit keys have none, the entries of the palette always name theirs), east without `facing`
+  (`placeFacing(tool)`; always east for an entity that does not turn: a lamp, a speaker, a pole). `R` and `Shift+R` turn it
+  while the tool is active (`turnedTool(tool, turn)`, set with `setTool`), in both display modes, instead of turning the
+  selection; a tool for an entity that does not turn is left alone and the keys then do nothing. `sameTool` compares the kind
+  and the prototype and does not look at the direction (it is the same button of the palette), but `setTool` does: the tool
+  picked again by its key, or after another tool, comes without `facing` and so faces east again. A click that places nothing
+  (a taken tile) keeps the tool and its direction. `placeEntity(kind, position, facing?, prototype?)` and
+  `placeEntityOnTile(kind, tile, facing?, prototype?)` pass all of it to the language command `addEntity`, which writes
+  ` facing <direction>` behind `at` or `tile` for every direction but east (a new entity that faces east has no clause, as
+  before; never for an entity that does not turn) and `prototype = <name>` for every prototype but the first of its kind.
+  The hint line names the entity (`entityNoun`: "to place a big electric pole") and, where it turns, the direction and the
+  key ("to place a decider facing south (R turns it)"); on the edit canvas that is the only sign of it before the click, on
+  the board the outline has the footprint of the prototype and turns as well.
 - **Messages.** `state.error` is one message, shown in the toast (`.toast`, `role="alert"`) with a Dismiss button; a newer one
   replaces it. The session sets it through `show(message, refusal?)` and keeps two sorts apart. A message about a refused edit
   (a name that is taken, a wire that cannot be, a `tile` off the grid, "Nothing was pasted", a turn refused on the board)
@@ -232,12 +247,16 @@ simulation (`run`, `pause`,
 - **Simulation.** `SimulationRunner` compiles each new valid circuit with the catalog environment. If `semanticFingerprint` is unchanged
   (moves, renames, comments) the running engine, its tick and its history stay; otherwise it starts at tick 0. It has no reference to the
   document, so no simulation activity can create an edit. While the source has errors it is blocked with a notice and resumes afterwards.
-  The dock traces every output signal of the selected entities (the first three entities when nothing is selected); lamps trace their
-  lit state; what an entity reads per wire color is in the row's tooltip.
+  The dock traces every output signal of the selected entities (the first three entities with something to trace when nothing is
+  selected); lamps trace their lit state and speakers whether they play (`alarm sound`, 1 while playing, the row lit like a lamp's);
+  what an entity reads per wire color is in the row's tooltip. A pole has nothing to trace (`isTraceable`): it has no row, with or
+  without a selection, and where that leaves the dock empty it says that a pole only passes signals on.
 - **Card statuses.** `StatusCache` (`simulationView.ts`) turns the latest snapshot into one `EntityStatus` per entity: `input`
-  (`red` and `green`, each `{ wired, signals }`; absent on a constant combinator), `output` (all emitted signals; absent on a
-  lamp), `lamp` (`{ lit, color }`), `active` (a lit lamp) and `label` (the output or the lamp state as text: the first two
-  signals, then `+N`). The signal lists are the engine's own, in its signal order, not copies. `wired` comes from the compiled
+  (`red` and `green`, each `{ wired, signals }`; absent on a constant combinator; for a pole the two networks it joins), `output`
+  (all emitted signals; absent on a lamp, a speaker and a pole), `lamp` (`{ lit, color }`), `speaker` (`{ playing, instrument,
+  note, volume, alert }`, the engine's record), `active` (a lit lamp, a speaker that plays) and `label` (the output or the state
+  as text: the first two signals, then `+N`; `lit`, `off`; `playing piano F#3`, with ` at 60%` when the volume is not the full
+  one, `silent` (`speakerText`); empty for a pole, which has neither). The signal lists are the engine's own, in its signal order, not copies. `wired` comes from the compiled
   circuit (`CompiledCircuit.terminals`): the snapshot alone cannot tell an input without a wire from a wire that carries
   nothing. A status is cached per entity record of the snapshot and the map per entity table. The engine replaces a record
   exactly when what the entity reads, emits or lights changes, so a card gets a new status object, and renders, only then.
@@ -272,7 +291,7 @@ green wire tokens, every `var()` resolves, the window background of the main pro
 | Accent | `--accent`, `--accent-fill`, `--accent-bright`, `--accent-border`, `--focus-ring` |
 | Confirm | `--confirm`, `--confirm-bright`, `--confirm-edge` |
 | Wires | `--wire-red`, `--wire-green`, `--wire-casing` (canvas); `--wire-red-ui`, `--wire-green-ui` and their `-surface` / `-border` (controls) |
-| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow), `--kind-pole` (gray), `--kind-speaker` (sand); a `kind-<kind>` class sets `--kind-color` |
+| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow), `--kind-pole` (a neutral gray: it does nothing of its own), `--kind-speaker` (sand, warm like the lamp it is grouped with and no second yellow); a `kind-<kind>` class sets `--kind-color` |
 | Status | `--status-ok`, `--status-warning`, `--status-error`, `--danger*`, `--notice-*` |
 | Traces and syntax | `--trace-1` ... `-3`, `--syntax-signal`, `-number`, `-string`, `-atom` |
 | Typography | `--font-ui`, `--font-mono`, `--text-xs` ... `--text-xl`, `--tracking-label` |
@@ -371,13 +390,15 @@ stands at a derived place, gives way to the others and is never in the way. `at`
 | Turning | `blockedTurn(entities, facings)` | A turned entity keeps its top-left tile (`rotateTile`). The turn is blocked for the whole selection when one of them would newly cover a tile on which another entity with a `tile` stands after the turn. Tiles an entity covers already do not count (a half turn is always possible, and an entity in a conflict can be turned out of it). Blueprint mode only: on the edit canvas a turn is never refused, the analysis warns (`tile-overlap`). |
 | Snapping | `derivedTiles(entities)` | An entity without a `tile` gets the one of the place it is shown at. These places keep clear of all tiles that are taken and of each other, so a snap of any subset cannot be blocked. |
 | Releasing | | The `tile` clause is removed; the entity stands at a derived place again. |
-| A new entity | `footprintOriginAt(point, kind, facing)`, `canStandAt(entities, kind, origin, facing)`, `freeOriginNear(entities, kind, wanted, facing)`, `editPositionOf(origin)` | It faces the way the place tool was turned (east at first) and its footprint, turned with it, has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
+| Another prototype | `blockedReshape(entities, changed)` | The inspector's choice of which pole an entity is may change the tiles it covers. The entity keeps the top-left tile of its footprint and its `tile` is corrected in the same step (a small pole on `tile (7.5, 7.5)` becomes a big one on `tile (8, 8)`). The change is blocked when the entity would newly cover a tile of another entity with a `tile`. Blueprint mode only, like the turn rule: on the edit canvas the change is made and the analysis warns (`tile-overlap`). |
+| A new entity | `footprintOriginAt(point, shape, facing)`, `canStandAt(entities, shape, origin, facing)`, `freeOriginNear(entities, shape, wanted, facing)`, `editPositionOf(origin)` | It faces the way the place tool was turned (east at first) and its footprint, turned with it, has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
 
 - Session commands (`WorkbenchCommands`), each one undo step: `setTiles(tiles: { id, tile }[])` with the centers as the `tile`
   clause holds them (blocked: nothing happens; a center off the grid: refused by the language and reported), `nudgeTiles(delta)`
   for the selection in whole tiles from where the board shows it, `snapToTiles(ids?)` (all entities without `ids`),
-  `clearTiles(ids)`, `placeEntityOnTile(kind, tile, facing?)`. `rotateEntities` and `faceEntities` apply the turn rule while the display
-  mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light." The message goes
+  `clearTiles(ids)`, `placeEntityOnTile(kind, tile, facing?, prototype?)`. `rotateEntities` and `faceEntities` apply the turn rule
+  while the display mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light."
+  `updateEntity` does the same for another prototype: "Not changed: p would stand on a tile of light." Both messages go
   with the next change of the document or of the selected entities ("Messages" above).
 - Dragging: the gesture of the edit canvas with a step of one tile. The preview is arranged with `arrangeBoard(entities, moved)`;
   entities of the drag are drawn last (`g.card.moving`), one on a taken tile is `blocked` (`data-blocked`, red body and outline)
@@ -392,10 +413,11 @@ stands at a derived place, gives way to the others and is never in the way. `at`
   "Release from tile grid" for those with one (`Snap 2 to tile grid` when the item does not take the whole selection). They
   have no shortcut. The hint line says that dashed entities have no tile.
 - Placing: with a place tool the footprint of the new entity follows the pointer (`rect.board-ghost` with `data-tile-x`,
-  `data-tile-y` and `data-facing`, class `blocked` and the cursor `not-allowed` over a taken tile, where a click does nothing
-  and the tool stays). `R` and `Shift+R` turn the outline, not the selection ("Placing with a direction" above): a 2x1
-  outline changes between lying and upright around the pointer, an arrow in its middle (`path.board-ghost-arrow`, none for a
-  lamp) points the way the entity will face, and whether the tiles are free is asked for the turned footprint. Enter places
+  `data-tile-y`, `data-facing` and `data-prototype`, class `blocked` and the cursor `not-allowed` over a taken tile, where a
+  click does nothing and the tool stays). The footprint is the one of the tool's prototype: two by two tiles for a big pole
+  and a substation, with the pointer on the corner the four share. `R` and `Shift+R` turn the outline, not the selection ("Placing with a direction" above): a 2x1
+  outline changes between lying and upright around the pointer, an arrow in its middle (`path.board-ghost-arrow`, none for an
+  entity that does not turn: a lamp, a speaker, a pole) points the way the entity will face, and whether the tiles are free is asked for the turned footprint. Enter places
   with the same direction. The new entity is selected and the tool goes back to select, as on the edit canvas; `facing` is
   written with the `tile`, whose center is the one of the turned footprint.
 - Paste and duplicate: as on the edit canvas, by `Cmd/Ctrl+V`, Edit > Paste, the Paste of the context menu and `Cmd/Ctrl+D`.
@@ -419,9 +441,16 @@ game draws them. Below 50 % zoom the text is left out and the icon is larger. On
 pins on the top or the bottom end.
 
 - Pins (`boardPinOffset`): inside the footprint, 12 units from the outer end of their tile, 20 apart; input pins on the input
-  half, output pins on the output half (a constant has its output where it faces, a lamp its input on the west end). Red is on
-  the left seen along the facing, as on the cards. They are the same `g.pin` elements with `data-terminal`, `data-wire-color`
-  and `data-edge`.
+  half, output pins on the output half (a constant has its output where it faces, a lamp and a speaker their input on the
+  west end). Red is on the left seen along the facing, as on the cards. The one connection point of an entity without input
+  and output (`io`: a pole) has no direction and sits in the middle of the top end of the footprint (`boardPinHeading`),
+  where the wires hang on a pole in the game, on one tile as on 2x2: red at (middle - 10, 12), green at (middle + 10, 22).
+  Green is 10 units lower so that the two wires between poles in a row do not lie on one line (between poles in a column
+  they are 20 apart). They are the same `g.pin` elements with `data-terminal`, `data-wire-color` and `data-edge` (`top`
+  for a pole).
+- An entity without halves and without a direction (a pole) has neither arrows nor a notch. On 2x2 tiles its content is in
+  the middle of the four: the icon at 48 units, the name below it (18 characters). A lamp that is lit and a speaker that
+  plays show it the same way: the indicator, the glow over the body and the class `active`.
 - In the DOM the group is `g.card.board-entity` with the attributes of a card (`data-entity-id`, `data-entity-name`,
   `data-kind`, `data-facing`, `data-x`, `data-y`, `data-status`, `data-in-red`, `data-in-green`) plus `data-tile-x` and
   `data-tile-y` (the top-left tile), `data-placed` (`true` or `false`), `data-conflict` and `data-blocked`; the classes
@@ -465,7 +494,12 @@ the document: not undoable, and a change makes the project dirty.
   fine is not. An entity without a tile that is dragged out and back to where it stood shows its wires measured although the
   drop writes nothing. The edit canvas shows every wire as before, without a distance.
 - The inspector: a selected wire between two different entities that both have a tile shows `section.wire-distance` (in both
-  display modes): how far apart the entities are, "Reach 9" ("Reach unlimited" for 0) and, when it is too long, `data-too-long` and a notice (`role="status"`).
+  display modes): how far apart the entities are, "Reach 9" ("Reach unlimited" for 0; the reach that applied, also a pole's own),
+  a sentence that says whose reach that is and why (`wireReachNote` in `selectionText.ts`: "The wire reach of a small electric
+  pole is 7.5: a pole has its own reach, and a wire spans the smaller reach of its two ends.", and where the project limits a
+  wire to a pole that would reach further: "The wire reach of the project is 9. It is the smaller reach of the two ends: a big
+  electric pole reaches 32.") and, when it is too long, `data-too-long` and a notice (`role="status"`). The ends of a wire are
+  named `output`, `input` and, for the point of a pole, `connection`.
 
 **The bubble.** While exactly one entity (and no wire) is selected on the board, `EntityBubble` shows its full card next to it:
 `CardFace`, the same component the card of the edit canvas draws (kind, description marker, icon, name, summary, the three
@@ -479,9 +513,14 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
 ## Canvas behaviour worth knowing
 
 - Card layout (card units, `EntityCard.tsx`): margin 13 on both sides. Header band down to the divider at 26.5: kind accent
-  (3 x 13 at y 7), kind label (9px, baseline 17), description marker (13 at the top right). Body down to the divider at 72.5:
-  entity icon 34 at (13, 32), name (15px, baseline 46, 13 characters) and summary (12px monospace, baseline 63, 15 characters)
-  from x 56. Below it three status rows of 9px monospace text, centered at y 84, 100 and 116 (`STATUS_ROWS` in
+  (3 x 13 at y 7), what the entity is (`entityTitle`: the kind, or the game's name where the kind has several prototypes, as
+  "BIG ELECTRIC POLE"; 9px, baseline 17, 20 characters, set closer beyond 16 so that it ends before the marker), description
+  marker (13 at the top right). Body down to the divider at 72.5: the icon of the prototype 34 at (13, 32), name (15px,
+  baseline 46, 13 characters) and summary (12px monospace, baseline 63, 15 characters) from x 56. A summary of two lines
+  (`summaryLines`: only a speaker has one) is set in 10px with 18 characters at baselines 56 and 67.5 under the name at 43.
+  The summaries: a pole says what its prototype decides ("reach 32 · 2x2"), a speaker what it plays and when ("piano F#3" over
+  "when A > 2", or "pitch from A" over "piano"); a sound the speaker leaves to the game's default is named from the catalog
+  (`InstrumentsContext`). Below it three status rows of 9px monospace text, centered at y 84, 100 and 116 (`STATUS_ROWS` in
   `statusRows.ts`). Nothing but the pins lies outside x 13 to 171; the pins reach 7 units into the card. The card, its text and
   its icon never turn with the entity. Where pins sit on the top or the bottom edge (an entity facing north or south) the content
   next to them gives way, and only there: a card with pins on its top edge has the kind accent, the kind label and the
@@ -490,21 +529,27 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   west is drawn exactly as before entities could be rotated.
 - Status rows, while the simulation has data: what the entity reads on red (a red bar in front), what it reads on green (a
   green bar) and what it emits (an arrow; the same on both colors). A lamp has its state in the third row instead (`lit` or
-  `off`, and a swatch of the light's color when it has one). A constant combinator has no input rows; its output starts in
-  the first row and runs on into the other two. Each signal is its catalog icon (13 units) and its value; without an icon,
+  `off`, and a swatch of the light's color when it has one), and so has a speaker (`playing piano F#3` behind a mark of sound
+  waves, both in the bright accent while it plays, or `silent`; 26 characters). A pole has the two rows of its networks and
+  no third. A constant combinator has no input rows; its output starts in the first row and runs on into the other two. Each signal is its catalog icon (13 units) and its value; without an icon,
   the short name (up to 12 characters) and the value. `layoutRow` places as many signals as fit and ends the row with `+N`
   for the rest; it looks at no more signals than it places. Values of more than four digits are abbreviated the way the game
   does (`compactNumber`: `12k`, `1.0M`, `2.1G`, cut off, never rounded up). A row without signals shows a dash; the bar of
   an input without a wire of its color is dimmed (class `unwired`). The widths are computed from an assumed advance of
   5.5 units per character (SF Mono and Menlo have 5.42), not measured.
 - A card has no tooltip (no SVG `<title>` of its own; removed on 2026-11-12 because it repeated the card). The pins keep theirs.
-- Card status in the DOM: `g.card` carries `data-status` (the status label), `data-in-red` and `data-in-green` (what that input
-  reads as exact text, `inputText`: up to 32 signals and `+N` beyond, `no wire` and `nothing` for the two empty cases; absent on
-  a constant), also on an outline. The rows are `g.card-row` with `data-row="red|green|out|lamp"`
-  and the classes `red`, `green`, `out`, `lamp` and `unwired`; inside them `.row-marker`, one `<image>` (with a catalog icon)
+- Card status in the DOM: `g.card` carries `data-status` (the status label; absent on a pole, which has none), `data-in-red` and
+  `data-in-green` (what that input reads as exact text, `inputText`: up to 32 signals and `+N` beyond, `no wire` and `nothing`
+  for the two empty cases; absent on a constant), also on an outline. The rows are `g.card-row` with
+  `data-row="red|green|out|lamp|speaker"` and the classes `red`, `green`, `out`, `lamp`, `speaker`, `playing` and `unwired`; inside them `.row-marker`, one `<image>` (with a catalog icon)
   and one `text.row-value` per signal, `text.row-more` (`+N`), `text.row-none` (the dash, a lamp that is off) and
   `rect.row-swatch`. Rows are memoized by their signal list, which the engine keeps while a network or an output is unchanged.
-- Grid 20 units; cards are 184 x 128. Every terminal (`TERMINALS`: `in`, `out`) has one connection pin per wire color. Which edge
+- Grid 20 units; cards are 184 x 128. Every terminal (`TERMINALS`: `in`, `out`, `io`) has one connection pin per wire color at
+  each place it is drawn at (`pinPlaces`): an input and an output at their one place, the one connection point of an entity
+  that has neither (`io`: a pole, and most entities of the game) at both, where an input would be and where an output would
+  be. The two pairs of pins are one and the same point (`data-terminal="io"`, told apart by `data-edge` only): a wire may be
+  started and ended at either, both light up while a wire is pending, and where the wire attaches is decided by the route
+  (below). Which edge
   of the card carries them follows from the direction the entity faces (`facing`, the direction its output points to; east when the
   source does not say). The pins turn with the entity as one rigid figure, clockwise from east over south and west to north; offsets
   from the top-left corner of the card:
@@ -517,11 +562,14 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   | north | top edge | bottom edge | (80, 0), (100, 0) | (80, 128), (100, 128) | left of green |
 
   All pins are on grid lines, 20 units apart; those on the top and bottom edge sit around the middle of the card (92). A constant
-  and a lamp have the pins of their one terminal; a lamp does not rotate, so its input pins are always on the left edge. `pinPoint(position, side, color, facing)` in `geometry.ts` is the only place that
-  knows the positions (`pinEdge` and `pinHeading` name the edge and the direction a wire leaves in); a wire of a color starts and
-  ends in the center of the pin of that color, and the rubber band of a pending wire starts there too.
-- Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out"`, `data-wire-color="red|green"`, `data-edge="left|right|top|
-  bottom"` and a `<title>` such as "Red input"; the card (`g.card`) carries `data-facing`. Pins are drawn in the wire color tokens.
+  and a lamp have the pins of their one terminal; a lamp and a speaker do not rotate, so their input pins are always on the left
+  edge, and a pole has its point on the left and on the right edge. `pinPoint(position, place, color, facing)` in `geometry.ts` is
+  the only place that knows the positions (`pinEdge` and `pinHeading` name the edge and the direction a wire leaves in; a place
+  is `in` or `out`); a wire of a color starts and ends in the center of the pin of that color. The rubber band of a pending
+  wire starts there too; from a point with two places it starts at the one nearer to the pointer
+  (`CanvasLayout.pin(entity, side, color, toward)`).
+- Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out|io"`, `data-wire-color="red|green"`, `data-edge="left|right|top|
+  bottom"` and a `<title>` such as "Red input", "Green output" or "Red connection"; the card (`g.card`) carries `data-facing`. Pins are drawn in the wire color tokens.
   A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color are targets (highlight, click, pending state,
   start of the rubber band), the others are dimmed and ignored, whatever edge they are on. The model is unchanged: a wire is a
   color plus two terminals, and the tool decides the color.
@@ -531,14 +579,20 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   counter-clockwise" with the keys, and the inspector of a single entity has the Facing control (`.facing-toggle`, a group named
   "Facing" with four buttons `data-direction`, `aria-pressed` on the current one). Every entity of a selection turns in place, each
   from its own direction; the selection is not turned as a group. One rotation of a selection is one undo step. While the source
-  has errors all three are off. A lamp does not rotate: its inspector has no Facing control, the keys skip it, and the two menu
+  has errors all three are off. A lamp, a speaker and a pole do not rotate (`canRotate`): their inspector has no Facing control, the keys skip them, and the two menu
   items are disabled while the selection holds nothing that can rotate.
 - Routes (`wireRouting.ts`): every wire is a line of horizontal and vertical segments from pin to pin, drawn with rounded corners
   (radius 14; a corner next to a shorter segment gets what fits: the whole first or last segment, half of one between two corners).
   There are no curves. A wire leaves and enters a pin at a right angle to its edge. Red and green between the same two terminals
   run as parallels one pin spacing (20) apart and never touch, except in a narrow gap and at the one crossing described below.
   `routeWire(color, a, b, sameEntity)` takes the position, the side and the facing of both ends; the route does not depend on
-  their order. The rules below are written for two entities facing east. Two entities that face the same other way, and the
+  their order. An end that is a connection point without a direction (`io`) is first given one of its two places
+  (`wirePlaces`): the one that is nearer to the other end, measured along the wire, which is the place with the shortest line
+  (the red line is measured for both colors, so they attach at the same edge; of two lines of one length the one on the left
+  edges is taken). From there it is routed as the input or the output that sits at that place, by the rules below, so nothing
+  in them knows a pole. A chain source -> pole -> pole -> lamp so runs from left to right in straight lines (out of a right
+  edge, into the next left edge); a pole straight above or below another entity is wired on the side the two share instead
+  of around a card; and a pole to the left of an output is reached at its right edge. The rules below are written for two entities facing east. Two entities that face the same other way, and the
   feedback wire of one entity, get the same rules in a frame turned with them (the whole figure turns: a column of entities
   facing south is wired with straight vertical lines, the loop of a feedback wire passes the side of the card on which the red
   pins sit).
@@ -635,7 +689,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | --- | --- | --- | --- |
 | Select tool | `Q` | `Q` | circuit |
 | Red wire, green wire tool | `⌥R`, `⌥G` | `Alt+R`, `Alt+G` | circuit |
-| Building block to place: Constant, Arithmetic, Decider, Selector, Lamp | `1` ... `5` | `1` ... `5` | circuit |
+| Entity to place: Constant, Arithmetic, Decider, Selector, Lamp (`KEYED_KINDS`; no other entity has a key) | `1` ... `5` | `1` ... `5` | circuit |
 | Place the block in the middle of the view (on the board: on the free tile nearest to it) | `↩` | `Enter` | canvas (focus on the canvas itself) |
 | Cancel: the pending wire, then the tool, then (in the canvas) the selection | `Esc` | `Esc` | circuit, canvas |
 | Rotate clockwise, counter-clockwise: the selection, or with a place tool the entity it is about to place | `R`, `⇧R` | `R`, `Shift+R` | circuit |
@@ -666,17 +720,18 @@ when two rows share a key on a platform or when one key event matches two rows.
   some layouts (AZERTY) have the digits behind Shift. Both are therefore the physical keys of a US layout, and the numeric
   keypad picks no building block. `?` is the character, whatever Shift it takes. A composing input method and an event that
   something else has cancelled are left alone. A held key repeats only for the arrows.
-- **What the keys do.** The tool keys set the tool (pressed again they keep it; the buttons toggle). `1` to `5` follow the order
-  of the palette (`ENTITY_KINDS`). The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), on the
+- **What the keys do.** The tool keys set the tool (pressed again they keep it; the buttons toggle). `1` to `5` are the four
+  combinators and the lamp (`KEYED_KINDS` in `entities/registry.ts`, a decision that stays as the palette grows: entities added
+  later get no key); `5` opens the group of the lamp when it is closed. The arrows call `nudgeSelection` with 20 units, with Shift 100 (`nudgeDelta`), on the
   blueprint board `nudgeTiles` with one tile and five, unless the
   focused control uses the arrows itself (`usesArrowKeys` in `platform.ts`: text, selects, sliders, radio groups, lists, tabs,
   menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. `R` and `Shift+R` turn the
-  selection, or, while a place tool is active, what that tool is about to place (`turnedTool`; nothing for a lamp). `B` switches
+  selection, or, while a place tool is active, what that tool is about to place (`turnedTool`; nothing for a lamp, a speaker or a pole). `B` switches
   the display mode; what a mode does not offer (`DISPLAY_CAPABILITIES`) does nothing. While the source has errors the
   keys that edit (rotation, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
   buttons) do nothing; `Q`, Escape and `?` work.
-- **Discoverability.** The three tool buttons and the five building blocks name their key in the tooltip (`title`); the building
-  blocks also show it as a key cap next to their name (`kbd.key-hint`). The cap is `aria-hidden` and the buttons carry no
+- **Discoverability.** The three tool buttons and the five entries with a key name it in the tooltip (`title`); those entries
+  also show it as a key cap next to their name (`kbd.key-hint`). The cap is `aria-hidden` and the buttons carry no
   `aria-keyshortcuts`: the tooltip is the accessible description of the button, so a screen reader hears the key once, also
   VoiceOver, which does not announce `aria-keyshortcuts`. Context menu items show their keys as before.
 - **Overview.** `ShortcutOverview` lists the table in its groups (Tools, Editing, View, Simulation, File) with the key names of
@@ -687,29 +742,81 @@ when two rows share a key on a platform or when one key event matches two rows.
 
 ## Icons
 
-`EntityIcon` / `EntityIconSvg` take an `EntityIconResolver` (`(kind) => url | undefined`). `icons/catalogEntityIcons.ts` probes one
-item icon per kind (every pole shows the small one for now) of the generated catalog through `face-asset://catalog/icons/item/<name>.png` and resolves only those that load.
+`EntityIcon` / `EntityIconSvg` take an entity (or just its kind and prototype) and an `EntityIconResolver`
+(`(prototype) => url | undefined`). `icons/catalogEntityIcons.ts` probes one item icon per prototype of `PROTOTYPES`
+(`prototypeIconId` of the registry: `item/<prototype name>` unless the registry says otherwise) of the generated catalog through
+`face-asset://catalog/icons/item/<name>.png` and resolves only those that load, so each pole shows its own item.
 `icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe; the two wire tool buttons of the palette
 take the game's `item/red-wire` and `item/green-wire` icons from it. When `packages/catalog/generated` is absent (it is git-ignored),
-entity kinds and wire tools show inline pictograms and signals are shown by name, in the picker as well.
+entities and wire tools show inline pictograms and signals are shown by name, in the picker as well. The pictograms tell the
+kinds apart by their shape, not only by a mark: a combinator is a box with a display, a lamp a bulb, a speaker a loudspeaker
+with sound waves, a pole a mast with a crossbar (taller and wider for the bigger poles, a box with two masts for a substation).
+
+## The entity selector
+
+The left sidebar offers what can be placed. What it offers is data, `PALETTE_GROUPS` in `entities/registry.ts`:
+
+```ts
+const GROUPS = [
+  { id: "combinators", label: "Combinators", pinned: true, prototypes: ["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"] },
+  { id: "lights-and-sound", label: "Lights and sound", open: true, prototypes: ["small-lamp", "programmable-speaker"] },
+  { id: "power-poles", label: "Power poles", open: false, prototypes: ["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"] },
+];
+```
+
+An entry is a game prototype name; its kind, its label (the game's name), its tiles and its wire reach come from `PROTOTYPES`
+of `@face/model`, its icon from `prototypeIconId`. **A further entity of a kind the editor has** (another pole, another lamp)
+is a row in `PROTOTYPES` and its name in a group here: the palette entry, its icon, the place tool, the footprint on the
+board, the choice in the inspector (`PrototypeField`), the card heading and the wire reach follow from that. **A further
+category** is a group. **A further kind** (a family with behaviour of its own) also needs its part in the model, the
+language and the simulation, a `KIND_INFO` row, a summary line and, if it has settings, a form; an entity with one
+connection point (`TERMINALS`: `io`) gets its pins, its wiring and its place on the board from the general code.
+`test/registry.test.ts` fails when a prototype of the model is in no group or in two.
+
+- The pinned group (the combinators) is always on show, above the others, without a heading and not collapsible: full rows
+  with icon, the name of the kind, what it is for and the key (`.palette-items .palette-item`). In a window lower than 900
+  pixels the rows give up their second line and the spacing tightens, so that the rest of the sidebar stays in reach.
+- Every other group has a heading that is a button (`button.palette-group-header` with `aria-expanded` and `aria-controls`,
+  the name and the number of entries) and, while open, its entries in a panel (`role="group"`, named like the group; hidden
+  and empty while closed, so nothing of it is in the tab order). An entry is compact (`.palette-item.compact`): icon, the
+  game's name and, for an entity with a reach of its own, its tiles and reach under it ("2 x 2 tiles, wire reach 32";
+  `prototypeFacts`), which the tooltip repeats: "Place: Big electric pole (2 x 2 tiles, wire reach 32)". Every entry carries
+  `data-kind` and `data-prototype`; the lamp keeps its key cap.
+- The count badge of the panel is the number of entries (`PALETTE_ENTRIES`).
+- Which groups are open is a preference of the person at this machine (`workbench/paletteGroups.ts`): stored as JSON under
+  `face.palette.openGroups` in `localStorage`, which belongs to the profile of the app (userData), so it is the same for every
+  project and survives a restart. The renderer keeps no other per-viewer state, and the main process offers none over IPC.
+  Every access is guarded: without storage, with storage that throws and with a value that is not what was written, the groups
+  start as the registry says ("Lights and sound" open, "Power poles" closed) and work for as long as the window lives. Only
+  known group ids with a boolean are taken from the store, so a group added later starts as it is defined.
+- A place tool whose entry is in a closed group opens that group (the lamp by `5`), and the armed entry is scrolled into
+  view. A group closed by hand while its tool is armed stays closed. A group that is opened is scrolled so that as much of
+  it as fits shows, from its heading down.
+- Layout: tools, the pinned rows, then two areas that share what is left and scroll on their own: the groups
+  (`.palette-groups`, up to two thirds, never more than they need) and the entity list (`.entity-list`, the rest, at least
+  48 pixels). At the default window (1510 x 960) the groups as they start fit without scrolling; with every group open they
+  scroll. At the smallest window (1120 x 760) the groups area shows a heading and two entries and the list its first rows;
+  `tests/e2e/entitySelector.spec.ts` checks both sizes (nothing is cut off, every entry and every entity can be reached).
 
 ## Poles and speakers
 
-The two kinds added with the core (`pole`, `speaker`) are handled the simplest correct way; the palette, their cards and the speaker form
-are the next work package. What there is, each place marked with a comment naming package H:
-
-- They come into a circuit through the source only: `PALETTE_KINDS` (`entities/kindInfo.ts`) keeps the palette and the keys 1 to 5 to
-  the five kinds they had.
-- Cards and footprints use the general code: one icon per kind (`icons/catalogEntityIcons.ts`; every pole shows the small one), the
-  summary line (`entities/summary.ts`), kind colors, and the status rows with what the entity reads. A pole's status is `relay` with its
-  two networks, a speaker's `playing <note>` or `silent` (`session/simulationView.ts`).
-- The one connection point of a pole (`io`) is drawn and routed where an input is (`drawnSide` in `canvas/geometry.ts`). On the board
-  a footprint follows the prototype (2x2 for a big pole and a substation, `tileHalves` giving no halves), with the pins in the middle
-  of its west edge.
-- The inspector shows a note instead of a settings form (`inspector/EntitySettingsForm.tsx`); name, description, connections and
-  delete work as for every entity.
-- The wire reach is per entity (`wireSpan` of `@face/model` through `BlueprintLayout.wireSpan`): the title of a wire, the flag on the
-  board and the wire inspector name the reach that applied, also a pole's own.
+- A pole (`pole`, four prototypes) has one connection point (`io`), no settings and no state. Its card names the pole in the
+  heading and shows its reach, its tiles and the signals on its red and on its green network. The inspector has the choice of
+  the prototype (`.prototype-field`, a group named "Pole" with one `aria-pressed` button per prototype: icon, name, tiles and
+  reach) and a note on what a pole does; changing it is `updateEntity` with the rule "Another prototype" of the board. A
+  statement `prototype = ...` that is in the source stays when the choice returns to the small pole: `updateEntity` of the
+  language patches the value of a statement and does not remove a statement for its value, for every kind.
+- A speaker (`speaker`) reads on its one input. `SpeakerForm` has every setting of the language (`docs/dsl.md`): "Plays when"
+  (a condition, edited with the `ConditionFields` the lamp uses, or "Signal value is pitch" with the pitch signal; the signal
+  goes along when the mode changes, and a condition whose signal is taken out is no condition), instrument and note as
+  selects fed from the catalog (`InstrumentsContext`, the names of the game as labels; the note select has the notes of the
+  chosen instrument and is absent in pitch mode; `speakerEdits.ts`: the first instrument and the first note of an instrument
+  are not written, a change of the instrument keeps the note where the new one has it and takes its first otherwise; a name
+  the game data does not have stays selectable and is marked, and without lists the two are text fields), the volume in
+  percent (`NumberField`, 0 to 100 with decimals, validated like every field) or "Signal value is volume" with its signal,
+  the playback mode, polyphony, "Stop playing sounds", and the alert (show, show on map, icon, message).
+- Wire reach per entity: `wireSpan` of `@face/model` through `BlueprintLayout.wireSpan`; the title of a wire, the flag on the
+  board and the wire inspector name the reach that applied, also a pole's own, and all three follow the prototype.
 - Completion offers a pole by its bare name and the instruments and notes of the catalog (`session/completion.ts`); the analysis gets
   the instrument list from `CatalogService.instruments`, the simulation environment from `environmentData`.
 

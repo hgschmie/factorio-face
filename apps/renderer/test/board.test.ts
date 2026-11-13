@@ -2,7 +2,7 @@
 import { analyze } from "@face/language";
 import { DIRECTIONS, facingOf, isTileCenter, occupiedTiles, TERMINALS, tileHalves, tileCenter, tileOrigin, tileSize, WIRE_COLORS, type Entity, type Point } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { arrangeBoard, blockedMoves, blockedTurn, BOARD_PIN, boardPinOffset, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE } from "../src/canvas/board.ts";
+import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, BOARD_PIN, boardPinHeading, boardPinOffset, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE } from "../src/canvas/board.ts";
 import { CARD, GRID, PIN_SPACING } from "../src/canvas/geometry.ts";
 import { STARTER_SOURCE } from "../src/session/starter.ts";
 import { gridSource } from "../../../tests/e2e/fixtures.ts";
@@ -303,14 +303,24 @@ describe("pins on a footprint", () => {
     expect(boardPinOffset({ kind: "constant" }, "north", "out", "green")).toEqual(at(50, 12));
   });
 
-  it("puts the pins of a speaker and of a pole where a lamp has them, in the middle of the west edge also on 2x2 tiles", () => {
+  it("puts the pins of a speaker where a lamp has them and the one point of a pole in the middle of the top end, also on 2x2 tiles", () => {
     expect(boardPinOffset({ kind: "speaker" }, "east", "in", "red")).toEqual(at(12, 30));
-    expect(boardPinOffset({ kind: "pole" }, "east", "io", "red")).toEqual(at(12, 30));
-    expect(boardPinOffset({ kind: "pole" }, "east", "io", "green")).toEqual(at(12, 50));
-    for (const prototype of ["big-electric-pole", "substation"] as const) {
-      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "red")).toEqual(at(12, 70));
-      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "green")).toEqual(at(12, 90));
+    // A pole has no direction: its point is at the top, red left of green and green a little lower, whatever facing it is asked with.
+    for (const facing of DIRECTIONS) {
+      expect(boardPinOffset({ kind: "pole" }, facing, "io", "red")).toEqual(at(30, 12));
+      expect(boardPinOffset({ kind: "pole" }, facing, "io", "green")).toEqual(at(50, 22));
+      expect(boardPinHeading("io", facing)).toBe("north");
     }
+    for (const prototype of ["big-electric-pole", "substation"] as const) {
+      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "red")).toEqual(at(70, 12));
+      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "green")).toEqual(at(90, 22));
+    }
+    // Red and green between two poles never share a line: in a row they are 10 units apart, in a column 20.
+    const [red, green] = WIRE_COLORS.map((color) => boardPinOffset({ kind: "pole" }, "east", "io", color));
+    expect([green!.x - red!.x, green!.y - red!.y]).toEqual([PIN_SPACING, BOARD_PIN.drop]);
+    // An input and an output keep the end their entity's facing gives them.
+    expect(boardPinHeading("out", "south")).toBe("south");
+    expect(boardPinHeading("in", "south")).toBe("north");
   });
 
   it("arranges poles and speakers on the board with the tiles their prototype covers", () => {
@@ -330,5 +340,26 @@ describe("pins on a footprint", () => {
     expect(canStandAt(circuit.entities, { kind: "pole", prototype: "big-electric-pole" }, at(4, 0))).toBe(true);
     expect(blockedTurn(circuit.entities, new Map([[circuit.entities[0]!.id, "south"]]))).toBeUndefined();
     expect(footprintOriginAt({ x: 160, y: 160 }, { kind: "pole", prototype: "substation" })).toEqual(at(1, 1));
+  });
+});
+
+describe("another prototype on the board", () => {
+  const entities = entitiesOf("pole p at (0, 0) tile (2.5, 0.5) { }\nlamp right at (0, 0) tile (3.5, 0.5) { }\nlamp below at (0, 0) tile (2.5, 2.5) { }\nlamp loose at (0, 0) { }");
+  const [pole, right] = entities as [Entity, Entity];
+  const big = (tile: Point): Entity => ({ ...pole, prototype: "big-electric-pole", placement: { tile } }) as Entity;
+
+  it("is blocked by the entity whose tile the bigger footprint would newly cover", () => {
+    // From the tile (2, 0) a big pole covers (2..3, 0..1): the lamp on (3, 0) is in the way.
+    expect(blockedReshape(entities, big({ x: 3, y: 1 }))).toBe(right.id);
+    // One tile further left it covers (1..2, 0..1), which is free: the lamp below stands on (2, 2).
+    expect(blockedReshape(entities, big({ x: 2, y: 1 }))).toBeUndefined();
+  });
+
+  it("is never blocked without a tile, by an entity without one, or by the tiles the entity covers already", () => {
+    expect(blockedReshape(entities, { ...pole, prototype: "big-electric-pole", placement: undefined } as Entity)).toBeUndefined();
+    expect(blockedReshape(entities.slice(2), big({ x: 3, y: 1 }))).toBeUndefined();
+    const crowded = entitiesOf("pole p at (0, 0) tile (3, 1) { prototype = substation }\nlamp inside at (0, 0) tile (3.5, 1.5) { }");
+    expect(blockedReshape(crowded, { ...crowded[0]!, prototype: "big-electric-pole" } as Entity)).toBeUndefined();
+    expect(blockedReshape(crowded, { ...crowded[0]!, prototype: "small-electric-pole", placement: { tile: { x: 2.5, y: 0.5 } } } as Entity)).toBeUndefined();
   });
 });

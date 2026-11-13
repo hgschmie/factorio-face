@@ -4,8 +4,8 @@
 // `ProjectSession` (session/projectSession.ts).
 import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
-import type { PickerGroup } from "@face/catalog";
-import { canRotate, DEFAULT_FACING, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type SignalId, type Wire, type WireColor } from "@face/model";
+import type { PickerGroup, SpeakerInstrumentInfo } from "@face/catalog";
+import { canRotate, DEFAULT_FACING, prototypeOf, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
 import { rotated, type RotationTurn } from "../entities/facing.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
@@ -51,14 +51,19 @@ export function toolAllowed(tool: Tool, displayMode: DisplayMode): boolean {
   return tool.type === "select" || DISPLAY_CAPABILITIES[displayMode][tool.type];
 }
 
-/** The active canvas tool. A place tool holds the direction the new entity will face: east until the tool is turned. */
-export type Tool = { readonly type: "select" } | { readonly type: "place"; readonly kind: EntityKind; readonly facing?: Direction } | { readonly type: "wire"; readonly color: WireColor };
+/**
+ * The active canvas tool. A place tool says what it places, as an `EntityShape`: the kind and, for a kind with several game
+ * prototypes, which one (the first of the kind without it). It also holds the direction the new entity will face: east until
+ * the tool is turned.
+ */
+export type PlaceTool = { readonly type: "place"; readonly kind: EntityKind; readonly prototype?: PrototypeName; readonly facing?: Direction };
+export type Tool = { readonly type: "select" } | PlaceTool | { readonly type: "wire"; readonly color: WireColor };
 
 export const SELECT_TOOL: Tool = { type: "select" };
 
-/** True for the same tool of the palette; the direction of a place tool is not looked at. */
+/** True for the same tool of the palette: the same entity to place, whatever direction the tool was turned to. */
 export function sameTool(a: Tool, b: Tool): boolean {
-  if (a.type === "place" && b.type === "place") return a.kind === b.kind;
+  if (a.type === "place" && b.type === "place") return a.kind === b.kind && prototypeOf(a) === prototypeOf(b);
   if (a.type === "wire" && b.type === "wire") return a.color === b.color;
   return a.type === b.type;
 }
@@ -121,18 +126,20 @@ export interface ProjectView {
   readonly epoch: number;
 }
 
-/** One row of the simulation dock's trace area: one signal on the output of one entity, or the state of a lamp. */
+/** One row of the simulation dock's trace area: one signal on the output of one entity, or the state of a lamp or a speaker. */
 export interface SignalTrace {
   readonly id: string;
   /** Plain-text label, `<entity> <signal>`. */
   readonly label: string;
   readonly entity: EntityId;
   readonly entityName: string;
-  /** The traced output signal; absent for lamps and for entities that have not emitted anything. */
+  /** The traced output signal; absent for lamps, speakers and for entities that have not emitted anything. */
   readonly signal?: SignalId;
   /** Lamps only: the state at the current tick. */
   readonly lamp?: { readonly lit: boolean; readonly color?: string };
-  /** Values for the most recent ticks, oldest first; at most `SimulationView.historyLength` entries. Lamps trace 1 while lit. */
+  /** Speakers only: whether it plays at the current tick. */
+  readonly speaker?: { readonly playing: boolean };
+  /** Values for the most recent ticks, oldest first; at most `SimulationView.historyLength` entries. Lamps trace 1 while lit, speakers while playing. */
   readonly values: readonly number[];
   /** Formatted value at the current tick. */
   readonly current: string;
@@ -154,18 +161,35 @@ export interface StatusInput {
   readonly signals: readonly StatusSignal[];
 }
 
-/** Per-entity runtime annotation drawn on its card: one row per input color, one for the output or the lamp. */
+/** What a speaker does at one tick, for its card: the sound it would start to play, by the names of the game data. */
+export interface SpeakerStatus {
+  readonly playing: boolean;
+  /** While playing, where the names are known. */
+  readonly instrument?: string;
+  readonly note?: string;
+  /** While playing: the volume in percent. */
+  readonly volume?: number;
+  /** While playing: an alert is shown. */
+  readonly alert?: boolean;
+}
+
+/** Per-entity runtime annotation drawn on its card: one row per wire color it reads, one for the output or the state of a lamp or a speaker. */
 export interface EntityStatus {
-  /** The output or the lamp state as plain text, for example `A 5, B 10 +3`, `lit #ff0000` or `no output`. */
+  /**
+   * The output or the state as plain text, for example `A 5, B 10 +3`, `no output`, `lit #ff0000`, `playing piano F#3` or `silent`.
+   * Empty for an entity that neither emits nor has a state (a pole).
+   */
   readonly label: string;
-  /** Highlights the card, for example a lit lamp. */
+  /** Highlights the card: a lit lamp, a speaker that plays. */
   readonly active: boolean;
-  /** Absent for entities without an input terminal (constant combinators). */
+  /** What the entity reads, or for a pole what is on the networks it joins. Absent for entities that read nothing (constant combinators). */
   readonly input?: { readonly red: StatusInput; readonly green: StatusInput };
-  /** All emitted signals, in signal order; the same on both wire colors. Absent for lamps. */
+  /** All emitted signals, in signal order; the same on both wire colors. Absent for an entity that emits nothing (a lamp, a speaker, a pole). */
   readonly output?: readonly StatusSignal[];
   /** Lamps only; `color` is the `#rrggbb` of the light while lit with a color. */
   readonly lamp?: { readonly lit: boolean; readonly color?: string };
+  /** Speakers only. */
+  readonly speaker?: SpeakerStatus;
 }
 
 export interface SimulationView {
@@ -227,6 +251,8 @@ export interface CatalogView {
   readonly unknownModules: readonly string[];
   /** Selectable qualities, lowest first; empty unless the quality module is enabled. */
   readonly qualities: readonly QualityOption[];
+  /** The instruments of the programmable speaker with their notes, in the game's order, with their names in the game. */
+  readonly speakerInstruments: readonly SpeakerInstrumentInfo[];
   /** The signal picker for the enabled modules in game order, wildcards included. Built on first use. */
   picker(): readonly PickerGroup[];
   describe(signal: SignalId): SignalInfo;
@@ -306,8 +332,11 @@ export interface WorkbenchCommands {
   dismissError(): void;
 
   // Document edits: each call is one undoable step.
-  /** Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units), facing `facing` (east when omitted; a lamp does not rotate). */
-  placeEntity(kind: EntityKind, position: Point, facing?: Direction): void;
+  /**
+   * Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units), facing `facing` (east when omitted;
+   * a lamp does not rotate). `prototype` says which entity of the kind it is (a `big-electric-pole`); the first of the kind without it.
+   */
+  placeEntity(kind: EntityKind, position: Point, facing?: Direction, prototype?: PrototypeName): void;
   moveEntities(moves: readonly EntityMove[]): void;
   /**
    * Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included.
@@ -320,6 +349,9 @@ export interface WorkbenchCommands {
   /**
    * Replaces the configuration of the entity with `next.id`. Name and position changes go through their own commands.
    * A configuration the language cannot express yet is kept as `WorkbenchState.draft` and written once it becomes valid.
+   * Another prototype may cover other tiles: an entity with a `tile` keeps the top-left tile of its footprint, and the `tile` is
+   * corrected in the same step. On the blueprint board a change that would put it on a tile of another entity changes nothing
+   * and is reported.
    */
   updateEntity(next: Entity, options?: UpdateOptions): void;
   discardDraft(): void;
@@ -359,11 +391,11 @@ export interface WorkbenchCommands {
   /** Takes the entities off the grid: removes their `tile`, so they stand at a derived place again. */
   clearTiles(ids: readonly EntityId[]): void;
   /**
-   * Adds an entity of `kind` that faces `facing` (east when omitted) with its center at `tile`. Its edit position is the one the
-   * tile is derived from, moved on until it is not exactly that of another entity. Nothing happens when a tile it would cover
-   * is taken (`canStandAt`).
+   * Adds an entity of `kind` (of `prototype`, the first of the kind when omitted) that faces `facing` (east when omitted) with
+   * its center at `tile`. Its edit position is the one the tile is derived from, moved on until it is not exactly that of
+   * another entity. Nothing happens when a tile it would cover is taken (`canStandAt`).
    */
-  placeEntityOnTile(kind: EntityKind, tile: Point, facing?: Direction): void;
+  placeEntityOnTile(kind: EntityKind, tile: Point, facing?: Direction, prototype?: PrototypeName): void;
   /**
    * Copies the selected entities and the wires between them into the circuit and selects the copies: what `copyEntities` and
    * `pasteEntities` without a corner do, as one step and without a clipboard. Nothing happens with no entity selected.

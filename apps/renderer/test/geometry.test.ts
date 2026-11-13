@@ -1,7 +1,10 @@
-import { DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, TERMINAL_SIDES, TERMINALS, WIRE_COLORS, type Direction } from "@face/model";
+import { DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, TERMINALS, WIRE_COLORS, type Direction } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { arrowPath, CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
+import { arrowPath, CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPlaces, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
 import { CLOCKWISE, opposite, rotated } from "../src/entities/facing.ts";
+
+/** The places pins are drawn at: where an input sits and where an output sits. */
+const PLACES = ["in", "out"] as const;
 
 describe("connection pins", () => {
   const position = { x: 40, y: 80 };
@@ -14,7 +17,7 @@ describe("connection pins", () => {
   });
 
   it("puts the red pin above the green pin, at the same height on both sides", () => {
-    for (const side of TERMINAL_SIDES) {
+    for (const side of PLACES) {
       const red = pinPoint(position, side, "red");
       const green = pinPoint(position, side, "green");
       expect(red.x).toBe(green.x);
@@ -65,7 +68,7 @@ describe("connection pins of rotated entities", () => {
 
   it("faces east when no direction is given, exactly as before entities could be rotated", () => {
     expect(DEFAULT_FACING).toBe("east");
-    for (const side of TERMINAL_SIDES) for (const color of WIRE_COLORS) expect(pinPoint(position, side, color)).toEqual(pinPoint(position, side, color, "east"));
+    for (const side of PLACES) for (const color of WIRE_COLORS) expect(pinPoint(position, side, color)).toEqual(pinPoint(position, side, color, "east"));
     expect(facingOf({ kind: "decider" })).toBe("east");
     expect(facingOf({ kind: "decider", placement: { tile: { x: 1, y: 2.5 } } })).toBe("east");
     expect(facingOf({ kind: "decider", placement: { direction: "north" } })).toBe("north");
@@ -81,7 +84,7 @@ describe("connection pins of rotated entities", () => {
       expect(pinHeading("out", facing)).toBe(facing);
       expect(pinHeading("in", facing)).toBe(opposite(facing));
       for (const kind of ENTITY_KINDS) {
-        for (const side of TERMINALS[kind]) {
+        for (const side of TERMINALS[kind].flatMap(pinPlaces)) {
           for (const color of WIRE_COLORS) {
             const pin = pinPoint(position, side, color, facing);
             const onEdge = { left: pin.x === position.x, right: pin.x === position.x + CARD.width, top: pin.y === position.y, bottom: pin.y === position.y + CARD.height };
@@ -95,7 +98,7 @@ describe("connection pins of rotated entities", () => {
   it("turns the pins with the entity as one rigid figure: seen along the facing direction, red is always on the left", () => {
     for (const facing of DIRECTIONS) {
       const ahead = DIRECTION_VECTOR[facing];
-      for (const side of TERMINAL_SIDES) {
+      for (const side of PLACES) {
         const red = pinPoint(position, side, "red", facing);
         const green = pinPoint(position, side, "green", facing);
         // The step from red to green is a quarter turn clockwise from the facing direction.

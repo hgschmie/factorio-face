@@ -1,8 +1,9 @@
 // Building blocks shared by the per-kind settings forms.
-import { BOTH_NETWORKS, signal, type Operand, type SignalId, type Wildcard } from "@face/model";
+import { BOTH_NETWORKS, signal, type Condition, type Operand, type SignalId, type Wildcard } from "@face/model";
 import type { ReactNode } from "react";
 import { Icon } from "../icons/Icon.tsx";
-import { IntField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
+import { COMPARATOR_OPTIONS, IntField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
+import { setOptional } from "./immutable.ts";
 import { SignalField } from "./SignalField.tsx";
 
 /** Signal used when a form has to create a row that requires one. */
@@ -77,5 +78,35 @@ export function OperandField({ label, value, wildcards, networks = true, onChang
         />
       )}
     </>
+  );
+}
+
+const SECOND_TYPES: readonly SelectOption<Condition["second"]["type"]>[] = [
+  { value: "constant", label: "Number" },
+  { value: "signal", label: "Signal" },
+];
+
+/**
+ * The circuit condition of an entity that has one (a lamp, a speaker): a signal, a comparator and a number or a second signal,
+ * read from the entity's input as a whole. `wildcards` are those the left side accepts, `operandWildcards` those of the right.
+ */
+export function ConditionFields({ condition, wildcards, operandWildcards, onChange }: { readonly condition: Condition; readonly wildcards: readonly Wildcard[]; readonly operandWildcards: readonly Wildcard[]; onChange(next: Condition): void }) {
+  const second = condition.second;
+  return (
+    <div className="field-grid">
+      <SignalField label="Signal" ariaLabel="Condition signal" wide wildcards={wildcards} value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
+      <SelectField label="Comparator" value={condition.comparator} options={COMPARATOR_OPTIONS} onChange={(comparator) => onChange({ ...condition, comparator })} />
+      <SelectField
+        label="Compare to"
+        value={second.type}
+        options={SECOND_TYPES}
+        onChange={(type) => type !== second.type && onChange({ ...condition, second: type === "constant" ? { type: "constant", value: 0 } : { type: "signal", signal: DEFAULT_SIGNAL } })}
+      />
+      {second.type === "constant" ? (
+        <IntField label="Number" wide value={second.value} onChange={(value) => onChange({ ...condition, second: { type: "constant", value } })} />
+      ) : (
+        <SignalField label="Other signal" wide required wildcards={operandWildcards} value={second.signal} onChange={(next) => next && onChange({ ...condition, second: { type: "signal", signal: next } })} />
+      )}
+    </div>
   );
 }

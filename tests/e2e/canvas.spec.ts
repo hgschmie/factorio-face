@@ -27,7 +27,7 @@ async function wirePaths(page: Page): Promise<string[]> {
   return page.locator("g.wire path.wire-core").evaluateAll((paths) => paths.map((path) => path.getAttribute("d") ?? ""));
 }
 
-test("places each of the five kinds from the palette", async ({ page }) => {
+test("places each of the four combinators and the lamp from the palette", async ({ page }) => {
   await zoomOut(page, 2);
   for (const [index, kind] of KINDS.entries()) {
     const item = page.locator(`.palette-item[data-kind="${kind}"]`);

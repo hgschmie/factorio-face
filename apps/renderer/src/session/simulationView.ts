@@ -2,7 +2,8 @@
 import { signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
 import { POINT_ROLES, type CompiledCircuit, type EntitySnapshot, type History, type SignalList, type TerminalNetworks, type TickSnapshot } from "@face/simulation";
 import { shortSignal, signalListText } from "../entities/signalText.ts";
-import type { EntityStatus, SignalTrace } from "../workbench/controller.ts";
+import { soundText } from "../entities/summary.ts";
+import type { EntityStatus, SignalTrace, SpeakerStatus } from "../workbench/controller.ts";
 
 /** Entities traced when nothing is selected. */
 export const DEFAULT_TRACED_ENTITIES = 3;
@@ -19,6 +20,18 @@ function listText(list: SignalList | undefined): string {
   return signalListText(list ?? []) || "nothing";
 }
 
+/** What a speaker does, in words: "silent", "playing piano F#3", and the volume where it is not the full one: "playing piano F#3 at 60%". */
+export function speakerText({ playing, instrument, note, volume }: SpeakerStatus): string {
+  if (!playing) return "silent";
+  const sound = soundText({ instrument, note });
+  return `playing${sound && ` ${sound}`}${volume === undefined || volume === 100 ? "" : ` at ${Math.round(volume * 10) / 10}%`}`;
+}
+
+/** Whether an entity has something to trace over time: an output, or a state. A pole has neither: it only joins networks. */
+export function isTraceable(kind: EntitySnapshot["kind"]): boolean {
+  return POINT_ROLES[kind].writes !== undefined || kind === "lamp" || kind === "speaker";
+}
+
 /** The status of one entity; `wires` are the networks on the connection point it reads (absent without any wire). */
 function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined): EntityStatus {
   const input = snapshot.input && {
@@ -30,12 +43,9 @@ function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined)
     const color = lit && snapshot.lamp.color ? colorHex(snapshot.lamp.color) : undefined;
     return { label: lit ? (color ? `lit ${color}` : "lit") : "off", active: lit, input, lamp: { lit, color } };
   }
-  // Minimal for the two new kinds until package H gives them cards of their own: the networks they read and one word.
-  if (snapshot.speaker) {
-    const { playing, note } = snapshot.speaker;
-    return { label: playing ? (note === undefined ? "playing" : `playing ${note}`) : "silent", active: playing, input };
-  }
-  if (snapshot.kind === "pole") return { label: "relay", active: false, input };
+  if (snapshot.speaker) return { label: speakerText(snapshot.speaker), active: snapshot.speaker.playing, input, speaker: snapshot.speaker };
+  // A relay: it emits nothing and has no state, so there is nothing to say beyond the two networks it joins.
+  if (!isTraceable(snapshot.kind)) return { label: "", active: false, input };
   const output = snapshot.output ?? [];
   return { label: signalListText(output, LABEL_SIGNALS) || "no output", active: false, input, output };
 }
@@ -71,14 +81,17 @@ export class StatusCache {
   }
 }
 
-/** The entities the dock traces: the selection, or the first few entities when nothing is selected. */
+/**
+ * The entities the dock traces: the selection, or the first few entities when nothing is selected. Only those with something
+ * to trace (`isTraceable`): a pole has no row.
+ */
 export function tracedEntities(circuit: Circuit, selection: readonly EntityId[]): readonly Entity[] {
-  if (selection.length === 0) return circuit.entities.slice(0, DEFAULT_TRACED_ENTITIES);
   const selected = new Set(selection);
+  const limit = selection.length === 0 ? DEFAULT_TRACED_ENTITIES : MAX_TRACED_ENTITIES;
   const traced: Entity[] = [];
   for (const entity of circuit.entities) {
-    if (selected.has(entity.id)) traced.push(entity);
-    if (traced.length === MAX_TRACED_ENTITIES) break;
+    if (traced.length === limit) break;
+    if ((selection.length === 0 || selected.has(entity.id)) && isTraceable(entity.kind)) traced.push(entity);
   }
   return traced;
 }
@@ -107,7 +120,7 @@ function outputSignals(history: History, entity: EntityId): SignalId[] {
   return [...seen.values()];
 }
 
-/** Trace rows for the traced entities: one per output signal, one per lamp, and a placeholder row for an entity without output. */
+/** Trace rows for the traced entities: one per output signal, one per lamp and per speaker, and a placeholder row for an entity without output. */
 export function buildTraces(history: History, entities: readonly Entity[]): SignalTrace[] {
   const latest = history.latest;
   if (!latest) return [];
@@ -120,6 +133,12 @@ export function buildTraces(history: History, entities: readonly Entity[]): Sign
       const color = lamp.lit && lamp.color ? colorHex(lamp.color) : undefined;
       const values = history.snapshots().map((tick) => (tick.entities[entity.id]?.lamp?.lit ? 1 : 0));
       traces.push({ ...base, id: `${entity.id}|lamp`, label: `${entity.name} light`, lamp: { lit: lamp.lit, color }, values, current: lamp.lit ? (color ? `lit ${color}` : "lit") : "off" });
+      continue;
+    }
+    if (entity.kind === "speaker") {
+      const speaker = snapshot?.speaker ?? { playing: false };
+      const values = history.snapshots().map((tick) => (tick.entities[entity.id]?.speaker?.playing ? 1 : 0));
+      traces.push({ ...base, id: `${entity.id}|speaker`, label: `${entity.name} sound`, speaker: { playing: speaker.playing }, values, current: speakerText(speaker) });
       continue;
     }
     const signals = outputSignals(history, entity.id);

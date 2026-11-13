@@ -1,5 +1,7 @@
 // The selection in words, for the status bar, the inspector and the context menu. Pure.
-import { wireKey, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire } from "@face/model";
+import { printTerminal } from "@face/language";
+import { describeWireReach, formatWireReach, prototypeData, wireKey, withArticle, type Circuit, type Entity, type EntityId, type EntityShape, type TerminalRef, type Wire, type WireReach } from "@face/model";
+import { capitalized } from "../entities/kindInfo.ts";
 
 export interface SelectedItems {
   readonly entities: readonly Entity[];
@@ -32,10 +34,24 @@ export function entityNames(circuit: Circuit): EntityNames {
 }
 
 function terminalLabel(terminal: TerminalRef, names: EntityNames): string {
-  return `${names.get(terminal.entity) ?? terminal.entity}.${terminal.side}`;
+  return printTerminal(names.get(terminal.entity) ?? terminal.entity, terminal.side);
 }
 
-/** Both ends of a wire as in the source: `source.out <-> gate.in`. */
+/**
+ * Which reach applied to a wire between `a` and `b` and why, for the wire inspector. A wire spans the smaller reach of its two
+ * ends, and only a pole has a reach of its own: "The wire reach of the project is 9.", "The wire reach of a small electric pole
+ * is 7.5: a pole has its own reach, and a wire spans the smaller reach of its two ends.", and where the project's reach limits
+ * a wire to a pole that would reach further: "The wire reach of the project is 9. It is the smaller reach of the two ends: a
+ * big electric pole reaches 32."
+ */
+export function wireReachNote(a: EntityShape, b: EntityShape, limit: WireReach): string {
+  const sentence = capitalized(describeWireReach(limit));
+  if (limit.of !== "project") return `${sentence}: a pole has its own reach, and a wire spans the smaller reach of its two ends.`;
+  const further = [a, b].map(prototypeData).find((data) => data.wireReach !== undefined);
+  return further?.wireReach === undefined ? `${sentence}.` : `${sentence}. It is the smaller reach of the two ends: ${withArticle(further.label)} reaches ${formatWireReach(further.wireReach)}.`;
+}
+
+/** Both ends of a wire as in the source: `source.out <-> gate.in`, `p1 <-> p2`. */
 export function wireEndsLabel(wire: Wire, names: EntityNames): string {
   return `${terminalLabel(wire.a, names)} <-> ${terminalLabel(wire.b, names)}`;
 }

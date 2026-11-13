@@ -1,5 +1,5 @@
-// One-line configuration summaries shown on entity cards. Pure.
-import { prototypeData, type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type Operand, type SelectorCombinator, type SignalId, type Speaker } from "@face/model";
+// Configuration summaries shown on entity cards: one line, two for an entity that needs them (a speaker). Pure.
+import { prototypeData, type ArithmeticCombinator, type Condition, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type Operand, type Pole, type SelectorCombinator, type SignalId, type Speaker } from "@face/model";
 import { shortSignal } from "./signalText.ts";
 
 const OPERATOR_SYMBOLS: Readonly<Record<string, string>> = { "*": "×", "/": "÷", "-": "−", "!=": "≠", "<=": "≤", ">=": "≥" };
@@ -64,37 +64,70 @@ function selectorSummary(entity: SelectorCombinator): string {
   }
 }
 
+function conditionText(condition: Condition): string {
+  return `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}`;
+}
+
 // "Always on" is about the time of day; a lamp controlled by the circuit network follows its condition either way, so the card shows that.
 function lampSummary(entity: Lamp): string {
   const condition = entity.condition;
   if (!condition) return entity.alwaysOn ? "always on" : "no condition";
-  return `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}`;
+  return conditionText(condition);
 }
 
-// Minimal until package H lays out the speaker card: when it plays, or which signal picks the note.
-function speakerSummary(entity: Speaker): string {
-  if (entity.pitchSignal) return `pitch ${shortSignal(entity.pitchSignal)}`;
-  const condition = entity.condition;
-  return condition ? `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}` : "no condition";
+/** Which pole it is says the heading of its card; what the choice decides is how far its wires reach and the tiles it covers. */
+function poleSummary(entity: Pole): string {
+  const { wireReach, width, height } = prototypeData(entity);
+  return `${wireReach === undefined ? "" : `reach ${wireReach} · `}${width}x${height}`;
 }
 
-export function entitySummary(entity: Entity): string {
+/** The instruments of the game with their notes, by name and in the game's order, as far as a summary needs them. */
+export type InstrumentNames = readonly { readonly name: string; readonly notes: readonly { readonly name: string }[] }[];
+
+/**
+ * The instrument and the note of a speaker by their names in the game data. Where the speaker does not say, it is the first
+ * of the game's list, which only `instruments` knows.
+ */
+export function speakerSound(entity: Pick<Speaker, "instrument" | "note">, instruments?: InstrumentNames): { readonly instrument?: string; readonly note?: string } {
+  const instrument = entity.instrument ?? instruments?.[0]?.name;
+  return { instrument, note: entity.note ?? instruments?.find((candidate) => candidate.name === instrument)?.notes[0]?.name };
+}
+
+/** A sound in words, as far as its names are known: "piano F#3", "piano", "". */
+export function soundText(sound: { readonly instrument?: string; readonly note?: string }): string {
+  return [sound.instrument, sound.note].filter((part) => part !== undefined).join(" ");
+}
+
+/** What a speaker plays and when: the sound and its condition, or the signal that picks the note and the instrument it picks it from. */
+function speakerSummary(entity: Speaker, instruments?: InstrumentNames): readonly string[] {
+  const sound = speakerSound(entity, instruments);
+  if (entity.pitchSignal) return [`pitch from ${shortSignal(entity.pitchSignal)}`, sound.instrument ?? "first instrument"];
+  return [soundText(sound) || "first sound", entity.condition ? `when ${conditionText(entity.condition)}` : "no condition"];
+}
+
+/** The lines under the name on a card. `instruments` names the sound of a speaker that leaves it to the game's default. */
+export function summaryLines(entity: Entity, instruments?: InstrumentNames): readonly string[] {
   switch (entity.kind) {
     case "constant":
-      return constantSummary(entity);
+      return [constantSummary(entity)];
     case "arithmetic":
-      return arithmeticSummary(entity);
+      return [arithmeticSummary(entity)];
     case "decider":
-      return deciderSummary(entity);
+      return [deciderSummary(entity)];
     case "selector":
-      return selectorSummary(entity);
+      return [selectorSummary(entity)];
     case "lamp":
-      return lampSummary(entity);
+      return [lampSummary(entity)];
     case "pole":
-      return prototypeData(entity).label;
+      return [poleSummary(entity)];
     case "speaker":
-      return speakerSummary(entity);
+      return speakerSummary(entity, instruments);
   }
+}
+
+/** The summary as one text. */
+export function entitySummary(entity: Entity, instruments?: InstrumentNames): string {
+  return summaryLines(entity, instruments).join(", ");
 }
 
 /** Shortens text to at most `maxLength` characters, ending in an ellipsis when cut. */

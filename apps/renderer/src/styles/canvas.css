@@ -167,6 +167,11 @@
   fill: var(--text-soft);
 }
 
+/* A long name ("MEDIUM ELECTRIC POLE") is set closer, so that it ends before the description marker. */
+.card-kind.long {
+  letter-spacing: 0.3px;
+}
+
 /* Marks a card whose entity has a description; the text itself is in the inspector. */
 .card-note {
   color: var(--text-muted);
@@ -183,6 +188,11 @@
   font-family: var(--font-mono);
   font-size: 12px;
   fill: var(--text-soft);
+}
+
+/* One of two lines under the name. */
+.card-summary.small {
+  font-size: 10px;
 }
 
 /* Status rows: what the entity reads on red and on green and what it emits, each behind a marker. */
@@ -230,8 +240,23 @@
 }
 
 .card.active .card-row.lamp .row-value,
-.bubble-face.active .card-row.lamp .row-value {
+.bubble-face.active .card-row.lamp .row-value,
+.card-row.speaker.playing .row-value {
   fill: var(--accent-bright);
+}
+
+/* The state of a speaker: sound waves that light up while it plays. */
+.card-row.speaker .row-marker {
+  fill: var(--text-dim);
+  stroke: var(--text-dim);
+  stroke-width: 1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.card-row.speaker.playing .row-marker {
+  fill: var(--accent-bright);
+  stroke: var(--accent-bright);
 }
 
 /* Connection pins: one per wire color on every terminal side. */

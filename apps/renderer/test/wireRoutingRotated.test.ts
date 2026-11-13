@@ -1,6 +1,6 @@
-import { DIRECTIONS, type Direction, type Point, type TerminalSide, type WireColor } from "@face/model";
+import { DIRECTIONS, type Direction, type Point, type WireColor } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { CARD, cardRect, DIRECTION_VECTOR, GRID, PIN_SPACING, pinHeading, pinPoint, type Rect } from "../src/canvas/geometry.ts";
+import { CARD, cardRect, DIRECTION_VECTOR, GRID, PIN_SPACING, pinHeading, pinPoint, type PinPlace, type Rect } from "../src/canvas/geometry.ts";
 import { CORNER_RADIUS, cornerRadii, FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire, type WireEnd, type WireRoute } from "../src/canvas/wireRouting.ts";
 
 const A: Point = { x: 40, y: 80 };
@@ -55,7 +55,10 @@ function crossings(a: WireRoute, b: WireRoute): Point[] {
   return result;
 }
 
-function end(position: Point, side: TerminalSide, facing: Direction): WireEnd {
+/** An end at an input or an output: these tests are about the edges, not about a point that has two of them. */
+type PlacedEnd = WireEnd & { readonly side: PinPlace };
+
+function end(position: Point, side: PinPlace, facing: Direction): PlacedEnd {
   return { position, side, facing };
 }
 
@@ -81,14 +84,14 @@ function placements(reach = 400, step = 2 * GRID): Point[] {
 }
 
 interface Case {
-  readonly a: WireEnd;
-  readonly b: WireEnd;
+  readonly a: PlacedEnd;
+  readonly b: PlacedEnd;
   readonly sameEntity: boolean;
   readonly red: WireRoute;
   readonly green: WireRoute;
 }
 
-function routed(a: WireEnd, b: WireEnd, sameEntity = false): Case {
+function routed(a: PlacedEnd, b: PlacedEnd, sameEntity = false): Case {
   return { a, b, sameEntity, red: routeWire("red", a, b, sameEntity), green: routeWire("green", a, b, sameEntity) };
 }
 
@@ -312,7 +315,7 @@ describe("routes of rotated entities, by example", () => {
 });
 
 describe("routes between two entities facing east", () => {
-  const pinned: { name: string; color: WireColor; a: TerminalSide; target: Point; b: TerminalSide; sameEntity: boolean; route: number[][] }[] = [
+  const pinned: { name: string; color: WireColor; a: PinPlace; target: Point; b: PinPlace; sameEntity: boolean; route: number[][] }[] = [
     { name: "forward", color: "red", a: "out", target: { x: 300, y: 260 }, b: "in", sameEntity: false, route: [[224, 140], [272, 140], [272, 320], [300, 320]] },
     { name: "forward", color: "green", a: "out", target: { x: 300, y: 260 }, b: "in", sameEntity: false, route: [[224, 160], [252, 160], [252, 340], [300, 340]] },
     { name: "narrow", color: "red", a: "out", target: { x: 240, y: -100 }, b: "in", sameEntity: false, route: [[224, 140], [227, 140], [227, -40], [240, -40]] },

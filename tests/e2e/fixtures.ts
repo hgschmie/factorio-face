@@ -4,7 +4,7 @@ import { openProject, writeProject } from "./app.ts";
 
 /**
  * The example circuit extended with a selector, a second wire color between the same terminals and feedback in both colors:
- * every entity kind and every wire shape on one screen. Entity ids follow declaration order (e1 source ... e5 light).
+ * the four combinators and the lamp (the kinds with a digit key) and every wire shape on one screen. Entity ids follow declaration order (e1 source ... e5 light).
  */
 export const FIVE_KINDS_SOURCE = `circuit "Feedback example" {
     constant source at (40, 80) {
@@ -41,6 +41,59 @@ export const FIVE_KINDS_SOURCE = `circuit "Feedback example" {
 `;
 
 export const FIVE_KINDS = ["source", "gate", "twice", "pick", "light"];
+
+/**
+ * A signal on its way through every pole to a lamp and a speaker: source -> small -> medium -> big -> station -> light, with
+ * the speaker on the last pole and a green wire beside the red one between the first two. Every entity has a tile and every
+ * wire is within reach. Ids follow declaration order.
+ */
+export const RELAY_SOURCE = `circuit "Relay" {
+    constant source at (40, 80) tile (0.5, 1.5) {
+        virtual:signal-A = 3
+    }
+
+    pole small at (300, 80) tile (4.5, 1.5) {
+    }
+
+    pole medium at (560, 80) tile (10.5, 1.5) {
+        prototype = medium-electric-pole
+    }
+
+    pole big at (820, 80) tile (16, 2) {
+        prototype = big-electric-pole
+    }
+
+    pole station at (820, 300) tile (16, 8) {
+        prototype = substation
+    }
+
+    lamp light at (1080, 300) tile (21.5, 7.5) {
+        when virtual:signal-A > 0
+    }
+
+    speaker alarm at (1080, 80) tile (21.5, 1.5) {
+        when virtual:signal-A > 2
+        instrument = piano
+        note = "F#3"
+    }
+
+    wire red source.out <-> small
+    wire red small <-> medium
+    wire green small <-> medium
+    wire red medium <-> big
+    wire red big <-> station
+    wire red station <-> light.in
+    wire red big <-> alarm.in
+}
+`;
+
+export const RELAY = ["source", "small", "medium", "big", "station", "light", "alarm"];
+
+/** Opens the relay circuit as a saved project. */
+export async function openRelay(page: Page): Promise<void> {
+  await openProject(page, await writeProject({ name: "Relay", source: RELAY_SOURCE }));
+  await page.locator("g.card").nth(RELAY.length - 1).waitFor();
+}
 
 /** Opens the five-kinds circuit as a saved project. Returns the path of the project file. */
 export async function openFiveKinds(page: Page): Promise<string> {

@@ -38,6 +38,9 @@ export function rowPlacement(pinsBelow: boolean): { readonly top: number; readon
   return pinsBelow ? RAISED_ROWS : STATUS_ROWS;
 }
 
+/** Characters of the 9px row text that fit a row that is one text: the state of a speaker. */
+export const STATE_ROW_CHARS = Math.floor((STATUS_ROWS.right - STATUS_ROWS.contentX) / STATUS_ROWS.charWidth);
+
 /** Signals named per input row in the card's data attributes; a network can carry thousands. */
 export const TEXT_SIGNALS = 32;
 

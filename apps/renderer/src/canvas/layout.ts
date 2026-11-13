@@ -4,7 +4,7 @@
 import { facingOf, wireSpan, type Entity, type EntityId, type Point, type TerminalSide, type Wire, type WireColor, type WireSpan } from "@face/model";
 import type { DisplayMode } from "../workbench/controller.ts";
 import { arrangeBoard, boardPinOffset, TILE, withOrigin, type BoardPlacement } from "./board.ts";
-import { boundsOfPoints, cardRect, DIRECTION_VECTOR, drawnSide, entitiesBounds, GRID, pinPoint, type Rect } from "./geometry.ts";
+import { boundsOfPoints, cardRect, DIRECTION_VECTOR, entitiesBounds, GRID, pinPlaces, pinPoint, type Rect } from "./geometry.ts";
 import { FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire } from "./wireRouting.ts";
 
 export interface WireRoute {
@@ -23,8 +23,11 @@ export interface CanvasLayout {
   readonly detailZoom: number;
   /** The rectangle an entity takes: what a marquee has to touch and what is culled. Its corner is the position a drag moves. */
   rect(entity: Entity): Rect;
-  /** Center of the connection pin of one wire color on one terminal: where wires of that color end. */
-  pin(entity: Entity, side: TerminalSide, color: WireColor): Point;
+  /**
+   * Center of the connection pin of one wire color on one terminal: where wires of that color end. A connection point that is
+   * drawn at two places of a card (`pinPlaces`) has two; this is the one nearer to `toward`, the first without it.
+   */
+  pin(entity: Entity, side: TerminalSide, color: WireColor, toward?: Point): Point;
   /** The line of a wire between two entities of the circuit (the same one for a feedback wire). */
   route(wire: Wire, a: Entity, b: Entity): WireRoute;
   /** The rectangle around all entities, without `fitMargin`; undefined for an empty circuit. */
@@ -72,9 +75,13 @@ export function editLayout(entities: readonly Entity[], preview?: PreviewPositio
     fitMargin: FEEDBACK_CLEARANCE.green,
     detailZoom: EDIT_DETAIL_ZOOM,
     rect: (entity) => cardRect(positionOf(entity)),
-    pin: (entity, side, color) => pinPoint(positionOf(entity), side, color, facingOf(entity)),
+    pin: (entity, side, color, toward) => {
+      const pins = pinPlaces(side).map((place) => pinPoint(positionOf(entity), place, color, facingOf(entity)));
+      const distance = (pin: Point): number => (toward ? Math.hypot(pin.x - toward.x, pin.y - toward.y) : 0);
+      return pins.reduce((nearest, pin) => (distance(pin) < distance(nearest) ? pin : nearest));
+    },
     route: (wire, a, b) => {
-      const route = routeWire(wire.color, { position: positionOf(a), side: drawnSide(wire.a.side), facing: facingOf(a) }, { position: positionOf(b), side: drawnSide(wire.b.side), facing: facingOf(b) }, a.id === b.id);
+      const route = routeWire(wire.color, { position: positionOf(a), side: wire.a.side, facing: facingOf(a) }, { position: positionOf(b), side: wire.b.side, facing: facingOf(b) }, a.id === b.id);
       return { path: routePath(route), bounds: routeBounds(route) };
     },
     bounds: () => entitiesBounds(entities),

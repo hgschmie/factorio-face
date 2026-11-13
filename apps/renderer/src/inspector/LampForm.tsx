@@ -1,17 +1,13 @@
 import { SIGNAL_SLOTS } from "@face/language";
 import { LAMP_COLOR_MODES, type Condition, type Lamp, type LampColorMode, type RgbColor } from "@face/model";
 import { useId } from "react";
-import { CheckboxField, COMPARATOR_OPTIONS, IntField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
-import { DEFAULT_SIGNAL, FormSection } from "./formParts.tsx";
+import { CheckboxField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
+import { ConditionFields, DEFAULT_SIGNAL, FormSection } from "./formParts.tsx";
 import { setOptional } from "./immutable.ts";
 import { SignalField } from "./SignalField.tsx";
 
 const NEW_CONDITION: Condition = { first: DEFAULT_SIGNAL, comparator: ">", second: { type: "constant", value: 0 } };
 
-const SECOND_TYPES: readonly SelectOption<Condition["second"]["type"]>[] = [
-  { value: "constant", label: "Number" },
-  { value: "signal", label: "Signal" },
-];
 const COLOR_MODE_LABELS: Readonly<Record<LampColorMode, string>> = { mapping: "Color signals (mapping)", components: "Red, green, blue signals", "packed-rgb": "Packed RGB signal" };
 const COLOR_MODES: readonly SelectOption<LampColorMode>[] = LAMP_COLOR_MODES.map((value) => ({ value, label: COLOR_MODE_LABELS[value] }));
 
@@ -23,34 +19,13 @@ function fromHex(hex: string): RgbColor {
   return { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) };
 }
 
-function ConditionFields({ condition, onChange }: { readonly condition: Condition; onChange(next: Condition): void }) {
-  const second = condition.second;
-  return (
-    <div className="field-grid">
-      <SignalField label="Signal" ariaLabel="Condition signal" wide wildcards={SIGNAL_SLOTS["lamp.condition"]} value={condition.first} onChange={(first) => onChange(setOptional(condition, "first", first))} />
-      <SelectField label="Comparator" value={condition.comparator} options={COMPARATOR_OPTIONS} onChange={(comparator) => onChange({ ...condition, comparator })} />
-      <SelectField
-        label="Compare to"
-        value={second.type}
-        options={SECOND_TYPES}
-        onChange={(type) => type !== second.type && onChange({ ...condition, second: type === "constant" ? { type: "constant", value: 0 } : { type: "signal", signal: DEFAULT_SIGNAL } })}
-      />
-      {second.type === "constant" ? (
-        <IntField label="Number" wide value={second.value} onChange={(value) => onChange({ ...condition, second: { type: "constant", value } })} />
-      ) : (
-        <SignalField label="Other signal" wide required wildcards={SIGNAL_SLOTS["lamp.operand"]} value={second.signal} onChange={(next) => next && onChange({ ...condition, second: { type: "signal", signal: next } })} />
-      )}
-    </div>
-  );
-}
-
 export function LampForm({ entity, onChange }: { readonly entity: Lamp; onChange(next: Lamp): void }) {
   const colorId = useId();
   return (
     <>
       <FormSection title="Light condition">
         <CheckboxField label="Controlled by the circuit network" checked={entity.condition !== undefined} onChange={(enabled) => onChange(setOptional(entity, "condition", enabled ? NEW_CONDITION : undefined))} />
-        {entity.condition && <ConditionFields condition={entity.condition} onChange={(condition) => onChange({ ...entity, condition })} />}
+        {entity.condition && <ConditionFields condition={entity.condition} wildcards={SIGNAL_SLOTS["lamp.condition"]} operandWildcards={SIGNAL_SLOTS["lamp.operand"]} onChange={(condition) => onChange({ ...entity, condition })} />}
         <div className="inline-field">
           <span className="field-label">Input networks</span>
           <NetworkToggle label="Input networks" value={entity.inputNetworks} onChange={(inputNetworks) => onChange({ ...entity, inputNetworks })} />

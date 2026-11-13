@@ -1,7 +1,7 @@
 // Wire routes. Pure geometry; rendering turns a route into SVG path data.
 import { DEFAULT_FACING, type Direction, type Point, type TerminalSide, type WireColor } from "@face/model";
 import { CLOCKWISE } from "../entities/facing.ts";
-import { boundsOfPoints, CARD, cardRect, DIRECTION_VECTOR, expandRect, GRID, PIN_SPACING, pinHeading, pinPoint, type Rect } from "./geometry.ts";
+import { boundsOfPoints, CARD, cardRect, DIRECTION_VECTOR, expandRect, GRID, PIN_SPACING, pinHeading, pinPlaces, pinPoint, type PinPlace, type Rect } from "./geometry.ts";
 
 /**
  * How far a feedback loop stays away from its card. The loop passes the side of the card on which the red pins sit (the top of a
@@ -19,6 +19,9 @@ export interface WireEnd {
   /** The direction the entity faces, which decides the edge its pins are on; east when absent. */
   readonly facing?: Direction;
 }
+
+/** A wire end at one of the places its terminal is drawn at (`pinPlaces`): the rules below know inputs and outputs only. */
+type PlacedEnd = WireEnd & { readonly side: PinPlace };
 
 /** The corners of an axis-aligned line from pin to pin, drawn with rounded corners. No two neighbors coincide and no point lies inside a straight run. */
 export type WireRoute = readonly Point[];
@@ -121,12 +124,12 @@ function frameOf(facing: Direction): Frame {
 
 const FRAMES: Readonly<Record<Direction, Frame>> = { east: frameOf("east"), south: frameOf("south"), west: frameOf("west"), north: frameOf("north") };
 
-function framePin(frame: Frame, position: Point, side: TerminalSide, color: WireColor): Point {
+function framePin(frame: Frame, position: Point, side: PinPlace, color: WireColor): Point {
   return { x: position.x + (side === "out" ? frame.width : 0), y: position.y + frame.pinY[color] };
 }
 
 /** The point halfway between the two pins of a terminal. */
-function frameCenter(frame: Frame, position: Point, side: TerminalSide): Point {
+function frameCenter(frame: Frame, position: Point, side: PinPlace): Point {
   const red = framePin(frame, position, side, "red");
   const green = framePin(frame, position, side, "green");
   return { x: (red.x + green.x) / 2, y: (red.y + green.y) / 2 };
@@ -191,7 +194,7 @@ function detourRoute(frame: Frame, color: WireColor, out: Point, input: Point): 
  * terminal is higher. Red starts and ends above green on a path that turns back, so the colors cannot be parallels all the
  * way: one of them takes the outer line on every leg and crosses the other once, at a right angle.
  */
-function sameSideRoute(frame: Frame, color: WireColor, side: TerminalSide, a: Point, b: Point): WireRoute {
+function sameSideRoute(frame: Frame, color: WireColor, side: PinPlace, a: Point, b: Point): WireRoute {
   const outward = side === "out" ? 1 : -1;
   // `front` is the terminal further out, the lower one of two in a column, so the route does not depend on the order of the ends.
   const swap = ((a.x - b.x) * outward || a.y - b.y) > 0;
@@ -214,7 +217,7 @@ function sameSideRoute(frame: Frame, color: WireColor, side: TerminalSide, a: Po
 }
 
 /** The route between two terminals of entities that both face `facing`, or between the two terminals of one such entity. */
-function alignedRoute(color: WireColor, facing: Direction, a: WireEnd, b: WireEnd, sameEntity: boolean): WireRoute {
+function alignedRoute(color: WireColor, facing: Direction, a: PlacedEnd, b: PlacedEnd, sameEntity: boolean): WireRoute {
   const frame = FRAMES[facing];
   const [first, second] = [framePosition(a.position, facing), framePosition(b.position, facing)];
   const route = (): WireRoute => {
@@ -256,7 +259,7 @@ function gapBetween(a: Rect, b: Rect): number {
 }
 
 /** The terminal of `end` as the start of a line: the pin of `color`, or the point halfway between the two pins. */
-function portOf(end: WireEnd, color?: WireColor): Port {
+function portOf(end: PlacedEnd, color?: WireColor): Port {
   const facing = end.facing ?? DEFAULT_FACING;
   const [first, second] = [pinPoint(end.position, end.side, color ?? "red", facing), pinPoint(end.position, end.side, color ?? "green", facing)];
   return { pin: { x: (first.x + second.x) / 2, y: (first.y + second.y) / 2 }, heading: CLOCKWISE.indexOf(pinHeading(end.side, facing)), card: cardRect(end.position) };
@@ -413,7 +416,7 @@ function twistedRoute(color: WireColor, from: Point, to: Point, startOffset: num
  * other lane (see `legSpacing`). The colors are not a pair here and may cross more than once. The last resort ignores the
  * cards, which then touch or overlap.
  */
-function ownRoute(color: WireColor, a: WireEnd, b: WireEnd): WireRoute {
+function ownRoute(color: WireColor, a: PlacedEnd, b: PlacedEnd): WireRoute {
   const [from, to] = [portOf(a, color), portOf(b, color)];
   const inner = color === "green";
   const squeezed = LEG_MARGIN + (inner ? 0 : Math.min(HALF_SPACING, legSpacing(gapBetween(from.card, to.card))));
@@ -431,9 +434,9 @@ function ownRoute(color: WireColor, a: WireEnd, b: WireEnd): WireRoute {
  * run 10 units to its sides: as exact parallels from an output to an input, with one crossing between two outputs or two
  * inputs. Where the cards leave no room for that, each color takes lanes of its own.
  */
-function laneRoute(color: WireColor, a: WireEnd, b: WireEnd): WireRoute {
+function laneRoute(color: WireColor, a: PlacedEnd, b: PlacedEnd): WireRoute {
   // The search prefers what it finds first, so it always starts from the same end: the output, or the terminal further left (then up).
-  const turns = (end: WireEnd): number => CLOCKWISE.indexOf(end.facing ?? DEFAULT_FACING);
+  const turns = (end: PlacedEnd): number => CLOCKWISE.indexOf(end.facing ?? DEFAULT_FACING);
   const swap = a.side === b.side ? (a.position.x - b.position.x || a.position.y - b.position.y || turns(a) - turns(b)) > 0 : a.side === "in";
   const [first, second] = swap ? [b, a] : [a, b];
   const [from, to] = [portOf(first), portOf(second)];
@@ -451,19 +454,55 @@ function laneRoute(color: WireColor, a: WireEnd, b: WireEnd): WireRoute {
   return ownRoute(color, first, second);
 }
 
-/**
- * Routes one wire from pin to pin. `sameEntity` must be true when both ends belong to the same entity (the positions
- * alone cannot tell, two cards may overlap). The route does not depend on the order of the two ends. Red and green
- * between the same pair of terminals get separate routes that never touch, except for the one crossing between two
- * inputs or two outputs (see `sameSideRoute` and `crossedRoute`) and where two cards leave no room (see `ownRoute`).
- */
-export function routeWire(color: WireColor, a: WireEnd, b: WireEnd, sameEntity: boolean): WireRoute {
+/** The route between two ends whose places are decided. */
+function placedRoute(color: WireColor, a: PlacedEnd, b: PlacedEnd, sameEntity: boolean): WireRoute {
   const facing = a.facing ?? DEFAULT_FACING;
   return sameEntity || facing === (b.facing ?? DEFAULT_FACING) ? alignedRoute(color, facing, a, b, sameEntity) : laneRoute(color, a, b);
 }
 
 function distance(a: Point, b: Point): number {
   return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function routeLength(route: WireRoute): number {
+  return route.reduce((length, point, index) => (index === 0 ? 0 : length + distance(route[index - 1]!, point)), 0);
+}
+
+/**
+ * Where a wire attaches at each of its ends. An input and an output have one place. A connection point that is drawn at two
+ * (`io`, see `pinPlaces`) takes the one that is nearer to the other end, measured along the wire: of the lines the places
+ * allow, the shortest. So a wire that comes from the left ends on the left edge and one that goes on to the right leaves from
+ * the right edge, and a point straight above or below another is wired on the side they share. Red and green decide alike (the
+ * red line is measured for both), and the answer does not depend on the order of the two ends: of two lines of one length
+ * the one on the input places of the end further left (then up) is taken.
+ */
+export function wirePlaces(a: WireEnd, b: WireEnd, sameEntity: boolean): readonly [PinPlace, PinPlace] {
+  const [placesA, placesB] = [pinPlaces(a.side), pinPlaces(b.side)];
+  if (placesA.length === 1 && placesB.length === 1) return [placesA[0]!, placesB[0]!];
+  const swap = (a.position.x - b.position.x || a.position.y - b.position.y) > 0;
+  const [first, second] = swap ? [b, a] : [a, b];
+  let best: { readonly places: readonly [PinPlace, PinPlace]; readonly length: number } | undefined;
+  for (const one of pinPlaces(first.side)) {
+    for (const other of pinPlaces(second.side)) {
+      const length = routeLength(placedRoute("red", { ...first, side: one }, { ...second, side: other }, sameEntity));
+      if (!best || length < best.length) best = { places: [one, other], length };
+    }
+  }
+  const [one, other] = best!.places;
+  return swap ? [other, one] : [one, other];
+}
+
+/**
+ * Routes one wire from pin to pin. `sameEntity` must be true when both ends belong to the same entity (the positions
+ * alone cannot tell, two cards may overlap). The route does not depend on the order of the two ends. Red and green
+ * between the same pair of terminals get separate routes that never touch, except for the one crossing between two
+ * inputs or two outputs (see `sameSideRoute` and `crossedRoute`) and where two cards leave no room (see `ownRoute`).
+ * A connection point without a direction (`io`) is wired at the place `wirePlaces` gives it, and from there like an input
+ * or an output.
+ */
+export function routeWire(color: WireColor, a: WireEnd, b: WireEnd, sameEntity: boolean): WireRoute {
+  const [placeA, placeB] = wirePlaces(a, b, sameEntity);
+  return placedRoute(color, { ...a, side: placeA }, { ...b, side: placeB }, sameEntity);
 }
 
 /**

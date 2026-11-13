@@ -9,9 +9,9 @@
 import type { Extension, Transaction } from "@codemirror/state";
 import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
-import { canRotate, DEFAULT_FACING, facingOf, isWireReach, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point } from "@face/model";
+import { canRotate, DEFAULT_FACING, facingOf, isWireReach, prototypeOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
-import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
+import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import { rotated } from "../entities/facing.ts";
 import {
@@ -323,8 +323,15 @@ export class ProjectSession {
   private updateEntity(next: Entity, options: UpdateOptions = {}): void {
     const current = this.entity(next.id);
     if (!this.editable || !current || current.kind !== next.kind) return;
+    // Another prototype may cover other tiles. The entity keeps the top-left tile of its footprint, as it does when it is turned.
+    const tile = current.placement?.tile;
+    const reshaped = tile !== undefined && prototypeOf(next) !== prototypeOf(current);
+    const placement = reshaped ? { ...current.placement, tile: tileCenter(next, facingOf(next), tileOrigin(current, facingOf(current), tile)) } : current.placement;
     // Name, position and placement belong to their own commands; a draft made before a move must not undo the move.
-    const wanted = normalizeEntity({ ...next, name: current.name, position: current.position, placement: current.placement });
+    const wanted = normalizeEntity({ ...next, name: current.name, position: current.position, placement });
+    // Where positions are tiles, a change that would put the entity onto a tile of another one is refused, like such a turn.
+    const obstacle = reshaped && DISPLAY_CAPABILITIES[this.displayMode].tiles ? blockedReshape(this.analysis.circuit.entities, wanted) : undefined;
+    if (obstacle !== undefined) return this.show(`Not changed: ${current.name} would stand on a tile of ${this.entity(obstacle)?.name}.`, "selection");
     const check = checkDraft(wanted);
     if (!check.ok) {
       this.draft = { id: current.id, base: current, entity: wanted, message: check.message };
@@ -367,8 +374,8 @@ export class ProjectSession {
   }
 
   /** Adds an entity and makes it the selection once its analysis has arrived; the tool goes back to select. */
-  private addEntity(kind: EntityKind, position: Point, facing?: Direction, tile?: Point): void {
-    const result = this.compute({ type: "addEntity", kind, position, tile, facing });
+  private addEntity(kind: EntityKind, position: Point, facing?: Direction, tile?: Point, prototype?: PrototypeName): void {
+    const result = this.compute({ type: "addEntity", kind, position, tile, facing, prototype });
     if (!result) return;
     if (!result.ok) return this.show(result.message, "edit");
     // The new entity gets its id from the analysis of the edit; it is selected when that arrives.
@@ -411,7 +418,7 @@ export class ProjectSession {
       }),
       dismissError: changing(() => this.show(null)),
 
-      placeEntity: changing((kind, position, facing) => this.addEntity(kind, position, facing)),
+      placeEntity: changing((kind, position, facing, prototype) => this.addEntity(kind, position, facing, undefined, prototype)),
       moveEntities: changing((moves) => void this.perform({ type: "moveEntities", moves: moves.filter((move) => this.entity(move.id) !== undefined) })),
       rotateEntities: changing((ids, turn) => this.faceEntities(ids, (entity) => rotated(facingOf(entity), turn))),
       faceEntities: changing((ids, direction) => this.faceEntities(ids, () => direction)),
@@ -457,14 +464,15 @@ export class ProjectSession {
         const tiles = this.entities(ids).filter((entity) => entity.placement?.tile !== undefined).map((entity) => ({ id: entity.id, tile: undefined }));
         if (tiles.length > 0) this.perform({ type: "setTiles", tiles });
       }),
-      placeEntityOnTile: changing((kind, tile, facing = DEFAULT_FACING) => {
+      placeEntityOnTile: changing((kind, tile, facing = DEFAULT_FACING, prototype) => {
         const circuit = this.analysis.circuit.entities;
-        const direction = canRotate({ kind }) ? facing : DEFAULT_FACING;
-        const origin = tileOrigin({ kind }, direction, tile);
-        if (!this.editable || !canStandAt(circuit, { kind }, origin, direction)) return;
+        const shape = { kind, prototype };
+        const direction = canRotate(shape) ? facing : DEFAULT_FACING;
+        const origin = tileOrigin(shape, direction, tile);
+        if (!this.editable || !canStandAt(circuit, shape, origin, direction)) return;
         const position = editPositionOf(origin);
         const shift = pasteShift({ entities: [{ position }] }, circuit);
-        this.addEntity(kind, { x: position.x + shift.x, y: position.y + shift.y }, direction, tile);
+        this.addEntity(kind, { x: position.x + shift.x, y: position.y + shift.y }, direction, tile, prototype);
       }),
       addWire: changing((wire) => void this.perform({ type: "addWire", color: wire.color, a: wire.a, b: wire.b })),
       removeWire: changing((wire) => {

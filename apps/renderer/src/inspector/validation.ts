@@ -14,6 +14,14 @@ export function parseInt32(text: string): ParseResult<number> {
   return isInt32(value) ? { ok: true, value } : { ok: false, message: "Must fit a signed 32-bit integer" };
 }
 
+/** A number with or without decimals, from `min` to `max`, both included. */
+export function parseNumberInRange(text: string, min: number, max: number): ParseResult<number> {
+  const trimmed = text.trim();
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) return { ok: false, message: "Enter a number" };
+  const value = Number(trimmed);
+  return value >= min && value <= max ? { ok: true, value } : { ok: false, message: `Must be from ${min} to ${max}` };
+}
+
 /** Empty text means "no signal", which is only acceptable when the field is not required. `wildcards` lists the wildcards this slot accepts. */
 export function parseSignalField(text: string, required: boolean, wildcards: readonly Wildcard[]): ParseResult<SignalId | undefined> {
   if (text.trim() === "") return required ? { ok: false, message: "A signal is required" } : { ok: true, value: undefined };

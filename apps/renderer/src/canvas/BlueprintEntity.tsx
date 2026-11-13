@@ -6,9 +6,9 @@ import { memo } from "react";
 import { truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
-import { BOARD_PIN, boardPinOffset, TILE } from "./board.ts";
+import { BOARD_PIN, boardPinHeading, boardPinOffset, TILE } from "./board.ts";
 import { Pin } from "./EntityCard.tsx";
-import { arrowPath, DIRECTION_VECTOR, pinEdge, pinHeading } from "./geometry.ts";
+import { arrowPath, DIRECTION_VECTOR, EDGE_TOWARDS } from "./geometry.ts";
 import { compactOutput, inputText } from "./statusRows.ts";
 
 export interface BlueprintEntityProps {
@@ -35,14 +35,16 @@ export interface BlueprintEntityProps {
 
 /** The body leaves this much of its tiles free on every side, so that neighbors stay apart and the board shows through. */
 const INSET = 4;
-/** Icon edge on one tile, on two tiles, and without text. */
-const ICON = { single: 26, long: 28, outline: 40 } as const;
+/** Icon edge on one tile, on two tiles, on a square of four, and without text. */
+const ICON = { single: 26, long: 28, square: 48, outline: 40 } as const;
 /** How far the content of a 1x1 entity moves away from pins on its top or bottom end. */
 const PIN_ROOM = 9;
 /** How far the arrows of a 2x1 entity sit from the middle of their half, towards its outer end. */
 const ARROW_SHIFT = 8;
 const NOTCH = 7;
 const NAME_CHARS = { single: 11, wide: 18, tall: 11 } as const;
+/** Below the middle of a square of four tiles: the top of the icon above it and the baseline of the name. */
+const SQUARE = { iconTop: -36, name: 30 } as const;
 const OUTPUT_CHARS = { wide: 20, tall: 12 } as const;
 
 export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, tileY, placed, conflict, moving, blocked, selected, outline, pendingSide, pendingColor, status, resolveIcon }: BlueprintEntityProps) {
@@ -52,16 +54,19 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
   const height = size.height * TILE;
   const forward = DIRECTION_VECTOR[facing];
   const halves = tileHalves(entity, facing, tileCenter(entity, facing, { x: 0, y: 0 }));
-  // Laid out along its two halves; an entity without them (one tile, or the 2x2 of a big pole) has its content in the middle.
+  // Laid out along its two halves; an entity without them (one tile, or the 2x2 of a big pole) has its content in the middle
+  // and neither arrows nor a notch: it has no direction to show.
   const long = halves.input.x !== halves.output.x || halves.input.y !== halves.output.y;
+  const square = !long && size.width > 1 && size.height > 1;
   const middle = (half: TileBox) => ({ x: (half.x + half.width / 2) * TILE, y: (half.y + half.height / 2) * TILE });
   // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end.
-  const pinsTowards = long ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
+  const pinsTowards = long || square ? { x: 0, y: 0 } : DIRECTION_VECTOR[boardPinHeading(TERMINALS[entity.kind][0]!, facing)];
   const center = { x: width / 2, y: height / 2 - pinsTowards.y * PIN_ROOM };
-  const icon = outline ? ICON.outline : long ? ICON.long : ICON.single;
-  const iconTop = outline ? height / 2 - icon / 2 : center.y - (long ? 27 : 19);
-  const nameChars = !long ? NAME_CHARS.single : size.width === 2 ? NAME_CHARS.wide : NAME_CHARS.tall;
-  const lit = status?.lamp?.lit ?? false;
+  const icon = outline ? ICON.outline : long ? ICON.long : square ? ICON.square : ICON.single;
+  const iconTop = outline ? height / 2 - icon / 2 : center.y + (long ? -27 : square ? SQUARE.iconTop : -19);
+  const nameChars = long || square ? (size.width === 2 ? NAME_CHARS.wide : NAME_CHARS.tall) : NAME_CHARS.single;
+  // A lamp that is lit and a speaker that plays show it: the indicator, and a glow over the body in the color of the light.
+  const lit = status?.active ?? false;
   const emitting = lit || (status?.output?.length ?? 0) > 0;
   const x = tileX * TILE;
   const y = tileY * TILE;
@@ -81,7 +86,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       data-placed={placed}
       data-conflict={conflict || undefined}
       data-blocked={blocked || undefined}
-      data-status={status?.label}
+      data-status={status?.label || undefined}
       data-in-red={status?.input && inputText(status.input.red)}
       data-in-green={status?.input && inputText(status.input.green)}
     >
@@ -100,10 +105,10 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
           <path className="board-arrow out" d={arrowPath(middle(halves.output).x + forward.x * ARROW_SHIFT, middle(halves.output).y + forward.y * ARROW_SHIFT, forward)} />
         </>
       )}
-      <EntityIconSvg kind={entity.kind} x={center.x - icon / 2} y={iconTop} size={icon} resolveIcon={resolveIcon} />
+      <EntityIconSvg entity={entity} x={center.x - icon / 2} y={iconTop} size={icon} resolveIcon={resolveIcon} />
       {!outline && (
         <>
-          <text className="board-name" x={center.x} y={center.y + (long ? 13 : 19)}>
+          <text className="board-name" x={center.x} y={center.y + (long ? 13 : square ? SQUARE.name : 19)}>
             {truncate(entity.name, nameChars)}
           </text>
           {long && status?.output && (
@@ -115,7 +120,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       )}
       {TERMINALS[entity.kind].flatMap((side) =>
         WIRE_COLORS.map((color) => (
-          <Pin key={`${side}-${color}`} side={side} color={color} {...boardPinOffset(entity, facing, side, color)} radius={BOARD_PIN.radius} edge={pinEdge(side, facing)} pending={pendingSide === side && pendingColor === color} />
+          <Pin key={`${side}-${color}`} side={side} color={color} {...boardPinOffset(entity, facing, side, color)} radius={BOARD_PIN.radius} edge={EDGE_TOWARDS[boardPinHeading(side, facing)]} pending={pendingSide === side && pendingColor === color} />
         )),
       )}
     </g>

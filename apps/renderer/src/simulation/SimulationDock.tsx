@@ -22,9 +22,9 @@ const TRACE_HEIGHT = 26;
 function TraceRow({ trace, index, capacity, describeSignal }: { readonly trace: SignalTrace; readonly index: number; readonly capacity: number; readonly describeSignal?: SignalDescriber }) {
   const geometry = sparkline(trace.values, capacity, TRACE_WIDTH, TRACE_HEIGHT);
   const info = trace.signal && describeSignal?.(trace.signal);
-  const what = trace.signal ? shortSignal(trace.signal) : trace.lamp ? "light" : "";
+  const what = trace.signal ? shortSignal(trace.signal) : trace.lamp ? "light" : trace.speaker ? "sound" : "";
   return (
-    <tr className={`trace trace-${index % 3}${trace.lamp?.lit ? " lit" : ""}`} data-trace={trace.label} title={`${trace.label}${info?.displayName ? ` (${info.displayName})` : ""}\n${trace.inputs}`}>
+    <tr className={`trace trace-${index % 3}${trace.lamp?.lit || trace.speaker?.playing ? " lit" : ""}`} data-trace={trace.label} title={`${trace.label}${info?.displayName ? ` (${info.displayName})` : ""}\n${trace.inputs}`}>
       <th scope="row">
         <span className="trace-dot" style={trace.lamp?.color ? { background: trace.lamp.color } : undefined} />
         <span className="trace-entity">{trace.entityName}</span>
@@ -90,7 +90,9 @@ export function SimulationDock({ simulation, describeSignal, onRun, onPause, onS
           <span>LAST {simulation.historyLength} TICKS</span>
         </div>
         {traces.length === 0 ? (
-          <p className="muted-note">Nothing to trace yet. Add a component to start watching signals.</p>
+          <p className="muted-note">
+            {simulation.entityStatus.size === 0 ? "Nothing to trace yet. Add a component to start watching signals." : "Nothing to trace here: a pole only passes signals on. Select a combinator, a lamp or a speaker to watch it."}
+          </p>
         ) : (
           <table className="traces">
             <tbody>

@@ -88,7 +88,10 @@ test("the tool buttons and the building blocks name their key in the tooltip, th
   await expect(toolButton(page, "Select and move")).toHaveAttribute("title", "Select and move (Q)");
   await expect(toolButton(page, "Red wire")).toHaveAttribute("title", MAC ? "Red wire (⌥R)" : "Red wire (Alt+R)");
   await expect(toolButton(page, "Green wire")).toHaveAttribute("title", MAC ? "Green wire (⌥G)" : "Green wire (Alt+G)");
-  expect(await page.locator(".palette-item").evaluateAll((items) => items.map((item) => item.getAttribute("title")))).toEqual(["Place: Constant (1)", "Place: Arithmetic (2)", "Place: Decider (3)", "Place: Selector (4)", "Place: Lamp (5)"]);
+  // The four combinators and the lamp have a key; the entities that were added to the palette later have none.
+  expect(await page.locator(".palette-item:has(kbd.key-hint)").evaluateAll((items) => items.map((item) => item.getAttribute("title")))).toEqual(["Place: Constant (1)", "Place: Arithmetic (2)", "Place: Decider (3)", "Place: Selector (4)", "Place: Lamp (5)"]);
+  await expect(page.locator('.palette-item[data-kind="speaker"]')).toHaveAttribute("title", "Place: Programmable speaker");
+  await expect(page.locator('.palette-item[data-kind="speaker"] kbd')).toHaveCount(0);
   await expect(page.locator(".palette-item kbd.key-hint")).toHaveText(["1", "2", "3", "4", "5"]);
   for (const hint of await page.locator(".palette-item kbd.key-hint").all()) await expect(hint).toBeVisible();
 

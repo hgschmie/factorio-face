@@ -10,6 +10,7 @@ import type { RotationTurn } from "../entities/facing.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspector/Inspector.tsx";
+import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
@@ -302,6 +303,7 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
   const showCanvas = mode !== "source";
 
   return (
+    <InstrumentsContext value={state.catalog.speakerInstruments}>
     <div className={`app-shell platform-${api?.platform ?? "web"}`}>
       <TopBar
         project={project}
@@ -437,5 +439,6 @@ export function Workbench({ controller, api, resolveEntityIcon, resolveWireIcon,
         </div>
       )}
     </div>
+    </InstrumentsContext>
   );
 }
