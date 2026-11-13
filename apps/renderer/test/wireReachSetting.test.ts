@@ -15,8 +15,13 @@ describe("wire reach field", () => {
     expect(parseWireReach("0,0")).toBe(0);
   });
 
-  it("refuses what is not a number in the range", () => {
-    for (const text of ["", " ", "64.5", "64.01", "65", "100", "-1", "-0", "+9", "nine", "9 tiles", "1e2", "0x10", "9.", ".5", "1.2.3", "1,000.5", "Infinity"]) expect(parseWireReach(text), JSON.stringify(text)).toBeUndefined();
+  it("brings a number out of range to the nearest end of it", () => {
+    for (const text of ["64.5", "64,01", "65", "100", "999999999999"]) expect(parseWireReach(text), text).toBe(64);
+    for (const text of ["-1", "-0", "-0,5", " -100 "]) expect(parseWireReach(text), text).toBe(0);
+  });
+
+  it("refuses what is not a number", () => {
+    for (const text of ["", " ", "-", "--1", "+9", "nine", "9 tiles", "1e2", "0x10", "9.", ".5", "1.2.3", "1,000.5", "Infinity"]) expect(parseWireReach(text), JSON.stringify(text)).toBeUndefined();
     expect(WIRE_REACH_ERROR).toBe("A number from 0 to 64; 0 means unlimited");
   });
 });

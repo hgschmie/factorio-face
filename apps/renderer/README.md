@@ -438,7 +438,8 @@ tiles for every entity the editor knows (`docs/factorio-audit.md` 5.4). Here it 
 (`DEFAULT_WIRE_REACH`) unless the project file says otherwise, from 0 to 64 tiles, fractions allowed (`WIRE_REACH_RANGE`,
 `isWireReach`); 0 (`UNLIMITED_WIRE_REACH`) means unlimited, nothing is flagged. It is edited in the project settings
 (`WireReachField`: the label "Wire reach", a text field that is written with Enter or by leaving it, "A number from 0 to 64; 0
-means unlimited" under a text that is none, and the button "Reset to 9") through `commands.setWireReach(value)`, which ignores a
+means unlimited" under a text that is no number, a number out of range taken as the nearest end of it (`clampWireReach`, the
+same as for a project file), and the button "Reset to 9") through `commands.setWireReach(value)`, which ignores a
 value out of range. Like the name and the modules it is not part of
 the document: not undoable, and a change makes the project dirty.
 

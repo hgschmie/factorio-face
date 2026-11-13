@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_WIRE_REACH, exceedsWireReach, footprintBox, footprintDistance, formatWireDistance, formatWireReach, isWireReach, tileCenter, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE, wireDistance,
+  clampWireReach, DEFAULT_WIRE_REACH, exceedsWireReach, footprintBox, footprintDistance, formatWireDistance, formatWireReach, isWireReach, tileCenter, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE, wireDistance,
   type Direction, type Entity, type EntityKind, type Point, type TileBox,
 } from "../src/index.ts";
 
@@ -18,6 +18,7 @@ describe("wire reach", () => {
     expect(WIRE_REACH_RANGE).toEqual({ min: 0, max: 64 });
     expect([0, 0.5, 1, 7.5, 9, 64].every(isWireReach)).toBe(true);
     expect([-1, -0.01, 64.5, 64.01, 100, Number.NaN, Number.POSITIVE_INFINITY, "9", null, undefined].some(isWireReach)).toBe(false);
+    expect([-1, -0.01, -0, 0, 0.5, 9, 64, 64.01, 100].map(clampWireReach)).toEqual([0, 0, 0, 0, 0.5, 9, 64, 64, 64]);
   });
 
   it("measures two footprints between their nearest points", () => {

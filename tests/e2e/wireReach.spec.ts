@@ -184,14 +184,19 @@ test("the reach is set in the project settings, decides what is flagged, and is 
     await expect(saveState(page)).toHaveText("Unsaved changes");
     await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 
-    // What is not a reach says so and is not taken over: more than 64, less than 0.
-    for (const text of ["64.5", "-1", "150"]) {
+    // What is not a number says so and is not taken over.
+    await reachField(page).fill("far");
+    await expect(reachField(page)).toHaveAttribute("aria-invalid", "true");
+    await expect(settings(page).getByRole("alert")).toHaveText("A number from 0 to 64; 0 means unlimited");
+    await reachField(page).press("Enter");
+    await expect(reachField(page)).toHaveValue("10");
+    await expect(settings(page).getByRole("alert")).toHaveCount(0);
+    // A number out of range becomes the nearest end of it: 64 above, 0 (unlimited) below.
+    for (const [text, taken] of [["64.5", "64"], ["150", "64"], ["-1", "0"]] as const) {
       await reachField(page).fill(text);
-      await expect(reachField(page)).toHaveAttribute("aria-invalid", "true");
-      await expect(settings(page).getByRole("alert")).toHaveText("A number from 0 to 64; 0 means unlimited");
-      await reachField(page).press("Enter");
-      await expect(reachField(page)).toHaveValue("10");
       await expect(settings(page).getByRole("alert")).toHaveCount(0);
+      await reachField(page).press("Enter");
+      await expect(reachField(page)).toHaveValue(taken);
       await expect(flagged(page)).toHaveCount(0);
     }
     // 64 is the most.
@@ -249,14 +254,22 @@ test("the reach is set in the project settings, decides what is flagged, and is 
   }
 });
 
-for (const wireReach of [64.5, -1]) {
-  test(`a project file with the wire reach ${wireReach} is not opened`, async ({ page }) => {
-    const projectPath = await writeProject({ name: "Bad reach", source: FAR, manifest: { wireReach } });
+for (const [wireReach, taken] of [[64.5, "64"], [-1, "0"]] as const) {
+  test(`a project file with the wire reach ${wireReach} opens with the reach ${taken}`, async ({ page }) => {
+    const projectPath = await writeProject({ name: "Far reach", source: FAR, manifest: { wireReach } });
     await page.evaluate((path) => window.faceSession!.commands.loadProject(path), projectPath);
-    await expect(page.locator(".toast")).toContainText("Wire reach must be a number from 0 to 64");
-    await expect(page.getByTestId("project-name")).not.toHaveText("Bad reach");
+    await expect(page.getByTestId("project-name")).toHaveText("Far reach");
+    await page.getByRole("button", { name: "Settings" }).click();
+    await expect(reachField(page)).toHaveValue(taken);
   });
 }
+
+test("a project file whose wire reach is not a number is not opened", async ({ page }) => {
+  const projectPath = await writeProject({ name: "Bad reach", source: FAR, manifest: { wireReach: "9" } });
+  await page.evaluate((path) => window.faceSession!.commands.loadProject(path), projectPath);
+  await expect(page.locator(".toast")).toContainText("Wire reach must be a number");
+  await expect(page.getByTestId("project-name")).not.toHaveText("Bad reach");
+});
 
 test("a project file with the wire reach 0 opens with nothing flagged", async ({ page }) => {
   const projectPath = await writeProject({ name: "Unlimited", source: FAR, manifest: { wireReach: 0 } });

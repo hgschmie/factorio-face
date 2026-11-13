@@ -1,5 +1,5 @@
 // Validators for everything that crosses the IPC boundary or is read from disk. Pure: no Electron, no filesystem access.
-import { isWireReach, WIRE_REACH_RANGE } from "@face/model";
+import { clampWireReach } from "@face/model";
 import { basename, isAbsolute, normalize } from "node:path";
 import {
   CIRCUIT_FILE_EXTENSION,
@@ -120,8 +120,9 @@ function parseCustomSignalGroup(value: unknown): CustomSignalGroup {
   };
 }
 
+// A reach out of range is brought into it instead of refusing the project: the file may come from a hand or from another tool.
 function parseWireReach(value: unknown): number {
-  return isWireReach(value) ? value : fail(`Wire reach must be a number from ${WIRE_REACH_RANGE.min} to ${WIRE_REACH_RANGE.max}`);
+  return typeof value === "number" && Number.isFinite(value) ? clampWireReach(value) : fail("Wire reach must be a number");
 }
 
 const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach"]);

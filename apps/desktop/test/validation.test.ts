@@ -145,17 +145,23 @@ describe("manifest", () => {
   });
 
   it.each([
-    ["below the range", -1],
-    ["just below the range", -0.5],
-    ["above the range", 64.5],
-    ["the old maximum", 100],
+    ["below the range", -1, 0],
+    ["just below the range", -0.5, 0],
+    ["above the range", 64.5, 64],
+    ["the old maximum", 100, 64],
+  ])("brings a wire reach that is %s into the range", (_name, wireReach, expected) => {
+    expect(parseManifest({ ...manifest, wireReach })).toEqual({ ...manifest, wireReach: expected });
+    expect(parseManifestFile({ ...manifest, wireReach })).toEqual({ ...manifest, wireReach: expected });
+  });
+
+  it.each([
     ["not finite", Number.POSITIVE_INFINITY],
     ["not a number", Number.NaN],
     ["a string", "9"],
     ["null", null],
     ["an array", [9]],
   ])("rejects a wire reach that is %s", (_name, wireReach) => {
-    expect(() => parseManifest({ ...manifest, wireReach })).toThrow("Wire reach must be a number from 0 to 64");
+    expect(() => parseManifest({ ...manifest, wireReach })).toThrow("Wire reach must be a number");
     expect(() => parseManifestFile({ ...manifest, wireReach })).toThrow(ValidationError);
     expect(() => parseManifest({ ...manifest, extras: { wireReach } })).toThrow(ValidationError);
   });

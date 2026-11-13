@@ -25,6 +25,11 @@ export function isWireReach(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= WIRE_REACH_RANGE.min && value <= WIRE_REACH_RANGE.max;
 }
 
+/** A number brought into the range: below it becomes the minimum (unlimited), above it the maximum. For values a person typed or a file holds. */
+export function clampWireReach(value: number): number {
+  return Math.min(Math.max(value, WIRE_REACH_RANGE.min), WIRE_REACH_RANGE.max);
+}
+
 /** The distance between two footprints in tiles: 0 when they touch or overlap, the gap along one axis when they overlap on the other. */
 export function footprintDistance(a: TileBox, b: TileBox): number {
   // Along one axis: how far b starts behind the end of a, or a behind the end of b; 0 when the two spans meet.

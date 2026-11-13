@@ -108,10 +108,14 @@ describe("project file", () => {
     expect(await readProject(path)).toEqual({ path, data: changed });
   });
 
-  it("refuses a project file whose wire reach is out of range or not a number", async () => {
-    for (const [index, wireReach] of [-1, 64.5, "9", null].entries()) {
+  it("brings a wire reach out of range into it and refuses a project file whose wire reach is not a number", async () => {
+    for (const [wireReach, expected] of [[-1, 0], [64.5, 64], [1000, 64]]) {
+      const path = await projectFile(`far-reach-${wireReach}`, zipSync({ ...validEntries(), "face.json": manifestEntry({ wireReach }) }));
+      expect((await readProject(path)).data.manifest.wireReach).toBe(expected);
+    }
+    for (const [index, wireReach] of ["9", null].entries()) {
       const path = await projectFile(`bad-reach-${index}`, zipSync({ ...validEntries(), "face.json": manifestEntry({ wireReach }) }));
-      await expect(readProject(path)).rejects.toThrow("Wire reach must be a number from 0 to 64");
+      await expect(readProject(path)).rejects.toThrow("Wire reach must be a number");
     }
   });
 
