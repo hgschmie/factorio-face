@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { isDirty, openProjectFile, toProjectData } from "../../src/session/persistence.ts";
 import { createSession, fakeDesktop, idOf, MANIFEST, project, replaceText } from "./helpers.ts";
 
-/** The wire from `source` to `far` is 12 tiles long, the one to `near` 4; `loose` has no tile. */
+/** `far` is 11 tiles from `source` (the tiles between them), `near` 3; `loose` has no tile. */
 const SPREAD = `circuit "Spread" {
     constant source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
@@ -29,10 +29,10 @@ const tooLong = (session: { readonly state: { readonly diagnostics: readonly { r
   session.state.diagnostics.filter((diagnostic) => diagnostic.code === "wire-too-long").map((diagnostic) => diagnostic.message);
 
 describe("wire reach", () => {
-  it("is 9 tiles for a project that does not say, and warns about longer wires between placed entities", () => {
+  it("is 9 tiles for a project that does not say, and warns about wires between placed entities that are further apart", () => {
     const { session } = createSession(SPREAD);
     expect(session.state.project.wireReach).toBe(DEFAULT_WIRE_REACH);
-    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in' is 12.0 tiles long; the wire reach of the project is 9"]);
+    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in': the entities are 11.0 tiles apart; the wire reach of the project is 9"]);
     expect(session.state.diagnostics.find((diagnostic) => diagnostic.code === "wire-too-long")).toMatchObject({ severity: "warning", line: 16 });
     // A warning: the circuit is there, can be edited and simulated.
     expect(session.state).toMatchObject({ editable: true });
@@ -49,11 +49,19 @@ describe("wire reach", () => {
     session.commands.setWireReach(12);
     expect(session.state.project).toMatchObject({ wireReach: 12, dirty: true });
     expect(tooLong(session)).toEqual([]);
-    session.commands.setWireReach(3.5);
+    session.commands.setWireReach(11);
+    expect(tooLong(session)).toEqual([]);
+    session.commands.setWireReach(2.5);
     expect(tooLong(session)).toEqual([
-      "Wire from 'source.out' to 'near.in' is 4.0 tiles long; the wire reach of the project is 3.5",
-      "Wire from 'source.out' to 'far.in' is 12.0 tiles long; the wire reach of the project is 3.5",
+      "Wire from 'source.out' to 'near.in': the entities are 3.0 tiles apart; the wire reach of the project is 2.5",
+      "Wire from 'source.out' to 'far.in': the entities are 11.0 tiles apart; the wire reach of the project is 2.5",
     ]);
+    // 0 is a reach too: unlimited, nothing is flagged.
+    session.commands.setWireReach(0);
+    expect(session.state.project).toMatchObject({ wireReach: 0, dirty: true });
+    expect(tooLong(session)).toEqual([]);
+    session.commands.setWireReach(64);
+    expect(session.state.project.wireReach).toBe(64);
     session.commands.setWireReach(DEFAULT_WIRE_REACH);
     expect(session.state.project).toMatchObject({ wireReach: 9, dirty: false });
     expect(tooLong(session)).toHaveLength(1);
@@ -67,7 +75,7 @@ describe("wire reach", () => {
     // The same value again changes nothing and notifies nobody; a value out of range is ignored.
     const before = notifications();
     session.commands.setWireReach(9);
-    for (const invalid of [0, 0.5, 101, Number.NaN, Number.POSITIVE_INFINITY, "12" as unknown as number]) session.commands.setWireReach(invalid);
+    for (const invalid of [-1, -0.5, 64.5, 101, Number.NaN, Number.POSITIVE_INFINITY, "12" as unknown as number]) session.commands.setWireReach(invalid);
     expect(notifications()).toBe(before);
     expect(session.state.project.wireReach).toBe(9);
   });
@@ -76,13 +84,16 @@ describe("wire reach", () => {
     const { session } = createSession(SPREAD);
     session.commands.setWireReach(12);
     session.commands.setTiles([{ id: idOf(session, "far"), tile: { x: 13.5, y: 0.5 } }]);
-    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in' is 13.0 tiles long; the wire reach of the project is 12"]);
+    expect(tooLong(session)).toEqual([]);
+    session.commands.setTiles([{ id: idOf(session, "far"), tile: { x: 14.5, y: 0.5 } }]);
+    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'far.in': the entities are 13.0 tiles apart; the wire reach of the project is 12"]);
+    session.commands.undo();
     session.commands.undo();
     expect(tooLong(session)).toEqual([]);
-    // The move is not refused, and an entity that gets a tile gets a wire with a length.
+    // The move is not refused, and an entity that gets a tile gets a wire that is measured.
     session.commands.setTiles([{ id: idOf(session, "loose"), tile: { x: 0.5, y: 30.5 } }]);
     expect(session.state.circuit.entities.find((entity) => entity.name === "loose")!.placement).toEqual({ tile: { x: 0.5, y: 30.5 } });
-    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'loose.in' is 30.0 tiles long; the wire reach of the project is 12"]);
+    expect(tooLong(session)).toEqual(["Wire from 'source.out' to 'loose.in': the entities are 29.0 tiles apart; the wire reach of the project is 12"]);
     // While the source has errors the warning waits with everything else, and comes back with the reach that is set.
     replaceText(session, "lamp near", "lamp");
     session.commands.setWireReach(40);
@@ -129,6 +140,11 @@ describe("wire reach", () => {
     expect(isDirty(loaded.file, loaded.source, { ...loaded.settings, wireReach: 9 })).toBe(true);
     expect(toProjectData(loaded.file, loaded.source, loaded.settings).manifest).toEqual({ ...MANIFEST, wireReach: 20, extras: { later: true } });
     expect(toProjectData(loaded.file, loaded.source, { ...loaded.settings, wireReach: 9 }).manifest).toEqual({ ...MANIFEST, extras: { later: true } });
+    // Unlimited is a value like any other, not an absent one.
+    const unlimited = openProjectFile(project(SPREAD, { wireReach: 0 }));
+    expect(unlimited.settings.wireReach).toBe(0);
+    expect(isDirty(unlimited.file, unlimited.source, unlimited.settings)).toBe(false);
+    expect(toProjectData(unlimited.file, unlimited.source, unlimited.settings).manifest).toEqual({ ...MANIFEST, wireReach: 0 });
     const explicit = openProjectFile(project(SPREAD, { wireReach: 9 }));
     expect(explicit.settings.wireReach).toBe(9);
     expect(toProjectData(explicit.file, explicit.source, explicit.settings).manifest).toEqual(MANIFEST);

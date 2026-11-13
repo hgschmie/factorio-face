@@ -1,8 +1,8 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, exceedsWireReach, facingOf, findTileOverlaps, formatWireLength, hasTerminal, isInt32, isTileCenter, normalizeWire,
-  signalKey, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireKey, wireLength,
+  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, exceedsWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isTileCenter, normalizeWire,
+  signalKey, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireDistance, wireKey,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
   type Entity, type EntityId, type EntityKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type RgbColor, type SelectorMode,
   type SelectorOperation, type SignalId, type TerminalSide, type Wildcard, type Wire, type WireColor,
@@ -21,7 +21,7 @@ export interface SignalResolver {
 
 export interface AnalyzeOptions {
   readonly signals?: SignalResolver;
-  /** The wire reach of the project in tiles: a wire between two placed entities that is longer gets a warning. Defaults to `DEFAULT_WIRE_REACH`. */
+  /** The wire reach of the project in tiles: a wire between two placed entities that are further apart gets a warning; 0 means unlimited. Defaults to `DEFAULT_WIRE_REACH`. */
   readonly wireReach?: number;
   /** Opaque document version, copied to the result. */
   readonly version?: number;
@@ -840,17 +840,17 @@ function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[]
 }
 
 /**
- * A warning for every wire between two entities with a `tile` that is longer than the reach (`wireLength`), on its first
- * declaration. Like the placement warnings it is for a circuit only and does not touch the simulation.
+ * A warning for every wire between two entities with a `tile` that are further apart than the reach (`wireDistance`), on its
+ * first declaration. Like the placement warnings it is for a circuit only and does not touch the simulation.
  */
 function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readonly Entity[], reach: number, analyzer: Analyzer): void {
   const byId = new Map(entities.map((entity) => [entity.id, entity]));
   for (const { declarations } of wires.values()) {
     const { range, a, b } = declarations[0]!;
     const [from, to] = [byId.get(a.entity)!, byId.get(b.entity)!];
-    const length = wireLength(from, to);
-    if (length === undefined || !exceedsWireReach(length, reach)) continue;
-    analyzer.report(range, "wire-too-long", `Wire from '${from.name}.${a.side}' to '${to.name}.${b.side}' is ${formatWireLength(length, reach)} tiles long; the wire reach of the project is ${reach}`);
+    const distance = wireDistance(from, to);
+    if (distance === undefined || !exceedsWireReach(distance, reach)) continue;
+    analyzer.report(range, "wire-too-long", `Wire from '${from.name}.${a.side}' to '${to.name}.${b.side}': the entities are ${formatWireDistance(distance, reach)} tiles apart; the wire reach of the project is ${reach}`);
   }
 }
 

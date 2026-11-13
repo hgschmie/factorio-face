@@ -7,13 +7,16 @@ describe("wire reach field", () => {
     expect(parseWireReach("9")).toBe(9);
     expect(parseWireReach(" 12.5 ")).toBe(12.5);
     expect(parseWireReach("7,25")).toBe(7.25);
-    expect(parseWireReach("1")).toBe(1);
-    expect(parseWireReach("100")).toBe(100);
-    expect(parseWireReach("100.0")).toBe(100);
+    expect(parseWireReach("0.5")).toBe(0.5);
+    expect(parseWireReach("64")).toBe(64);
+    expect(parseWireReach("64.0")).toBe(64);
+    // Unlimited.
+    expect(parseWireReach("0")).toBe(0);
+    expect(parseWireReach("0,0")).toBe(0);
   });
 
   it("refuses what is not a number in the range", () => {
-    for (const text of ["", " ", "0", "0.99", "100.01", "101", "-9", "+9", "nine", "9 tiles", "1e2", "0x10", "9.", ".5", "1.2.3", "1,000.5", "Infinity"]) expect(parseWireReach(text), JSON.stringify(text)).toBeUndefined();
-    expect(WIRE_REACH_ERROR).toBe("A number from 1 to 100");
+    for (const text of ["", " ", "64.5", "64.01", "65", "100", "-1", "-0", "+9", "nine", "9 tiles", "1e2", "0x10", "9.", ".5", "1.2.3", "1,000.5", "Infinity"]) expect(parseWireReach(text), JSON.stringify(text)).toBeUndefined();
+    expect(WIRE_REACH_ERROR).toBe("A number from 0 to 64; 0 means unlimited");
   });
 });

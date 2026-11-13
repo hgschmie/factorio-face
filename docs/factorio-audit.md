@@ -13,12 +13,13 @@ Every statement carries a provenance tag:
 | [data: file] | Lua prototypes, locale or embedded blueprint strings under `factorio-data` / `factorio-install`; path is relative to that root |
 | [changelog] | `factorio-data/changelog.txt` (identical copy in `factorio-install`), version quoted |
 | [web: url] | Web lookup on 2026-11-11 |
+| [game: fixture] | Asked from the running game (headless, sandboxed) and recorded as the named fixture of section 6.8 under `tests/fixtures/game`; a test compares the editor with it |
 | [unverified] | From memory or inference. Must be confirmed by a game-driven conformance fixture before the simulator relies on it |
 
 Rules used when tags conflict: [data] and [changelog] beat [api] (the API file is one patch older, see 1.1); [api] beats [web]; the wiki is frequently stale for 2.1.
 A combined tag such as "[api] [unverified]" means the field exists per the API but the described behavior is not confirmed.
 
-The game executable was not run for this audit. No statement here is validated against a running game.
+The game executable was not run for this audit. No statement here is validated against a running game, except the few that carry a [game] tag, which were added later.
 
 ## 1. Provenance
 
@@ -731,6 +732,15 @@ The value exceeds 2^32 but stays below 2^53, so a JavaScript number holds it exa
 
 The exporter must emit positions that respect tile alignment, otherwise the game re-snaps or rejects; `set_blueprint_entities` has a `fix_positions` option at runtime [api].
 Wire reach is 9 tiles for all five entities [data: core/lualib/circuit-connector-sprites.lua]; a layout generator must keep wired entities within reach (the game drops or refuses over-long wires [unverified]).
+How the game measures [game: fixture F-24, 2.1.24, `LuaWireConnector.can_wire_reach` and `connect_to` with the reach check, no mismatch in any recorded placement]:
+
+- The distance of a wire is the straight line between the nearest points of the two entities' tile footprints: per axis the gap between the footprints in tiles, 0 where they overlap on that axis, then the hypotenuse of
+  the two gaps. The wire connects when that distance is less than or equal to the reach; exactly the reach connects. Two adjacent entities have the distance 0.
+- With reach 9 and 1x1 entities: nine empty tiles between them in a row connect, ten do not; 6 empty tiles horizontally and 6 vertically connect (8.49), 7 and 7 do not (9.90).
+- Nothing else matters: not the facing beyond the footprint it gives, not the connector that is wired (input or output of a combinator), not the collision box (a lamp, +-0.15, behaves like a constant combinator, +-0.35).
+- The reach of a wire is the smaller of the two entities' reaches: a constant combinator (9) and a small electric pole (7.5) connect up to 7.5, a constant combinator and a big electric pole (32) up to 9.
+
+The editor implements this in `packages/model/src/wireReach.ts` with one reach for the project, which is enough while all of its entities have the same reach.
 
 ## 6. Simulation semantics
 
@@ -946,6 +956,7 @@ reading results through `LuaCombinatorControlBehavior.signals_last_tick`, `LuaEn
 | F-21 | Lamp: condition true / false / default, `circuit_enabled` false with wire, `always_on`, daylight | lighting rules |
 | F-22 | Lamp colors: several mapping signals at once; components and packed RGB with 0, 255, 256, -1, 0xFFFFFF, 0x1000000; `input_networks` selection | color rules |
 | F-23 | Import round-trip: face export -> `import_stack` -> `export_stack` for each entity type, including 2x1 entities in all four directions and self-wires | exporter correctness, position rules, wire normalization |
+| F-24 | Wire reach: an entity B on every tile of a 29 x 29 grid around an entity A, asking `can_wire_reach` and `connect_to`: 1x1 and 2x1 entities in all four directions, both connectors, lamp, small / medium / big electric pole, steel chest. Recorded: `tests/fixtures/game/F-24-wire-reach.json` by `tools/game-probe/wire-reach.mjs` (`make probe-wire-reach`), checked by `packages/model/test/wireReachGame.test.ts` | the measure of wire reach (5.4): from where, inclusive or not, which of two reaches |
 
 ## 7. Changes between 2.0 and 2.1 affecting circuits, signals and blueprints
 

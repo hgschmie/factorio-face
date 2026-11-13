@@ -495,29 +495,55 @@ describe("diagnostics", () => {
 
   it("wire-too-long", () => {
     const wired = (tiles: string, wires = "wire red c.out <-> l.in") => circuit(`constant c tile (0.5, 0.5) { item:a = 1 }\nlamp l ${tiles} { }\n${wires}`);
-    // The default reach is 9 tiles between the centers; exactly 9 is fine.
-    expectCodes(wired("tile (9.5, 0.5)"), []);
-    expectCodes(wired("tile (10.5, 0.5)"), ["wire-too-long"]);
-    expect(report(wired("tile (10.5, 0.5)"))).toEqual([["wire-too-long", "wire red c.out <-> l.in"]]);
+    // The default reach is 9 tiles between the footprints: nine empty tiles between the two are fine, ten are not.
+    expectCodes(wired("tile (1.5, 0.5)"), []);
+    expectCodes(wired("tile (10.5, 0.5)"), []);
+    expectCodes(wired("tile (11.5, 0.5)"), ["wire-too-long"]);
+    expect(report(wired("tile (11.5, 0.5)"))).toEqual([["wire-too-long", "wire red c.out <-> l.in"]]);
     const messages = (source: string, wireReach?: number) => analyze(source, undefined, { wireReach }).diagnostics.map((d) => d.message);
-    expect(messages(wired("tile (10.5, 0.5)"))).toEqual(["Wire from 'c.out' to 'l.in' is 10.0 tiles long; the wire reach of the project is 9"]);
-    expect(messages(wired("tile (3.5, 12.5)", "wire green l.in <-> c.out"))).toEqual(["Wire from 'l.in' to 'c.out' is 12.4 tiles long; the wire reach of the project is 9"]);
-    // The reach of the project decides.
-    expect(messages(wired("tile (10.5, 0.5)"), 10)).toEqual([]);
-    expect(messages(wired("tile (9.5, 0.5)"), 8.5)).toEqual(["Wire from 'c.out' to 'l.in' is 9.0 tiles long; the wire reach of the project is 8.5"]);
-    expect(messages(wired("tile (3.5, 0.5)"), 2.5)).toHaveLength(1);
-    // A length that rounds to the reach is shown with the digits that tell them apart.
-    const upright = circuit("constant c tile (0.5, 0.5) { item:a = 1 }\nselector s tile (9.5, 1) facing north { }\nwire red c.out <-> s.in");
-    expect(messages(upright)).toEqual(["Wire from 'c.out' to 's.in' is 9.01 tiles long; the wire reach of the project is 9"]);
+    expect(messages(wired("tile (11.5, 0.5)"))).toEqual(["Wire from 'c.out' to 'l.in': the entities are 10.0 tiles apart; the wire reach of the project is 9"]);
+    expect(messages(wired("tile (4.5, 13.5)", "wire green l.in <-> c.out"))).toEqual(["Wire from 'l.in' to 'c.out': the entities are 12.4 tiles apart; the wire reach of the project is 9"]);
+    // Diagonally the corners count: 6 and 6 empty tiles are 8.49 apart, 7 and 7 are 9.90.
+    expectCodes(wired("tile (7.5, 7.5)"), []);
+    expectCodes(wired("tile (-7.5, 8.5)"), ["wire-too-long"]);
+    // The reach of the project decides; entities side by side are 0 apart.
+    expect(messages(wired("tile (11.5, 0.5)"), 10)).toEqual([]);
+    expect(messages(wired("tile (10.5, 0.5)"), 8.5)).toEqual(["Wire from 'c.out' to 'l.in': the entities are 9.0 tiles apart; the wire reach of the project is 8.5"]);
+    expect(messages(wired("tile (4.5, 0.5)"), 2.5)).toHaveLength(1);
+    expect(messages(wired("tile (1.5, 1.5)"), 0.5)).toEqual([]);
+    expect(messages(wired("tile (64.5, 0.5)"), 64)).toEqual([]);
+    // 0 means unlimited.
+    expect(messages(wired("tile (2000.5, -3000.5)"), 0)).toEqual([]);
+    // A distance that rounds to the reach is shown with the digits that tell them apart.
+    expect(messages(wired("tile (2.5, 2.5)"), 1.4)).toEqual(["Wire from 'c.out' to 'l.in': the entities are 1.41 tiles apart; the wire reach of the project is 1.4"]);
+    // A 2x1 combinator counts with both of its tiles, lying or upright, whichever end is wired.
+    const gate = (placement: string, side = "in") => circuit(`constant c tile (0.5, 0.5) { item:a = 1 }\nselector d ${placement} { }\nwire red c.out <-> d.${side}`);
+    for (const facing of ["east", "west"]) {
+      expectCodes(gate(`tile (11, 0.5) facing ${facing}`), []);
+      expectCodes(gate(`tile (-10, 0.5) facing ${facing}`, "out"), []);
+      expect(messages(gate(`tile (12, 0.5) facing ${facing}`))).toEqual(["Wire from 'c.out' to 'd.in': the entities are 10.0 tiles apart; the wire reach of the project is 9"]);
+      expectCodes(gate(`tile (-11, 0.5) facing ${facing}`, "out"), ["wire-too-long"]);
+    }
+    for (const facing of ["north", "south"]) {
+      expectCodes(gate(`tile (10.5, 1) facing ${facing}`), []);
+      expectCodes(gate(`tile (0.5, -10) facing ${facing}`, "out"), []);
+      expectCodes(gate(`tile (0.5, 11) facing ${facing}`), []);
+      expectCodes(gate(`tile (0.5, -11) facing ${facing}`), ["wire-too-long"]);
+      expectCodes(gate(`tile (0.5, 12) facing ${facing}`, "out"), ["wire-too-long"]);
+    }
+    // An entity that is off the grid is measured where it stands.
+    expect(codes(wired("tile (10.75, 0.5)"))).toEqual(["tile-off-grid", "wire-too-long"]);
+    expect(messages(wired("tile (10.75, 0.5)"))[1]).toBe("Wire from 'c.out' to 'l.in': the entities are 9.3 tiles apart; the wire reach of the project is 9");
+    expect(codes(wired("tile (10.25, 0.5)"))).toEqual(["tile-off-grid"]);
     // Every wire that is too long gets its warning; a second declaration of one is a duplicate only.
     expect(codes(wired("tile (20.5, 0.5)", "wire red c.out <-> l.in\nwire green c.out <-> l.in\nwire red l.in <-> c.out"))).toEqual(["wire-too-long", "wire-too-long", "duplicate-wire"]);
-    // A wire has a length only between two entities with a tile, and a wire of an entity to itself is never too long.
+    // A wire is measured only between two entities with a tile, and a wire of an entity to itself is never too long.
     expectCodes(wired(""), []);
     expectCodes(wired("at (4000, 0)"), []);
-    expect(messages(circuit("selector s tile (1, 0.5) { }\nwire red s.out <-> s.in"), 1)).toEqual([]);
+    expect(messages(circuit("selector s tile (1, 0.5) { }\nwire red s.out <-> s.in"), 0.5)).toEqual([]);
     for (const name of ["example.face", "comments.face", "all-kinds.face"]) expect(codes(fixture(name))).not.toContain("wire-too-long");
     // A warning: the circuit is there with the wire.
-    expect(valid(wired("tile (10.5, 0.5)")).circuit.wires).toHaveLength(1);
+    expect(valid(wired("tile (11.5, 0.5)")).circuit.wires).toHaveLength(1);
   });
 
   it("checks the placement of a circuit only: a fragment loses its tiles when it is pasted", () => {

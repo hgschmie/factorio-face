@@ -3,7 +3,7 @@
 // length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
 import {
-  canRotate, DIRECTIONS, exceedsWireReach, facingOf, formatWireLength, wireKey, wireLength, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor,
+  canRotate, DIRECTIONS, exceedsWireReach, facingOf, formatWireDistance, formatWireReach, wireDistance, wireKey, type Circuit, type Direction, type Entity, type EntityId, type NetworkSelection, type Wire, type WireColor,
 } from "@face/model";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
@@ -219,25 +219,25 @@ function Connections({ entity, circuit, onRemoveWire, onSelect }: { readonly ent
 interface WireInspectorProps {
   readonly wire: Wire;
   readonly names: EntityNames;
-  /** In tiles; undefined for a feedback wire and while one of the two entities has no tile. */
-  readonly length: number | undefined;
+  /** How far apart the two entities are, in tiles; undefined for a feedback wire and while one of the two entities has no tile. */
+  readonly distance: number | undefined;
   readonly wireReach: number;
   readonly editable: boolean;
   onSelect(ids: readonly EntityId[]): void;
   onDelete(): void;
 }
 
-/** The length of a wire between two different entities of the circuit that both have a tile. */
-function lengthOf(wire: Wire, circuit: Circuit): number | undefined {
+/** The distance a wire spans between two different entities of the circuit that both have a tile. */
+function distanceOf(wire: Wire, circuit: Circuit): number | undefined {
   const a = circuit.entities.find((entity) => entity.id === wire.a.entity);
   const b = circuit.entities.find((entity) => entity.id === wire.b.entity);
-  return a && b && a !== b ? wireLength(a, b) : undefined;
+  return a && b && a !== b ? wireDistance(a, b) : undefined;
 }
 
-/** One selected wire: its color, its two ends (a click selects the entity), its length against the wire reach and Delete. The output end comes first. */
-function WireInspector({ wire, names, length, wireReach, editable, onSelect, onDelete }: WireInspectorProps) {
+/** One selected wire: its color, its two ends (a click selects the entity), the distance of its entities against the wire reach and Delete. The output end comes first. */
+function WireInspector({ wire, names, distance, wireReach, editable, onSelect, onDelete }: WireInspectorProps) {
   const ends = wire.a.side === "in" && wire.b.side === "out" ? [wire.b, wire.a] : [wire.a, wire.b];
-  const tooLong = exceedsWireReach(length, wireReach);
+  const tooLong = exceedsWireReach(distance, wireReach);
   return (
     <div className="inspector-wire" data-wire={wireKey(wire)} data-color={wire.color}>
       <header className="inspector-identity">
@@ -270,18 +270,18 @@ function WireInspector({ wire, names, length, wireReach, editable, onSelect, onD
           })}
         </ul>
       </section>
-      {length !== undefined && (
-        <section className="wire-length" data-too-long={tooLong || undefined}>
+      {distance !== undefined && (
+        <section className="wire-distance" data-too-long={tooLong || undefined}>
           <div className="section-label">
-            <span>Length</span>
-            <span>Reach {wireReach}</span>
+            <span>Distance</span>
+            <span>Reach {formatWireReach(wireReach)}</span>
           </div>
           <p>
-            <b>{formatWireLength(length, wireReach)}</b> tiles between the centers of the two entities
+            The two entities are <b>{formatWireDistance(distance, wireReach)}</b> tiles apart
           </p>
           {tooLong && (
-            <p className="wire-length-warning" role="status">
-              <b>Longer than the wire reach.</b> Move the entities closer together or connect them through an entity in between. The reach is a project setting.
+            <p className="wire-distance-warning" role="status">
+              <b>Further apart than the wire reach.</b> Move the entities closer together or connect them through an entity in between. The reach is a project setting.
             </p>
           )}
         </section>
@@ -417,7 +417,7 @@ export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
           <WireInspector
             wire={singleWire}
             names={names}
-            length={lengthOf(singleWire, circuit)}
+            distance={distanceOf(singleWire, circuit)}
             wireReach={props.wireReach}
             editable={editable}
             onSelect={props.onSelect}

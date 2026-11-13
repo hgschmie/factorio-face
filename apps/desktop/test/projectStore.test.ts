@@ -109,9 +109,9 @@ describe("project file", () => {
   });
 
   it("refuses a project file whose wire reach is out of range or not a number", async () => {
-    for (const [index, wireReach] of [0, 101, "9", null].entries()) {
+    for (const [index, wireReach] of [-1, 64.5, "9", null].entries()) {
       const path = await projectFile(`bad-reach-${index}`, zipSync({ ...validEntries(), "face.json": manifestEntry({ wireReach }) }));
-      await expect(readProject(path)).rejects.toThrow("Wire reach must be a number from 1 to 100");
+      await expect(readProject(path)).rejects.toThrow("Wire reach must be a number from 0 to 64");
     }
   });
 

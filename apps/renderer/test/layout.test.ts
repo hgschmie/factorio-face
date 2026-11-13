@@ -144,28 +144,33 @@ describe("blueprint layout", () => {
     expect(dragged.rect(named(circuit, "source"))).toEqual(layout.rect(named(circuit, "source")));
   });
 
-  it("measures a wire between the tile centers, and for a drag between the tiles the drag would give", () => {
+  it("measures a wire between the footprints of its entities, and for a drag between the tiles the drag would give", () => {
     const [source, gate, down, light, loose] = ["source", "gate", "down", "light", "loose"].map((name) => named(circuit, name)) as [Entity, Entity, Entity, Entity, Entity];
-    expect(layout.wireLength(source, gate)).toBe(2.5);
-    expect(layout.wireLength(down, light)).toBeCloseTo(Math.hypot(2, 0.5), 12);
-    expect(layout.wireLength(gate, gate)).toBe(0);
-    // An entity without a tile stands at a derived place: its wires have no length.
-    expect(layout.wireLength(gate, loose)).toBeUndefined();
-    expect(layout.wireLength(loose, loose)).toBeUndefined();
+    // One empty tile between the constant on (0, 0) and the gate on (2, 0) and (3, 0), and between the upright one on (5, 0) and (5, 1) and the lamp on (7, 0).
+    expect(layout.wireDistance(source, gate)).toBe(1);
+    expect(layout.wireDistance(down, light)).toBe(1);
+    expect(layout.wireDistance(gate, down)).toBe(1);
+    expect(layout.wireDistance(gate, gate)).toBe(0);
+    // An entity without a tile stands at a derived place: its wires are not measured.
+    expect(layout.wireDistance(gate, loose)).toBeUndefined();
+    expect(layout.wireDistance(loose, loose)).toBeUndefined();
 
     // The lamp dragged to the tile (20, 0): its wires are measured from there, the others as before.
     const far = blueprintLayout(circuit.entities, new Map([[light.id, { x: 20 * TILE + 9, y: -7 }]]));
-    expect(far.wireLength(source, light)).toBe(20);
-    expect(far.wireLength(light, source)).toBe(20);
-    expect(far.wireLength(source, gate)).toBe(2.5);
-    // A 2x1 entity is measured from the center of the two tiles it would take.
-    expect(blueprintLayout(circuit.entities, new Map([[gate.id, { x: 10 * TILE, y: 0 }]])).wireLength(source, gate)).toBe(10.5);
-    // A dragged entity without a tile gets one by the drag, so its wires have a length while it is dragged.
+    expect(far.wireDistance(source, light)).toBe(19);
+    expect(far.wireDistance(light, source)).toBe(19);
+    expect(far.wireDistance(source, gate)).toBe(1);
+    // A 2x1 entity is measured from the nearer of the two tiles it would take.
+    expect(blueprintLayout(circuit.entities, new Map([[gate.id, { x: 10 * TILE, y: 0 }]])).wireDistance(source, gate)).toBe(9);
+    expect(blueprintLayout(circuit.entities, new Map([[gate.id, { x: -11 * TILE, y: 0 }]])).wireDistance(source, gate)).toBe(9);
+    // Next to each other: nothing to span.
+    expect(blueprintLayout(circuit.entities, new Map([[light.id, { x: 4 * TILE, y: TILE }]])).wireDistance(gate, light)).toBe(0);
+    // A dragged entity without a tile gets one by the drag, so its wires are measured while it is dragged.
     const placing = blueprintLayout(circuit.entities, new Map([[loose.id, { x: 2 * TILE, y: 3 * TILE }]]));
-    expect(placing.wireLength(gate, loose)).toBe(3);
+    expect(placing.wireDistance(gate, loose)).toBe(2);
     // Both ends in one drag keep their distance.
     const both = blueprintLayout(circuit.entities, new Map([[source.id, { x: 40 * TILE, y: 0 }], [gate.id, { x: 42 * TILE, y: 0 }]]));
-    expect(both.wireLength(source, gate)).toBe(2.5);
+    expect(both.wireDistance(source, gate)).toBe(1);
   });
 
   it("is what layoutFor gives for the mode", () => {

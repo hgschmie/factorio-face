@@ -1,17 +1,17 @@
-// The wire reach: a project setting (9 tiles unless the project says otherwise). A wire between two entities with a tile that is
-// longer is flagged in the problems list, on the blueprint board (live while entities are dragged) and in the inspector; nothing
-// is refused.
+// The wire reach: a project setting (9 tiles unless the project says otherwise, 0 for unlimited). A wire between two entities with
+// a tile that are further apart is flagged in the problems list, on the blueprint board (live while entities are dragged) and in
+// the inspector; nothing is refused. The distance is the one between the footprints, as the game measures it.
 import type { Page } from "@playwright/test";
 import { card, clickMenu, closeApp, expect, launchApp, openProject, readProjectEntries, showDisplay, test, wire, wireKeyOf, wirePoint, writeProject } from "./app.ts";
 import { committedTiles, dragOnBoard, inspector, openBoardProject } from "./board.ts";
 
-/** `source` and `light` are 10 tiles apart; `loose` has no tile and is shown on (12, 3), 12.4 tiles from `source`. */
+/** Ten empty tiles between `source` and `light`: 10 tiles apart. `loose` has no tile; its shown place is derived and not measured. */
 const FAR = `circuit "Far" {
     constant source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    lamp light at (560, 80) tile (10.5, 0.5) {
+    lamp light at (560, 80) tile (11.5, 0.5) {
         when virtual:signal-A > 0
     }
 
@@ -45,19 +45,19 @@ async function selectWire(page: Page, key: string): Promise<void> {
   await expect(wire(page, key)).toHaveClass(/selected/);
 }
 
-test("a wire longer than the reach is flagged in the problems list and on the board, live while an end is dragged", async ({ page }) => {
+test("a wire between entities further apart than the reach is flagged in the problems list and on the board, live while an end is dragged", async ({ page }) => {
   await openBoardProject(page, FAR);
   await showSplit(page);
   const red = await wireKeyOf(page, "red", "source.out", "light.in");
   const green = await wireKeyOf(page, "green", "source.out", "loose.in");
 
-  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in' is 10.0 tiles long; the wire reach of the project is 9");
+  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in': the entities are 10.0 tiles apart; the wire reach of the project is 9");
   await expect(page.locator(".statusbar")).toContainText("1 warning");
   await expect(flagged(page)).toHaveCount(1);
   await expect(wire(page, red)).toHaveAttribute("data-too-long", "true");
   await expect(wire(page, red).locator("path.wire-flag")).toHaveCount(1);
-  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10.0 tiles, over the wire reach of 9)");
-  // The wire to the entity without a tile is longer still, but its place is only derived: not flagged, no length.
+  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10.0 tiles apart, over the wire reach of 9)");
+  // The entity without a tile is shown further away still, but its place is only derived: not flagged, not measured.
   await expect(card(page, "loose")).toHaveAttribute("data-placed", "false");
   await expect(wire(page, green)).not.toHaveAttribute("data-too-long");
   expect(await title(page, green).textContent()).toBe("green: source.out <-> loose.in");
@@ -66,9 +66,9 @@ test("a wire longer than the reach is flagged in the problems list and on the bo
 
   // One tile closer is exactly the reach. The board says so while the button is down; the problems list follows the drop.
   await dragOnBoard(page, "light", { x: -1, y: 0 }, async () => {
-    await expect(card(page, "light")).toHaveAttribute("data-tile-x", "9");
+    await expect(card(page, "light")).toHaveAttribute("data-tile-x", "10");
     await expect(flagged(page)).toHaveCount(0);
-    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (9.0 tiles)");
+    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (9.0 tiles apart)");
     await expect(problems(page)).toHaveCount(1);
   });
   await expect(problems(page)).toHaveCount(0);
@@ -77,25 +77,25 @@ test("a wire longer than the reach is flagged in the problems list and on the bo
 
   // Dragged away again: flagged at the previewed place before anything is written, and the drop is not refused.
   await dragOnBoard(page, "light", { x: 3, y: 0 }, async () => {
-    await expect(card(page, "light")).toHaveAttribute("data-tile-x", "12");
+    await expect(card(page, "light")).toHaveAttribute("data-tile-x", "13");
     await expect(flagged(page)).toHaveCount(1);
     await expect(wire(page, red)).toHaveAttribute("data-too-long", "true");
     await expect(problems(page)).toHaveCount(0);
   });
-  expect((await committedTiles(page)).light).toEqual([12.5, 0.5]);
-  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in' is 12.0 tiles long; the wire reach of the project is 9");
+  expect((await committedTiles(page)).light).toEqual([13.5, 0.5]);
+  await expect(problems(page)).toHaveText("Ln 14Wire from 'source.out' to 'light.in': the entities are 12.0 tiles apart; the wire reach of the project is 9");
   await expect(flagged(page)).toHaveCount(1);
   await page.getByRole("button", { name: "Undo" }).click();
   await expect(flagged(page)).toHaveCount(0);
   await expect(problems(page)).toHaveCount(0);
 
-  // An entity without a tile gets one by being dragged: its wire has a length from then on, also during the drag.
+  // An entity without a tile gets one by being dragged: its wire is measured from then on, also during the drag.
   await dragOnBoard(page, "loose", { x: 0, y: 1 }, async () => {
     await expect(flagged(page)).toHaveCount(1);
     await expect(wire(page, green)).toHaveAttribute("data-too-long", "true");
   });
   expect((await committedTiles(page)).loose).toEqual([12.5, 4.5]);
-  await expect(problems(page)).toHaveText("Ln 15Wire from 'source.out' to 'loose.in' is 12.6 tiles long; the wire reach of the project is 9");
+  await expect(problems(page)).toHaveText("Ln 15Wire from 'source.out' to 'loose.in': the entities are 11.4 tiles apart; the wire reach of the project is 9");
   await expect(wire(page, green)).toHaveAttribute("data-too-long", "true");
 
   // The edit canvas shows the wires as it always did; the warning stays in the list.
@@ -106,23 +106,57 @@ test("a wire longer than the reach is flagged in the problems list and on the bo
   await expect(problems(page)).toHaveCount(1);
 });
 
-test("the inspector of a selected wire shows its length against the reach", async ({ page }) => {
+test("the inspector of a selected wire shows how far apart its entities are against the reach", async ({ page }) => {
   await openBoardProject(page, FAR);
   await page.getByRole("button", { name: "Fit circuit" }).click();
-  const length = inspector(page).locator(".wire-length");
+  const distance = inspector(page).locator(".wire-distance");
 
   await selectWire(page, await wireKeyOf(page, "red", "source.out", "light.in"));
-  await expect(length).toHaveAttribute("data-too-long", "true");
-  await expect(length.locator(".section-label")).toHaveText("LengthReach 9");
-  await expect(length.locator("p").first()).toHaveText("10.0 tiles between the centers of the two entities");
-  await expect(length.getByRole("status")).toContainText("Longer than the wire reach.");
+  await expect(distance).toHaveAttribute("data-too-long", "true");
+  await expect(distance.locator(".section-label")).toHaveText("DistanceReach 9");
+  await expect(distance.locator("p").first()).toHaveText("The two entities are 10.0 tiles apart");
+  await expect(distance.getByRole("status")).toContainText("Further apart than the wire reach.");
   // A selected wire that is flagged keeps both marks: the outline of the selection and the dashes.
   await expect(page.locator("g.wire.selected.too-long path.wire-flag")).toHaveCount(1);
 
-  // No length while one end has no tile.
+  // No distance while one end has no tile.
   await selectWire(page, await wireKeyOf(page, "green", "source.out", "loose.in"));
   await expect(inspector(page).locator(".inspector-wire")).toBeVisible();
-  await expect(length).toHaveCount(0);
+  await expect(distance).toHaveCount(0);
+});
+
+test("the reach 0 means unlimited: nothing is flagged, and the inspector says so", async ({ page }) => {
+  await openBoardProject(page, FAR);
+  await showSplit(page);
+  await expect(flagged(page)).toHaveCount(1);
+  await expect(problems(page)).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(settings(page)).toContainText("0 means unlimited");
+  await reachField(page).fill("0");
+  await expect(reachField(page)).toHaveAttribute("aria-invalid", "false");
+  await reachField(page).press("Enter");
+  await expect(reachField(page)).toHaveValue("0");
+  await settings(page).getByRole("button", { name: "Close project settings" }).click();
+  await expect(flagged(page)).toHaveCount(0);
+  await expect(problems(page)).toHaveCount(0);
+  await expect(page.locator(".statusbar")).not.toContainText("warning");
+
+  // Dragged further away the wire stays fine, during the drag and after it; it is still measured.
+  await dragOnBoard(page, "light", { x: 2, y: 0 }, async () => {
+    await expect(card(page, "light")).toHaveAttribute("data-tile-x", "13");
+    await expect(flagged(page)).toHaveCount(0);
+  });
+  await expect(problems(page)).toHaveCount(0);
+  await page.getByRole("button", { name: "Fit", exact: true }).click();
+  const red = await wireKeyOf(page, "red", "source.out", "light.in");
+  expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (12.0 tiles apart)");
+  await selectWire(page, red);
+  const distance = inspector(page).locator(".wire-distance");
+  await expect(distance).not.toHaveAttribute("data-too-long");
+  await expect(distance.locator(".section-label")).toHaveText("DistanceReach unlimited");
+  await expect(distance.locator("p").first()).toHaveText("The two entities are 12.0 tiles apart");
+  await expect(distance.getByRole("status")).toHaveCount(0);
 });
 
 test("the reach is set in the project settings, decides what is flagged, and is kept in the project file", async () => {
@@ -142,7 +176,7 @@ test("the reach is set in the project settings, decides what is flagged, and is 
     await expect(reachField(page)).toHaveValue("9");
     await expect(reset).toBeDisabled();
 
-    // A longer reach takes the flag and the warning away; the project has unsaved changes, the document none.
+    // A reach that is long enough takes the flag and the warning away; the project has unsaved changes, the document none.
     await reachField(page).fill("10");
     await reachField(page).press("Enter");
     await expect(flagged(page)).toHaveCount(0);
@@ -150,21 +184,28 @@ test("the reach is set in the project settings, decides what is flagged, and is 
     await expect(saveState(page)).toHaveText("Unsaved changes");
     await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 
-    // What is not a reach says so and is not taken over.
-    await reachField(page).fill("150");
-    await expect(reachField(page)).toHaveAttribute("aria-invalid", "true");
-    await expect(settings(page).getByRole("alert")).toHaveText("A number from 1 to 100");
+    // What is not a reach says so and is not taken over: more than 64, less than 0.
+    for (const text of ["64.5", "-1", "150"]) {
+      await reachField(page).fill(text);
+      await expect(reachField(page)).toHaveAttribute("aria-invalid", "true");
+      await expect(settings(page).getByRole("alert")).toHaveText("A number from 0 to 64; 0 means unlimited");
+      await reachField(page).press("Enter");
+      await expect(reachField(page)).toHaveValue("10");
+      await expect(settings(page).getByRole("alert")).toHaveCount(0);
+      await expect(flagged(page)).toHaveCount(0);
+    }
+    // 64 is the most.
+    await reachField(page).fill("64");
     await reachField(page).press("Enter");
-    await expect(reachField(page)).toHaveValue("10");
+    await expect(reachField(page)).toHaveValue("64");
     await expect(settings(page).getByRole("alert")).toHaveCount(0);
-    await expect(flagged(page)).toHaveCount(0);
 
     // Fractions are allowed, with a comma as well; leaving the field writes it.
     await reachField(page).fill("9,5");
     await reachField(page).press("Tab");
     await expect(reachField(page)).toHaveValue("9.5");
     await expect(flagged(page)).toHaveCount(1);
-    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10.0 tiles, over the wire reach of 9.5)");
+    expect(await title(page, red).textContent()).toBe("red: source.out <-> light.in (10.0 tiles apart, over the wire reach of 9.5)");
 
     // Back to the default: as saved.
     await reset.click();
@@ -208,9 +249,21 @@ test("the reach is set in the project settings, decides what is flagged, and is 
   }
 });
 
-test("a project file with a wire reach that is out of range is not opened", async ({ page }) => {
-  const projectPath = await writeProject({ name: "Bad reach", source: FAR, manifest: { wireReach: 0 } });
+for (const wireReach of [64.5, -1]) {
+  test(`a project file with the wire reach ${wireReach} is not opened`, async ({ page }) => {
+    const projectPath = await writeProject({ name: "Bad reach", source: FAR, manifest: { wireReach } });
+    await page.evaluate((path) => window.faceSession!.commands.loadProject(path), projectPath);
+    await expect(page.locator(".toast")).toContainText("Wire reach must be a number from 0 to 64");
+    await expect(page.getByTestId("project-name")).not.toHaveText("Bad reach");
+  });
+}
+
+test("a project file with the wire reach 0 opens with nothing flagged", async ({ page }) => {
+  const projectPath = await writeProject({ name: "Unlimited", source: FAR, manifest: { wireReach: 0 } });
   await page.evaluate((path) => window.faceSession!.commands.loadProject(path), projectPath);
-  await expect(page.locator(".toast")).toContainText("Wire reach must be a number from 1 to 100");
-  await expect(page.getByTestId("project-name")).not.toHaveText("Bad reach");
+  await expect(page.getByTestId("project-name")).toHaveText("Unlimited");
+  await showDisplay(page, "blueprint");
+  await expect(page.locator("g.wire")).toHaveCount(2);
+  await expect(flagged(page)).toHaveCount(0);
+  await expect(page.locator(".statusbar")).not.toContainText("warning");
 });

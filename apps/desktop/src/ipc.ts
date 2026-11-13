@@ -68,7 +68,7 @@ export interface ProjectManifest {
   readonly customSignalGroups: readonly CustomSignalGroup[];
   /** Circuit source file names: entries at the root of the project file. */
   readonly circuits: readonly string[];
-  /** The longest a circuit wire may be, in tiles (`WIRE_REACH_RANGE` of @face/model); longer wires are flagged. Absent: the default, 9. */
+  /** How far apart two entities may be for a circuit wire, in tiles (`WIRE_REACH_RANGE` of @face/model, 0 means unlimited); wires that span more are flagged. Absent: the default, 9. */
   readonly wireReach?: number;
   /**
    * Top-level fields of face.json that this version does not know. They are read into this record and written back as

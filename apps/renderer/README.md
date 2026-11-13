@@ -433,36 +433,38 @@ pins on the top or the bottom end.
   click where a wire crosses an entity selects the wire; with a tool other than select, wires take no pointer events on the
   board, so they never cover a pin.
 
-**Wire reach.** In the game a circuit wire has a longest length; the game data says 9 tiles for every entity the editor knows
-(`docs/factorio-audit.md` 5.4). Here it is a project setting, because there is more than one way to measure it:
-`project.wireReach`, 9 (`DEFAULT_WIRE_REACH`) unless the project file says otherwise, from 1 to 100 tiles, fractions allowed
-(`WIRE_REACH_RANGE`, `isWireReach`). It is edited in the project settings (`WireReachField`: the label "Wire reach", a text
-field that is written with Enter or by leaving it, "A number from 1 to 100" under a text that is none, and the button "Reset to
-9") through `commands.setWireReach(value)`, which ignores a value out of range. Like the name and the modules it is not part of
+**Wire reach.** In the game a circuit wire connects two entities only when they are within its reach; the game data says 9
+tiles for every entity the editor knows (`docs/factorio-audit.md` 5.4). Here it is a project setting: `project.wireReach`, 9
+(`DEFAULT_WIRE_REACH`) unless the project file says otherwise, from 0 to 64 tiles, fractions allowed (`WIRE_REACH_RANGE`,
+`isWireReach`); 0 (`UNLIMITED_WIRE_REACH`) means unlimited, nothing is flagged. It is edited in the project settings
+(`WireReachField`: the label "Wire reach", a text field that is written with Enter or by leaving it, "A number from 0 to 64; 0
+means unlimited" under a text that is none, and the button "Reset to 9") through `commands.setWireReach(value)`, which ignores a
+value out of range. Like the name and the modules it is not part of
 the document: not undoable, and a change makes the project dirty.
 
-- The measure is `wireLength(a, b)` of `@face/model` (`wireReach.ts`): the straight line between the center positions
-  (`placement.tile`) of the two entities, in tiles. This is the editor's definition; the game's exact rule (from where it
-  measures) is not verified. A wire is too long when its length is greater than the reach (`exceedsWireReach`); exactly the
-  reach is fine. A wire with an end that has no `tile` has no length, and a wire of an entity to itself has the length 0, so
-  neither is ever flagged. `formatWireLength(length, reach)` is the length for display: one decimal, more where that would
-  hide on which side of the reach it is ("9.01" next to a reach of 9).
+- The measure is `wireDistance(a, b)` of `@face/model` (`wireReach.ts`): the distance between the nearest points of the two
+  tile footprints (`footprintDistance`), in tiles, 0 for entities that touch. It is the game's rule, verified by fixture F-24
+  (`tests/fixtures/game/F-24-wire-reach.json`). A wire is too long when that distance is greater than the reach
+  (`exceedsWireReach`); exactly the reach is fine. A wire with an end that has no `tile` has no distance, and a wire of an
+  entity to itself spans 0, so neither is ever flagged. `formatWireDistance(distance, reach)` is the distance for display: one
+  decimal, more where that would hide on which side of the reach it is ("9.01" next to a reach of 9); `formatWireReach(reach)`
+  is the reach, "unlimited" for 0.
 - Flagging never blocks: a move, a turn or a new entity that makes a wire too long is carried out, and the simulation does not
   know the reach.
 - The problems list: the analysis gets the reach as an option (`Analysis.request(..., wireReach)`, `AnalyzeOptions.wireReach`)
   and reports `wire-too-long` (a warning) on the wire statement. `setWireReach` analyzes again; the circuit object, the text
   and the simulation stay as they are.
-- The board: `BlueprintLayout.wireLength(a, b)` measures the entities as they stand, so an entity of a drag in progress counts
+- The board: `BlueprintLayout.wireDistance(a, b)` measures the entities as they stand, so an entity of a drag in progress counts
   with the tile the drag would give it, also one that has no tile yet. `Scene` flags a wire that is too long: `g.wire.too-long`
   with `data-too-long="true"` and an extra `path.wire-flag` between casing and core, dashes in `--status-warning` (yellow)
   that show on both sides of the core, which keeps the color of the wire. That is neither the solid orange outline of a
-  selected wire nor a red wire, and a selected wire that is too long has both. The `<title>` of a wire with a length ends in
-  `(4.0 tiles)` or `(12.4 tiles, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
+  selected wire nor a red wire, and a selected wire that is too long has both. The `<title>` of a wire with a distance ends in
+  `(4.0 tiles apart)` or `(12.4 tiles apart, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
   follow the drag: a wire that would become too long at the previewed place is flagged before the drop, one that would become
   fine is not. An entity without a tile that is dragged out and back to where it stood shows its wires measured although the
-  drop writes nothing. The edit canvas shows every wire as before, without a length.
-- The inspector: a selected wire between two different entities that both have a tile shows `section.wire-length` (in both
-  display modes): the length, "Reach 9" and, when it is too long, `data-too-long` and a notice (`role="status"`).
+  drop writes nothing. The edit canvas shows every wire as before, without a distance.
+- The inspector: a selected wire between two different entities that both have a tile shows `section.wire-distance` (in both
+  display modes): how far apart the entities are, "Reach 9" ("Reach unlimited" for 0) and, when it is too long, `data-too-long` and a notice (`role="status"`).
 
 **The bubble.** While exactly one entity (and no wire) is selected on the board, `EntityBubble` shows its full card next to it:
 `CardFace`, the same component the card of the edit canvas draws (kind, description marker, icon, name, summary, the three

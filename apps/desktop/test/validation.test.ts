@@ -132,10 +132,10 @@ describe("manifest", () => {
     expect(() => parseManifest(value)).toThrow(ValidationError);
   });
 
-  it("takes an optional wire reach from 1 to 100 tiles, fractions included, and leaves an absent one absent", () => {
+  it("takes an optional wire reach from 0 (unlimited) to 64 tiles, fractions included, and leaves an absent one absent", () => {
     expect(parseManifest(manifest)).not.toHaveProperty("wireReach");
     expect(parseManifestFile(manifest)).not.toHaveProperty("wireReach");
-    for (const wireReach of [1, 9, 12.5, 100]) {
+    for (const wireReach of [0, 0.5, 9, 12.5, 64]) {
       expect(parseManifest({ ...manifest, wireReach })).toEqual({ ...manifest, wireReach });
       // In face.json it is a known field, not one of the unknown ones, and it is written back after the others.
       const parsed = parseManifestFile({ ...manifest, wireReach, later: true });
@@ -145,17 +145,17 @@ describe("manifest", () => {
   });
 
   it.each([
-    ["below the range", 0.5],
-    ["zero", 0],
-    ["negative", -9],
-    ["above the range", 100.5],
+    ["below the range", -1],
+    ["just below the range", -0.5],
+    ["above the range", 64.5],
+    ["the old maximum", 100],
     ["not finite", Number.POSITIVE_INFINITY],
     ["not a number", Number.NaN],
     ["a string", "9"],
     ["null", null],
     ["an array", [9]],
   ])("rejects a wire reach that is %s", (_name, wireReach) => {
-    expect(() => parseManifest({ ...manifest, wireReach })).toThrow("Wire reach must be a number from 1 to 100");
+    expect(() => parseManifest({ ...manifest, wireReach })).toThrow("Wire reach must be a number from 0 to 64");
     expect(() => parseManifestFile({ ...manifest, wireReach })).toThrow(ValidationError);
     expect(() => parseManifest({ ...manifest, extras: { wireReach } })).toThrow(ValidationError);
   });

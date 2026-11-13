@@ -390,7 +390,7 @@ export interface WorkbenchCommands {
   /** Enables or disables a standard module together with the modules that depend on it or that it requires. */
   setModuleEnabled(name: string, enabled: boolean): void;
   setProjectName(name: string): void;
-  /** Sets the wire reach in tiles and measures the wires again. A value outside `WIRE_REACH_RANGE` is ignored. */
+  /** Sets the wire reach in tiles (0: unlimited) and measures the wires again. A value outside `WIRE_REACH_RANGE` is ignored. */
   setWireReach(wireReach: number): void;
 
   // Project lifecycle. Replacing a project with unsaved changes asks the user first.

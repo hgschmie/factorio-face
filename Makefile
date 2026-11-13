@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 ENV := source scripts/env.sh &&
 
-.PHONY: install build typecheck test e2e run catalog clean
+.PHONY: install build typecheck test e2e run catalog probe-wire-reach clean
 
 install:
 	$(ENV) npm install && node node_modules/electron/install.js
@@ -24,6 +24,10 @@ run: build
 
 catalog:
 	$(ENV) npm run catalog
+
+# Records tests/fixtures/game/F-24-wire-reach.json from the installed game.
+probe-wire-reach:
+	$(ENV) npm run probe-wire-reach
 
 clean:
 	rm -rf dist .runtime

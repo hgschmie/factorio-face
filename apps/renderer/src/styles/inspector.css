@@ -422,7 +422,7 @@
   align-self: flex-start;
 }
 
-.wire-length {
+.wire-distance {
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -431,18 +431,18 @@
   color: var(--text-soft);
 }
 
-.wire-length p {
+.wire-distance p {
   margin: 0;
   line-height: 1.5;
 }
 
-.wire-length > p:first-of-type b {
+.wire-distance > p:first-of-type b {
   font-family: var(--font-mono);
   font-weight: 400;
   color: var(--text);
 }
 
-.wire-length-warning {
+.wire-distance-warning {
   padding: 9px 10px;
   border: 1px solid var(--notice-border);
   border-radius: var(--radius-md);
@@ -450,7 +450,7 @@
   background: var(--notice-surface);
 }
 
-.wire-length-warning b {
+.wire-distance-warning b {
   display: block;
   font-weight: 600;
 }

@@ -1,7 +1,7 @@
 // Where an entity and its pins are in a display mode. The canvas asks a layout instead of assuming cards: hit testing, the
 // marquee, culling, Fit, the pending wire and the wires all go through it. Two implementations: the edit canvas (cards at
 // `entity.position`, routed wires) and the blueprint board (footprints on tiles, straight wires). Pure.
-import { facingOf, wireLength, type Entity, type EntityId, type Point, type TerminalSide, type Wire, type WireColor } from "@face/model";
+import { facingOf, wireDistance, type Entity, type EntityId, type Point, type TerminalSide, type Wire, type WireColor } from "@face/model";
 import type { DisplayMode } from "../workbench/controller.ts";
 import { arrangeBoard, boardPinOffset, TILE, withOrigin, type BoardPlacement } from "./board.ts";
 import { boundsOfPoints, cardRect, DIRECTION_VECTOR, entitiesBounds, GRID, pinPoint, type Rect } from "./geometry.ts";
@@ -40,10 +40,10 @@ export interface BlueprintLayout extends CanvasLayout {
   /** Tiles, facing and whether the entity has a place of its own. */
   placement(entity: Entity): BoardPlacement;
   /**
-   * The length of a wire between two entities in tiles (`wireLength`), as they stand: an entity of a move in progress counts
+   * How far apart two entities are for a wire, in tiles (`wireDistance`), as they stand: an entity of a move in progress counts
    * with the tile the move would give it, also one that has none yet. Undefined while one of them has no tile.
    */
-  wireLength(a: Entity, b: Entity): number | undefined;
+  wireDistance(a: Entity, b: Entity): number | undefined;
 }
 
 export type Layout = EditLayout | BlueprintLayout;
@@ -106,7 +106,7 @@ export function blueprintLayout(entities: readonly Entity[], preview?: PreviewPo
     fitMargin: TILE / 2,
     detailZoom: BLUEPRINT_DETAIL_ZOOM,
     placement,
-    wireLength: (a, b) => wireLength(standing(a), standing(b)),
+    wireDistance: (a, b) => wireDistance(standing(a), standing(b)),
     rect,
     pin,
     route: (wire, a, b) => {

@@ -7,15 +7,24 @@ import { diffSnapshots, snapshot } from "./isolation.mjs";
 export const STANDARD_MODULES = ["base", "elevated-rails", "recycler", "quality", "space-age"];
 export const RUNTIME_SCENARIO = "face-catalog-dump";
 export const RUNTIME_DUMP_FILE = "face-runtime-dump.json";
+const scenarioArgs = (name) => ["--test-scenario", name, "--test-ticks", "600"];
 // All three commands run headless. `--dump-icon-sprites` is deliberately absent: it starts the graphics stack, and macOS
 // then updates the per-user Metal shader cache (outside the workspace) on the game's behalf.
 export const DUMP_COMMANDS = {
   data: ["--dump-data"],
   locale: ["--dump-prototype-locale"],
-  runtime: ["--test-scenario", RUNTIME_SCENARIO, "--test-ticks", "600"],
+  runtime: scenarioArgs(RUNTIME_SCENARIO),
 };
 export const DUMP_OUTPUTS = { data: "data-raw-dump.json", locale: "item-locale.json", runtime: RUNTIME_DUMP_FILE };
 const SCENARIO_SOURCE = path.join(import.meta.dirname, "..", "runtime-dump", "control.lua");
+
+/** Where the game is: FACTORIO_BIN and FACTORIO_DATA, or the application bundle with its `data` directory. `gameRoot` is what the isolation check watches. */
+export function locateGame(env = process.env) {
+  const binary = env.FACTORIO_BIN ?? "/Applications/factorio.app/Contents/MacOS/factorio";
+  if (!fs.existsSync(binary)) throw new Error(`game binary not found at ${binary} (set FACTORIO_BIN)`);
+  const dataDir = fs.realpathSync(env.FACTORIO_DATA ?? path.resolve(binary, "../../data"));
+  return { binary, dataDir, gameRoot: /^(.*\.app)\//.exec(binary)?.[1] ?? path.dirname(dataDir) };
+}
 
 /** Parses a dependency string such as "+ quality >= 2.1.0" into { name, kind, constraint }. */
 export function parseDependency(text) {
@@ -110,26 +119,40 @@ export function runGame({ binary, gameRoot, dumpRoot, cwd, args, sandbox, label,
   return { commandLine, env, seconds, output, isolation: { before, after } };
 }
 
-/** Runs one dump command for one module set; all game state lives in `<dumpRoot>/sets/<id>/`. */
-export function runDump({ binary, dataDir, gameRoot, dumpRoot, mods, command, sandbox, log }) {
+/**
+ * Runs the game once for one module set and checks that it wrote `output` to script-output; all game state lives in
+ * `<dumpRoot>/sets/<id>/`. A `scenario` ({ name, source }: one control.lua) is installed there first.
+ */
+function runSet({ binary, dataDir, gameRoot, dumpRoot, mods, sandbox, log }, { name, commandArgs, output, scenario }) {
   const setDir = path.join(dumpRoot, "sets", modSetId(mods));
   const modDir = path.join(setDir, "mods");
   const configFile = path.join(setDir, "config", "config.ini");
   for (const dir of [modDir, path.dirname(configFile)]) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(configFile, configIni(dataDir, setDir));
   fs.writeFileSync(path.join(modDir, "mod-list.json"), JSON.stringify({ mods: STANDARD_MODULES.map((name) => ({ name, enabled: mods.includes(name) })) }, null, 2) + "\n");
-  if (command === "runtime") {
-    const scenarioDir = path.join(setDir, "scenarios", RUNTIME_SCENARIO);
+  if (scenario) {
+    const scenarioDir = path.join(setDir, "scenarios", scenario.name);
     fs.mkdirSync(scenarioDir, { recursive: true });
-    fs.copyFileSync(SCENARIO_SOURCE, path.join(scenarioDir, "control.lua"));
+    fs.copyFileSync(scenario.source, path.join(scenarioDir, "control.lua"));
   }
-  const expected = path.join(setDir, "script-output", DUMP_OUTPUTS[command]);
+  const expected = path.join(setDir, "script-output", output);
   fs.rmSync(expected, { force: true });
-  const args = ["--config", configFile, "--mod-directory", modDir, "--no-log-rotation", ...DUMP_COMMANDS[command]];
-  const run = runGame({ binary, gameRoot, dumpRoot, cwd: setDir, args, sandbox, label: `${modSetId(mods)} ${DUMP_COMMANDS[command].slice(0, 2).join(" ")}`, log });
-  fs.writeFileSync(path.join(setDir, `${command}.log`), run.output);
+  const args = ["--config", configFile, "--mod-directory", modDir, "--no-log-rotation", ...commandArgs];
+  const run = runGame({ binary, gameRoot, dumpRoot, cwd: setDir, args, sandbox, label: `${modSetId(mods)} ${commandArgs.slice(0, 2).join(" ")}`, log });
+  fs.writeFileSync(path.join(setDir, `${name}.log`), run.output);
   if (!fs.existsSync(expected)) throw new Error(`${run.commandLine} did not produce ${expected}`);
-  return { ...run, setDir };
+  return { ...run, setDir, outputFile: expected };
+}
+
+/** Runs one dump command for one module set. */
+export function runDump({ command, ...options }) {
+  const scenario = command === "runtime" ? { name: RUNTIME_SCENARIO, source: SCENARIO_SOURCE } : undefined;
+  return runSet(options, { name: command, commandArgs: DUMP_COMMANDS[command], output: DUMP_OUTPUTS[command], scenario });
+}
+
+/** Runs a scenario (the control.lua at `source`) headless under `--test-scenario`; it has to write `output` to script-output and end the test. */
+export function runScenario({ scenario, source, output, ...options }) {
+  return runSet(options, { name: scenario, commandArgs: scenarioArgs(scenario), output, scenario: { name: scenario, source } });
 }
 
 /** Parses `factorio --version`: "Version: 2.1.24 (build 87808, mac-arm64, full)". */

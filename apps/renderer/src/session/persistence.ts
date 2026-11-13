@@ -12,7 +12,7 @@ export interface ProjectSettings {
   readonly name: string;
   /** Enabled module names as stored in face.json, unknown names included. */
   readonly modules: readonly string[];
-  /** The longest a circuit wire may be, in tiles; `DEFAULT_WIRE_REACH` for a project file that does not say. */
+  /** How far apart two entities may be for a circuit wire, in tiles, 0 for unlimited; `DEFAULT_WIRE_REACH` for a project file that does not say. */
   readonly wireReach: number;
 }
 

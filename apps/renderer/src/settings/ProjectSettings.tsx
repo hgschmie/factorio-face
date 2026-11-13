@@ -1,6 +1,6 @@
 // Project settings panel: the project name, the wire reach and the standard modules, shown as the signal groups they contribute.
 // Presentational; enabling and disabling (with dependencies) is decided by the session.
-import { DEFAULT_WIRE_REACH } from "@face/model";
+import { DEFAULT_WIRE_REACH, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE } from "@face/model";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../icons/Icon.tsx";
 import type { CatalogView, ModuleView, ProjectView } from "../workbench/controller.ts";
@@ -119,8 +119,9 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
         </small>
       )}
       <p className="muted-note" id={`${id}-note`}>
-        The longest a circuit wire may be in the blueprint, measured between the centers of the two entities it connects. A longer wire is flagged, on the board and in
-        the problems list; nothing is refused. In the game the reach is {DEFAULT_WIRE_REACH} tiles.
+        How far apart two entities may be in the blueprint for a circuit wire between them, measured between the nearest points of their tiles, from {WIRE_REACH_RANGE.min} to{" "}
+        {WIRE_REACH_RANGE.max}. A wire that spans more is flagged, on the board and in the problems list; nothing is refused. {UNLIMITED_WIRE_REACH} means unlimited: no wire is flagged. In the
+        game the reach is {DEFAULT_WIRE_REACH} tiles.
       </p>
     </div>
   );

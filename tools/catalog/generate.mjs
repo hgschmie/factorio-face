@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { KINDS, LOCALE_SECTIONS, buildCatalog } from "./lib/build.mjs";
-import { DUMP_COMMANDS, DUMP_OUTPUTS, RUNTIME_DUMP_FILE, gameVersion, modSetId, readModuleInfos, runDump, validModSets } from "./lib/dump.mjs";
+import { DUMP_COMMANDS, DUMP_OUTPUTS, RUNTIME_DUMP_FILE, gameVersion, locateGame, modSetId, readModuleInfos, runDump, validModSets } from "./lib/dump.mjs";
 import { IconRenderer } from "./lib/icons.mjs";
 import { watchedLocations } from "./lib/isolation.mjs";
 
@@ -85,11 +85,13 @@ function main() {
   if (args.includes("--help")) return console.log(USAGE);
   const option = (name) => args.includes(name);
 
-  const binary = process.env.FACTORIO_BIN ?? "/Applications/factorio.app/Contents/MacOS/factorio";
-  const dataDir = fs.realpathSync(process.env.FACTORIO_DATA ?? path.resolve(binary, "../../data"));
-  if (!fs.existsSync(binary)) fail(`game binary not found at ${binary} (set FACTORIO_BIN)`);
-  const appBundle = /^(.*\.app)\//.exec(binary)?.[1];
-  const gameRoot = appBundle ?? path.dirname(dataDir);
+  let located;
+  try {
+    located = locateGame();
+  } catch (error) {
+    fail(error.message);
+  }
+  const { binary, dataDir, gameRoot } = located;
   const sandbox = !option("--no-sandbox");
   if (sandbox && (process.platform !== "darwin" || !fs.existsSync("/usr/bin/sandbox-exec"))) fail("sandbox-exec is only available on macOS; pass --no-sandbox to rely on the before/after isolation check alone");
   fs.mkdirSync(DUMP_ROOT, { recursive: true });

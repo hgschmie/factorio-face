@@ -29,6 +29,9 @@ export interface TileSize {
   readonly height: number;
 }
 
+/** A rectangle in tile coordinates: its top-left corner and its size. */
+export interface TileBox extends Point, TileSize {}
+
 /** Input and output half of an entity; both are the same tile for a 1x1 entity. */
 export interface TileHalves {
   readonly input: Point;
@@ -69,6 +72,12 @@ export function tileOrigin(kind: EntityKind, direction: Direction, center: Point
   const { width, height } = tileSize(kind, direction);
   // `|| 0`: Math.round gives -0 for -0.5.
   return { x: Math.round(center.x - width / 2) || 0, y: Math.round(center.y - height / 2) || 0 };
+}
+
+/** The footprint of an entity around `center` as it is: a center that is off the grid is not moved onto it. */
+export function footprintBox(kind: EntityKind, direction: Direction, center: Point): TileBox {
+  const { width, height } = tileSize(kind, direction);
+  return { x: center.x - width / 2, y: center.y - height / 2, width, height };
 }
 
 /** True when `center` is on the grid for the kind and direction. */
