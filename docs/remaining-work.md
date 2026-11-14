@@ -133,7 +133,7 @@ Decided by the user on 2026-11-12:
 - A new entity can be rotated before it is placed, as in the game ("yes").
 - A click where a wire crosses an entity selects the wire ("it's on top"); the entity does not win inside its footprint.
 - The board keeps rectangles with the item icons; no entity sprites.
-- The labels "Snap all", "Snap to tile grid" and "Release from tile grid" are fine and get no shortcuts.
+- The labels "Snap all", "Snap to tile grid" and "Release from tile grid" are fine and get no shortcuts. (Superseded on 2026-11-13: the user found them confusing; they are now "Place all", "Place here" and "Unplace". Older entries in this file use the names of their time.)
 - Wire reach is a project setting with the default 9; a wire whose entities are further apart than the reach is flagged, not blocked. The maximum is 64 and 0 means unlimited. The measure is the game's (nearest points of the footprints), given by the user's screenshots and confirmed by the probe. A value out of range becomes 0 or 64.
 
 Open for the user:
@@ -180,6 +180,10 @@ Requested by the user on 2026-11-13 after using the build, in work as one render
 - The file path and the saved state move to the status line. The user asked what "Circuit ready" and the light mean; the lead is reworded ("No errors", "N errors in source, canvas is read-only", "Checking the source").
 - The selector becomes square icon tiles, four in a row, also inside the groups, with the information in a popup on hover and focus; a new section "Entities in use" lists the kinds of entity the circuit contains, without the combinators.
 - The board's popup shows for the entity under the pointer instead of for the selection.
+
+- Done (2026-11-13, commit `2d23524`): the six requests above. `workbench/CanvasStrip.tsx` (the strip; one line at the default window, two in Split mode), `workbench/statusText.ts` (the status line; "Checking the source" cannot occur today because the analysis is synchronous), the selector as tiles with popups and "Entities in use" (`entriesInUse` in `entities/registry.ts`; its state under `face.palette.inUseOpen`), `canvas/hover.ts` (one rule for the board popup and the tile popups: shown after 250 ms of rest, switched at once while one shows, gone 120 ms after leaving), placing on the shown tile, `canvas/flip.ts` with H and V. Language: `arrangeEntities` writes position, tile and direction of several entities as one change; `faceEntities` uses it. 1639 unit and 172 end-to-end tests.
+- Decided in that package by the agent, to confirm with the user if it matters: a flip on the edit canvas mirrors `at` and leaves `tile` alone, on the board the other way round; selected entities without a tile are only turned on the board; a flip that changes nothing stays enabled; the product name left the status line; the key caps left the tiles (the popup says "Key 3"); the tile popup opens beside the sidebar and covers the left edge of the canvas.
+- Follow-ups from that package: any drag past 3 px that ends on its own tile places a dashed entity, so a sloppy click can place; the board popup has no keyboard way; it can cover a neighbour at the right edge; the entity under the pointer is found by walking all entities on every move (measure with 1,000 entities); at the smallest window "Entities in use" with many kinds pushes "Power poles" out of view. A native check of all of it has not run.
 
 ## Conformance (Milestone 4)
 
