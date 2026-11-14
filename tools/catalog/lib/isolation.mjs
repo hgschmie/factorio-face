@@ -58,9 +58,20 @@ function fingerprintTree(root) {
   return { root, exists: true, entries, newestMtime: new Date(Math.max(newest.mtimeMs, rootStat.mtimeMs)).toISOString(), newestPath: newest.path || root, sha256: hash.digest("hex") };
 }
 
-function namedEntries(dir) {
+/**
+ * The factorio-named entries of a folder with their change times. A folder the process may not list (macOS keeps some of
+ * ~/Library, such as Cookies, from a process without Full Disk Access) is recorded as that, like an unreadable folder in a
+ * tree: it reads the same before and after, and the sandbox is what keeps the game from writing there.
+ */
+export function namedEntries(dir) {
   if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((name) => /factorio/i.test(name)).sort().map((name) => `${path.join(dir, name)}@${fs.lstatSync(path.join(dir, name)).mtimeMs}`);
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch (error) {
+    return [`${dir}@unreadable:${error.code}`];
+  }
+  return names.filter((name) => /factorio/i.test(name)).sort().map((name) => `${path.join(dir, name)}@${fs.lstatSync(path.join(dir, name)).mtimeMs}`);
 }
 
 export function snapshot(gameRoot) {
