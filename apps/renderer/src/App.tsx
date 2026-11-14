@@ -45,6 +45,7 @@ export function App() {
       iconsMissing={iconStatus === "missing"}
       resolveEntityIcon={resolveEntityIcon}
       resolveWireIcon={resolveWireIcon}
+      resolveCatalogIcon={iconUrl}
       renderSignalPicker={renderSignalPicker}
       describeSignal={describeSignal}
     />

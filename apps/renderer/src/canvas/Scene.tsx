@@ -8,7 +8,7 @@ import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
-import { BlueprintEntity } from "./BlueprintEntity.tsx";
+import { BlueprintEntity, boardNameFont } from "./BlueprintEntity.tsx";
 import { EntityCard } from "./EntityCard.tsx";
 import { rectsIntersect, type Rect } from "./geometry.ts";
 import type { Layout } from "./layout.ts";
@@ -28,6 +28,8 @@ export interface SceneProps {
   /** Only elements intersecting this rectangle are rendered. */
   readonly visible: Rect;
   readonly outline: boolean;
+  /** The board: the smallest name that is legible at the zoom, in canvas units. An entity whose name is set smaller is drawn without text; a large footprint keeps its text further out. */
+  readonly legibleFont?: number;
   /** Terminal and color of the pin that started a pending wire. */
   readonly pendingTerminal: TerminalRef | null;
   readonly pendingColor?: WireColor;
@@ -97,7 +99,7 @@ function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layou
 }
 
 export const Scene = memo(function Scene(props: SceneProps) {
-  const { circuit, layout, wireReach, selection, wireSelection, visible, outline, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon } = props;
+  const { circuit, layout, wireReach, selection, wireSelection, visible, outline, legibleFont, pendingTerminal, pendingColor, entityStatus, describeSignal, resolveIcon } = props;
   const byId = useMemo(() => new Map(circuit.entities.map((entity) => [entity.id, entity])), [circuit.entities]);
   const wires = useMemo(() => routeWires(circuit, byId, layout, wireReach), [circuit, byId, layout, wireReach]);
 
@@ -134,8 +136,8 @@ export const Scene = memo(function Scene(props: SceneProps) {
           resolveIcon,
         };
         if (layout.mode === "edit") return <EntityCard key={entity.id} {...shared} x={rect.x} y={rect.y} shadow={shadow} describeSignal={describeSignal} />;
-        const { origin, placed, conflict, moving, blocked } = layout.placement(entity);
-        return <BlueprintEntity key={entity.id} {...shared} tileX={origin.x} tileY={origin.y} placed={placed} conflict={conflict} moving={moving} blocked={blocked} />;
+        const { origin, size, placed, conflict, moving, blocked } = layout.placement(entity);
+        return <BlueprintEntity key={entity.id} {...shared} outline={legibleFont === undefined ? outline : boardNameFont(size) < legibleFont} tileX={origin.x} tileY={origin.y} placed={placed} conflict={conflict} moving={moving} blocked={blocked} />;
       })}
     </g>
   );

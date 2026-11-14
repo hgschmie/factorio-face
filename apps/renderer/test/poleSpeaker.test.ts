@@ -63,9 +63,9 @@ describe("kinds", () => {
     expect(entityNoun({ kind: "arithmetic" })).toBe("an arithmetic");
     expect(entityNoun({ kind: "pole", prototype: "big-electric-pole" })).toBe("a big electric pole");
     expect(prototypeLabel({ kind: "speaker" })).toBe("Programmable speaker");
-    // What sets a prototype apart: nothing for an entity that has the reach of the project.
-    expect(prototypeFacts({ kind: "lamp" })).toBe("");
-    expect(prototypeFacts({ kind: "decider" })).toBe("");
+    // What sets a prototype apart: its tiles, and its reach only where that is not the project's.
+    expect(prototypeFacts({ kind: "lamp" })).toBe("1 tile");
+    expect(prototypeFacts({ kind: "decider" })).toBe("1 x 2 tiles");
     expect(prototypeFacts({ kind: "pole" })).toBe("1 tile, wire reach 7.5");
     expect(prototypeFacts({ kind: "pole", prototype: "big-electric-pole" })).toBe("2 x 2 tiles, wire reach 32");
     // The game has a description on the combinators only.
@@ -100,7 +100,7 @@ describe("kinds", () => {
     expect(speakerText({ playing: true })).toBe("playing");
     expect(speakerText({ playing: true, instrument: "piano", note: "F#3", volume: 100 })).toBe("playing piano F#3");
     expect(speakerText({ playing: true, instrument: "piano", note: "F#3", volume: 62.5, alert: true })).toBe("playing piano F#3 at 62.5%");
-    // A generic entity sends nothing in the simulation; its enable condition shows on its card, not in a trace.
+    // A generic entity sends nothing in the simulation; what the dock follows of it are its conditions (`hasTrace`).
     expect(ENTITY_KINDS.filter((kind) => !isTraceable(kind))).toEqual(["pole", "entity"]);
   });
 });

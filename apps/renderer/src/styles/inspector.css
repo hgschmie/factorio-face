@@ -146,6 +146,51 @@
   color: var(--ink);
 }
 
+/* The prototypes of one type of the game (the inserters, the assembling machines): icons in a row, the chosen one named under them. */
+.prototype-field.compact {
+  flex-flow: row wrap;
+}
+
+.prototype-field.compact button {
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+
+.prototype-chosen {
+  margin: 6px 0 0;
+  font-size: var(--text-base);
+  color: var(--text-soft);
+}
+
+.prototype-chosen strong {
+  font-weight: 550;
+}
+
+.prototype-chosen small {
+  margin-left: 4px;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.prototype-note {
+  margin-top: 7px;
+}
+
+/* One setting of a generic entity: its control, and under a condition that is in use its fields. */
+.setting + .setting {
+  margin-top: 7px;
+}
+
+.setting > .field-grid {
+  margin-top: 5px;
+}
+
+.kept-fields {
+  margin: 0 0 12px;
+}
+
 /* One line while empty, as high as its text up to eight lines, then it scrolls: the settings below move as little as possible. */
 .description-field {
   padding-bottom: 16px;

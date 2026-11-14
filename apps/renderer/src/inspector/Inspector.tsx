@@ -2,11 +2,14 @@
 // settings form and the connections. A selected wire shows its color, its two ends and, between two entities with a tile, its
 // length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
-import { canRotate, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, tileUnit, wireEndsNoun, wireKey, wireSpan, type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type Wire, type WireColor } from "@face/model";
+import {
+  canRotate, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, prototypeData, TERMINALS, tileUnit, wireEndsNoun, wireKey, wireSpan,
+  type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type PrototypeName, type Wire, type WireColor,
+} from "@face/model";
 import { printTerminal } from "@face/language";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
-import { capitalized, entityNoun, entityTitle, KIND_INFO } from "../entities/kindInfo.ts";
+import { capitalized, entityDescription, entityNoun, entityTitle, KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
@@ -39,6 +42,8 @@ export interface InspectorProps {
   /** The wire reach of the project in tiles; a selected wire between two entities with a tile shows its length against it. */
   readonly wireReach: number;
   readonly resolveEntityIcon?: EntityIconResolver;
+  /** Which prototypes the project can place and their order in the game, for the choice of what a generic entity is. */
+  readonly prototypes?: { offers(prototype: PrototypeName): boolean; position(prototype: PrototypeName): number };
   /** Catalog-backed signal picker for all signal fields; without it they are validated text inputs. */
   readonly renderSignalPicker?: SignalPickerRenderer;
   /** Catalog names and icons for the signals shown in the forms. */
@@ -112,15 +117,21 @@ const FACING: Readonly<Record<Direction, { readonly label: string; readonly icon
   west: { label: "West", icon: "arrowLeft", edges: "outputs on the left edge, inputs on the right edge" },
 };
 
-/** The direction the output of the entity points to, which decides the edges its pins are on. One of four; a click is one step. */
+/**
+ * The direction the entity faces. For one with an input and an output it is where the output points, which decides the edges its
+ * pins are on; one with a single connection point only turns its footprint. One of the directions the game builds the entity in:
+ * four, or north and east for one of two (the storage tank). A click is one step.
+ */
 function FacingField({ entity, onFace }: { readonly entity: Entity; onFace(direction: Direction): void }) {
   const facing = facingOf(entity);
+  const directions = prototypeData(entity).twoWay ? DIRECTIONS.filter((direction) => direction === "north" || direction === "east") : DIRECTIONS;
+  const sided = TERMINALS[entity.kind].length > 1 || TERMINALS[entity.kind][0] !== "io";
   return (
     <div className="facing-field">
       <span className="field-label">Facing</span>
       <span className="facing-toggle" role="group" aria-label="Facing">
-        {DIRECTIONS.map((direction) => (
-          <button key={direction} type="button" data-direction={direction} aria-pressed={direction === facing} aria-label={FACING[direction].label} title={`${FACING[direction].label}: ${FACING[direction].edges}`} onClick={() => onFace(direction)}>
+        {directions.map((direction) => (
+          <button key={direction} type="button" data-direction={direction} aria-pressed={direction === facing} aria-label={FACING[direction].label} title={sided ? `${FACING[direction].label}: ${FACING[direction].edges}` : FACING[direction].label} onClick={() => onFace(direction)}>
             <Icon name={FACING[direction].icon} size={15} />
           </button>
         ))}
@@ -335,7 +346,7 @@ function EntityInspector(props: EntityInspectorProps) {
         <div>
           <span className="eyebrow">{info.category}</span>
           <h2>{entityTitle(entity)}</h2>
-          <p>{info.description}</p>
+          <p>{entityDescription(entity)}</p>
         </div>
       </header>
       <fieldset className="inspector-fieldset" disabled={!editable}>
@@ -369,7 +380,7 @@ function EntityInspector(props: EntityInspectorProps) {
           }}
         >
           <InputWiresContext value={inputWires(circuit, entity.id)}>
-            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} resolveEntityIcon={props.resolveEntityIcon} onChange={change} />}
+            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} resolveEntityIcon={props.resolveEntityIcon} prototypes={props.prototypes} onChange={change} />}
           </InputWiresContext>
         </div>
         <Connections entity={entity} circuit={circuit} onRemoveWire={props.onRemoveWire} onSelect={props.onSelect} />

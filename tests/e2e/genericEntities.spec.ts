@@ -1,7 +1,7 @@
-// The other entities of the game (chests, inserters, belts, machines, train stops: the kind `entity`) in the app, as far as it
-// has them before their selector and their forms exist: a blueprint of them is imported with nothing dropped, they stand on both
-// canvases with the tiles the game gives them and one connection point, an enable condition shows on the card, and the blueprint
-// the app gives back has the same entities, settings and kept fields.
+// The other entities of the game (chests, inserters, belts, machines, train stops: the kind `entity`) in the app: a blueprint of
+// them is imported with nothing dropped, they stand on both canvases with the tiles the game gives them and one connection point,
+// an enable condition shows on the card, and the blueprint the app gives back has the same entities, settings and kept fields.
+// Their selector is in entitySelector.spec.ts, their settings form in entityForms.spec.ts.
 import type { ElectronApplication, Page } from "@playwright/test";
 import { decodeBlueprintString, encodeBlueprintString } from "../../packages/blueprints/src/string.ts";
 import { resolve } from "node:path";
@@ -147,22 +147,32 @@ test("a pasted blueprint of chest, inserters, belt, assembling machine and train
   await expect(page.locator("g.card")).toHaveCount(8);
   await expect(wires(page)).toHaveCount(7);
   await expect(card(page, "fast_inserter1").locator(".card-kind")).toHaveText("FAST INSERTER");
-  await expect(card(page, "fast_inserter1").locator(".card-summary")).toHaveText("iron-plate < 1…");
-  await expect(card(page, "fast_inserter1").locator('.card-row[data-row="enabled"]')).toHaveText("enabled");
-  await expect(card(page, "inserter1").locator('.card-row[data-row="enabled"]')).toHaveText("disabled");
+  await expect(card(page, "fast_inserter1").locator(".card-summary")).toHaveText(["iron-plate < 100", "read-hand: hold"]);
+  await expect(card(page, "fast_inserter1").locator('.card-row[data-row="conditions"]')).toHaveText("enabled");
+  await expect(card(page, "inserter1").locator('.card-row[data-row="conditions"]')).toHaveText("disabled");
+  await expect(card(page, "inserter1")).toHaveClass(/disabled/);
+  await expect(card(page, "fast_inserter1")).not.toHaveClass(/disabled/);
   await expect(card(page, "assembling_machine1").locator(".card-kind")).toHaveText("ASSEMBLING MACHINE 2");
   await expect(card(page, "steel_chest1").locator(".card-row")).toHaveCount(2);
   expect(await pinOffsets(page, "train_stop1")).toEqual({ "io red": [80, 0], "io green": [100, 0] });
   await page.screenshot({ path: resolve(SHOTS, "edit.png") });
-  // The inspector names the entity and says where its settings are for now.
+  // The inspector names the entity, has its settings as a form, and says what it keeps from the blueprint.
   // (Selected through the session: the cards of entities that touch in the game overlap on the edit canvas after an import.)
   await page.evaluate(() => {
     const session = window.faceSession!;
     session.commands.select([session.getState().circuit.entities.find((entity) => entity.name === "fast_inserter1")!.id]);
   });
   await expect(inspector(page).locator("h2")).toHaveText("Fast inserter");
-  await expect(inspector(page).locator('[data-generic-entity="fast-inserter"]')).toContainText("Its circuit settings are edited in the source for now");
-  await expect(page.locator(".signal-history")).toContainText("send nothing in the simulation");
+  await expect(inspector(page).getByRole("checkbox", { name: "Enable/disable", exact: true })).toBeChecked();
+  await expect(inspector(page).getByLabel("Read hand contents")).toHaveValue("hold");
+  await expect(page.locator('.signal-history tr.trace[data-trace="fast_inserter1 condition"] .trace-value')).toHaveText("enabled");
+  await page.evaluate(() => {
+    const session = window.faceSession!;
+    session.commands.select([session.getState().circuit.entities.find((entity) => entity.name === "train_stop1")!.id]);
+  });
+  await expect(inspector(page).locator(".kept-fields")).toHaveText("Kept from the blueprint: station, manual_trains_limit. The editor does not change these fields and writes them back on export.");
+  // A train stop without a condition sends nothing and has nothing to follow.
+  await expect(page.locator(".signal-history")).toContainText("an entity of the game sends nothing in the simulation");
 
   // More plates turn the two inserters around.
   await setSource(page, (await sourceText(page)).replace("item:iron-plate = 40", "item:iron-plate = 150"));
@@ -242,7 +252,9 @@ test("generic entities from the source stand on both canvases with their footpri
   await page.getByRole("button", { name: "Fit circuit" }).click();
   await expect(page.locator("g.card")).toHaveCount(5);
   await expect(card(page, "silo").locator(".card-kind")).toHaveText("ROCKET SILO");
-  await expect(card(page, "split").locator(".card-summary")).toHaveText("1 setting");
+  await expect(card(page, "split").locator(".card-summary")).toHaveText("input-left A > 0");
+  await expect(card(page, "split").locator('.card-row[data-row="conditions"]')).toHaveText("input-left");
+  await expect(card(page, "split").locator('.card-row[data-row="conditions"] .condition')).toHaveAttribute("data-holds", "true");
   await page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Green wire" }).click();
   await clickCenter(page, pin(page, "source", "out", "green"));
   await clickCenter(page, pin(page, "silo", "io", "green"));

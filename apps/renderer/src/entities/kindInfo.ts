@@ -1,5 +1,6 @@
 // Display metadata per entity kind, shared by palette, canvas and inspector, and the names an entity goes by.
-import { prototypeData, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
+import { prototypeData, prototypeOf, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
+import { typeDescription } from "./typeInfo.ts";
 
 export interface KindInfo {
   readonly label: string;
@@ -18,7 +19,7 @@ export const KIND_INFO: Readonly<Record<EntityKind, KindInfo>> = {
   lamp: { label: "Lamp", description: "See a condition light up", category: "Condition indicator", describedInGame: false },
   pole: { label: "Pole", description: "Relay signals over a distance", category: "Signal relay", describedInGame: false },
   speaker: { label: "Speaker", description: "Sound an alert on a condition", category: "Condition indicator", describedInGame: false },
-  // Generic entities: minimal until the entity package (selector, drawing, inspector). The label is the prototype's (`entityTitle`).
+  // Every other entity of the game. Its label is the prototype's (`entityTitle`) and its description the one of its type (`entityDescription`).
   entity: { label: "Entity", description: "An entity of the game on the circuit network", category: "Game entity", describedInGame: false },
 };
 
@@ -44,11 +45,22 @@ export function entityNoun(entity: EntityShape): string {
   return withArticle(entityTitle(entity).toLowerCase());
 }
 
+/** What an entity is on a circuit for, in a line: of its kind, and for a generic entity of its prototype type. */
+export function entityDescription(entity: EntityShape): string {
+  return entity.kind === "entity" ? typeDescription(prototypeOf(entity)) : KIND_INFO[entity.kind].description;
+}
+
+/** The tiles a prototype covers when it faces north, width by height: "1 tile", "1 x 2 tiles", "9 x 9 tiles". */
+export function prototypeTiles(entity: EntityShape): string {
+  const { width, height } = prototypeData(entity);
+  return width * height > 1 ? `${width} x ${height} tiles` : "1 tile";
+}
+
 /**
- * The size and the wire reach that set a prototype apart, where it has a reach of its own: "2 x 2 tiles, wire reach 32", "1 tile,
- * wire reach 7.5". Empty for every other entity: its tiles show on the board and its reach is the project's.
+ * The size of a prototype and, where it has one of its own, its wire reach: "2 x 2 tiles, wire reach 32", "1 tile, wire reach
+ * 7.5", "3 x 3 tiles". An entity without a reach of its own has the project's, which is not said.
  */
 export function prototypeFacts(entity: EntityShape): string {
-  const { width, height, wireReach } = prototypeData(entity);
-  return wireReach === undefined ? "" : `${width * height > 1 ? `${width} x ${height} tiles` : "1 tile"}, wire reach ${wireReach}`;
+  const { wireReach } = prototypeData(entity);
+  return `${prototypeTiles(entity)}${wireReach === undefined ? "" : `, wire reach ${wireReach}`}`;
 }

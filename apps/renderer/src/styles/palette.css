@@ -1,8 +1,12 @@
-/* Left panel: the entity selector (square tiles: the combinators, the entities in use, the groups, which scroll) and the entity list. */
+/* Left panel: the entity selector (square tiles: the combinators, the entities in use, the tabs of the game's item groups, which
+   scroll) and the entity list. */
 .palette {
-  /* Four tiles in a row with three gaps between them, in what the padding of the panel leaves. */
+  /* Four tiles in a row with three gaps between them, in what the padding of the panel leaves: the combinators. */
   --palette-tile-gap: 6px;
   --palette-tile: calc((var(--palette-width) - 31px - 3 * var(--palette-tile-gap)) / 4);
+  /* Six in a row for everything else: the entities in use and the groups. */
+  --palette-compact-gap: 4px;
+  --palette-compact-tile: calc((var(--palette-width) - 31px - 5 * var(--palette-compact-gap)) / 6);
 
   display: flex;
   flex-direction: column;
@@ -30,6 +34,21 @@
   /* The columns give way where a scrollbar takes room from the sections. */
   grid-template-columns: repeat(4, minmax(0, var(--palette-tile)));
   gap: var(--palette-tile-gap);
+}
+
+.palette-tiles.compact {
+  grid-template-columns: repeat(6, minmax(0, var(--palette-compact-tile)));
+  gap: var(--palette-compact-gap);
+}
+
+/* The icon follows the tile, which is narrower in a narrow sidebar and beside a scrollbar. */
+.palette-tiles.compact .palette-tile {
+  border-radius: var(--radius-sm, 4px);
+}
+
+.palette-tiles.compact .entity-icon {
+  width: 82%;
+  height: 82%;
 }
 
 .palette-items {
@@ -102,11 +121,14 @@
   color: var(--text-label);
 }
 
-/* The sections and the entity list share what the combinators leave: the sections up to two thirds of it and never more than
-   they need, the list the rest. Each scrolls on its own. */
+/* The sections and the entity list share what the combinators leave: the sections five sixths of it and never more than they
+   need, the list the rest. Each scrolls on its own. */
 .palette-groups {
+  /* The height of the search and the tabs, which the palette measures: they stay at the top while the tiles scroll. */
+  --palette-head: 0px;
+
   display: flex;
-  flex: 2 1 0;
+  flex: 5 1 0;
   flex-direction: column;
   gap: 4px;
   min-height: 58px;
@@ -173,11 +195,86 @@
   display: none;
 }
 
+/* The search and the tabs of the groups: they stay at the top of the sections while the tiles under them scroll. */
+.palette-catalog-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px 0 5px;
+  background: var(--surface-palette);
+}
+
+.palette-search input {
+  width: 100%;
+  height: 26px;
+  font-size: var(--text-md);
+}
+
+.palette-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--palette-compact-gap);
+}
+
+.palette-tabs button {
+  flex: 1 1 0;
+  min-width: 34px;
+  height: 30px;
+  padding: 0 4px;
+  border-color: var(--border);
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+  background: var(--surface-raised);
+}
+
+.palette-tabs button:hover {
+  border-color: var(--accent-border);
+}
+
+.palette-tabs button[aria-selected="true"] {
+  border-color: var(--accent-fill);
+  color: var(--ink);
+  background: var(--accent-fill);
+}
+
+.palette-catalog {
+  flex-shrink: 0;
+  padding-bottom: 4px;
+}
+
+/* A tile that is scrolled into view (the armed one, the focused one) stops clear of the search and the tabs and of the lower edge. */
+.palette-catalog .palette-tile {
+  scroll-margin: calc(var(--palette-head) + 3px) 0 3px;
+}
+
+/* A subgroup of the game starts a row of its own; the rows of one group are as close as the tiles of a row. */
+.palette-subgroup + .palette-subgroup {
+  margin-top: var(--palette-compact-gap);
+}
+
+.palette-catalog h3 {
+  margin: 8px 0 4px;
+  padding: 0 4px;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.palette-catalog-group:first-child h3 {
+  margin-top: 2px;
+}
+
 /* "Entities in use" with none: as high as a row of tiles, so nothing moves when the first one comes. */
 .palette-empty {
   display: flex;
   align-items: center;
-  min-height: var(--palette-tile);
+  min-height: var(--palette-compact-tile);
   margin: 0;
   padding: 0 4px;
   font-size: var(--text-md);

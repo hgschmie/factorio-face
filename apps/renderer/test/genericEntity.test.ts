@@ -1,16 +1,20 @@
-// The generic entities of the game (kind `entity`: chests, inserters, belts, machines, ...) in the renderer, as far as it has them
-// before the entity package: what their cards say, how the session simulates their enable condition, their footprints and their
-// one connection point on both canvases, and that a blueprint of them imports with nothing dropped.
+// The generic entities of the game (kind `entity`: chests, inserters, belts, machines, ...) in the renderer: what their cards say,
+// how the session shows and traces their circuit conditions, their footprints and their one connection point on both canvases,
+// how the board draws a large footprint, and that a blueprint of them imports with nothing dropped.
 import { encodeBlueprintString } from "@face/blueprints";
-import { tileSize, type Entity } from "@face/model";
+import { tileSize, type Entity, type GenericEntity } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { arrangeBoard } from "../src/canvas/board.ts";
+import { arrangeBoard, TILE } from "../src/canvas/board.ts";
+import { blockContent, BOARD_NAME_FONT, boardNameFont } from "../src/canvas/BlueprintEntity.tsx";
+import { layoutConditions, STATUS_ROWS } from "../src/canvas/statusRows.ts";
 import { blueprintLayout, editLayout } from "../src/canvas/layout.ts";
 import { entityNoun, entityTitle, KIND_INFO, prototypeFacts } from "../src/entities/kindInfo.ts";
+import { keptFields } from "../src/entities/genericSettings.ts";
 import { prototypeIconId } from "../src/entities/registry.ts";
-import { summaryLines } from "../src/entities/summary.ts";
+import { activeSettings, conditionLines, fitLines, fitList, summaryLines } from "../src/entities/summary.ts";
 import { readBlueprint } from "../src/session/blueprints.ts";
 import { checkDraft, normalizeEntity } from "../src/session/drafts.ts";
+import { conditionsText, conditionWord, hasTrace, tracedConditions } from "../src/session/simulationView.ts";
 import { createSession, entityNamed, errorsOf, idOf } from "./session/helpers.ts";
 
 const SOURCE = `circuit "Factory" {
@@ -66,17 +70,39 @@ describe("what a generic entity is called and says", () => {
     expect(["box", "feeder", "belt", "heat", "silo", "tank", "station"].map((name) => entityTitle(byName(name)))).toEqual(["Iron chest", "Fast inserter", "Transport belt", "Boiler", "Rocket silo", "Storage tank", "Train stop"]);
     expect(entityNoun(byName("feeder"))).toBe("a fast inserter");
     expect(prototypeIconId("fast-inserter")).toBe("item/fast-inserter");
-    // Only a prototype with a reach of its own says so.
-    expect(prototypeFacts(byName("silo"))).toBe("");
+    // Every prototype says its tiles; only one with a reach of its own says that.
+    expect(prototypeFacts(byName("silo"))).toBe("9 x 9 tiles");
+    expect(prototypeFacts(byName("heat"))).toBe("3 x 2 tiles");
+    expect(prototypeFacts(byName("box"))).toBe("1 tile");
     expect(prototypeFacts({ kind: "entity", prototype: "power-switch" })).toBe("2 x 2 tiles, wire reach 10");
     expect(prototypeFacts({ kind: "entity", prototype: "agricultural-tower" })).toBe("3 x 3 tiles, wire reach 30");
   });
 
-  it("sums up its enable condition where its type has one, else how many settings it has", () => {
-    expect(summaryLines(byName("feeder"))).toEqual(["iron-plate < 100"]);
+  it("sums up its conditions and what it reads and sets, in at most two lines", () => {
+    expect(summaryLines(byName("feeder"))).toEqual(["iron-plate < 100", "read-hand: pulse"]);
     expect(summaryLines(byName("belt"))).toEqual(["no condition"]);
-    expect(summaryLines(byName("box"))).toEqual(["1 setting"]);
-    expect(summaryLines(byName("silo"))).toEqual(["default settings"]);
+    // A chest has no condition: both lines are for what it reads, the defaults of the game included.
+    expect(summaryLines(byName("box"))).toEqual(["read-contents,", "read-empty-slots"]);
+    // A mode that can be off goes by its word while it is the mode of a new entity, and says the mode otherwise.
+    expect(summaryLines(byName("silo"))).toEqual(["read-items"]);
+    expect(summaryLines(byName("tank"))).toEqual(["read-contents"]);
+    expect(summaryLines(byName("station"))).toEqual(["no condition", "send-to-train"]);
+    const settings = (prototype: string, source: string): Entity => entityNamed(createSession(`circuit "c" {\n entity e {\n prototype = ${prototype}\n ${source}\n }\n}\n`).session, "e");
+    expect(summaryLines(settings("splitter", "input-left when virtual:signal-I < 0\n output-right when virtual:signal-O > 5\n set-filter = true"))).toEqual(["input-left I <… +1", "set-filter"]);
+    expect(summaryLines(settings("rail-signal", "close when virtual:signal-A > 0"))).toEqual(["close A > 0", "read-signal"]);
+    expect(summaryLines(settings("train-stop", "when virtual:signal-A > 0\n read-from-train = true\n set-trains-limit = true\n read-trains-count = true"))).toEqual(["A > 0", "send-to-train +3"]);
+    expect(summaryLines(settings("iron-chest", "read-contents = false"))).toEqual(["no settings"]);
+    expect(summaryLines(settings("display-panel", ""))).toEqual(["no settings"]);
+    expect(summaryLines(settings("radar", ""))).toEqual(["mode: surface"]);
+    expect(summaryLines(settings("storage-tank", "read-contents = segment-contents"))).toEqual(["read-contents: segment-contents"]);
+    expect(summaryLines(settings("electric-mining-drill", ""))).toEqual(["no condition", "read-resources"]);
+    expect(summaryLines(settings("roboport", "read-robot-stats = true"))).toEqual(["read-items,", "read-robot-stats"]);
+    expect(conditionLines(settings("agricultural-tower", "when virtual:signal-A > 0\n logistic when item:wood < 5\n harvest when virtual:signal-H = 1") as GenericEntity)).toEqual(["A > 0", "logistic wood < 5", "harvest H = 1"]);
+    expect(activeSettings(byName("feeder") as GenericEntity)).toEqual(["read-hand: pulse"]);
+    expect(fitList(["read-contents", "read-fuel", "read-working"], 18)).toBe("read-contents +2");
+    expect(fitList(["a", "b", "c"], 18)).toBe("a, b, c");
+    expect(fitLines(["set-recipe", "read-contents", "read-fuel", "read-working"])).toEqual(["set-recipe,", "read-contents +2"]);
+    expect(fitLines(["read-fuel", "mode"])).toEqual(["read-fuel, mode"]);
   });
 
   it("is written by the language as it is: nothing to normalize and no draft", () => {
@@ -88,22 +114,91 @@ describe("what a generic entity is called and says", () => {
 });
 
 describe("session", () => {
-  it("shows whether the enable condition of a wired entity holds, and nothing for one without a condition or a wire", () => {
+  it("shows whether the enable condition of a wired entity holds, and nothing for one without a condition or a wire; the dock has a row per condition", () => {
     const { session } = createSession(SOURCE);
     const status = (name: string) => session.state.simulation.entityStatus.get(idOf(session, name))!;
     expect(session.state.simulation.available).toBe(true);
-    expect(status("feeder")).toMatchObject({ label: "enabled", active: false, enabled: true, input: { red: { wired: true, signals: [expect.objectContaining({ value: 40 })] }, green: { wired: true, signals: [] } } });
+    expect(status("feeder")).toMatchObject({ label: "enabled", active: false, enabled: true, conditions: [{ key: "when", holds: true }], input: { red: { wired: true, signals: [expect.objectContaining({ value: 40 })] }, green: { wired: true, signals: [] } } });
     // A chest has no condition, a silo no wire: both say nothing, like a pole.
     expect(status("box")).toMatchObject({ label: "", active: false, input: { red: { wired: true } } });
     expect(status("box").enabled).toBeUndefined();
     expect(status("silo")).toEqual({ label: "", active: false, input: { red: { wired: false, signals: [] }, green: { wired: false, signals: [] } } });
-    // Nothing of them is traced: they send nothing.
-    expect(session.state.simulation.traces.map((row) => row.label)).toEqual(["source iron-plate"]);
+    expect(status("box").conditions).toBeUndefined();
+    // They send nothing: the dock follows the condition of the inserter, and has no row for an entity without one.
+    const traces = () => session.state.simulation.traces.map((row) => [row.label, row.current, row.condition]);
+    expect(traces()).toEqual([["source iron-plate", "40", undefined], ["feeder condition", "enabled", { what: "condition", holds: true }]]);
+    session.commands.select(session.state.circuit.entities.map((entity) => entity.id));
+    expect(traces().map(([label]) => label)).toEqual(["source iron-plate", "feeder condition"]);
+    session.commands.select([idOf(session, "box"), idOf(session, "silo")]);
+    expect(traces()).toEqual([]);
+    session.commands.select([]);
+    session.commands.step();
     session.commands.setSource(SOURCE.replace("item:iron-plate = 40", "item:iron-plate = 100"));
-    expect(status("feeder")).toMatchObject({ label: "disabled", enabled: false });
-    // Without its wires the condition is not applied.
+    expect(status("feeder")).toMatchObject({ label: "disabled", enabled: false, conditions: [{ key: "when", holds: false }] });
+    expect(traces()[1]).toEqual(["feeder condition", "disabled", { what: "condition", holds: false }]);
+    // Without its wires the condition is not applied: the row stays and says so.
     session.commands.setSource(SOURCE.replace("    wire red box <-> feeder\n", "").replace("    wire green feeder <-> belt\n", ""));
     expect(status("feeder").label).toBe("");
+    expect(traces()[1]).toEqual(["feeder condition", "no wire", { what: "condition" }]);
+  });
+
+  it("reports every circuit condition of an entity with what it decides, and leaves the logistic one alone", () => {
+    const source = `circuit "Conditions" {
+    constant source at (40, 80) {
+        virtual:signal-I = -1
+        virtual:signal-A = 3
+    }
+
+    entity split at (280, 80) {
+        prototype = splitter
+        input-left when virtual:signal-I < 0
+        input-right when virtual:signal-I > 0
+        output-left when virtual:signal-A > 5
+    }
+
+    entity farm at (520, 80) {
+        prototype = agricultural-tower
+        when virtual:signal-A > 5
+        logistic when item:wood < 10
+        harvest when virtual:signal-A = 3
+    }
+
+    entity gate at (760, 80) {
+        prototype = rail-signal
+        close when virtual:signal-A > 0
+    }
+
+    wire red source.out <-> split
+    wire red split <-> farm
+    wire red farm <-> gate
+}
+`;
+    const { session } = createSession(source);
+    const status = (name: string) => session.state.simulation.entityStatus.get(idOf(session, name))!;
+    expect(errorsOf(session)).toEqual([]);
+    expect(status("split")).toMatchObject({ label: "input-left enabled, input-right disabled, output-left disabled", active: false });
+    expect(status("split").conditions).toEqual([{ key: "input-left-when", role: "input-left", holds: true }, { key: "input-right-when", role: "input-right", holds: false }, { key: "output-left-when", role: "output-left", holds: false }]);
+    // No condition enables a splitter: there is nothing to dim.
+    expect(status("split").enabled).toBeUndefined();
+    expect(status("farm")).toMatchObject({ label: "disabled, harvest enabled", enabled: false, conditions: [{ key: "when", holds: false }, { key: "harvest-when", role: "harvest", holds: true }] });
+    expect(status("gate")).toMatchObject({ label: "close enabled", conditions: [{ key: "close-when", role: "close", holds: true }] });
+    expect(status("gate").enabled).toBeUndefined();
+    session.commands.select([idOf(session, "split"), idOf(session, "farm"), idOf(session, "gate")]);
+    expect(session.state.simulation.traces.map((row) => [row.label, row.current])).toEqual([
+      ["split input-left", "enabled"],
+      ["split input-right", "disabled"],
+      ["split output-left", "disabled"],
+      ["farm condition", "disabled"],
+      ["farm harvest", "enabled"],
+      ["gate close", "enabled"],
+    ]);
+    expect(tracedConditions(entityNamed(session, "farm"))).toEqual(["when", "harvest-when"]);
+    expect(hasTrace(entityNamed(session, "farm"))).toBe(true);
+    expect(hasTrace(entityNamed(session, "source"))).toBe(true);
+    session.commands.step();
+    session.commands.step();
+    expect(session.state.simulation.traces.find((row) => row.label === "farm harvest")!.values.slice(-2)).toEqual([1, 1]);
+    expect(session.state.simulation.traces.find((row) => row.label === "farm condition")!.values.slice(-2)).toEqual([0, 0]);
   });
 
   it("wires, renames and turns a generic entity like any other", () => {
@@ -175,6 +270,48 @@ describe("canvases", () => {
   });
 });
 
+describe("what the views draw", () => {
+  it("lays the conditions of a card out as marks with a label, and counts the ones that do not fit", () => {
+    expect(layoutConditions([{ key: "when", holds: true }])).toEqual({ items: [{ key: "when", holds: true, x: 13, textX: 22, label: "enabled" }], more: 0, moreX: 13 + 9 + 7 * 5.5 + 6 });
+    expect(layoutConditions([{ key: "when", holds: false }]).items[0]!.label).toBe("disabled");
+    const two = layoutConditions([{ key: "when", holds: false }, { key: "harvest-when", role: "harvest", holds: true }]);
+    expect(two.items.map((item) => [item.label, item.holds])).toEqual([["disabled", false], ["harvest", true]]);
+    expect(two.more).toBe(0);
+    const sides = ["input-left", "input-right", "output-left", "output-right"].map((role, index) => ({ key: `${role}-when`, role, holds: index % 2 === 0 }));
+    const four = layoutConditions(sides);
+    expect(four.items.map((item) => item.label)).toEqual(["input-left", "input-right"]);
+    expect(four.more).toBe(2);
+    for (const item of four.items) expect(item.textX + item.label.length * STATUS_ROWS.charWidth).toBeLessThanOrEqual(STATUS_ROWS.right);
+    expect(four.moreX + 2 * STATUS_ROWS.charWidth).toBeLessThanOrEqual(STATUS_ROWS.right);
+    expect(layoutConditions([])).toEqual({ items: [], more: 0, moreX: 13 });
+    expect(conditionWord("when", true)).toBe("enabled");
+    expect(conditionWord("open-gate-when", false)).toBe("open-gate disabled");
+    expect(conditionsText([{ key: "when", holds: true }, { key: "plant-when", role: "plant", holds: false }])).toBe("enabled, plant disabled");
+  });
+
+  it("scales the icon and the name on the board with the footprint, and keeps both inside it below the pins", () => {
+    const content = (width: number, height: number) => blockContent(width * TILE, height * TILE);
+    expect(content(2, 2)).toMatchObject({ icon: 48, font: 10 });
+    expect(content(3, 3)).toMatchObject({ icon: 76, font: 12.5 });
+    expect(content(5, 5)).toMatchObject({ icon: 132, font: 17.5 });
+    expect(content(9, 9)).toMatchObject({ icon: 192, font: 26 });
+    // The shorter side decides: a boiler of 3 x 2 is drawn like a 2 x 2.
+    expect(content(3, 2).icon).toBe(48);
+    expect(content(2, 4).icon).toBe(48);
+    for (const [width, height] of [[2, 2], [2, 3], [3, 2], [2, 4], [3, 3], [3, 5], [4, 4], [5, 5], [8, 8], [9, 9]] as const) {
+      const { icon, iconTop, font, nameY, nameChars } = content(width, height);
+      expect(iconTop, `${width}x${height}`).toBeGreaterThanOrEqual(18);
+      expect(nameY, `${width}x${height}`).toBeGreaterThan(iconTop + icon);
+      expect(nameY + font * 0.3, `${width}x${height}`).toBeLessThanOrEqual(height * TILE - 4);
+      expect(icon, `${width}x${height}`).toBeLessThanOrEqual(width * TILE - 8);
+      expect(nameChars * font * 0.62, `${width}x${height}`).toBeLessThanOrEqual(width * TILE);
+    }
+    expect(boardNameFont({ width: 1, height: 1 })).toBe(BOARD_NAME_FONT);
+    expect(boardNameFont({ width: 1, height: 2 })).toBe(BOARD_NAME_FONT);
+    expect(boardNameFont({ width: 9, height: 9 })).toBe(26);
+  });
+});
+
 describe("a blueprint of generic entities", () => {
   it("is read with nothing dropped and with what the editor does not model kept in the source", () => {
     const data = {
@@ -200,6 +337,7 @@ describe("a blueprint of generic entities", () => {
       ["assembling_machine1", "assembling-machine-2", '{"recipe":"iron-gear-wheel"}'],
     ]);
     expect(summaryLines(entityNamed(session, "inserter1"))).toEqual(["iron-plate > 5"]);
+    expect(keptFields(entityNamed(session, "steel_chest1") as GenericEntity)).toEqual(["bar"]);
     // Wired, with nothing on the network: 0 > 5 does not hold.
     expect(session.state.simulation.entityStatus.get(idOf(session, "inserter1"))).toMatchObject({ label: "disabled", enabled: false });
   });

@@ -1,9 +1,9 @@
 // Turns engine snapshots into what the dock and the cards show. Pure functions over snapshots and history.
-import { ENABLE_CONDITION, signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
+import { conditionRole, ENABLE_CONDITION, settingSpecsOf, signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
 import { POINT_ROLES, type CompiledCircuit, type EntitySnapshot, type History, type SignalList, type TerminalNetworks, type TickSnapshot } from "@face/simulation";
 import { shortSignal, signalListText } from "../entities/signalText.ts";
 import { soundText } from "../entities/summary.ts";
-import type { EntityStatus, SignalTrace, SpeakerStatus } from "../workbench/controller.ts";
+import type { ConditionStatus, EntityStatus, SignalTrace, SpeakerStatus } from "../workbench/controller.ts";
 
 /** Entities traced when nothing is selected. */
 export const DEFAULT_TRACED_ENTITIES = 3;
@@ -27,9 +27,34 @@ export function speakerText({ playing, instrument, note, volume }: SpeakerStatus
   return `playing${sound && ` ${sound}`}${volume === undefined || volume === 100 ? "" : ` at ${Math.round(volume * 10) / 10}%`}`;
 }
 
-/** Whether an entity has something to trace over time: an output, or a state. A pole has neither: it only joins networks. */
+/** Whether a kind has something to trace over time by itself: an output, or a state. A pole has neither: it only joins networks. */
 export function isTraceable(kind: EntitySnapshot["kind"]): boolean {
   return POINT_ROLES[kind].writes !== undefined || kind === "lamp" || kind === "speaker";
+}
+
+/**
+ * The circuit conditions of a generic entity that the simulation evaluates, by the key of their setting and in the order of the
+ * settings: those it holds, without the one on the logistic network. None for every other entity.
+ */
+export function tracedConditions(entity: Entity): readonly string[] {
+  if (entity.kind !== "entity") return [];
+  return settingSpecsOf(entity.prototype).flatMap((spec) => (spec.type === "condition" && !spec.logistic && entity.settings[spec.key] !== undefined ? [spec.key] : []));
+}
+
+/** Whether the dock has a row for an entity: its kind has an output or a state, or it is a generic entity with a circuit condition. A chest has none. */
+export function hasTrace(entity: Entity): boolean {
+  return isTraceable(entity.kind) || tracedConditions(entity).length > 0;
+}
+
+/** What a condition says in a word: `enabled` or `disabled` for the one that enables the entity, with what it decides in front for every other one (`harvest enabled`). */
+export function conditionWord(key: string, holds: boolean): string {
+  const role = conditionRole(key);
+  return `${role === undefined ? "" : `${role} `}${holds ? "enabled" : "disabled"}`;
+}
+
+/** The conditions of an entity at one tick as one text: `enabled`, `enabled, harvest disabled`. */
+export function conditionsText(conditions: readonly ConditionStatus[]): string {
+  return conditions.map((condition) => conditionWord(condition.key, condition.holds)).join(", ");
 }
 
 /** The status of one entity; `wires` are the networks on the connection point it reads (absent without any wire). */
@@ -44,9 +69,12 @@ function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined)
     return { label: lit ? (color ? `lit ${color}` : "lit") : "off", active: lit, input, lamp: { lit, color } };
   }
   if (snapshot.speaker) return { label: speakerText(snapshot.speaker), active: snapshot.speaker.playing, input, speaker: snapshot.speaker };
-  // Generic entities: minimal until the entity package (selector, drawing, inspector). Only the enable condition is shown.
-  const enabled = snapshot.conditions?.[ENABLE_CONDITION];
-  if (enabled !== undefined) return { label: enabled ? "enabled" : "disabled", active: false, input, enabled };
+  // A generic entity with circuit conditions and a wire: whether each of them holds. It emits nothing.
+  if (snapshot.conditions) {
+    const conditions = Object.entries(snapshot.conditions).map(([key, holds]): ConditionStatus => ({ key, ...(key !== ENABLE_CONDITION && { role: conditionRole(key) }), holds }));
+    const enabled = snapshot.conditions[ENABLE_CONDITION];
+    return { label: conditionsText(conditions), active: false, input, conditions, ...(enabled !== undefined && { enabled }) };
+  }
   // A relay: it emits nothing and has no state, so there is nothing to say beyond the two networks it joins.
   if (!isTraceable(snapshot.kind)) return { label: "", active: false, input };
   const output = snapshot.output ?? [];
@@ -86,7 +114,7 @@ export class StatusCache {
 
 /**
  * The entities the dock traces: the selection, or the first few entities when nothing is selected. Only those with something
- * to trace (`isTraceable`): a pole has no row.
+ * to trace (`hasTrace`): a pole and a chest have no row.
  */
 export function tracedEntities(circuit: Circuit, selection: readonly EntityId[]): readonly Entity[] {
   const selected = new Set(selection);
@@ -94,7 +122,7 @@ export function tracedEntities(circuit: Circuit, selection: readonly EntityId[])
   const traced: Entity[] = [];
   for (const entity of circuit.entities) {
     if (traced.length === limit) break;
-    if ((selection.length === 0 || selected.has(entity.id)) && isTraceable(entity.kind)) traced.push(entity);
+    if ((selection.length === 0 || selected.has(entity.id)) && hasTrace(entity)) traced.push(entity);
   }
   return traced;
 }
@@ -123,7 +151,10 @@ function outputSignals(history: History, entity: EntityId): SignalId[] {
   return [...seen.values()];
 }
 
-/** Trace rows for the traced entities: one per output signal, one per lamp and per speaker, and a placeholder row for an entity without output. */
+/**
+ * Trace rows for the traced entities: one per output signal, one per lamp and per speaker, one per circuit condition of a generic
+ * entity, and a placeholder row for a combinator without output.
+ */
 export function buildTraces(history: History, entities: readonly Entity[]): SignalTrace[] {
   const latest = history.latest;
   if (!latest) return [];
@@ -142,6 +173,17 @@ export function buildTraces(history: History, entities: readonly Entity[]): Sign
       const speaker = snapshot?.speaker ?? { playing: false };
       const values = history.snapshots().map((tick) => (tick.entities[entity.id]?.speaker?.playing ? 1 : 0));
       traces.push({ ...base, id: `${entity.id}|speaker`, label: `${entity.name} sound`, speaker: { playing: speaker.playing }, values, current: speakerText(speaker) });
+      continue;
+    }
+    if (entity.kind === "entity") {
+      // It sends nothing: what there is to follow is whether its conditions hold. Without a wire none of them applies.
+      for (const key of tracedConditions(entity)) {
+        const holds = snapshot?.conditions?.[key];
+        // The row names what the condition decides; its value then says whether it does.
+        const what = conditionRole(key) ?? "condition";
+        const values = history.snapshots().map((tick) => (tick.entities[entity.id]?.conditions?.[key] ? 1 : 0));
+        traces.push({ ...base, id: `${entity.id}|${key}`, label: `${entity.name} ${what}`, condition: { what, ...(holds !== undefined && { holds }) }, values, current: holds === undefined ? "no wire" : holds ? "enabled" : "disabled" });
+      }
       continue;
     }
     const signals = outputSignals(history, entity.id);

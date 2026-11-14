@@ -196,7 +196,6 @@ test("a chain constant -> pole -> pole -> lamp built with the palette and the wi
     await page.mouse.click(point.x, point.y);
   };
   await page.getByRole("button", { name: "Zoom out" }).click();
-  await palette.locator(".palette-group-header", { hasText: "Power poles" }).click();
 
   // Four entities in a row, each configured with the pointer where it needs it.
   await place("constant-combinator", 0);

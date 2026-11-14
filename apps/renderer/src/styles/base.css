@@ -244,7 +244,7 @@ kbd {
   --kind-color: var(--kind-speaker);
 }
 
-/* Generic entities: the neutral gray of the pole until the entity package gives their groups a look. */
+/* Every other entity of the game: a neutral gray, like the pole. What it is says its icon. */
 .kind-entity {
   --kind-color: var(--kind-pole);
 }

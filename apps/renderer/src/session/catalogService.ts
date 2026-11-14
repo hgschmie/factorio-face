@@ -5,7 +5,8 @@ import {
   type Catalog, type PickerGroup, type SpeakerInstrumentInfo,
 } from "@face/catalog";
 import type { SignalResolver } from "@face/language";
-import { NORMAL_QUALITY, signalKey, type SignalId, type SpeakerInstrument } from "@face/model";
+import { entityTable, NORMAL_QUALITY, signalKey, type SignalId, type SpeakerInstrument } from "@face/model";
+import { entityRegistry, type EntityRegistry } from "../entities/registry.ts";
 import type { CatalogView, ModuleView, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
 
 export class CatalogService implements CatalogView, SignalResolver {
@@ -21,6 +22,7 @@ export class CatalogService implements CatalogView, SignalResolver {
   private readonly active: ReadonlySet<string>;
   private readonly infos = new Map<string, SignalInfo>();
   private tree: readonly PickerGroup[] | undefined;
+  private registry: EntityRegistry | undefined;
 
   /** `requested` is the module list of the project file; unknown names are reported, never dropped by this class. */
   constructor(readonly catalog: Catalog, readonly requested: readonly string[]) {
@@ -97,6 +99,10 @@ export class CatalogService implements CatalogView, SignalResolver {
       }
     }
     return this.tree;
+  }
+
+  entities(): EntityRegistry {
+    return (this.registry ??= entityRegistry(this.catalog, entityTable(), this.active));
   }
 
   /** Signals a completion list may offer: everything the picker shows except the wildcards, which are keywords in the language. */

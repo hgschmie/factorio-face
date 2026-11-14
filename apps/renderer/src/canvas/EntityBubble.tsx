@@ -36,7 +36,7 @@ export function EntityBubble({ entity, anchor, view, status, describeSignal, res
   return (
     <div ref={ref} className={`entity-bubble side-${placement.side}`} style={{ left: placement.x, top: placement.y, width: CARD.width }} data-entity-name={entity.name} data-side={placement.side}>
       <svg className="bubble-card" width={CARD.width} height={CARD.height} viewBox={`0 0 ${CARD.width} ${CARD.height}`} role="img" aria-label={`${entity.name}, details`}>
-        <g className={`bubble-face kind-${entity.kind}${status?.active ? " active" : ""}`}>
+        <g className={`bubble-face kind-${entity.kind}${status?.active ? " active" : ""}${status?.enabled === false ? " disabled" : ""}`}>
           <CardFace entity={entity} status={status} describeSignal={describeSignal} resolveIcon={resolveIcon} />
         </g>
       </svg>

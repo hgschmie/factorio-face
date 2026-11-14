@@ -6,6 +6,7 @@
 //   with a hint, and written as soon as they become complete.
 import { checkEntity, type EditFailureCode } from "@face/language";
 import { BOTH_NETWORKS, type DeciderOutput, type Entity } from "@face/model";
+import { incompleteCondition } from "../entities/genericSettings.ts";
 
 function normalizeOutput(output: DeciderOutput): DeciderOutput {
   if (output.copyCountFromInput) return output.constant === 1 ? output : { ...output, constant: 1 };
@@ -65,6 +66,11 @@ function hint(entity: Entity, fallback: string): string {
     case "speaker":
       if (entity.condition && !entity.condition.first) return "The condition needs a signal.";
       break;
+    case "entity": {
+      const blank = incompleteCondition(entity);
+      if (blank) return `The condition "${blank.label}" needs a signal.`;
+      break;
+    }
     default:
       break;
   }

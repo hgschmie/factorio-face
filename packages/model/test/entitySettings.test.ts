@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BOTH_NETWORKS, canRotate, conditionKey, conditionRole, ENABLE_CONDITION, ENTITY_SETTINGS, entityNameBase, entityTable, facingOf, findTileOverlaps, footprintBox, gamePrototype, isPrototypeName, isSettingValue, isTileCenter,
-  normalizedSettings, normalizeSettings, occupiedTiles, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypeOf, prototypesOf, rotateTile, sameSetting, setEntityTable, settingDefault, settingFields, settingSpecsOf,
+  normalizedSettings, normalizeSettings, occupiedTiles, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypeOf, prototypesOf, rotateTile, sameSetting, setEntityTable, settingDefault, settingFields, settingShown, settingSpecsOf,
   signal, STANDARD_ENTITY_TABLE, TERMINALS, tileCenter, tileHalves, tileSize, wireReachBetween, wireSpan,
   type Condition, type Direction, type EntityShape, type SettingSpec, type SettingValue,
 } from "../src/index.ts";
@@ -250,6 +250,39 @@ describe("setting values", () => {
     expect(normalizedSettings("crash-site-chest-1", { "empty-slots-signal": signal("virtual", "signal-E") })).toEqual({ "empty-slots-signal": signal("virtual", "signal-E") });
     expect(normalizedSettings("small-lamp", { networks: { red: true, green: false } })).toEqual({});
     expect(normalizedSettings("no-such-thing", { "read-contents": false })).toEqual({});
+  });
+});
+
+describe("settings that belong to another one", () => {
+  it("name a switch or a mode of the same row, and every signal belongs to one", () => {
+    for (const [type, row] of Object.entries(ENTITY_SETTINGS)) {
+      for (const setting of row.settings) {
+        if (setting.type === "signal") expect(setting.shownWhile, `${type} ${setting.key}`).toBeDefined();
+        if (!setting.shownWhile) continue;
+        const owner = row.settings.find((candidate) => candidate.key === setting.shownWhile!.key);
+        expect(owner && isSettingValue(owner, setting.shownWhile.is), `${type} ${setting.key}`).toBe(true);
+        expect(owner!.shownWhile, `${type} ${setting.key}`).toBeUndefined();
+      }
+    }
+  });
+
+  it("are shown while that one has the value, held or by default", () => {
+    const shown = (prototype: string, key: string, settings: Readonly<Record<string, SettingValue>> = {}): boolean => {
+      const specs = settingSpecsOf(prototype);
+      return settingShown(specs.find((candidate) => candidate.key === key)!, specs, gamePrototype(generic(prototype)), settings);
+    };
+    expect(shown("iron-chest", "empty-slots-signal")).toBe(false);
+    expect(shown("iron-chest", "empty-slots-signal", { "read-empty-slots": true })).toBe(true);
+    expect(shown("iron-chest", "read-empty-slots")).toBe(true);
+    // The switch of an accumulator and of a rail signal is on in a new entity.
+    expect(shown("accumulator", "output-signal")).toBe(true);
+    expect(shown("accumulator", "output-signal", { "read-charge": false })).toBe(false);
+    expect(shown("rail-signal", "red-signal")).toBe(true);
+    expect(shown("radar", "channel")).toBe(false);
+    expect(shown("radar", "channel", { mode: "universe" })).toBe(true);
+    expect(shown("assembling-machine-2", "include-in-crafting")).toBe(false);
+    expect(shown("assembling-machine-2", "include-in-crafting", { "read-contents": true })).toBe(true);
+    expect(shown("stone-wall", "output-signal", { "read-sensor": true })).toBe(true);
   });
 });
 

@@ -42,6 +42,8 @@ export interface WorkbenchProps {
   readonly iconsMissing?: boolean;
   readonly resolveEntityIcon?: EntityIconResolver;
   readonly resolveWireIcon?: WireIconResolver;
+  /** URL of a catalog icon id (a group of the game's items); undefined where no icon is to be had. */
+  readonly resolveCatalogIcon?: (icon: string) => string | undefined;
   readonly renderSignalPicker?: SignalPickerRenderer;
   /** Catalog names and icons of signals, for the inspector, the cards and the dock. */
   readonly describeSignal?: SignalDescriber;
@@ -85,7 +87,7 @@ function pageTextIsSelected(): boolean {
   return anchor != null && anchor.closest(".cm-editor") === null;
 }
 
-export function Workbench({ controller, api, appSettings, iconsMissing = false, resolveEntityIcon, resolveWireIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
+export function Workbench({ controller, api, appSettings, iconsMissing = false, resolveEntityIcon, resolveWireIcon, resolveCatalogIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
   const { circuit, selection, wireSelection, mode, displayMode, tool, editable, simulation, project } = state;
   const capabilities = DISPLAY_CAPABILITIES[displayMode];
@@ -457,7 +459,19 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
       )}
 
       <div className={`workbench mode-${mode}`}>
-        {showCanvas && <Palette tool={tool} canPlace={editable && capabilities.place} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
+        {showCanvas && (
+          <Palette
+            registry={state.catalog.entities()}
+            tool={tool}
+            canPlace={editable && capabilities.place}
+            entities={circuit.entities}
+            selection={selection}
+            resolveEntityIcon={resolveEntityIcon}
+            iconUrl={resolveCatalogIcon}
+            onToolChange={commands.setTool}
+            onSelect={commands.select}
+          />
+        )}
 
         <main className="workspace">
           <div className="editor-area">
@@ -535,6 +549,7 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
           showTile={capabilities.tiles}
           wireReach={project.wireReach}
           resolveEntityIcon={resolveEntityIcon}
+          prototypes={state.catalog.entities()}
           renderSignalPicker={renderSignalPicker}
           describeSignal={describeSignal}
           draft={state.draft}

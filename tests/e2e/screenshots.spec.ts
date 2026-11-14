@@ -8,9 +8,9 @@ import { openRelay } from "./fixtures.ts";
 test("captures the workbench in its main states", async ({ page }) => {
   // The game's icons are generated locally and git-ignored; without them the inline placeholders are shown.
   const hasCatalogIcons = existsSync(resolve(ROOT, "packages/catalog/generated/icons/item/constant-combinator.png"));
-  // The four combinators and the two entries of the group that starts open.
-  if (hasCatalogIcons) await expect(page.locator(".palette-item img.entity-icon")).toHaveCount(6);
-  else await expect(page.locator(".palette-item svg.entity-icon")).toHaveCount(6);
+  // The four combinators and the tiles of the tab that is on show (Logistics: 42, four of them the combinators again).
+  if (hasCatalogIcons) await expect(page.locator(".palette-item img.entity-icon")).toHaveCount(42);
+  else await expect(page.locator(".palette-item svg.entity-icon")).toHaveCount(42);
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "workbench-circuit.png") });
 
   const gate = await cardGrabPoint(page, "gate");
@@ -87,16 +87,15 @@ test("captures the entity selector, poles and the speaker", async ({ page, app }
   await openRelay(page);
   await page.getByRole("button", { name: "Fit circuit" }).click();
 
-  // The sidebar: every group closed, then every group open.
-  await group("Lights and sound").click();
-  await expect(page.locator(".palette-item")).toHaveCount(4);
-  // The chevrons turn.
+  // The sidebar: the entities in use closed, then open, above the tab of the poles, the lamp and the speaker.
+  await group("Entities in use").click();
+  await expect(page.locator(".palette-tile.in-use")).toHaveCount(0);
+  // The chevron turns.
   await page.mouse.move(10, 10);
   await page.waitForTimeout(200);
   await page.screenshot({ path: resolve(shots, "sidebar-groups-closed.png") });
-  await group("Lights and sound").click();
-  await group("Power poles").click();
-  await expect(page.locator(".palette-item")).toHaveCount(10);
+  await group("Entities in use").click();
+  await expect(page.locator(".palette-tile.in-use")).toHaveCount(6);
   await page.mouse.move(10, 10);
   await page.waitForTimeout(200);
   await page.screenshot({ path: resolve(shots, "sidebar-groups-open.png") });
@@ -169,7 +168,6 @@ test("captures the strip, the status line, the tiles with their popups, the enti
   await expect(page.locator(".tile-popup")).toHaveAttribute("data-prototype", "decider-combinator");
   await settle();
   await page.screenshot({ path: resolve(shots, "selector-popup.png") });
-  await palette.locator(".palette-group-header", { hasText: "Power poles" }).click();
   await tile("big-electric-pole").hover();
   await expect(page.locator(".tile-popup")).toHaveAttribute("data-prototype", "big-electric-pole");
   await settle();
@@ -454,4 +452,82 @@ test("captures the one connection point of a pole on both canvases, the wires be
   await page.mouse.move(10, 10);
   await settle();
   await page.screenshot({ path: resolve(shots, "window-minimum.png") });
+});
+
+/** Entities of the game of several sizes on a board small enough to read: from one tile to the nine by nine of a rocket silo. */
+const SIZES = `circuit "Sizes" {
+    constant source at (40, 80) tile (19.5, 8.5) {
+        item:iron-plate = 150
+    }
+
+    entity feeder at (280, 80) tile (18.5, 8.5) facing north {
+        prototype = fast-inserter
+        when item:iron-plate < 100
+        read-hand = pulse
+    }
+
+    entity box at (520, 80) tile (17.5, 8.5) {
+        prototype = steel-chest
+        read-empty-slots = true
+    }
+
+    entity split at (760, 80) tile (15, 8.5) facing north {
+        prototype = splitter
+        input-left when item:iron-plate > 100
+        output-right when item:iron-plate > 200
+    }
+
+    entity station at (1000, 80) tile (19, 6) {
+        prototype = train-stop
+        read-from-train = true
+    }
+
+    entity heat at (40, 300) tile (15.5, 6) facing north {
+        prototype = boiler
+    }
+
+    entity maker at (280, 300) tile (11.5, 7.5) {
+        prototype = assembling-machine-2
+        when item:iron-plate > 100
+        read-working = true
+    }
+
+    entity robots at (520, 300) tile (18, 2) {
+        prototype = roboport
+    }
+
+    entity refinery at (760, 300) tile (12.5, 2.5) {
+        prototype = oil-refinery
+    }
+
+    entity silo at (1000, 300) tile (4.5, 4.5) {
+        prototype = rocket-silo
+        read-launched = true
+    }
+
+    wire red source.out <-> feeder
+    wire red feeder <-> box
+    wire red box <-> split
+    wire red split <-> maker
+    wire green maker <-> silo
+    wire green maker <-> refinery
+    wire green source.out <-> station
+}
+`;
+
+test("captures entities of the game of several sizes on the board and on the edit canvas", async ({ page }) => {
+  const shots = resolve(SCREENSHOT_DIR, "entities-ui");
+  await openBoard(page, SIZES);
+  await expect(page.locator("g.card.board-entity")).toHaveCount(10);
+  await expect(card(page, "feeder")).toHaveClass(/disabled/);
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: resolve(shots, "board-sizes.png") });
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "board-sizes-canvas.png") });
+  await showDisplay(page, "edit");
+  await page.getByRole("button", { name: "Fit circuit" }).click();
+  await expect(page.locator("g.card")).toHaveCount(10);
+  await page.mouse.move(10, 10);
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: resolve(shots, "edit-canvas-sizes.png") });
 });

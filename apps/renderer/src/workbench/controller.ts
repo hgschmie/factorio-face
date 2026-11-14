@@ -5,9 +5,10 @@
 import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup, SpeakerInstrumentInfo } from "@face/catalog";
-import { canRotate, DEFAULT_FACING, prototypeOf, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
+import { canRotate, DEFAULT_FACING, facingOf, prototypeOf, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
 import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
 import { flipped, rotated, type FlipAxis, type RotationTurn } from "../entities/facing.ts";
+import type { EntityRegistry } from "../entities/registry.ts";
 import type { BlueprintExport, BlueprintReading, ImportedBlueprint } from "../session/blueprints.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
@@ -70,19 +71,29 @@ export function sameTool(a: Tool, b: Tool): boolean {
   return a.type === b.type;
 }
 
-/** The direction an entity placed with `tool` faces: east for a kind that cannot rotate (a lamp), whatever the tool says. */
+/**
+ * The direction an entity placed with `tool` faces: one the game builds its prototype in (`facingOf`). East for an entity that
+ * cannot rotate (a lamp, a chest), whatever the tool says; north or east for one of two directions (the storage tank).
+ */
 export function placeFacing(tool: Tool): Direction {
-  return tool.type === "place" && canRotate(tool) ? (tool.facing ?? DEFAULT_FACING) : DEFAULT_FACING;
+  return tool.type === "place" ? facingOf({ kind: tool.kind, prototype: tool.prototype, placement: { direction: tool.facing ?? DEFAULT_FACING } }) : DEFAULT_FACING;
 }
 
-/** A place tool a quarter turn on. Undefined for a tool that places nothing or something that cannot rotate (a lamp). */
+/**
+ * A place tool a quarter turn on. An entity of two directions has the other one of its two after either turn. Undefined for a
+ * tool that places nothing or something that cannot rotate (a lamp).
+ */
 export function turnedTool(tool: Tool, turn: RotationTurn): Tool | undefined {
-  return tool.type === "place" && canRotate(tool) ? { ...tool, facing: rotated(placeFacing(tool), turn) } : undefined;
+  if (tool.type !== "place" || !canRotate(tool)) return undefined;
+  const turned: Tool = { ...tool, facing: rotated(placeFacing(tool), turn) };
+  return { ...turned, facing: placeFacing(turned) };
 }
 
 /** A place tool mirrored: what it places faces the flipped way. Undefined for a tool that places nothing or something that cannot rotate. */
 export function flippedTool(tool: Tool, axis: FlipAxis): Tool | undefined {
-  return tool.type === "place" && canRotate(tool) ? { ...tool, facing: flipped(placeFacing(tool), axis) } : undefined;
+  if (tool.type !== "place" || !canRotate(tool)) return undefined;
+  const mirrored: Tool = { ...tool, facing: flipped(placeFacing(tool), axis) };
+  return { ...mirrored, facing: placeFacing(mirrored) };
 }
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
@@ -133,7 +144,7 @@ export interface ProjectView {
   readonly epoch: number;
 }
 
-/** One row of the simulation dock's trace area: one signal on the output of one entity, or the state of a lamp or a speaker. */
+/** One row of the simulation dock's trace area: one signal on the output of one entity, the state of a lamp or a speaker, or one circuit condition of a generic entity. */
 export interface SignalTrace {
   readonly id: string;
   /** Plain-text label, `<entity> <signal>`. */
@@ -146,7 +157,9 @@ export interface SignalTrace {
   readonly lamp?: { readonly lit: boolean; readonly color?: string };
   /** Speakers only: whether it plays at the current tick. */
   readonly speaker?: { readonly playing: boolean };
-  /** Values for the most recent ticks, oldest first; at most `SimulationView.historyLength` entries. Lamps trace 1 while lit, speakers while playing. */
+  /** One circuit condition of a generic entity: what it decides (`condition` for the one that enables the entity, else its word of the language: `harvest`) and whether it holds at the current tick; `holds` is absent while the entity has no wire. */
+  readonly condition?: { readonly what: string; readonly holds?: boolean };
+  /** Values for the most recent ticks, oldest first; at most `SimulationView.historyLength` entries. Lamps trace 1 while lit, speakers while playing, conditions while they hold. */
   readonly values: readonly number[];
   /** Formatted value at the current tick. */
   readonly current: string;
@@ -180,11 +193,21 @@ export interface SpeakerStatus {
   readonly alert?: boolean;
 }
 
+/** One circuit condition of a generic entity at one tick. */
+export interface ConditionStatus {
+  /** The key of its setting: `when`, `harvest-when`. */
+  readonly key: string;
+  /** What it decides, in the word of the language: `harvest`, `input-left`. Absent for the condition that enables the entity. */
+  readonly role?: string;
+  readonly holds: boolean;
+}
+
 /** Per-entity runtime annotation drawn on its card: one row per wire color it reads, one for the output or the state of a lamp or a speaker. */
 export interface EntityStatus {
   /**
    * The output or the state as plain text, for example `A 5, B 10 +3`, `no output`, `lit #ff0000`, `playing piano F#3` or `silent`.
-   * Empty for an entity that neither emits nor has a state (a pole); `enabled` or `disabled` for a generic entity with an enable condition.
+   * Empty for an entity that neither emits nor has a state (a pole, a chest); for a generic entity with circuit conditions and a wire what
+   * each of them says: `enabled`, `disabled`, `enabled, harvest disabled` (`conditionsText`).
    */
   readonly label: string;
   /** Highlights the card: a lit lamp, a speaker that plays. */
@@ -197,7 +220,9 @@ export interface EntityStatus {
   readonly lamp?: { readonly lit: boolean; readonly color?: string };
   /** Speakers only. */
   readonly speaker?: SpeakerStatus;
-  /** Generic entities with an enable condition and a wire only: whether the condition holds. */
+  /** Generic entities with a circuit condition and a wire only: every such condition, in the order of the settings. */
+  readonly conditions?: readonly ConditionStatus[];
+  /** Of those, the condition that enables the entity: whether it holds. Absent without that condition. */
   readonly enabled?: boolean;
 }
 
@@ -264,6 +289,8 @@ export interface CatalogView {
   readonly speakerInstruments: readonly SpeakerInstrumentInfo[];
   /** The signal picker for the enabled modules in game order, wildcards included. Built on first use. */
   picker(): readonly PickerGroup[];
+  /** The entity selector for the enabled modules: what can be placed, in the game's groups and order. Built on first use. */
+  entities(): EntityRegistry;
   describe(signal: SignalId): SignalInfo;
 }
 

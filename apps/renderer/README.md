@@ -42,9 +42,10 @@ src/
     TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, undo, redo, fit, settings, save)
     CanvasStrip.tsx    the strip above the canvas: title and counts, the tools (select, red wire, green wire), the Edit | Blueprint
                        switch, "Place all"
-    Palette.tsx        the entity selector (`PALETTE_GROUPS`: square tiles with a popup, the combinators as the first row,
-                       "Entities in use", the other entities in groups that open and close), entity list
-    paletteGroups.ts   which groups and sections are open, remembered in the browser storage of the profile   (pure apart from `browserStore`)
+    Palette.tsx        the entity selector (square tiles with a popup: the combinators as the first row, "Entities in use", and
+                       every entity of the project's modules in a tab per item group of the game with a search), entity list
+    paletteGroups.ts   what the palette remembers in the browser storage of the profile: the tab on show, the search, the open
+                       sections   (pure apart from the two stores)
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
     Canvas.tsx         SVG canvas: camera per display mode, gestures, pending wire, context menu, the checkerboard, the bubble
@@ -78,7 +79,10 @@ src/
     Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; a selected wire;
                        the summary of several selected things; undo and redo from its fields
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm / SpeakerForm
-    PrototypeField.tsx which entity of its kind an entity is, for a kind with several game prototypes (a pole)
+    GenericForm.tsx    the settings of a generic entity (kind `entity`): a control per setting of its prototype type, from the
+                       settings table of the model
+    PrototypeField.tsx which entity of its kind an entity is, for a kind with several game prototypes (a pole), and which one of
+                       its prototype type a generic entity is (`compact`: icons in a row)
     speakerEdits.ts    instrument and note of a speaker against the game's lists: what is a default and is not written   (pure)
     instruments.ts     `InstrumentsContext`: the speaker's instruments and notes from the catalog, for the form and the cards
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
@@ -106,9 +110,11 @@ src/
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
-  entities/            kind labels and the names an entity goes by (`kindInfo.ts`), the registry of what the palette offers
-                       (`registry.ts`), signal text forms (short names, lists, compact numbers), card summaries, the quarter turns
-                       and the mirror images of the direction an entity faces (`facing.ts`)  (pure)
+  entities/            kind labels and the names an entity goes by (`kindInfo.ts`), what a prototype type is on a circuit for
+                       and the notes on it (`typeInfo.ts`), what the selector offers as a function of the catalog, the entity
+                       table and the modules (`registry.ts`), the settings form of a generic entity as data
+                       (`genericSettings.ts`), signal text forms (short names, lists, compact numbers), card summaries, the
+                       quarter turns and the mirror images of the direction an entity faces (`facing.ts`)  (pure)
   icons/               interface glyphs, entity icons per prototype, catalog icon resolvers (with probes: the icons come from the
                        user's installation of the game or from bundled files, and neither may be there)
   styles/              tokens.css and one stylesheet per area
@@ -136,7 +142,7 @@ interface WorkbenchController {
 `WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities,
-`speakerInstruments`, `picker()`, `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
+`speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `flipEntities`, `updateEntity`,
@@ -290,14 +296,15 @@ simulation (`run`, `pause`,
   document, so no simulation activity can create an edit. While the source has errors it is blocked with a notice and resumes afterwards.
   The dock traces every output signal of the selected entities (the first three entities with something to trace when nothing is
   selected); lamps trace their lit state and speakers whether they play (`alarm sound`, 1 while playing, the row lit like a lamp's);
-  what an entity reads per wire color is in the row's tooltip. A pole has nothing to trace (`isTraceable`): it has no row, with or
-  without a selection, and where that leaves the dock empty it says that a pole only passes signals on.
+  what an entity reads per wire color is in the row's tooltip. A generic entity has a row per circuit condition it holds (`farm harvest`,
+  `enabled` or `disabled`, 1 while it holds; "Generic entities" below). A pole and an entity without a condition have nothing to trace
+  (`hasTrace`): they have no row, with or without a selection, and where that leaves the dock empty it says what can be followed.
 - **Card statuses.** `StatusCache` (`simulationView.ts`) turns the latest snapshot into one `EntityStatus` per entity: `input`
   (`red` and `green`, each `{ wired, signals }`; absent on a constant combinator; for a pole the two networks it joins), `output`
   (all emitted signals; absent on a lamp, a speaker and a pole), `lamp` (`{ lit, color }`), `speaker` (`{ playing, instrument,
   note, volume, alert }`, the engine's record), `active` (a lit lamp, a speaker that plays) and `label` (the output or the state
   as text: the first two signals, then `+N`; `lit`, `off`; `playing piano F#3`, with ` at 60%` when the volume is not the full
-  one, `silent` (`speakerText`); empty for a pole, which has neither). The signal lists are the engine's own, in its signal order, not copies. `wired` comes from the compiled
+  one, `silent` (`speakerText`); empty for a pole, which has neither), and for a generic entity with a circuit condition and a wire `conditions` (per condition its key, what it decides and whether it holds) and `enabled` (the condition that enables it), with the label `enabled, harvest disabled` (`conditionsText`). The signal lists are the engine's own, in its signal order, not copies. `wired` comes from the compiled
   circuit (`CompiledCircuit.terminals`): the snapshot alone cannot tell an input without a wire from a wire that carries
   nothing. A status is cached per entity record of the snapshot and the map per entity table. The engine replaces a record
   exactly when what the entity reads, emits or lights changes, so a card gets a new status object, and renders, only then.
@@ -882,7 +889,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 
 `EntityIcon` / `EntityIconSvg` take an entity (or just its kind and prototype) and an `EntityIconResolver`
 (`(prototype) => url | undefined`). `icons/catalogEntityIcons.ts` probes one item icon per prototype of `PROTOTYPES`
-(`prototypeIconId` of the registry: `item/<prototype name>` unless the registry says otherwise) of the generated catalog through
+(`prototypeIconId` of the registry: the item that places the prototype, `item/<prototype name>` for all that have one) of the generated catalog through
 `face-asset://catalog/icons/item/<name>.png` and resolves only those that load, so each pole shows its own item.
 `icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe; the two wire tool buttons of the palette
 take the game's `item/red-wire` and `item/green-wire` icons from it. The main process answers these URLs with icons it renders from the
@@ -967,72 +974,93 @@ until the next start.
 
 ## The entity selector
 
-The left sidebar offers what can be placed. What it offers is data, `PALETTE_GROUPS` in `entities/registry.ts`:
+The left sidebar offers what can be placed. What it offers is data, and no prototype is named in the renderer: `entityRegistry(catalog,
+table, modules)` in `entities/registry.ts` makes it from
+
+- the signal catalog (`@face/catalog`): for every entity of the game its item group, its subgroup and its order string, which are those
+  of the item that builds it, with the changes a module makes (`pickerTree` with `kinds: ["entity"]`, the function the signal picker
+  is built with);
+- the entity table (`@face/model`): which prototypes a circuit wire connects to, which of them the game hides (`hidden`: the chests
+  of its editor, the loaders), which module adds them, and through `PROTOTYPES` their kind, name, tiles and reach;
+- the modules of the project (`CatalogView.entities()`, built on first use per module set).
 
 ```ts
-const GROUPS = [
-  { id: "combinators", label: "Combinators", pinned: true, prototypes: ["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"] },
-  { id: "lights-and-sound", label: "Lights and sound", open: true, prototypes: ["small-lamp", "programmable-speaker"] },
-  { id: "power-poles", label: "Power poles", open: false, prototypes: ["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"] },
-];
+interface EntityRegistry {
+  pinned: PaletteEntry[];               // the first row: the combinators (`PINNED_KINDS`, a decision of the user)
+  groups: PaletteGroup[];               // the tabs: { name, label, icon, subgroups: [{ name, entries }] }, all in the game's order
+  entries: PaletteEntry[];              // everything offered, once
+  entry(prototype): PaletteEntry | undefined;   // also of a prototype that is not offered (hidden, module off)
+  offers(prototype): boolean;
+  groupOf(prototype): string | undefined;       // the tab that holds its tile
+  position(prototype): number;                  // its place in the game's order of everything
+}
 ```
 
-An entry is a game prototype name; its kind, its label (the game's name), its tiles and its wire reach come from `PROTOTYPES`
-of `@face/model`, its icon from `prototypeIconId`. **A further entity of a kind the editor has** (another pole, another lamp)
-is a row in `PROTOTYPES` and its name in a group here: the palette entry, its icon, the place tool, the footprint on the
-board, the choice in the inspector (`PrototypeField`), the card heading and the wire reach follow from that. **A further
-category** is a group. **A further kind** (a family with behaviour of its own) also needs its part in the model, the
-language and the simulation, a `KIND_INFO` row, a summary line and, if it has settings, a form; an entity with one
-connection point (`TERMINALS`: `io`) gets its pins, its wiring and its place on the board from the general code.
-`test/registry.test.ts` fails when a prototype of the model is in no group or in two.
+A Space Age project has four tabs (Logistics, Production, Space, Combat) with 85 entities; the base game alone three (no Space: the
+rocket silo and the landing pad are in Production) with 67. **A further entity of the game** is its record in the catalog and in the
+entity table: its tile, its tab and row, its popup, the place tool, the footprint on the board, the card, the form of its type and
+the choice among the prototypes of its type follow. **A further prototype type** is a row of `ENTITY_SETTINGS` in the model; the
+renderer adds a line to `TYPE_DESCRIPTIONS` (`entities/typeInfo.ts`, a test fails without it; a type without a line is described from
+its settings). **A further kind** (a family with behaviour of its own) needs its part in the model, the language and the simulation,
+a `KIND_INFO` row, a summary line and, if it has settings, a form.
 
-- **Tiles.** Every entry is a square tile with nothing but its icon (`button.palette-tile`, 30 pixel icon), four in a row
-  at the width of the sidebar (a grid of four columns, about 48 pixels each at 240 pixels of sidebar and 41 at 212). The
-  game's name is its accessible name (`aria-label`: "Decider combinator"); it has no `title`, because everything else is in
-  the popup. Every tile carries `data-kind` and `data-prototype`. The entry of the palette, one per prototype, also has the
-  class `palette-item`; the tiles of "Entities in use" have `in-use` instead, so `.palette-item[data-prototype=...]` names
-  one element.
-- **The popup** (`div.tile-popup`, `role="tooltip"`, `data-prototype`, `data-side`) says what a tile stands for, in the
-  look of the board's bubble (card colors, the kind's accent on its left edge, the same pointer): the game's name, what the
-  kind is for (`KIND_INFO[kind].description`), for an entity with a reach of its own its tiles and reach ("2 x 2 tiles, wire
-  reach 32"; `prototypeFacts`), and the key of the five entries that have one, written "Key 3" so that it is not read as a
-  count. It shows for the tile the pointer rests on, by the rule of the board's bubble (`HoverIntent`: after 250 ms, at once
-  from tile to tile, gone 120 ms after the pointer left), and without a wait for the tile that has the keyboard focus
-  (`:focus-visible` only: a tile that was clicked keeps the focus, and its popup leaves with the pointer). A disabled tile
-  shows it too. It is fixed to the window beside the sidebar at the height of its tile (`placeBubble` with the row of the
-  tile up to the edge of the sidebar as the anchor), so it covers no tile, its own included; it takes no pointer events.
-  When the sections are scrolled the popup of the pointer goes, and the popup of the focused tile moves with its tile (the
-  browser scrolls a tile into view when the keyboard reaches it) and goes when that is scrolled out of sight. While it is on show the tile names its text as `aria-describedby`.
-- **The combinators** (the pinned group) are the first row, always on show, without a heading (`.palette-items`, a group
-  named "Combinators").
-- **Entities in use** (`section.palette-group[data-group="in-use"]`, below the combinators, above the groups): one tile for
-  each game prototype the circuit on show contains, without the pinned entries, in the order of the palette (`entriesInUse`
-  in `registry.ts`), so a tile keeps its place whatever is placed next. The section is always there; with none it has the
-  line "None besides the combinators." (`.palette-empty`) as high as a row of tiles, so nothing moves when the first lamp
-  is placed. Its heading shows the number of tiles and closes it like a group; that is remembered under
-  `face.palette.inUseOpen`. An entity in it also stays in its group. Both tiles arm the same tool (`sameTool`), and both
-  are pressed while it is armed.
-- **The groups.** Every other group has a heading that is a button (`button.palette-group-header` with `aria-expanded` and
-  `aria-controls`, the name and the number of entries) and, while open, its tiles in a panel (`role="group"`, named like
-  the group; hidden and empty while closed, so nothing of it is in the tab order).
-- The count badge of the panel is the number of entries (`PALETTE_ENTRIES`).
-- Which groups are open is a preference of the person at this machine (`workbench/paletteGroups.ts`): stored as JSON under
-  `face.palette.openGroups` in `localStorage`, which belongs to the profile of the app (userData), so it is the same for every
-  project and survives a restart. The list of the circuit (`face.palette.circuitListOpen`) and "Entities in use" have a key
-  of their own (`readSectionOpen`; open unless a "false" is stored). The main process offers no per-viewer state over IPC.
-  Every access is guarded: without storage, with storage that throws and with a value that is not what was written, the groups
-  start as the registry says ("Lights and sound" open, "Power poles" closed) and work for as long as the window lives. Only
-  known group ids with a boolean are taken from the store, so a group added later starts as it is defined.
-- A place tool whose entry is in a closed group opens that group (the lamp by `5`), and the armed entry (the tile in its
-  group) is scrolled into view. A group closed by hand while its tool is armed stays closed. A section that is opened is
-  scrolled so that as much of it as fits shows, from its heading down.
-- Layout: the heading, the row of the combinators, then two areas that share what is left and scroll on their own: the
-  sections (`.palette-groups`: "Entities in use" and the groups; up to two thirds, never more than they need; it reaches the
-  edge of the sidebar, where its scrollbar has room beside the tiles, so its columns are those of the first row) and the
-  entity list (`.entity-list`, the rest, at least 48 pixels). At the default window (1510 x 960) the sections fit without
-  scrolling, also with every group open. At the smallest window (1120 x 760) with every group open they scroll and the list
-  shows its first rows; `tests/e2e/entitySelector.spec.ts` checks both sizes (nothing is cut off, every entry and every
-  entity can be reached).
+- **Tiles.** Every entry is a square tile with nothing but its icon (`button.palette-tile`). The game's name is its accessible name
+  (`aria-label`: "Decider combinator"); it has no `title`, because everything else is in the popup. Every tile carries `data-kind`,
+  `data-prototype` and `data-place`. The entry of the palette, one per prototype, also has the class `palette-item` (the tile in the
+  first row for a combinator, the tile in its subgroup for every other entity); the tiles of "Entities in use" have `in-use` and the
+  second tile of a combinator in its subgroup `pinned-copy`, so `.palette-item[data-prototype=...]` names one element.
+- **Sizes.** The combinators are four in a row (about 48 pixels each at 240 pixels of sidebar and 41 at 212, 30 pixel icon). Every
+  other tile is six in a row (`.palette-tiles.compact`: 31.5 pixels at 240 pixels of sidebar and 26.8 at 212, gap 4, the icon 82 % of
+  the tile). Six is what keeps the icons legible (26 and 22 pixels) and the largest tab short: Logistics with Space Age is 42 tiles in
+  seven subgroups, which are ten rows, 355 pixels high (308 in the narrow sidebar).
+- **The popup** (`div.tile-popup`, `role="tooltip"`, `data-prototype`, `data-side`) says what a tile stands for, in the look of the
+  board's bubble (card colors, the kind's accent on its left edge, the same pointer): the game's name, what the entity is on a circuit
+  for (`entityDescription`: of the kind, and for a generic entity of its prototype type), its tiles and, where it is not the
+  project's, its wire reach ("3 x 3 tiles", "2 x 2 tiles, wire reach 32"; `prototypeFacts`), and the key of the five entries that
+  have one, written "Key 3" so that it is not read as a count. It shows for the tile the pointer rests on, by the rule of the board's
+  bubble (`HoverIntent`: after 250 ms, at once from tile to tile, gone 120 ms after the pointer left), and without a wait for the tile
+  that has the keyboard focus (`:focus-visible` only: a tile that was clicked keeps the focus, and its popup leaves with the
+  pointer). A disabled tile shows it too. It is fixed to the window beside the sidebar at the height of its tile (`placeBubble` with
+  the row of the tile up to the edge of the sidebar as the anchor), so it covers no tile, its own included; it takes no pointer
+  events. When the sections are scrolled the popup of the pointer goes and the tile that has come under the resting pointer gets its
+  own after the usual wait (it is looked up: the browser reports it only once the pointer moves); the popup of the focused tile moves
+  with its tile and goes when that is scrolled out of sight. While it is on show the tile names its text as `aria-describedby`.
+- **The combinators** (`registry.pinned`) are the first row, always on show, without a heading (`.palette-items`, a group named
+  "Combinators"). They are in their subgroup of the game as well.
+- **Entities in use** (`section.palette-group[data-group="in-use"]`, below the combinators): one tile for each game prototype the
+  circuit on show contains, without the pinned entries, in the game's order (`entriesInUse`), so a tile keeps its place whatever is
+  placed next. A prototype the selector does not offer is among them when the circuit has it: a loader or a chest of the game's
+  editor that a blueprint brought, an entity of a module that is switched off. The section is always there; with none it has the line
+  "None besides the combinators." (`.palette-empty`) as high as a row of tiles, so nothing moves when the first lamp is placed. Its
+  heading shows the number of tiles and closes it; that is remembered under `face.palette.inUseOpen`. Both tiles of an entity arm
+  the same tool (`sameTool`), and both are pressed while it is armed.
+- **The search** (`input[type=search]`, "Search entities") looks through every group by the name in the game and by the prototype
+  name, whatever the case (`searchEntries`). The results are the rows of the game under the names of their groups (`h3`); no tab is
+  selected meanwhile. Enter arms the first entity found, Escape empties the field, a tab ends the search.
+- **The tabs** (`role="tablist"`, "Entity groups"): one button per group with the group's icon of the game, or its name where no
+  icon is to be had; `aria-selected`, `data-group`, the name as `aria-label` and with the number of entities as `title`. The panel
+  under them (`role="tabpanel"`) has the subgroups of the group on show as rows (`.palette-subgroup[data-subgroup]`): every subgroup
+  starts a row of its own, as in the game.
+- The count badge of the panel is the number of entries (`registry.entries`).
+- **What is remembered** is a preference of the person at this machine (`workbench/paletteGroups.ts`), not part of a project: the
+  tab under `face.palette.tab` and the open sections (`face.palette.inUseOpen`, `face.palette.circuitListOpen`) in `localStorage`,
+  which belongs to the profile of the app (userData), so they are the same for every project and survive a restart; the search under
+  `face.palette.search` in `sessionStorage`, so it survives Source mode (which takes the palette away) and the app does not start
+  with a filtered list. The main process offers no per-viewer state over IPC. Every access is guarded: without storage, with storage
+  that throws and with a value that is not what was written the selector starts on its first tab with every section open and works
+  for as long as the window lives. A stored tab the project does not have (Space without Space Age) gives way to the first one.
+- A place tool whose tile is not on show brings its tab (the lamp by `5`, a tile of "Entities in use" of another tab), ends a search
+  that does not show it, and the armed entry is scrolled into view. A tab shown by hand while the tool is armed stays. The keys `1`
+  to `4` arm a tile of the first row and leave the tab alone.
+- Layout: the heading, the row of the combinators, then two areas that share what is left and scroll on their own: the sections
+  (`.palette-groups`: "Entities in use", the search and the tabs, which stay at its top while it scrolls (`position: sticky`), and the
+  tiles; five sixths, never more than they need; it reaches the edge of the sidebar, where its scrollbar has room beside the tiles) and
+  the entity list (`.entity-list`, the rest, at least 48 pixels). A tile that is scrolled into view stops below the search and the tabs
+  (`scroll-margin`, with their height in `--palette-head`). At the default window (1510 x 960) the sections are 405 pixels high: with
+  one row of entities in use seven of the ten rows of Logistics show and the rest is 91 pixels of scrolling; Production (seven rows),
+  Space and Combat fit. At the smallest window (1120 x 760) four rows show and the list its first row. Closing the list or the entities
+  in use gives their room to the tiles. `tests/e2e/entitySelector.spec.ts` checks both sizes (nothing is cut off, every entry and every
+  entity can be reached) and prints the measured layout.
 
 ## Poles and speakers
 
@@ -1056,33 +1084,62 @@ connection point (`TERMINALS`: `io`) gets its pins, its wiring and its place on 
 - Completion offers a pole by its bare name and the instruments and notes of the catalog (`session/completion.ts`); the analysis gets
   the instrument list from `CatalogService.instruments`, the simulation environment from `environmentData`.
 
-## Generic entities (kind `entity`), as far as the renderer has them
+## Generic entities (kind `entity`)
 
 The model has 88 further prototypes of the game as one kind, `entity` (chests, inserters, belts, machines, train stops, ...; `ENTITY_SETTINGS` of
-`@face/model`, `docs/dsl.md` "entity"). The renderer shows them and lets them be moved, turned, wired, renamed and deleted like any entity; it does
-not offer them in the selector and has no form for their settings yet. Every place that handles them is marked with a comment that names the
-entity package (selector, drawing, inspector). What there is:
+`@face/model`, `docs/dsl.md` "entity"). Everything the renderer does with them follows the entity table and the settings table; it names no
+prototype. What there is:
 
-- **Names** (`entities/kindInfo.ts`): `entityTitle` is the game's name of the prototype ("Fast inserter"), as for a pole; `KIND_INFO.entity` has the
-  category line "Game entity"; a description is a note of the project.
+- **Names** (`entities/kindInfo.ts`, `entities/typeInfo.ts`): `entityTitle` is the game's name of the prototype ("Fast inserter"), as for a pole;
+  `entityDescription` is a line per prototype type on what it is on a circuit for (`TYPE_DESCRIPTIONS`, one per row of the settings table; a type without one is
+  described from its settings); `KIND_INFO.entity` has the category line "Game entity"; a description is a note of the project.
 - **Icon** (`entities/registry.ts`, `prototypeIconId`): the icon of the item that places the prototype (`placedBy` of the entity table; for all but
   four chests of the game's editor an item of its name). `useCatalogEntityIcons` probes all 98 prototypes; without the image an entity shows the
   boxed pictogram without a mark.
-- **Card** (`entities/summary.ts`, `canvas/EntityCard.tsx`): the summary line is the enable condition (`when`) where the entity has one, "no condition"
-  where its type has one and it is not set, else the number of settings that differ from a new entity. The two input rows show the networks on its
-  one connection point; the third row says `enabled` or `disabled` while the simulation reports the enable condition (`EntityStatus.enabled`, from
-  `EntitySnapshot.conditions.when`: only with a condition and a wire). `data-status` is `enabled`, `disabled` or absent. Other conditions (splitter
-  sides, harvest, ...) are in the snapshot and not shown yet.
-- **Canvases**: the one connection point is `io`, drawn like a pole's: one pair of pins in the middle of the top edge of the card and of the top end
-  of the footprint, whatever the entity faces. The board draws the footprint the model gives (1 x 1 up to 9 x 9, the ones that are not square turned
-  with the entity), with the icon and the name in the middle; no arrows, since there is no input and output half.
-- **Inspector** (`inspector/EntitySettingsForm.tsx`): name, facing, description and connections as for every entity, and in place of a form a note
-  with the prototype and that its settings are edited in the source for now.
-- **Dock**: nothing is traced for them (`isTraceable`): they send nothing in the simulation.
-- **Selector**: unchanged, ten entries (`registry.ts`); "Entities in use" lists only what the selector offers.
+- **Placing**: a tile arms a place tool with the prototype. On the board the ghost has the footprint of the prototype (1 x 1 up to 9 x 9, turned
+  with the tool where it is not square). R and Shift+R turn what the game builds in four directions, give the other one of the two directions of
+  a storage tank (`placeFacing`, `turnedTool`: north and east), and do nothing for an entity that does not turn; H and V mirror the same way.
+  A new entity is named after its prototype (`fast_inserter1`, `assembling_machine1`).
+- **Card** (`entities/summary.ts`, `canvas/EntityCard.tsx`): the heading is the game's name. The summary has at most two lines: the circuit
+  conditions it holds (the one that enables it as it is, every other one behind what it decides, `close A > 0`; the first of several with the count
+  of the others; "no condition" where its type has one and none is set), and under them what it reads and sets in the words of the language
+  (`activeSettings`: the switches that are on and the modes, set or by default, `read-contents`, `read-hand: pulse`; as many as fit, then `+N`).
+  An entity whose type has no condition has both lines for that. The two input rows show the networks on its one connection point; the third
+  row (`data-row="conditions"`) has its circuit conditions while the simulation reports them (with a condition and a wire): each a mark that is
+  filled while the condition holds and a label, `enabled` or `disabled` for the one that enables the entity and what it decides for every other
+  one (`harvest`, `input-left`), as many as fit, then `+N` (`layoutConditions`). `data-status` has all of them in words (`enabled, harvest
+  disabled`). A card whose enable condition does not hold has the class `disabled`: its icon and its name step back.
+- **Board** (`canvas/BlueprintEntity.tsx`): the footprint the model gives with one pair of pins in the middle of its top end, whatever the entity
+  faces; no arrows, since there is no input and output half. A footprint of more than one tile in both directions has its icon and its name sized
+  by its shorter side (`blockContent`: an icon of 48 on 2 x 2, 76 on 3 x 3, 132 on 5 x 5, 192 on 9 x 9, the name from 10 to 26 units), and it
+  keeps its text at a zoom at which a small footprint has lost it (`boardNameFont` against `legibleFont` of the canvas). The light in its corner
+  is on while its enable condition holds (or any condition, for an entity without that one); with the enable condition not holding the footprint
+  is dimmed like the card (`disabled`).
+- **Inspector** (`inspector/GenericForm.tsx`, `entities/genericSettings.ts`): a form made from the settings table, in its order and with its
+  labels: a checkbox for a switch, a select for a mode (the words of the language as labels), the signal field for a signal (it shows the signal
+  the prototype uses by itself, which is not written), the red/green toggles for a network selection, and for a condition a checkbox with the
+  condition editor of the lamp under it (a condition that is switched on starts as the game has it: `signal-I < 0` for the left input of a
+  splitter, the first virtual signal above zero otherwise; the logistic condition says that it is kept and not evaluated). A setting that
+  belongs to another one shows only while that one has its value (`shownWhile` of the table, `settingShown`: the signal of "read empty slots", the
+  channel of a radar in universe mode). An edit is `withSetting`: a value at its default is not held, so the source does not get it; a statement
+  that is in the source already has its value patched, as for every kind. A condition without its signal is a draft with the hint 'The condition
+  "Enable/disable" needs a signal.' (`session/drafts.ts`). Above the form: the choice of the prototype among those of its prototype type that the
+  project can place, as icons in the game's order with the chosen one named under them (`PrototypeField` with `compact`; `alternativePrototypes`,
+  `withPrototype`), refused on the board when the new footprint would cover a tile of another entity ("Not changed: maker would stand on a tile of
+  box."); the notes of `prototypeNotes` (a wall connects only next to a gate; an entity no item builds is taken into no blueprint; the messages of a
+  display panel and the research conditions of a lab are kept only). The facing control has the directions the game builds the entity in: four,
+  north and east for a storage tank, none for one that does not turn. Under the form a line names what a blueprint had that the editor only keeps
+  (`keptFields`: the top-level keys of `blueprint-data`, "Kept from the blueprint: station, manual_trains_limit."). The description field says in
+  its tooltip that the entity has no description in the game.
+- **Dock** (`session/simulationView.ts`): a generic entity sends nothing, so it has no output row and no "no output". It has a row per circuit
+  condition it holds (`tracedConditions`, `hasTrace`): named `condition` for the one that enables it and by what it decides for every other one,
+  with the value `enabled` or `disabled` (`no wire` while it has no circuit wire, since no condition applies then) and a trace of 1 while it holds.
+  An entity without a condition has no row. The dock and the status line show no totals, so `totals.entitiesDisabled` of the snapshot is not
+  shown anywhere either.
 - **Blueprints**: an import of them reports nothing dropped; what the editor does not model is in the source as `blueprint-data`.
 
-Tests: `test/genericEntity.test.ts`, `tests/e2e/genericEntities.spec.ts`.
+Tests: `test/registry.test.ts`, `test/genericEntity.test.ts`, `test/genericForm.test.ts`, `tests/e2e/entitySelector.spec.ts`,
+`tests/e2e/entityForms.spec.ts`, `tests/e2e/genericEntities.spec.ts`.
 
 ## Commands
 

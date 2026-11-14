@@ -3,14 +3,14 @@
 import { facingOf, TERMINALS, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
 import { Fragment, memo, useContext } from "react";
 import { entityTitle } from "../entities/kindInfo.ts";
-import { summaryLines, truncate } from "../entities/summary.ts";
+import { SUMMARY_CHARS, summaryLines, truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
-import type { EntityStatus, StatusSignal } from "../workbench/controller.ts";
+import type { ConditionStatus, EntityStatus, StatusSignal } from "../workbench/controller.ts";
 import { CARD, PIN_RADIUS, PIN_SPACING, pinEdge, pinEdges, pinPoint, type CardEdge } from "./geometry.ts";
-import { inputText, layoutRow, rowPlacement, STATE_ROW_CHARS, STATUS_ROWS } from "./statusRows.ts";
+import { CONDITION_MARK, inputText, layoutConditions, layoutRow, rowPlacement, STATE_ROW_CHARS, STATUS_ROWS } from "./statusRows.ts";
 
 export interface EntityCardProps {
   readonly entity: Entity;
@@ -31,9 +31,8 @@ export interface EntityCardProps {
 }
 
 const NAME_MAX_CHARS = 13;
-const SUMMARY_MAX_CHARS = 15;
 /** A summary of two lines is set smaller, so more of it fits. */
-const SUMMARY_LINE_CHARS = 18;
+const { one: SUMMARY_MAX_CHARS, two: SUMMARY_LINE_CHARS } = SUMMARY_CHARS;
 /** The heading of a card is spaced wide; beyond this many characters it is set closer, so that the longest name of an entity ("MEDIUM ELECTRIC POLE") fits beside the description marker. */
 const TITLE_WIDE_CHARS = 16;
 const TITLE_MAX_CHARS = 20;
@@ -119,13 +118,28 @@ function SpeakerRow({ y, playing, text }: { readonly y: number; readonly playing
   );
 }
 
-/** Generic entities: minimal until the entity package (selector, drawing, inspector). Whether the enable condition holds, in the place of the output row. */
-function EnabledRow({ y, enabled }: { readonly y: number; readonly enabled: boolean }) {
+/**
+ * The circuit conditions of a generic entity in the place of the output row: each with a mark that is filled while it holds. The
+ * one that enables the entity says `enabled` or `disabled`, every other one what it decides; `+N` stands for those that do not fit.
+ */
+function ConditionsRow({ y, conditions }: { readonly y: number; readonly conditions: readonly ConditionStatus[] }) {
+  const { items, more, moreX } = layoutConditions(conditions);
+  const { size } = CONDITION_MARK;
   return (
-    <g className="card-row enabled-state" data-row="enabled" transform={`translate(0,${y})`}>
-      <text className={enabled ? "row-value" : "row-none"} x={STATUS_ROWS.contentX} y={ROW_BASELINE}>
-        {enabled ? "enabled" : "disabled"}
-      </text>
+    <g className="card-row conditions" data-row="conditions" transform={`translate(0,${y})`}>
+      {items.map((item) => (
+        <g key={item.key} className={`condition${item.holds ? " holds" : ""}`} data-condition={item.key} data-holds={item.holds}>
+          <rect className="row-marker" x={item.x + 0.5} y={-size / 2 + 0.5} width={size - 1} height={size - 1} rx="1.5" />
+          <text className={item.holds ? "row-value" : "row-none"} x={item.textX} y={ROW_BASELINE}>
+            {item.label}
+          </text>
+        </g>
+      ))}
+      {more > 0 && (
+        <text className="row-more" x={moreX} y={ROW_BASELINE}>
+          +{more}
+        </text>
+      )}
     </g>
   );
 }
@@ -182,6 +196,8 @@ export function CardFace({ entity, outline = false, shadow = false, pinEdges = N
   const title = entityTitle(entity).toUpperCase();
   const summary = summaryLines(entity, useContext(InstrumentsContext));
   const description = entity.description?.trim();
+  // Two lines are set smaller, and so is the one line of a generic entity that is too long for the large one: its settings in words.
+  const small = summary.length > 1 || (entity.kind === "entity" && (summary[0]?.length ?? 0) > SUMMARY_MAX_CHARS);
   // Pins on the top or bottom edge reach into the header band or the last status row; only then that content gives way.
   const headerY = pinEdges.includes("top") ? HEADER_SHIFT : 0;
   const rows = rowPlacement(pinEdges.includes("bottom"));
@@ -203,7 +219,7 @@ export function CardFace({ entity, outline = false, shadow = false, pinEdges = N
           )}
           <path className="card-divider" d={`M 10 26.5 H ${CARD.width - 10}`} />
           <EntityIconSvg entity={entity} x={MARGIN} y={32} size={ENTITY_ICON} resolveIcon={resolveIcon} />
-          {summary.length < 2 ? (
+          {!small ? (
             <>
               <text className="card-name" x={TEXT_X} y="46">
                 {truncate(entity.name, NAME_MAX_CHARS)}
@@ -234,7 +250,7 @@ export function CardFace({ entity, outline = false, shadow = false, pinEdges = N
               {status.output && <StatusRow kind="out" y={rowY(status.input ? 2 : 0)} pitch={rows.pitch} lines={status.input ? 1 : 3} signals={status.output} describeSignal={describeSignal} />}
               {status.lamp && <LampRow y={rowY(2)} lit={status.lamp.lit} color={status.lamp.color} />}
               {status.speaker && <SpeakerRow y={rowY(2)} playing={status.speaker.playing} text={status.label} />}
-              {status.enabled !== undefined && <EnabledRow y={rowY(2)} enabled={status.enabled} />}
+              {status.conditions && <ConditionsRow y={rowY(2)} conditions={status.conditions} />}
             </>
           )}
         </>
@@ -246,7 +262,7 @@ export function CardFace({ entity, outline = false, shadow = false, pinEdges = N
 export const EntityCard = memo(function EntityCard({ entity, x, y, selected, outline, shadow, pendingSide, pendingColor, status, describeSignal, resolveIcon }: EntityCardProps) {
   const facing = facingOf(entity);
   const terminals = TERMINALS[entity.kind];
-  const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}`;
+  const className = `card kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}${status?.enabled === false ? " disabled" : ""}`;
   return (
     <g
       className={className}

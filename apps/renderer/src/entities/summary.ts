@@ -1,6 +1,6 @@
 // Configuration summaries shown on entity cards: one line, two for an entity that needs them (a speaker). Pure.
 import {
-  ENABLE_CONDITION, prototypeData, settingSpecsOf,
+  conditionRole, gamePrototype, prototypeData, settingDefault, settingShown, settingSpecsOf,
   type ArithmeticCombinator, type Condition, type ConstantCombinator, type DeciderCombinator, type Entity, type GenericEntity, type Lamp, type Operand, type Pole, type SelectorCombinator, type SignalId, type Speaker,
 } from "@face/model";
 import { shortSignal } from "./signalText.ts";
@@ -84,16 +84,74 @@ function poleSummary(entity: Pole): string {
   return `${wireReach === undefined ? "" : `reach ${wireReach} · `}${width}x${height}`;
 }
 
+/** Characters of a line of the summary of a card: of the one line, and of each of two, which are set smaller. */
+export const SUMMARY_CHARS = { one: 15, two: 18 } as const;
+
 /**
- * Generic entities: minimal until the entity package (selector, drawing, inspector). What the entity is says the heading of its
- * card; the line is its enable condition where its type has one, else how many settings differ from a new one.
+ * As many of the items as fit `maxChars` in a row, with room for how many more there are: "read-contents +2". The first one is
+ * always there. Returns the text and the number of items in it.
  */
-function genericSummary(entity: GenericEntity): string {
-  const condition = entity.settings[ENABLE_CONDITION] as Condition | undefined;
-  if (condition) return conditionText(condition);
-  if (settingSpecsOf(entity.prototype).some((spec) => spec.key === ENABLE_CONDITION)) return "no condition";
-  const set = Object.keys(entity.settings).length;
-  return set === 0 ? "default settings" : `${set} ${set === 1 ? "setting" : "settings"}`;
+function fitItems(items: readonly string[], maxChars: number, last: boolean): readonly [text: string, shown: number] {
+  let text = items[0] ?? "";
+  let shown = Math.min(items.length, 1);
+  const tail = (left: number): string => (last ? more(left) : left > 0 ? "," : "");
+  while (shown < items.length && `${text}, ${items[shown]}${tail(items.length - shown - 1)}`.length <= maxChars) text += `, ${items[shown++]}`;
+  return [text + tail(items.length - shown), shown];
+}
+
+/** The items on one line of at most `maxChars`, the ones that do not fit counted: "read-contents +2". */
+export function fitList(items: readonly string[], maxChars: number): string {
+  return fitItems(items, maxChars, true)[0];
+}
+
+/** The items on one line where they fit the one line of a card, else over two lines, the second with the count of what is left. */
+export function fitLines(items: readonly string[]): readonly string[] {
+  if (items.join(", ").length <= SUMMARY_CHARS.one) return [items.join(", ")];
+  const [first, shown] = fitItems(items, SUMMARY_CHARS.two, false);
+  return shown === items.length ? [first] : [first, fitList(items.slice(shown), SUMMARY_CHARS.two)];
+}
+
+/** The circuit conditions a generic entity holds, in the order of its settings: the one that enables it as it is, every other one behind what it decides (`harvest A > 5`). */
+export function conditionLines(entity: GenericEntity): string[] {
+  return settingSpecsOf(entity.prototype).flatMap((spec) => {
+    const condition = spec.type === "condition" ? (entity.settings[spec.key] as Condition | undefined) : undefined;
+    const role = conditionRole(spec.key);
+    return condition ? [`${role === undefined ? "" : `${role} `}${conditionText(condition)}`] : [];
+  });
+}
+
+/**
+ * What a generic entity reads, sends and takes from the network, in the words of the language: its switches that are on
+ * (`read-contents`) and its modes (`read-hand: pulse`, `mode: surface`; none for a mode that is `none`), set or by default. A switch that belongs
+ * to one that is off does not count (`include-in-crafting` without `read-contents`): the game does not show it either.
+ */
+export function activeSettings(entity: GenericEntity): string[] {
+  const game = gamePrototype(entity);
+  const specs = settingSpecsOf(entity.prototype);
+  return specs.flatMap((spec) => {
+    if (!settingShown(spec, specs, game, entity.settings)) return [];
+    const value = entity.settings[spec.key] ?? settingDefault(spec, game);
+    if (spec.type === "boolean") return value === true ? [spec.key] : [];
+    if (spec.type !== "enum" || value === "none") return [];
+    // A mode that can be off is a switch with a choice behind it: at the mode of a new entity it goes by its word alone.
+    const switched = spec.values.some((entry) => entry.word === "none");
+    return [switched && value === spec.default ? spec.key : `${spec.key}: ${String(value)}`];
+  });
+}
+
+/**
+ * What the entity is says the heading of its card. The summary is its circuit conditions ("no condition" where its type has one
+ * and none is set) and under them what it reads and sets; an entity whose type has no condition has both lines for that.
+ */
+function genericSummary(entity: GenericEntity): readonly string[] {
+  const conditions = conditionLines(entity);
+  const active = activeSettings(entity);
+  const conditional = settingSpecsOf(entity.prototype).some((spec) => spec.type === "condition" && !spec.logistic);
+  // Of several conditions the first one is there, cut where the count of the others needs its room.
+  const others = more(conditions.length - 1);
+  const first = conditions.length > 0 ? `${truncate(conditions[0]!, SUMMARY_CHARS.two - others.length)}${others}` : conditional ? "no condition" : undefined;
+  if (first === undefined) return active.length > 0 ? fitLines(active) : ["no settings"];
+  return active.length > 0 ? [first, fitList(active, SUMMARY_CHARS.two)] : [first];
 }
 
 /** The instruments of the game with their notes, by name and in the game's order, as far as a summary needs them. */
@@ -138,7 +196,7 @@ export function summaryLines(entity: Entity, instruments?: InstrumentNames): rea
     case "speaker":
       return speakerSummary(entity, instruments);
     case "entity":
-      return [genericSummary(entity)];
+      return genericSummary(entity);
   }
 }
 

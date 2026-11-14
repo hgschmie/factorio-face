@@ -1,7 +1,7 @@
 // One entity on the blueprint board: its footprint on the tiles with compact content. The counterpart of EntityCard, and like
 // it purely presentational and memoized; the canvas finds it and its pins through the same data attributes. Coordinates are
 // canvas units from the top-left corner of the footprint.
-import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type TerminalSide, type TileBox, type WireColor } from "@face/model";
+import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type TerminalSide, type TileBox, type TileSize, type WireColor } from "@face/model";
 import { memo } from "react";
 import { truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -35,17 +35,51 @@ export interface BlueprintEntityProps {
 
 /** The body leaves this much of its tiles free on every side, so that neighbors stay apart and the board shows through. */
 const INSET = 4;
-/** Icon edge on one tile, on two tiles, on a square of four, and without text. */
-const ICON = { single: 26, long: 28, square: 48, outline: 40 } as const;
+/** Icon edge on one tile, on the two tiles of a combinator, and without text. A larger footprint: `blockContent`. */
+const ICON = { single: 26, long: 28, outline: 40 } as const;
 /** How far the content of a 1x1 entity moves away from pins on its top or bottom end. */
 const PIN_ROOM = 9;
 /** How far the arrows of a 2x1 entity sit from the middle of their half, towards its outer end. */
 const ARROW_SHIFT = 8;
 const NOTCH = 7;
 const NAME_CHARS = { single: 11, wide: 18, tall: 11 } as const;
-/** Below the middle of a square of four tiles: the top of the icon above it and the baseline of the name. */
-const SQUARE = { iconTop: -36, name: 30 } as const;
 const OUTPUT_CHARS = { wide: 20, tall: 12 } as const;
+/** The name on one tile and on a combinator: its size, and the width of one of its characters in it. */
+export const BOARD_NAME_FONT = 10;
+const NAME_FONT = BOARD_NAME_FONT;
+const NAME_CHAR_WIDTH = 0.62;
+
+export interface BlockContent {
+  /** Edge of the icon. */
+  readonly icon: number;
+  /** Top of the icon below the top of the footprint. */
+  readonly iconTop: number;
+  /** Font size of the name, its baseline below the top of the footprint, and the characters of it that fit the width. */
+  readonly font: number;
+  readonly nameY: number;
+  readonly nameChars: number;
+}
+
+/** The size of the name of an entity that covers `size` tiles: larger on a footprint of more than one tile in both directions (`blockContent`). */
+export function boardNameFont(size: TileSize): number {
+  return size.width > 1 && size.height > 1 ? blockContent(size.width * TILE, size.height * TILE).font : NAME_FONT;
+}
+
+/**
+ * The icon and the name of an entity that covers more than one tile in both directions, in a footprint of `width` x `height`
+ * canvas units: both grow with the shorter side, so a 2 x 2 pole has an icon of 48 and a 9 x 9 silo one of 192 with a name to
+ * match, and neither is lost in its box. Together they sit in the middle of what the pins at the top end leave.
+ */
+export function blockContent(width: number, height: number): BlockContent {
+  const tiles = Math.min(width, height) / TILE;
+  const icon = Math.min(192, 48 + (tiles - 2) * 28);
+  const font = Math.min(26, NAME_FONT + (tiles - 2) * 2.5);
+  const gap = 6 + (tiles - 2);
+  // The pins reach 17 units down from the top end; the content is centered in the rest.
+  const top = INSET + 14;
+  const iconTop = top + (height - INSET - top - icon - gap - font) / 2;
+  return { icon, iconTop, font, nameY: iconTop + icon + gap + font * 0.8, nameChars: Math.max(4, Math.floor((width - 2 * INSET - 12) / (font * NAME_CHAR_WIDTH))) };
+}
 
 export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, tileY, placed, conflict, moving, blocked, selected, outline, pendingSide, pendingColor, status, resolveIcon }: BlueprintEntityProps) {
   const facing = facingOf(entity);
@@ -62,15 +96,20 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
   // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end.
   const pinsTowards = long || square ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
   const center = { x: width / 2, y: height / 2 - pinsTowards.y * PIN_ROOM };
-  const icon = outline ? ICON.outline : long ? ICON.long : square ? ICON.square : ICON.single;
-  const iconTop = outline ? height / 2 - icon / 2 : center.y + (long ? -27 : square ? SQUARE.iconTop : -19);
-  const nameChars = long || square ? (size.width === 2 ? NAME_CHARS.wide : NAME_CHARS.tall) : NAME_CHARS.single;
+  const block = square ? blockContent(width, height) : undefined;
+  // Without text the icon alone fills the middle: as large as with it, and larger on a footprint that has the room.
+  const icon = outline ? Math.max(ICON.outline, block?.icon ?? 0) : long ? ICON.long : (block?.icon ?? ICON.single);
+  const iconTop = outline ? height / 2 - icon / 2 : block ? block.iconTop : center.y + (long ? -27 : -19);
+  const nameChars = block ? block.nameChars : long ? (size.width === 2 ? NAME_CHARS.wide : NAME_CHARS.tall) : size.width > 1 ? NAME_CHARS.wide : NAME_CHARS.single;
   // A lamp that is lit and a speaker that plays show it: the indicator, and a glow over the body in the color of the light.
   const lit = status?.active ?? false;
-  const emitting = lit || (status?.output?.length ?? 0) > 0;
+  // A generic entity shows its conditions: the indicator is on while the one that enables it holds, or any where it has no such one.
+  const holding = status?.enabled ?? status?.conditions?.some((condition) => condition.holds) ?? false;
+  const emitting = lit || holding || (status?.output?.length ?? 0) > 0;
+  const disabled = status?.enabled === false;
   const x = tileX * TILE;
   const y = tileY * TILE;
-  const className = `card board-entity kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}${placed ? "" : " unplaced"}${conflict ? " conflict" : ""}${moving ? " moving" : ""}${blocked ? " blocked" : ""}`;
+  const className = `card board-entity kind-${entity.kind}${selected ? " selected" : ""}${status?.active ? " active" : ""}${disabled ? " disabled" : ""}${placed ? "" : " unplaced"}${conflict ? " conflict" : ""}${moving ? " moving" : ""}${blocked ? " blocked" : ""}`;
   return (
     <g
       className={className}
@@ -108,7 +147,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       <EntityIconSvg entity={entity} x={center.x - icon / 2} y={iconTop} size={icon} resolveIcon={resolveIcon} />
       {!outline && (
         <>
-          <text className="board-name" x={center.x} y={center.y + (long ? 13 : square ? SQUARE.name : 19)}>
+          <text className="board-name" x={center.x} y={block ? block.nameY : center.y + (long ? 13 : 19)} style={block && block.font !== NAME_FONT ? { fontSize: block.font } : undefined}>
             {truncate(entity.name, nameChars)}
           </text>
           {long && status?.output && (

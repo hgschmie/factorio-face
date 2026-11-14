@@ -12,6 +12,7 @@ import { shortcutFor, shortcutLabel } from "../shortcuts/shortcuts.ts";
 import { DISPLAY_CAPABILITIES, placeFacing, SELECT_TOOL, type DisplayMode, type EntityMove, type EntityStatus, type EntityTile, type Tool } from "../workbench/controller.ts";
 import { countLabel } from "../workbench/selectionText.ts";
 import { canStandAt, footprintOriginAt, freeOriginNear, TILE } from "./board.ts";
+import { BOARD_NAME_FONT } from "./BlueprintEntity.tsx";
 import { ContextMenu, type ContextMenuItem } from "./ContextMenu.tsx";
 import { changedPositions, dragPositions, exceedsDragThreshold, placementPosition, snapPoint, worldDelta, type EntityPosition } from "./drag.ts";
 import { EntityBubble } from "./EntityBubble.tsx";
@@ -103,6 +104,8 @@ interface MenuState {
 const CULL_MARGIN = 120;
 const CULL_CELL = 400;
 const FIT_PADDING = 70;
+/** The step in which the legible size of a name on the board is counted: that between the names of two footprints. */
+const FONT_STEP = 2.5;
 
 function clientPoint(event: { readonly clientX: number; readonly clientY: number }): Point {
   return { x: event.clientX, y: event.clientY };
@@ -570,6 +573,9 @@ export function Canvas(props: CanvasProps) {
 
   const pendingEntity = pendingWire ? entityById.get(pendingWire.entity) : undefined;
   const outline = camera.zoom < layout.detailZoom;
+  // On the board a name is as large as its footprint allows, so a large entity keeps its text at a zoom at which a small one
+  // has lost it. In steps, so that the scene is not drawn anew for every change of the zoom.
+  const legibleFont = layout.mode === "blueprint" ? Math.ceil((BOARD_NAME_FONT * layout.detailZoom) / camera.zoom / FONT_STEP) * FONT_STEP : undefined;
   // The bubble: the full card of the entity under the pointer, where the board itself only has room for the compact form. It
   // is shown while the pointer is still on that entity: a zoom, a pan or a move by the keys can take the entity away from it.
   const hovered = mayHover && hoveredId !== null ? entityById.get(hoveredId) : undefined;
@@ -632,6 +638,7 @@ export function Canvas(props: CanvasProps) {
           wireSelection={wireSelectionSet}
           visible={stableCullRect}
           outline={outline}
+          legibleFont={legibleFont}
           pendingTerminal={pendingWire}
           pendingColor={pendingWire && tool.type === "wire" ? tool.color : undefined}
           entityStatus={props.entityStatus}

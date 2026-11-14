@@ -2,7 +2,7 @@
 import type { SignalId } from "@face/model";
 import { compactNumber, shortSignal, signalListText } from "../entities/signalText.ts";
 import { truncate } from "../entities/summary.ts";
-import type { StatusInput, StatusSignal } from "../workbench/controller.ts";
+import type { ConditionStatus, StatusInput, StatusSignal } from "../workbench/controller.ts";
 import { CARD } from "./geometry.ts";
 
 /**
@@ -107,4 +107,46 @@ export function compactOutput(signals: readonly StatusSignal[], maxChars: number
   const first = signals[0];
   if (!first) return "–";
   return truncate(`${shortSignal(first.signal)} ${compactNumber(first.value)}${signals.length > 1 ? ` +${signals.length - 1}` : ""}`, maxChars);
+}
+
+/** The mark in front of a condition in its row: its edge, the space to the label, and the space to the next condition. Set closer than signals, so that two sides of a splitter fit a row. */
+export const CONDITION_MARK = { size: 6, gap: 3, between: 6 } as const;
+
+export interface ConditionItem {
+  readonly key: string;
+  readonly holds: boolean;
+  /** Left edge of the mark, in card units. */
+  readonly x: number;
+  readonly textX: number;
+  /** `enabled` or `disabled` for the condition that enables the entity, what it decides for every other one (the mark says whether it holds). */
+  readonly label: string;
+}
+
+export interface ConditionLayout {
+  readonly items: readonly ConditionItem[];
+  /** Conditions that did not fit; drawn as `+N` at `moreX`. */
+  readonly more: number;
+  readonly moreX: number;
+}
+
+/**
+ * The row of the circuit conditions of a generic entity: each a mark that is filled while the condition holds and a label, in
+ * the order of the settings, as many as fit between the marker column and `right`, with room for `+N` while conditions remain.
+ * The first one is always placed.
+ */
+export function layoutConditions(conditions: readonly ConditionStatus[]): ConditionLayout {
+  const { markerX, right } = STATUS_ROWS;
+  const lead = CONDITION_MARK.size + CONDITION_MARK.gap;
+  const gap = CONDITION_MARK.between;
+  const items: ConditionItem[] = [];
+  let x: number = markerX;
+  for (const [index, condition] of conditions.entries()) {
+    const label = condition.role ?? (condition.holds ? "enabled" : "disabled");
+    const width = lead + textWidth(label);
+    const remaining = conditions.length - index - 1;
+    if (index > 0 && x + width + (remaining > 0 ? gap + textWidth(`+${remaining}`) : 0) > right) return { items, more: remaining + 1, moreX: x };
+    items.push({ key: condition.key, holds: condition.holds, x, textX: x + lead, label });
+    x += width + gap;
+  }
+  return { items, more: 0, moreX: x };
 }

@@ -245,6 +245,35 @@
   fill: var(--accent-bright);
 }
 
+/* The circuit conditions of a generic entity: the mark is filled while the condition holds. */
+.card-row.conditions .row-marker {
+  fill: none;
+  stroke: var(--text-dim);
+  stroke-width: 1;
+}
+
+.card-row.conditions .condition.holds .row-marker {
+  fill: var(--accent-bright);
+  stroke: var(--accent-bright);
+}
+
+/* An entity whose enable condition does not hold stands still: its icon and its name step back, like a lamp that is off. */
+.card.disabled .card-name,
+.bubble-face.disabled .card-name {
+  fill: var(--text-label);
+}
+
+.card.disabled .board-name {
+  fill: var(--text-label);
+}
+
+.card.disabled > image,
+.card.disabled > svg,
+.bubble-face.disabled > image,
+.bubble-face.disabled > svg {
+  opacity: 0.45;
+}
+
 /* The state of a speaker: sound waves that light up while it plays. */
 .card-row.speaker .row-marker {
   fill: var(--text-dim);
