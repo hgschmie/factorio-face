@@ -11,9 +11,11 @@ import {
   type CustomSignal,
   type CustomSignalGroup,
   type ExportBlueprintRequest,
+  type GameMod,
   type JsonValue,
   type ProjectData,
   type ProjectManifest,
+  type ProjectMods,
   type RecentProject,
   type SaveProjectRequest,
 } from "./ipc.ts";
@@ -138,7 +140,24 @@ function parseWireReach(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? clampWireReach(value) : fail("Wire reach must be a number");
 }
 
-const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach"]);
+const MOD_VERSION = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
+
+function parseModVersion(value: unknown, what: string): string {
+  return typeof value === "string" && MOD_VERSION.test(value) ? value : fail(`${what} must be a version of three numbers`);
+}
+
+/** The record of the game a project was made with: a game version and a bounded list of names with versions, each name once. */
+function parseProjectMods(value: unknown): ProjectMods {
+  if (!isRecord(value)) fail("The record of the game's mods must be an object");
+  const mods = parseArray(value.mods, "The list of the game's mods", LIMITS.projectMods).map((mod): GameMod => {
+    if (!isRecord(mod)) fail("A mod must be an object");
+    return { name: parseString(mod.name, "Mod name", LIMITS.identifierLength), version: parseModVersion(mod.version, "Mod version") };
+  });
+  if (new Set(mods.map((mod) => mod.name)).size !== mods.length) fail("A mod is listed twice");
+  return { gameVersion: parseModVersion(value.gameVersion, "The game version of the mods"), mods };
+}
+
+const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach", "gameMods"]);
 
 function parseJsonValue(value: unknown, what: string, depth: number): JsonValue {
   if (value === null || typeof value === "boolean" || typeof value === "string") return value;
@@ -180,6 +199,7 @@ export function parseManifest(value: unknown): ProjectManifest {
     customSignalGroups: parseArray(value.customSignalGroups ?? [], "Custom signal groups", LIMITS.customSignalGroups).map(parseCustomSignalGroup),
     circuits,
     ...(value.wireReach === undefined ? {} : { wireReach: parseWireReach(value.wireReach) }),
+    ...(value.gameMods === undefined ? {} : { gameMods: parseProjectMods(value.gameMods) }),
     ...(extras ? { extras } : {}),
   };
 }

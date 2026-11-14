@@ -9,6 +9,7 @@
 // lacks is answered like any unknown icon.
 import type { CatalogData, ModuleInfo } from "@face/catalog";
 import { iconTableFile, parseIconTable, type IconEntry } from "@face/catalog/icons";
+import { parseEntityTable } from "@face/model";
 import { LOCALE_SECTIONS, SPEAKER_LOCALE_SECTIONS, buildCatalog, type DumpSet } from "./build.mjs";
 import { DUMP_COMMANDS, STANDARD_MODULES, gameArguments, modSetId, readModuleInfos, type DumpCommand } from "./commands.ts";
 import { buildEntityTable, type EntityTableFile } from "./entities.mjs";
@@ -148,6 +149,18 @@ export function buildSingleSet({ raw, runtime, locale, modules, game, generator,
   }
 
   const entities = buildEntityTable(input, { lenient: true, generator });
-  const { entities: records, ...head } = entities.table;
-  return { catalog, icons, skippedIcons, entities: { ...head, mods: Object.fromEntries(mods.map((mod) => [mod.name, mod.version])), entities: records }, notes: entities.notes.filter((note) => note.startsWith(LEFT_OUT)), mods };
+  const { entities: derived, ...head } = entities.table;
+  const notes = entities.notes.filter((note) => note.startsWith(LEFT_OUT));
+  // Through the app's own reader, one record at a time, like the icons: what it would refuse (a default signal whose name is
+  // none the editor can hold) is left out and named, not the whole table.
+  const records = derived.filter((record) => {
+    try {
+      parseEntityTable({ ...head, entities: [record] });
+      return true;
+    } catch (error) {
+      notes.push(`${LEFT_OUT}${error instanceof Error ? error.message.replace(/^Entity table: /, "") : String(error)}`);
+      return false;
+    }
+  });
+  return { catalog, icons, skippedIcons, entities: { ...head, mods: Object.fromEntries(mods.map((mod) => [mod.name, mod.version])), entities: records }, notes, mods };
 }

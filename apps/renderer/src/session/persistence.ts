@@ -1,7 +1,7 @@
 // The project as a file: what was loaded, what is saved, and whether the two differ. Pure; the IPC calls are in the session.
 import { DEFAULT_WIRE_REACH } from "@face/model";
 import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
-import type { CircuitFile, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
+import type { CircuitFile, LoadedProject, ProjectData, ProjectManifest, ProjectMods } from "../../../desktop/src/ipc.ts";
 
 export const DEFAULT_FILE_NAME = "main.face";
 /** Longest project name: what the main process accepts in a manifest. */
@@ -67,9 +67,11 @@ export function isDirty(file: ProjectFile, source: string, settings: ProjectSett
 
 /**
  * What goes to disk: the loaded manifest with the current settings, the edited source and the untouched other files. The wire
- * reach is written only when it is not the default, so a project that never changed it has no such field.
+ * reach is written only when it is not the default, so a project that never changed it has no such field. `gameMods` is the
+ * record of the game the data in use was read from, when it was read from a game with mods (`modsRecord`): it replaces the
+ * project's record. Without it the project keeps the record it was loaded with.
  */
-export function toProjectData(file: ProjectFile, source: string, settings: ProjectSettings): ProjectData {
+export function toProjectData(file: ProjectFile, source: string, settings: ProjectSettings, gameMods?: ProjectMods): ProjectData {
   const circuits = file.manifest.circuits.length > 0 ? file.manifest.circuits : [file.fileName];
   const { wireReach: _loaded, ...loaded } = file.manifest;
   const manifest: ProjectManifest = {
@@ -78,6 +80,7 @@ export function toProjectData(file: ProjectFile, source: string, settings: Proje
     modules: sameModules(settings.modules, file.manifest.modules) ? file.manifest.modules : settings.modules,
     circuits,
     ...(settings.wireReach === DEFAULT_WIRE_REACH ? {} : { wireReach: settings.wireReach }),
+    ...(gameMods ? { gameMods } : {}),
   };
   const sources = new Map<string, string>([...file.otherFiles.map((other) => [other.name, other.source] as const), [file.fileName, source]]);
   return { manifest, files: circuits.map((name) => ({ name, source: sources.get(name) ?? "" })) };

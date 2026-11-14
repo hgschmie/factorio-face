@@ -1,5 +1,8 @@
 // Catalog services for one set of enabled modules: signal status for the language, display data for the views, the picker
 // tree and the module list of the project settings. Instances are immutable; a module change creates a new one.
+//
+// A catalog read from the user's game is of one set: everything the game had loaded is there, nothing can be switched, and
+// the module list of the project file is kept as it is (`fixed`).
 import {
   availableQualities, availableSignals, dependentModules, disableModule, enableModule, findSignal, isAvailable, pickerTree, resolveModules, speakerInstruments,
   type Catalog, type PickerGroup, type SpeakerInstrumentInfo,
@@ -14,6 +17,7 @@ export class CatalogService implements CatalogView, SignalResolver {
   /** Enabled modules the catalog knows, in catalog order. */
   readonly enabled: readonly string[];
   readonly unknownModules: readonly string[];
+  readonly modulesFixed: boolean;
   readonly modules: readonly ModuleView[];
   readonly qualities: readonly QualityOption[];
   /** The instruments of the speaker with their notes for these modules: with display names, and by name only as the language takes them. */
@@ -24,12 +28,16 @@ export class CatalogService implements CatalogView, SignalResolver {
   private tree: readonly PickerGroup[] | undefined;
   private registry: EntityRegistry | undefined;
 
-  /** `requested` is the module list of the project file; unknown names are reported, never dropped by this class. */
-  constructor(readonly catalog: Catalog, readonly requested: readonly string[]) {
-    const resolution = resolveModules(catalog.modules, requested);
+  /**
+   * `requested` is the module list of the project file; unknown names are reported, never dropped by this class. `fixed`: the
+   * catalog is of one game as it was loaded, so all its modules are enabled whatever the project asks for.
+   */
+  constructor(readonly catalog: Catalog, readonly requested: readonly string[], fixed = false) {
+    const resolution = resolveModules(catalog.modules, fixed ? catalog.modules.map((module) => module.name) : requested);
     this.gameVersion = catalog.game.version;
+    this.modulesFixed = fixed;
     this.enabled = resolution.enabled;
-    this.unknownModules = resolution.unknown;
+    this.unknownModules = fixed ? [] : resolution.unknown;
     this.active = new Set(resolution.enabled);
     const selectable = availableQualities(catalog, this.active).filter((quality) => !quality.hidden);
     // Without the quality module only "normal" exists, and a choice of one is no choice.
@@ -43,7 +51,7 @@ export class CatalogService implements CatalogView, SignalResolver {
         title: module.title,
         version: module.version,
         enabled,
-        canDisable: module.requires.length > 0,
+        canDisable: !fixed && module.requires.length > 0,
         enables: enabled ? [] : enableModule(catalog.modules, this.active, module.name, { withRecommended: true }).changed.filter((name) => name !== module.name),
         disables: enabled ? dependentModules(catalog.modules, this.active, module.name) : [],
         missing: resolution.missing.find((entry) => entry.module === module.name)?.requires ?? [],
@@ -55,7 +63,7 @@ export class CatalogService implements CatalogView, SignalResolver {
   /** The module list after switching one module, with its dependencies or dependents. Unknown names are kept at the end. */
   withModule(name: string, enabled: boolean): readonly string[] | undefined {
     const module = this.catalog.modules.find((candidate) => candidate.name === name);
-    if (!module || enabled === this.active.has(name) || (!enabled && module.requires.length === 0)) return undefined;
+    if (!module || this.modulesFixed || enabled === this.active.has(name) || (!enabled && module.requires.length === 0)) return undefined;
     const change = enabled ? enableModule(this.catalog.modules, this.active, name, { withRecommended: true }) : disableModule(this.catalog.modules, this.active, name);
     return [...change.enabled, ...this.unknownModules];
   }

@@ -99,6 +99,18 @@ describe("single-set build of a made-up dump", () => {
     ]);
   });
 
+  it("leaves out a wired entity that the editor's own reader refuses, and keeps the others", () => {
+    // A default signal with a name the editor's signal keys cannot hold.
+    const spaced = wired("spaced-lamp", { default_output_signal: { type: "item", name: "odd name" } });
+    const more = buildSingleSet({
+      raw: { ...raw, lamp: { ...raw.lamp, "spaced-lamp": spaced } },
+      runtime: { ...runtime, entity: [...runtime.entity, { ...signal("spaced-lamp", "lamp"), items_to_place_this: {} }], circuit_entities: [...runtime.circuit_entities, fact("spaced-lamp", "lamp")] },
+      locale, modules, ...HEAD,
+    });
+    expect(parseEntityTable(more.entities).entities.map((entity) => entity.name)).toEqual(["lamp"]);
+    expect(more.notes).toEqual([...built.notes, 'left out: spaced-lamp: signal output is "item:odd name"']);
+  });
+
   it("refuses a dump that is not one", () => {
     const input = { raw, runtime, locale, modules, ...HEAD };
     expect(() => buildSingleSet({ ...input, raw: [] })).toThrow(/data dump is not a table/);

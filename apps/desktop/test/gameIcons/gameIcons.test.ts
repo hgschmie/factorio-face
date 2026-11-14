@@ -204,6 +204,26 @@ describe("game icons", () => {
     expect(pixel(await decoded(icons, "item/red"), 5, 5)).toEqual(BLUE);
   });
 
+  it("switches to another icon table: the ids of the old one are gone and nothing rendered from it is kept", async () => {
+    const icons = serving(data);
+    expect(pixel(await decoded(icons, "item/red"), 5, 5)).toEqual(RED);
+    const before = icons.revision;
+    // The table of other game data: the id of the old one is not in it, and its own id is made of another file.
+    icons.setTable(parseIconTable({ schema: 1, game: { version: "2.1.30" }, icons: { "item/other": [path("linked")] } }));
+    expect(icons.revision).toBe(before + 1);
+    expect(icons.covers("item/red")).toBe(false);
+    expect(await icons.icon("item/red")).toBeUndefined();
+    expect(icons.covers("item/other")).toBe(true);
+    expect(await icons.icon("item/other")).toBeDefined();
+    icons.setTable(table);
+    expect(await icons.icon("item/other")).toBeUndefined();
+    expect(pixel(await decoded(icons, "item/red"), 5, 5)).toEqual(RED);
+    // Without an installation there is nothing to render, whatever the table.
+    const none = new GameIcons(table);
+    none.setTable(table);
+    expect(none.covers("item/red")).toBe(false);
+  });
+
   it("starts at revision 0 and counts every change", () => {
     const icons = new GameIcons(table);
     expect(icons.revision).toBe(0);

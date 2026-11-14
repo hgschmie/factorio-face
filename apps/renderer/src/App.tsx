@@ -1,7 +1,9 @@
 // Composition root of the renderer: the project session provides state and commands, the catalog provides names and icons,
-// the application settings say which installation of the game the icons come from, and the workbench renders all of it.
-// Nothing below this component knows where its props come from.
+// the application settings say which installation of the game the icons come from and which data the editor works with, and
+// the workbench renders all of it. Nothing below this component knows where its props come from.
 import { useCallback, useMemo } from "react";
+import type { DataInUse } from "./gameData/dataInUse.ts";
+import { useGameData } from "./gameData/useGameData.ts";
 import { useCatalogEntityIcons } from "./icons/catalogEntityIcons.ts";
 import { useCatalogIcons } from "./icons/catalogSignalIcons.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "./inspector/SignalField.tsx";
@@ -13,10 +15,17 @@ import { Workbench } from "./workbench/Workbench.tsx";
 
 const STATUS_WARNINGS = { known: undefined, unknown: "Not a signal of Factorio's catalog", disabled: "Belongs to a signal group that is switched off" } as const;
 
-export function App() {
+export interface AppProps {
+  /** The game data the window works with, applied before anything was rendered. */
+  readonly data: DataInUse;
+}
+
+export function App({ data }: AppProps) {
   const api = window.face;
-  const controller = useProjectSession(api);
+  const controller = useProjectSession(api, data);
   const appSettings = useAppSettings(api);
+  // The installation decides whether the game can be read; its state is asked for again when it changes.
+  const gameData = useGameData(api, controller.commands.reloadWindow, appSettings?.state);
   // Another installation of the game: the same icon ids have other images, which a new revision in the URLs makes the views fetch.
   const iconRevision = appSettings?.state?.iconRevision ?? 0;
   const resolveEntityIcon = useCatalogEntityIcons(api?.catalogAssetUrl, iconRevision);
@@ -42,6 +51,8 @@ export function App() {
       controller={controller}
       api={api}
       appSettings={appSettings}
+      gameData={gameData}
+      dataProblem={data.problem}
       iconsMissing={iconStatus === "missing"}
       resolveEntityIcon={resolveEntityIcon}
       resolveWireIcon={resolveWireIcon}

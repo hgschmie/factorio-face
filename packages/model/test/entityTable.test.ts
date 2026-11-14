@@ -3,7 +3,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import data from "../data/entities-2.1.24.json" with { type: "json" };
 import {
-  DEFAULT_WIRE_REACH, entityTable, hasOwnWireReach, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, setEntityTable, STANDARD_ENTITY_TABLE, STANDARD_WIRE_REACH, tileSize, wireReachBetween,
+  DEFAULT_WIRE_REACH, entityTable, hasOwnWireReach, missingEditorPrototypes, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, setEntityTable, STANDARD_ENTITY_TABLE, STANDARD_WIRE_REACH, tileSize, wireReachBetween,
   type EntityPrototype,
 } from "../src/index.ts";
 
@@ -149,6 +149,9 @@ describe("another entity table", () => {
 
   it("is refused, and nothing changes, when it lacks a prototype the editor has", () => {
     const without = parseEntityTable(tableWith((records) => records.filter((record) => record.name !== "substation").map((record) => (record.name === "small-lamp" ? { ...record, width: 2 } : record))));
+    expect(missingEditorPrototypes(without)).toEqual(["substation"]);
+    expect(missingEditorPrototypes(STANDARD_ENTITY_TABLE)).toEqual([]);
+    expect(missingEditorPrototypes(parseEntityTable(tableWith(() => [])))).toHaveLength(10);
     expect(() => setEntityTable(without)).toThrow("The entity table of Factorio 2.1.24 has no substation");
     expect(entityTable()).toBe(STANDARD_ENTITY_TABLE);
     expect(PROTOTYPES["small-lamp"].width).toBe(1);

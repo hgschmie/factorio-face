@@ -13,3 +13,19 @@ export function loadStandardCatalog(): Catalog {
   cached ??= createCatalog(data as unknown as CatalogData);
   return cached;
 }
+
+let current: Catalog | undefined;
+
+/** The catalog the editor works with: the standard one unless another was set. */
+export function currentCatalog(): Catalog {
+  return current ?? loadStandardCatalog();
+}
+
+/**
+ * Replaces the catalog the editor works with, for one made from the user's own game (`createCatalog`); undefined returns to
+ * the standard one. Call it at start, with `setEntityTable` of the model, before a circuit is loaded: what was made from the
+ * catalog before does not follow.
+ */
+export function setCatalog(next: Catalog | undefined): void {
+  current = next;
+}

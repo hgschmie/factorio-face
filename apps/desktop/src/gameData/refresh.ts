@@ -2,12 +2,13 @@
 // in isolation (runner.ts) and builds the data from the dump (dump.ts). Only ever called because the user asked for it. Free
 // of Electron; what to do with the result (the cache, the windows) is the caller's.
 import type { IconTable } from "@face/catalog/icons";
+import { dirname, isAbsolute, normalize } from "node:path";
 import type { GameInstallation, Host } from "../gameInstallation.ts";
 import { buildGameData, readDump } from "./dump.ts";
 import { locateGameExecutable } from "./executable.ts";
 import type { GameData, GameDataKey } from "./gameData.ts";
 import { runGameDump, type GameRunOptions, type RunFailure, type RunProgress, type RunReport } from "./runner.ts";
-import { buildPrivateModDirectory, enabledMods, locateUserData, noUserMods, readUserMods, watchedUserFiles, type UserMods } from "./userMods.ts";
+import { buildPrivateModDirectory, enabledMods, locateUserData, noUserMods, readUserMods, watchedUserFiles, type UserDataLocation, type UserMods } from "./userMods.ts";
 
 /** The first release whose `--test-scenario` runs the runtime scenario headless. */
 export const MINIMUM_GAME_VERSION = "2.1.24";
@@ -51,6 +52,23 @@ interface Prepared {
   readonly watch: readonly string[];
 }
 
+/**
+ * FACE_GAME_MODS_DIR: the mod directory the game is read with, in place of the user's. For tests and development, like
+ * FACE_GAME_DIR: with it the app looks at nothing of the user's own game files, and the folder around it stands for the
+ * game's folder of the user's files.
+ */
+export function modDirectoryFromEnv(env: Readonly<Record<string, string | undefined>>): string | undefined {
+  const directory = env.FACE_GAME_MODS_DIR;
+  if (directory === undefined || directory === "") return undefined;
+  if (!isAbsolute(directory)) throw new Error(`FACE_GAME_MODS_DIR must be an absolute path: ${directory}`);
+  return normalize(directory);
+}
+
+async function userDataLocation(dataDirectory: string, host: Host): Promise<UserDataLocation | undefined> {
+  const modDirectory = modDirectoryFromEnv(host.env);
+  return modDirectory === undefined ? locateUserData(dataDirectory, host) : { writeData: dirname(modDirectory), modDirectory, decidedBy: "FACE_GAME_MODS_DIR" };
+}
+
 function isOlder(version: string, minimum: string): boolean {
   const [a, b] = [version.split(".").map(Number), minimum.split(".").map(Number)];
   return (a[0]! - b[0]! || a[1]! - b[1]! || a[2]! - b[2]!) < 0;
@@ -61,7 +79,7 @@ async function prepare(installation: GameInstallation, host: Host): Promise<({ r
   const program = await locateGameExecutable(installation.dataDirectory, host.platform);
   if (!program.ok) return { ok: false, failure: "no-executable", message: program.message };
   // A platform without a known folder for the user's files is a game without mods.
-  const location = await locateUserData(installation.dataDirectory, host);
+  const location = await userDataLocation(installation.dataDirectory, host);
   const mods = location ? await readUserMods(location.modDirectory) : noUserMods();
   const key: GameDataKey = { version: installation.version, mods: enabledMods(mods, installation.modules), modSettings: mods.settingsHash };
   const plan: GameReadPlan = { executable: program.executable, steam: program.steam, modDirectory: mods.exists ? mods.directory : null, key, problems: mods.problems };

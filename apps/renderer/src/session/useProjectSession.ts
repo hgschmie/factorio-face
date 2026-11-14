@@ -1,6 +1,7 @@
 // React binding of the project session. The session object is created once and lives as long as the component.
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { FaceApi } from "../../../desktop/src/ipc.ts";
+import type { DataInUse } from "../gameData/dataInUse.ts";
 import type { WorkbenchCommands, WorkbenchController, WorkbenchState } from "../workbench/controller.ts";
 import { ProjectSession } from "./projectSession.ts";
 
@@ -16,8 +17,9 @@ declare global {
   }
 }
 
-export function useProjectSession(api: FaceApi | undefined): WorkbenchController {
-  const [session] = useState(() => new ProjectSession({ api }));
+/** `data`: the game data the window works with, already applied (`loadDataInUse`). */
+export function useProjectSession(api: FaceApi | undefined, data?: DataInUse): WorkbenchController {
+  const [session] = useState(() => new ProjectSession({ api, data }));
   // The window shows the empty project at once; the project that was open last replaces it when it has been read.
   useEffect(() => void session.start(), [session]);
   useEffect(() => {

@@ -1,6 +1,6 @@
 import type { Entity, EntityId } from "@face/model";
 import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
-import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
+import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, GameDataStatus, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
 import { ProjectSession, type SessionOptions } from "../../src/session/projectSession.ts";
 import type { Scheduler } from "../../src/session/simulationRunner.ts";
@@ -96,9 +96,13 @@ export interface FakeDesktop {
   blueprintPath: string | null;
   /** What was written there. */
   readonly blueprintExports: ExportBlueprintRequest[];
+  /** How often the window was asked to be loaded again. */
+  reloads: number;
 }
 
 const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: "2.1.24", versionMatch: null, modules: [], problem: null, iconRevision: 0 };
+
+const BUILT_IN_DATA: GameDataStatus = { inUse: { kind: "built-in", version: "2.1.24" }, pending: null, stale: false, unavailable: "No Factorio installation is in use.", problem: null, discardable: false, run: { state: "idle" } };
 
 /** An in-memory stand-in for the desktop bridge. Data is cloned on the way in and out, like over IPC. */
 export function fakeDesktop(): FakeDesktop {
@@ -115,6 +119,7 @@ export function fakeDesktop(): FakeDesktop {
     blueprintFile: null,
     blueprintPath: "/blueprints/exported.txt",
     blueprintExports: [],
+    reloads: 0,
     api: {
       platform: "test",
       catalogAssetUrl: "face-asset://catalog/",
@@ -160,6 +165,16 @@ export function fakeDesktop(): FakeDesktop {
       chooseGameFolder: () => ok(null),
       resetGameFolder: () => ok(NO_GAME),
       onAppSettingsChanged: () => () => undefined,
+      getGameData: () => ok({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null }),
+      getGameDataStatus: () => ok(BUILT_IN_DATA),
+      readGameData: () => ok(BUILT_IN_DATA),
+      cancelGameDataRead: () => ok(BUILT_IN_DATA),
+      discardGameData: () => ok(BUILT_IN_DATA),
+      applyGameData: () => {
+        desktop.reloads++;
+        return ok(null);
+      },
+      onGameDataRunChanged: () => () => undefined,
       setDirty: (dirty) => void desktop.dirtyReports.push(dirty),
       onMenuCommand: () => () => undefined,
       onSaveBeforeClose: () => () => undefined,

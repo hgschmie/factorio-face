@@ -90,7 +90,7 @@ test("shows the installation in the settings dialog, which opens from the menu a
     await expect(dialog.locator('[data-fact="version"] dd')).toHaveText("Factorio 2.1.24");
     await expect(dialog.locator('[data-fact="modules"] dd')).toContainText("base, core, quality, elevated-rails");
     await expect(dialog.locator('[data-fact="modules"] [data-missing]')).toHaveText("Not installed: space-age, recycler. Their icons are shown as placeholders.");
-    await expect(dialog).toContainText("The app only reads icon images from this folder. It does not start the game and writes nothing there.");
+    await expect(dialog).toContainText("The app reads icon images from this folder and writes nothing there. It starts the game only when you ask it to read the game data below.");
     await expect(dialog.getByRole("button", { name: "Choose..." })).toBeEnabled();
     await expect(dialog.getByRole("button", { name: "Reset to auto-detect" })).toBeDisabled();
     await expect(dialog.getByRole("alert")).toHaveCount(0);

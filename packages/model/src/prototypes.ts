@@ -59,9 +59,18 @@ function kindOf(prototype: EntityPrototype): EntityKind | undefined {
   return Object.hasOwn(ENTITY_SETTINGS, prototype.type) ? "entity" : undefined;
 }
 
+/**
+ * The prototypes with a kind of their own that a table lacks: none for a table the editor can work with. `setEntityTable` throws
+ * for any other one, so whoever takes a table from elsewhere (a user's own game) asks here first.
+ */
+export function missingEditorPrototypes(table: EntityTable): string[] {
+  return DEDICATED_NAMES.filter((name) => !table.byName.has(name));
+}
+
 /** The rows of `PROTOTYPES` from a table: the ten with a kind of their own first, then the others by name. Throws when the table lacks one of the ten. */
 function rowsOf(table: EntityTable): [PrototypeName, PrototypeData][] {
-  for (const name of DEDICATED_NAMES) if (!table.byName.has(name)) throw new Error(`The entity table of Factorio ${table.game.version} has no ${name}`);
+  const [missing] = missingEditorPrototypes(table);
+  if (missing !== undefined) throw new Error(`The entity table of Factorio ${table.game.version} has no ${missing}`);
   const generic = table.entities.filter((prototype) => kindOf(prototype) === "entity").map((prototype) => prototype.name);
   return [...DEDICATED_NAMES, ...generic].map((name): [PrototypeName, PrototypeData] => {
     const game = table.byName.get(name)!;

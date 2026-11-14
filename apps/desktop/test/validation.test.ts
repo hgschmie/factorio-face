@@ -172,6 +172,38 @@ describe("manifest", () => {
     expect(() => parseManifest(value)).toThrow(ValidationError);
   });
 
+  it("takes an optional record of the game and the mods a project was made with, and writes it back as a known field", () => {
+    const gameMods = { gameVersion: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "Some Mod_2.x", version: "1.2.3" }] };
+    expect(parseManifest(manifest)).not.toHaveProperty("gameMods");
+    expect(parseManifest({ ...manifest, gameMods })).toEqual({ ...manifest, gameMods });
+    expect(parseManifest({ ...manifest, gameMods: { gameVersion: "2.1.24", mods: [] } }).gameMods).toEqual({ gameVersion: "2.1.24", mods: [] });
+    // What is not part of the record is dropped from it; unknown fields beside it stay unknown fields.
+    const parsed = parseManifestFile({ ...manifest, gameMods: { ...gameMods, note: "x", mods: gameMods.mods.map((mod) => ({ ...mod, enabled: true })) }, later: true });
+    expect(parsed).toEqual({ ...manifest, gameMods, extras: { later: true } });
+    expect(Object.keys(manifestFileContent(parsed))).toEqual(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "gameMods", "later"]);
+    const many = { gameVersion: "2.1.24", mods: Array.from({ length: LIMITS.projectMods }, (_, index) => ({ name: `mod-${index}`, version: "0.0.1" })) };
+    expect(parseManifest({ ...manifest, gameMods: many }).gameMods?.mods).toHaveLength(LIMITS.projectMods);
+  });
+
+  it.each([
+    ["not an object", ["base"]],
+    ["without a game version", { mods: [] }],
+    ["with a game version that is none", { gameVersion: "latest", mods: [] }],
+    ["without a list", { gameVersion: "2.1.24" }],
+    ["with a mod that is a name alone", { gameVersion: "2.1.24", mods: ["base"] }],
+    ["with a mod without a version", { gameVersion: "2.1.24", mods: [{ name: "base" }] }],
+    ["with a version that is none", { gameVersion: "2.1.24", mods: [{ name: "base", version: "1.0" }] }],
+    ["with an empty name", { gameVersion: "2.1.24", mods: [{ name: "", version: "1.0.0" }] }],
+    ["with a control character in a name", { gameVersion: "2.1.24", mods: [{ name: "a\u001bb", version: "1.0.0" }] }],
+    ["with a name that is too long", { gameVersion: "2.1.24", mods: [{ name: "x".repeat(LIMITS.identifierLength + 1), version: "1.0.0" }] }],
+    ["with a mod twice", { gameVersion: "2.1.24", mods: [{ name: "a", version: "1.0.0" }, { name: "a", version: "1.0.1" }] }],
+    ["with too many mods", { gameVersion: "2.1.24", mods: Array.from({ length: LIMITS.projectMods + 1 }, (_, index) => ({ name: `mod-${index}`, version: "0.0.1" })) }],
+  ])("rejects a record of the mods %s", (_name, gameMods) => {
+    expect(() => parseManifest({ ...manifest, gameMods })).toThrow(ValidationError);
+    expect(() => parseManifestFile({ ...manifest, gameMods })).toThrow(ValidationError);
+    expect(() => parseManifest({ ...manifest, extras: { gameMods } })).toThrow(ValidationError);
+  });
+
   it("takes an optional wire reach from 0 (unlimited) to 64 tiles, fractions included, and leaves an absent one absent", () => {
     expect(parseManifest(manifest)).not.toHaveProperty("wireReach");
     expect(parseManifestFile(manifest)).not.toHaveProperty("wireReach");

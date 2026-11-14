@@ -7,7 +7,7 @@
 // - analysis results are only taken over for the document version they were requested for;
 // - nothing in the simulation path touches the document.
 import type { Extension, Transaction } from "@codemirror/state";
-import { loadStandardCatalog, type Catalog } from "@face/catalog";
+import { currentCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
 import { canRotate, DEFAULT_FACING, facingOf, isWireReach, prototypeOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
@@ -15,6 +15,8 @@ import { DEFAULT_MODULES } from "../../../desktop/src/emptyProject.ts";
 import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
+import { builtInData, type DataInUse } from "../gameData/dataInUse.ts";
+import { describeRecord, modsNotice, modsRecord } from "../gameData/projectMods.ts";
 import { rotated } from "../entities/facing.ts";
 import {
   DISPLAY_CAPABILITIES, DISPLAY_MODES, placeFacing, sameTool, SELECT_TOOL, toolAllowed,
@@ -46,6 +48,12 @@ export interface SessionOptions {
   /** The desktop bridge; without it the session works, but projects cannot be opened or saved. */
   readonly api?: FaceApi;
   readonly catalog?: Catalog;
+  /**
+   * Where the catalog and the model's entity table come from (`loadDataInUse`, which has applied them). With data read from a
+   * game the modules are fixed, a save records the game's mods in the project file, and a project that was made with another
+   * game says so when it is opened. Defaults to the built-in data.
+   */
+  readonly data?: DataInUse;
   /** Editor behaviour and appearance added to the document state. Defaults to the workbench's editor chrome. */
   readonly editorExtensions?: Extension;
   readonly scheduler?: Scheduler;
@@ -65,6 +73,9 @@ export class ProjectSession {
   readonly simulation: SimulationRunner;
   private readonly api: FaceApi | undefined;
   private readonly catalog: Catalog;
+  private readonly data: DataInUse;
+  /** The catalog is of one game as it was loaded: its modules are all on. */
+  private readonly fixedModules: boolean;
   private readonly analysis = new Analysis();
   private services: CatalogService;
   private file: ProjectFile;
@@ -103,11 +114,13 @@ export class ProjectSession {
 
   constructor(options: SessionOptions = {}) {
     this.api = options.api;
-    this.catalog = options.catalog ?? loadStandardCatalog();
+    this.catalog = options.catalog ?? currentCatalog();
+    this.data = options.data ?? builtInData();
+    this.fixedModules = this.data.source.kind === "game";
     const { file, source, settings } = openProjectFile(options.project ?? emptyProject());
     this.file = file;
     this.settings = settings;
-    this.services = new CatalogService(this.catalog, settings.modules);
+    this.services = this.servicesFor(settings.modules);
     this.simulation = new SimulationRunner(createCatalogEnvironment(this.catalog, this.services.enabled), () => this.touch(), options.scheduler);
     const language = languageSupport({ parseOf: (text) => (this.analysis.parse?.source === text ? this.analysis.parse : undefined), catalog: () => this.services });
     this.document = new SourceDocument(source, [options.editorExtensions ?? editorChrome(), language], {
@@ -180,7 +193,9 @@ export class ProjectSession {
 
   private buildState(): WorkbenchState {
     const dirty = isDirty(this.file, this.document.text, this.settings);
-    const project: ProjectView = { name: this.settings.name, path: this.file.path, fileName: this.file.fileName, dirty, wireReach: this.settings.wireReach, epoch: this.epoch };
+    const record = this.file.manifest.gameMods;
+    const madeWith = record ? describeRecord(record) : null;
+    const project: ProjectView = { name: this.settings.name, path: this.file.path, fileName: this.file.fileName, dirty, wireReach: this.settings.wireReach, epoch: this.epoch, madeWith, modsNotice: this.modsNotice() };
     // The view keeps its identity while nothing in it changed.
     const shown = this.projectView;
     if (!shown || (Object.keys(project) as (keyof ProjectView)[]).some((key) => project[key] !== shown[key])) this.projectView = project;
@@ -203,6 +218,16 @@ export class ProjectSession {
       draft,
       error: this.error,
     };
+  }
+
+  private servicesFor(modules: readonly string[]): CatalogService {
+    return new CatalogService(this.catalog, modules, this.fixedModules);
+  }
+
+  /** What the game the project was made with had that the data in use has not; null without a record or a difference. */
+  private modsNotice(): string | null {
+    const record = this.file.manifest.gameMods;
+    return record ? modsNotice(record, this.data) : null;
   }
 
   // Document and analysis
@@ -528,8 +553,18 @@ export class ProjectSession {
       openExample: async (file) => void (await this.replaceProject((api) => api.openExample(file))),
       save: () => this.writeProject(false),
       saveAs: () => this.writeProject(true),
+      reloadWindow: async () => {
+        const api = this.api;
+        if (!api) {
+          this.fail(NO_DESKTOP);
+          return false;
+        }
+        await this.started;
+        if (!(await this.mayReplaceProject(api))) return false;
+        return this.unwrap(await api.applyGameData()) !== undefined;
+      },
 
-      readBlueprint: (text, select) => readBlueprint(text, (this.importInstruments ??= new CatalogService(this.catalog, DEFAULT_MODULES).instruments), select),
+      readBlueprint: (text, select) => readBlueprint(text, (this.importInstruments ??= this.servicesFor(DEFAULT_MODULES).instruments), select),
       // The main process hands out the empty project and learns by it that the window shows a project without a file.
       openBlueprint: (blueprint) =>
         this.replaceProject(async (api) => {
@@ -569,7 +604,7 @@ export class ProjectSession {
     const reachChanged = settings.wireReach !== this.settings.wireReach;
     this.settings = settings;
     if (modulesChanged) {
-      this.services = new CatalogService(this.catalog, settings.modules);
+      this.services = this.servicesFor(settings.modules);
       this.simulation.setEnvironment(createCatalogEnvironment(this.catalog, this.services.enabled));
     }
     if (modulesChanged || reachChanged) this.analyze();
@@ -594,12 +629,15 @@ export class ProjectSession {
       this.coalesce = undefined;
       this.pendingSelection = undefined;
       this.lintShown = 0;
-      this.services = new CatalogService(this.catalog, settings.modules);
+      this.services = this.servicesFor(settings.modules);
       this.simulation.clear();
       this.simulation.setSelection(this.selection);
       this.simulation.setEnvironment(createCatalogEnvironment(this.catalog, this.services.enabled));
       this.analysis.reset();
       this.document.replace(source);
+      // The project opens whatever game it was made with; what the data in use lacks of it is said once, and stays in the project settings.
+      const notice = this.modsNotice();
+      if (notice !== null) this.show(notice);
     });
   }
 
@@ -644,7 +682,7 @@ export class ProjectSession {
     const file = this.file;
     const source = this.document.text;
     const settings = this.settings;
-    const data = toProjectData(file, source, settings);
+    const data = toProjectData(file, source, settings, modsRecord(this.data));
     const saved = this.unwrap(saveAs ? await api.saveProjectAs(data) : await api.saveProject({ path: file.path, data }));
     if (!saved) return false;
     if (this.file === file) this.change(() => void (this.file = savedProjectFile(file, saved.path, data, source, settings)));

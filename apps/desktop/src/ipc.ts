@@ -2,6 +2,8 @@
 // Main and preload import it at runtime; the renderer imports its types, and constants only through the pure modules it shares with
 // the main process (emptyProject.ts). Keep it free of Node and Electron imports.
 
+import type { CatalogData } from "@face/catalog";
+
 export const APP_NAME = "FActorio Circuit Editor";
 export const APP_ID = "de.softwareforge.face";
 
@@ -40,6 +42,8 @@ export const LIMITS = {
   customSignalGroups: 256,
   customSignalsPerGroup: 4096,
   identifierLength: 200,
+  /** Entries of the record of the mods a project was made with, the game's own modules included. */
+  projectMods: 2000,
   recentProjects: 10,
   /** Example projects listed from the examples directory. */
   examples: 64,
@@ -71,6 +75,23 @@ export interface CustomSignalGroup {
   readonly signals: readonly CustomSignal[];
 }
 
+/** Something a game had loaded, a module of its own or a mod, by its own account. */
+export interface GameMod {
+  readonly name: string;
+  readonly version: string;
+}
+
+/**
+ * The game a project was made with, when the editor's data was read from a game with mods: `gameMods` in face.json. A project
+ * opens whatever it says; the editor compares it with the data in use and tells the user what differs.
+ */
+export interface ProjectMods {
+  /** The release of the game the data was read from. */
+  readonly gameVersion: string;
+  /** What that game had loaded: its own modules, then the mods by name. */
+  readonly mods: readonly GameMod[];
+}
+
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
 export interface ProjectManifest {
@@ -84,6 +105,8 @@ export interface ProjectManifest {
   readonly circuits: readonly string[];
   /** How far apart two entities may be for a circuit wire, in tiles (`WIRE_REACH_RANGE` of @face/model, 0 means unlimited); wires that span more are flagged. Absent: the default, 9. */
   readonly wireReach?: number;
+  /** Written while the data in use was read from a game with mods; kept as it is while other data is in use. */
+  readonly gameMods?: ProjectMods;
   /**
    * Top-level fields of face.json that this version does not know. They are read into this record and written back as
    * top-level fields, so a project touched by a newer version survives a save. Absent when there are none.
@@ -179,6 +202,53 @@ export interface AppSettingsState {
   readonly iconRevision: number;
 }
 
+// The entity and signal data the editor works with: the one that comes with the build, or one read from the user's own game.
+
+export type GameDataSource =
+  | { readonly kind: "built-in"; readonly version: string }
+  | { readonly kind: "game"; readonly version: string; readonly build?: number; /** When the game was read, ISO 8601. */ readonly readAt: string; /** Mods beside the game's own modules. */ readonly mods: number };
+
+/** The steps of reading the game: the folder of the run, the three headless starts of the game, the tables. */
+export type GameReadStep = "prepare" | "data" | "locale" | "runtime" | "collect";
+
+/** Where a request to read the game stands. `done`, `failed` and `cancelled` stay until the next request. */
+export type GameDataRun =
+  | { readonly state: "idle" }
+  /** The native confirmation is open; nothing has been started. */
+  | { readonly state: "confirming" }
+  | { readonly state: "running"; readonly step: GameReadStep; /** From 1. */ readonly index: number; readonly count: number; /** ISO 8601. */ readonly startedAt: string }
+  | { readonly state: "done"; /** What the user should know although it worked. */ readonly warnings: readonly string[]; readonly steps: readonly { readonly step: GameReadStep; readonly seconds: number }[] }
+  | { readonly state: "failed"; readonly message: string; /** The end of what the game printed, as plain text. */ readonly log: string; readonly warnings: readonly string[] }
+  | { readonly state: "cancelled" };
+
+export interface GameDataStatus {
+  /** The data this window was given when it loaded. */
+  readonly inUse: GameDataSource;
+  /** The data the window gets when it is loaded again, when that is other data: after a read, or after going back to the built-in data. */
+  readonly pending: GameDataSource | null;
+  /** The game or its mods are not the ones the data in use was read from, as far as their files say. False for the built-in data. */
+  readonly stale: boolean;
+  /** Why the game cannot be read (no installation, an installation without the program, too old); null when it can. */
+  readonly unavailable: string | null;
+  /** Why data that was read earlier is not in use (a damaged file); the built-in data is. */
+  readonly problem: string | null;
+  /** There is something to discard: data read from a game, in use or waiting, or a file that cannot be used. */
+  readonly discardable: boolean;
+  readonly run: GameDataRun;
+}
+
+/** What a window works with. The tables are null for the built-in data, which the renderer has itself. */
+export interface GameDataInUse {
+  readonly source: GameDataSource;
+  readonly problem: string | null;
+  /** What the game had loaded: its own modules, then the mods. Empty for the built-in data. */
+  readonly mods: readonly GameMod[];
+  /** As `packages/catalog/data/catalog-<version>.json`. */
+  readonly catalog: CatalogData | null;
+  /** As `packages/model/data/entities-<version>.json`. */
+  readonly entities: Readonly<Record<string, unknown>> | null;
+}
+
 /** Every invoke returns a result instead of rejecting, so errors cross the process boundary as plain data. */
 export type IpcResult<T> = { readonly ok: true; readonly value: T } | { readonly ok: false; readonly error: string };
 
@@ -238,6 +308,13 @@ export const CHANNELS = {
   chooseGameFolder: "face:app-settings:choose-game-folder",
   resetGameFolder: "face:app-settings:reset-game-folder",
   appSettingsChanged: "face:app-settings:changed",
+  getGameData: "face:game-data:get",
+  getGameDataStatus: "face:game-data:status",
+  readGameData: "face:game-data:read",
+  cancelGameDataRead: "face:game-data:cancel",
+  discardGameData: "face:game-data:discard",
+  applyGameData: "face:game-data:apply",
+  gameDataRunChanged: "face:game-data:run-changed",
   setDirty: "face:dirty",
   menuCommand: "face:menu-command",
   saveBeforeClose: "face:save-before-close",
@@ -296,6 +373,28 @@ export interface FaceApi {
   resetGameFolder(): Promise<IpcResult<AppSettingsState>>;
   /** Called after the game installation in use changed. */
   onAppSettingsChanged(listener: (state: AppSettingsState) => void): () => void;
+  /** The data this window works with: what it must apply before it reads a circuit. Takes no arguments. */
+  getGameData(): Promise<IpcResult<GameDataInUse>>;
+  /** Where the data comes from, whether the game changed since, whether the game can be read, and where a request to read it stands. */
+  getGameDataStatus(): Promise<IpcResult<GameDataStatus>>;
+  /**
+   * Asks the user, in a native dialog of the main process, whether the installed game may be run, and runs it when they agree: headless,
+   * isolated, to read the entity and signal data with the user's mods. Takes no arguments: the program is the one of the installation in
+   * use. Resolves when that has ended, with the outcome in `run`; at once, and without a second dialog, while a request is under way.
+   * The data that was read is used from the next load of the window (`pending`).
+   */
+  readGameData(): Promise<IpcResult<GameDataStatus>>;
+  /** Stops the game when it is being read. */
+  cancelGameDataRead(): Promise<IpcResult<GameDataStatus>>;
+  /** Forgets the data read from the game: the built-in data applies from the next load of the window. Refused while the game is being read. */
+  discardGameData(): Promise<IpcResult<GameDataStatus>>;
+  /**
+   * Loads the window again, which is how other data is applied (`pending`): the page starts over and asks for its data. The renderer
+   * asks about unsaved changes first; what is not saved is gone. Refused while the game is being read.
+   */
+  applyGameData(): Promise<IpcResult<null>>;
+  /** Called whenever a request to read the game moves on. */
+  onGameDataRunChanged(listener: (run: GameDataRun) => void): () => void;
   /** Dirty-state handshake: main prompts on window close while the renderer reports unsaved changes. */
   setDirty(dirty: boolean): void;
   onMenuCommand(listener: (command: MenuCommand) => void): () => void;

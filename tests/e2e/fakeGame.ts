@@ -3,7 +3,9 @@
 import type { ElectronApplication } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
+import { executablePath } from "../../apps/desktop/src/gameData/executable.ts";
 import { decodePng, encodePng } from "../../apps/desktop/src/gameIcons/png.ts";
+import { writeCannedDump, writeFakeGame as writeFakeProgram, type CannedDump, type FakeGameControl } from "../../apps/desktop/test/support/cannedDump.ts";
 import { GAMES_DIR } from "./app.ts";
 
 export type Color = readonly [number, number, number, number];
@@ -54,6 +56,38 @@ export async function writeFakeGame({ version = "2.1.24", modules = ["space-age"
   for (const name of ["base", ...modules]) await write(`${name}/info.json`, JSON.stringify({ name, version, title: name, dependencies: [] }));
   for (const [file, color] of Object.entries({ [SIGNAL_A_FILE]: RED, ...icons })) await write(file, iconStrip(color));
   return { folder, dataDirectory };
+}
+
+export interface FakeProgram {
+  /** The program beside the installation's data: what the app starts when it reads the game. */
+  readonly executable: string;
+  /** What the program does; `setFakeProgram` changes it between runs. */
+  readonly control: FakeGameControl;
+  /** The mod directory to launch the app with (FACE_GAME_MODS_DIR): one mod, `some-mod` 1.2.3, enabled. */
+  readonly modDirectory: string;
+}
+
+/**
+ * Gives an installation its program: the stand-in of the unit tests (apps/desktop/test/support/fakeFactorio.mjs), which
+ * writes a canned dump of a game the editor can work with and one mod. Nothing of the real game is started.
+ */
+export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, behaviour: Partial<FakeGameControl> = {}): Promise<FakeProgram> {
+  const executable = executablePath(game.dataDirectory, process.platform);
+  if (executable === undefined) throw new Error(`The game has no program on ${process.platform}`);
+  const parent = dirname(game.folder);
+  const control: FakeGameControl = { record: join(parent, "starts.jsonl"), dump: await writeCannedDump(join(parent, "dump"), { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3" }, ...dump }), ...behaviour };
+  await mkdir(dirname(executable), { recursive: true });
+  await writeFakeProgram(executable, control);
+  const modDirectory = join(parent, "user", "mods");
+  await mkdir(modDirectory, { recursive: true });
+  await writeFile(join(modDirectory, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "some-mod", enabled: true }] }));
+  await writeFile(join(modDirectory, "some-mod_1.2.3.zip"), "a mod");
+  return { executable, control, modDirectory };
+}
+
+/** Changes what the program does from its next start on. */
+export async function setFakeProgram(program: FakeProgram, behaviour: Partial<FakeGameControl>): Promise<void> {
+  await writeFile(`${program.executable}.control.json`, JSON.stringify({ record: program.control.record, dump: program.control.dump, ...behaviour }));
 }
 
 /** A folder under .runtime/e2e-games that exists and is empty: no game, or no bundled icons. */

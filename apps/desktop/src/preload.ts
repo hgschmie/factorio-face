@@ -1,6 +1,6 @@
 // Sandboxed preload: exposes the narrow FaceApi and nothing else. Bundled to CommonJS; it may only import electron and ipc.ts.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
-import { ASSET_HOST_CATALOG, ASSET_SCHEME, CHANNELS, type AppSettingsState, type FaceApi, type MenuCommand } from "./ipc.ts";
+import { ASSET_HOST_CATALOG, ASSET_SCHEME, CHANNELS, type AppSettingsState, type FaceApi, type GameDataRun, type MenuCommand } from "./ipc.ts";
 
 const api: FaceApi = {
   platform: process.platform,
@@ -25,6 +25,17 @@ const api: FaceApi = {
     const handler = (_event: IpcRendererEvent, state: AppSettingsState): void => listener(state);
     ipcRenderer.on(CHANNELS.appSettingsChanged, handler);
     return () => ipcRenderer.removeListener(CHANNELS.appSettingsChanged, handler);
+  },
+  getGameData: () => ipcRenderer.invoke(CHANNELS.getGameData),
+  getGameDataStatus: () => ipcRenderer.invoke(CHANNELS.getGameDataStatus),
+  readGameData: () => ipcRenderer.invoke(CHANNELS.readGameData),
+  cancelGameDataRead: () => ipcRenderer.invoke(CHANNELS.cancelGameDataRead),
+  discardGameData: () => ipcRenderer.invoke(CHANNELS.discardGameData),
+  applyGameData: () => ipcRenderer.invoke(CHANNELS.applyGameData),
+  onGameDataRunChanged: (listener) => {
+    const handler = (_event: IpcRendererEvent, run: GameDataRun): void => listener(run);
+    ipcRenderer.on(CHANNELS.gameDataRunChanged, handler);
+    return () => ipcRenderer.removeListener(CHANNELS.gameDataRunChanged, handler);
   },
   setDirty: (dirty) => ipcRenderer.send(CHANNELS.setDirty, dirty === true),
   onMenuCommand: (listener) => {

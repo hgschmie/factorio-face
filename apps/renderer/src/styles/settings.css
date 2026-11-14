@@ -249,6 +249,99 @@
   line-height: 1.5;
 }
 
+/* The game data: the second section of the application settings. */
+.app-settings .game-data {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.game-data .section-label,
+.game-data .muted-note {
+  margin: 0;
+}
+
+.game-data .muted-note {
+  line-height: 1.5;
+}
+
+.game-data-source {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--text-base);
+  color: var(--text);
+  background: var(--surface-inset);
+}
+
+.game-data-source small {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.game-data-progress {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: center;
+  margin: 0;
+  font-size: var(--text-md);
+  color: var(--text);
+}
+
+.game-data-progress progress {
+  flex-basis: 100%;
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
+.game-data-progress .step {
+  flex: 1;
+  min-width: 0;
+}
+
+.game-data-progress .elapsed {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* What the game printed: text, in a box of its own that scrolls. */
+.game-log {
+  max-height: 180px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  color: var(--text-soft);
+  background: var(--surface-inset);
+}
+
+.game-data-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 26px;
+}
+
+.project-settings .muted-note.warning {
+  color: var(--status-warning);
+}
+
 /* The hint that no icons of the game can be shown: a notice at the right end of the title bar. */
 .icon-hint {
   display: flex;

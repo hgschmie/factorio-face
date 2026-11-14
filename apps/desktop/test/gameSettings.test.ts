@@ -118,6 +118,27 @@ describe("at start", () => {
   });
 });
 
+describe("the installation and the catalog in use", () => {
+  it("hands out the installation once it is known, and none without a game", async () => {
+    const data = await writeGameData(scratch("installation/game/data"), { modules: ["quality"] });
+    const { settings } = setup("installation", scratch("installation/game"));
+    expect(await settings.installation()).toMatchObject({ dataDirectory: data, version: "2.1.24", versionMatch: "equal" });
+    expect(await setup("installation-none").settings.installation()).toBeUndefined();
+  });
+
+  it("compares the installation with the catalog of other game data, and tells the renderer", async () => {
+    const data = await writeGameData(scratch("other-catalog/game/data"), { modules: ["quality"] });
+    const { settings, changes, resets } = setup("other-catalog", scratch("other-catalog/game"));
+    await settings.ready();
+    const state = await settings.setCatalogVersion("2.1.30");
+    expect(state).toMatchObject({ catalogVersion: "2.1.30", gameVersion: "2.1.24", versionMatch: "same-minor", iconRevision: 1, dataDirectory: data });
+    expect(changes).toEqual([state]);
+    expect(resets).toEqual([data, data]);
+    expect((await settings.installation())?.versionMatch).toBe("same-minor");
+    expect(await settings.setCatalogVersion("2.1.24")).toMatchObject({ catalogVersion: "2.1.24", versionMatch: "equal", iconRevision: 2 });
+  });
+});
+
 describe("choosing a folder", () => {
   it("stores it, points the icons at it and tells the renderer once, with the next revision", async () => {
     const data = await writeGameData(scratch("choose/game/data"), { version: "2.0.72" });

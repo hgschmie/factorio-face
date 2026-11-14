@@ -80,7 +80,7 @@ describe("readGameData", () => {
     expect(result.data.key).toEqual({ version: "2.1.24", build: 87808, mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }], modSettings: SETTINGS_HASH });
     expect(result.data.mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
     expect(result.data.catalog.modules.map((module) => module.name)).toEqual(["base", "some-mod"]);
-    expect(describeGameDataSource(gameDataSource(result.data), () => "14 November 2026")).toBe("read from your game on 14 November 2026: 2.1.24 with 1 mod");
+    expect(describeGameDataSource(gameDataSource(result.data), () => "14 November 2026")).toBe("Read from your game on 14 November 2026: 2.1.24 with 1 mod");
     const [start] = await fakeGameStarts(control);
     expect(start!.args[3]).toBe(join(start!.cwd, "mods"));
     expect(start!.args[3]).not.toContain(home);
@@ -160,17 +160,17 @@ describe("game data key and source", () => {
 
   it("reads a key back and refuses a malformed one", () => {
     expect(parseGameDataKey(JSON.parse(JSON.stringify(key)))).toEqual(key);
-    for (const bad of [null, {}, { ...key, version: "2.1" }, { ...key, build: -1 }, { ...key, modSettings: "abc" }, { ...key, mods: "none" }, { ...key, mods: [{ name: "", version: null }] }, { ...key, mods: [{ name: "a", version: 1 }] }]) {
+    for (const bad of [null, {}, { ...key, version: "2.1" }, { ...key, build: -1 }, { ...key, modSettings: "abc" }, { ...key, mods: "none" }, { ...key, mods: [{ name: "", version: null }] }, { ...key, mods: [{ name: "a", version: 1 }] }, { ...key, mods: [key.mods[0], key.mods[0]] }]) {
       expect(() => parseGameDataKey(bad)).toThrow(ValidationError);
     }
   });
 
   it("says where the data comes from", () => {
-    expect(describeGameDataSource({ kind: "built-in", version: "2.1.24" })).toBe("built in, 2.1.24");
+    expect(describeGameDataSource({ kind: "built-in", version: "2.1.24" })).toBe("Built in, Factorio 2.1.24");
     const game = { kind: "game", version: "2.1.24", build: 87808, readAt: "2026-11-14T12:00:00.000Z" } as const;
-    expect(describeGameDataSource({ ...game, mods: 0 }, () => "<date>")).toBe("read from your game on <date>: 2.1.24 without mods");
-    expect(describeGameDataSource({ ...game, mods: 12 }, () => "<date>")).toBe("read from your game on <date>: 2.1.24 with 12 mods");
-    expect(describeGameDataSource({ ...game, mods: 1 })).toMatch(/^read from your game on .*2026.*: 2\.1\.24 with 1 mod$/);
+    expect(describeGameDataSource({ ...game, mods: 0 }, () => "<date>")).toBe("Read from your game on <date>: 2.1.24 without mods");
+    expect(describeGameDataSource({ ...game, mods: 12 }, () => "<date>")).toBe("Read from your game on <date>: 2.1.24 with 12 mods");
+    expect(describeGameDataSource({ ...game, mods: 1 })).toMatch(/^Read from your game on .*2026.*: 2\.1\.24 with 1 mod$/);
   });
 });
 
@@ -195,7 +195,7 @@ describe("game data cache", () => {
     if (loaded.status !== "ok") return;
     expect(loaded.data).toEqual(data);
     expect([...loaded.iconTable.icons.keys()]).toEqual(["group/g", "item/lamp", "item/plate"]);
-    expect(describeGameDataSource(gameDataSource(loaded.data), () => "<date>")).toBe("read from your game on <date>: 2.1.24 with 1 mod");
+    expect(describeGameDataSource(gameDataSource(loaded.data), () => "<date>")).toBe("Read from your game on <date>: 2.1.24 with 1 mod");
     expect(await cache.discard()).toBe(true);
     expect(await cache.load()).toEqual({ status: "none" });
     expect(await readdir(scratch("cache", "user-data"))).toEqual([]);

@@ -17,6 +17,8 @@ import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
 import type { BlueprintExport, BlueprintProblem, ImportedBlueprint, ImportReportView } from "../session/blueprints.ts";
+import type { GameDataController } from "../gameData/useGameData.ts";
+import { takeSettingsOpen } from "../gameData/reopen.ts";
 import { AppSettings } from "../settings/AppSettings.tsx";
 import { gameFolderHint, needsGameFolderHint } from "../settings/appSettings.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
@@ -38,6 +40,10 @@ export interface WorkbenchProps {
   readonly api?: FaceApi;
   /** The settings of the application on this machine; undefined outside Electron. */
   readonly appSettings?: AppSettingsController;
+  /** The game data and the action that reads it from the game: a section of the application settings. */
+  readonly gameData?: GameDataController;
+  /** Why data read from the game is not in use although there is some; said in the title bar until it is dismissed. */
+  readonly dataProblem?: string | null;
   /** No icon of the game can be shown: neither an installation nor bundled icons provide one. */
   readonly iconsMissing?: boolean;
   readonly resolveEntityIcon?: EntityIconResolver;
@@ -87,7 +93,7 @@ function pageTextIsSelected(): boolean {
   return anchor != null && anchor.closest(".cm-editor") === null;
 }
 
-export function Workbench({ controller, api, appSettings, iconsMissing = false, resolveEntityIcon, resolveWireIcon, resolveCatalogIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
+export function Workbench({ controller, api, appSettings, gameData, dataProblem = null, iconsMissing = false, resolveEntityIcon, resolveWireIcon, resolveCatalogIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
   const { state, commands } = controller;
   const { circuit, selection, wireSelection, mode, displayMode, tool, editable, simulation, project } = state;
   const capabilities = DISPLAY_CAPABILITIES[displayMode];
@@ -98,7 +104,9 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
-  const [appSettingsOpen, setAppSettingsOpen] = useState(false);
+  // After the window was loaded again for other game data, the dialog that asked for it is open again.
+  const [appSettingsOpen, setAppSettingsOpen] = useState(takeSettingsOpen);
+  const [dataProblemDismissed, setDataProblemDismissed] = useState(false);
   const closeAppSettings = useCallback(() => setAppSettingsOpen(false), []);
   const [iconHintDismissed, setIconHintDismissed] = useState(false);
   const [blueprintDialog, setBlueprintDialog] = useState<BlueprintDialog | null>(null);
@@ -429,18 +437,30 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
         onRedo={commands.redo}
         settingsOpen={settingsOpen}
         notice={
-          appSettings?.state &&
-          !iconHintDismissed &&
-          needsGameFolderHint(appSettings.state, iconsMissing) && (
-            <div className="icon-hint" role="status" title={gameFolderHint(appSettings.state).detail}>
-              <span>{gameFolderHint(appSettings.state).text}</span>
+          dataProblem !== null && !dataProblemDismissed ? (
+            <div className="icon-hint data-hint" role="status" title={dataProblem}>
+              <span>{dataProblem}</span>
               <button type="button" className="open-settings" onClick={() => setAppSettingsOpen(true)}>
-                Game folder...
+                Game data...
               </button>
-              <button type="button" className="icon-button" aria-label="Dismiss hint" onClick={() => setIconHintDismissed(true)}>
+              <button type="button" className="icon-button" aria-label="Dismiss message" onClick={() => setDataProblemDismissed(true)}>
                 <Icon name="close" size={14} />
               </button>
             </div>
+          ) : (
+            appSettings?.state &&
+            !iconHintDismissed &&
+            needsGameFolderHint(appSettings.state, iconsMissing) && (
+              <div className="icon-hint" role="status" title={gameFolderHint(appSettings.state).detail}>
+                <span>{gameFolderHint(appSettings.state).text}</span>
+                <button type="button" className="open-settings" onClick={() => setAppSettingsOpen(true)}>
+                  Game folder...
+                </button>
+                <button type="button" className="icon-button" aria-label="Dismiss hint" onClick={() => setIconHintDismissed(true)}>
+                  <Icon name="close" size={14} />
+                </button>
+              </div>
+            )
           )
         }
         onFit={() => canvasRef.current?.fit()}
@@ -599,7 +619,7 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
       </footer>
 
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
-      {appSettingsOpen && appSettings && <AppSettings settings={appSettings} close={closeAppSettings} />}
+      {appSettingsOpen && appSettings && <AppSettings settings={appSettings} gameData={gameData} close={closeAppSettings} />}
       {blueprintDialog?.type === "import" && <ImportBlueprint key={blueprintDialog.file?.name} file={blueprintDialog.file} read={commands.readBlueprint} open={openBlueprint} close={closeBlueprintDialog} />}
       {blueprintDialog?.type === "report" && <ImportReport name={blueprintDialog.name} report={blueprintDialog.report} close={closeBlueprintDialog} />}
       {blueprintDialog?.type === "string" && <BlueprintString exported={blueprintDialog.exported} close={closeBlueprintDialog} />}

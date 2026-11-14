@@ -15,7 +15,14 @@ Two layers:
 ```
 src/
   App.tsx              composition root: session hook, catalog icons, signal picker and signal descriptions for the views
-  main.tsx, index.html entry point; index.html carries the Content-Security-Policy
+  main.tsx, index.html entry point: asks for the game data and applies it, then renders; index.html carries the Content-Security-Policy
+  gameData/
+    dataInUse.ts       the data this window works with: asked for once, installed in the model and the catalog, built-in on failure
+    projectMods.ts     the record of the game a project was made with: when a save writes it, what it says against the data in use   (pure)
+    gameDataView.ts    what the "Game data" section says in every state of a request to read the game; the state's reducer   (pure)
+    useGameData.ts     the status as the main process reports it, the requests, and the reload that applies other data
+    GameDataSection.tsx  the section of the application settings
+    reopen.ts          the settings dialog comes back after that reload (session storage, one reload)
   platform.ts          the platform, and where keyboard input belongs (text controls, controls that use the arrow keys)
   session/
     projectSession.ts  ProjectSession: implements WorkbenchController, wires the parts below, batches change notifications
@@ -94,7 +101,7 @@ src/
   settings/
     ProjectSettings.tsx  project name, wire reach and the five standard modules as signal groups
     wireReach.ts       the text of the wire reach field as a number in range   (pure)
-    AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from (modal)
+    AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from, the game data (modal)
     appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
     useAppSettings.ts  the state as the main process reports it, and the two requests that change it
   dialog/
@@ -139,9 +146,9 @@ interface WorkbenchController {
 }
 ```
 
-`WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch), `circuit` (last valid `Circuit`), `editable` (false while the source
+`WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
-(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, qualities,
+(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, modulesFixed, qualities,
 `speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
@@ -971,6 +978,56 @@ Nothing is asked at the first start: the app looks for the game by itself. Only 
 loads either does the workbench show one hint at the right end of the title bar (`.icon-hint`, `needsGameFolderHint`; there it covers
 nothing and takes no room from the workbench), with a button "Game folder..." that opens the dialog and one that dismisses the hint
 until the next start.
+
+## Game data
+
+The entity and signal data is the one that comes with the build or one the main process read from the user's installed game, mods
+included (`docs/adr/0001-architecture.md`, item 15). The renderer never runs anything: it asks the main process, which asks the user
+in a native dialog of its own before it starts the game.
+
+- **At start.** `main.tsx` awaits `loadDataInUse(window.face)` before it renders: `getGameData()` answers with the source and, for
+  data read from a game, the catalog and the entity table. `applyData` installs them (`setEntityTable(parseEntityTable(...))` of
+  `@face/model`, `setCatalog(createCatalog(...))` of `@face/catalog`), so that the session, the language and every view find them
+  where they look (`entityTable()`, `currentCatalog()`). Data the editor cannot use after all, or a call that fails, leaves the
+  built-in data in place with a reason (`DataInUse.problem`), which is also how the main process reports a damaged cache file. The
+  workbench shows that reason at the right end of the title bar (`.data-hint`, with "Game data..." and a dismiss button), in place of
+  the icon hint.
+- **The session** gets the `DataInUse` (`SessionOptions.data`). With data read from a game the catalog is of one set:
+  `CatalogService` is created `fixed`, all modules of the catalog are on, `CatalogView.modulesFixed` is true, `setModuleEnabled` does
+  nothing, and the project settings show the modules checked and disabled with the note "As in your game" (`[data-note="modules-fixed"]`)
+  and each module's version in place of a signal count. The module list of the project file is not touched and is written back as it
+  was read.
+- **The record of the mods** (`gameData/projectMods.ts`). `toProjectData` gets `modsRecord(data)`: the game version and what the game
+  had loaded, when the data was read from a game with at least one mod; it replaces the project's `gameMods`. Otherwise the record
+  the project was loaded with is written back unchanged. When a project is loaded, `modsNotice` compares its record with the data in
+  use: mods and modules the data lacks, mods in another version (a module of the game only counts when it is missing), a game
+  version that differs. The sentence is the message of the toast and stays in the project settings (`ProjectView.modsNotice`,
+  `[data-note="mods-notice"]`, with `[data-note="made-with"]` for the record itself). The project opens all the same and its source
+  is not changed; an unknown prototype is an error of the language, so the circuit of a project with an entity of a missing mod is
+  not drawn until the game is read with that mod.
+- **The section** "Game data" of the application settings (`GameDataSection.tsx`, `gameDataView`, `useGameData`). It shows the
+  source in words (`.game-data-source`, `data-source="built-in|game"`: "Built in, Factorio 2.1.24" or "Read from your game on
+  <date>: 2.1.24 with N mods", from `describeGameDataSource` of the main process's pure module), a notice when the game or its mods
+  have changed since (`[data-message="stale"]`; looked at whenever the section comes on show), the problem of a file that cannot be
+  used (`"data-problem"`), data that waits for a reload (`"pending"`), and the request: `"confirming"` while the native dialog is
+  open, `"progress"` while the game runs (a progress bar, "Step 2 of 5: the game loads its data and your mods", the time since the
+  start, and Cancel in place of the read button), `"read-failed"` with the end of the game's log in a scrollable, focusable `<pre>`
+  (`.game-log`), `"outcome"` (read in so many seconds, or cancelled) and `"warnings"` (icons of mods that are not shown, entities
+  left out, files of the user that changed during the run, a run without the sandbox). "Read from the game..." is disabled with the
+  reason below it (`"unavailable"`) without an installation that has its program; "Use built-in data" discards what was read (or a
+  file that cannot be used). The run's state arrives as an event; the rest of the status is asked for again when a request ends and
+  when the installation changes.
+- **Applying.** Other data is applied by loading the window again. After a read that worked and after a discard the hook calls the
+  session's `reloadWindow()`: the unsaved-changes prompt of any project replacement, then `applyGameData()`, on which the main
+  process reloads the window. When the user keeps the window, the data waits and the section offers "Reload the window". The
+  dialog is open again after the reload (`reopen.ts`), with the outcome of the last request, which the main process keeps.
+- **Keyboard and focus** are the dialog's: Tab goes round its enabled buttons, and when the button under the focus is replaced or
+  disabled (Read by Cancel, Cancel by Read) the one that takes its place gets the focus.
+- **What a mod brings** is in the selector, the signal picker, completion and the language like anything of the game. Its icons are
+  not rendered: the icon table has no entry for them, so the views show the name and their pictogram. Names of mods get through the
+  language quoted where they are not one word (`prototype = "5d-chest"`, `item:"my item"`; `test/gameData/modNames.test.ts`); the
+  signal field of the inspector takes typed keys of the plain form only, so a signal with a name outside `[A-Za-z0-9_.-]` is chosen
+  in the picker or written in the source.
 
 ## The entity selector
 

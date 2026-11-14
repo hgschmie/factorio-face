@@ -50,6 +50,8 @@ const targets = [
     format: "cjs",
     target: "node24",
     external: ["electron"],
+    // The scenario of the game's runtime dump (tools/catalog/runtime-dump/control.lua) is carried as text.
+    loader: { ".lua": "text" },
   },
   {
     // A sandboxed preload cannot require other files, so it must be one CommonJS bundle.

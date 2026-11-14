@@ -269,11 +269,21 @@ What differs from the standard tables, because one dump cannot say which module 
   checked one icon at a time with `parseIconTable`.
 - The entity table is built leniently (`buildEntityTable(input, { lenient: true })`): a wired prototype that cannot be derived, or that
   the game contradicts, is left out and named in the notes instead of failing the build. The standard build stays strict.
+- Every record of the entity table is then read with the model's own reader (`parseEntityTable`), one at a time like the icons: one
+  it refuses (a default signal whose name the editor's signal keys cannot hold, such as one with a blank) is left out and named too.
 - A name the dump lacks is the prototype's name: the quality `normal` is "normal" without the quality module, where the standard
   catalog borrows "Normal" from a larger set.
 
 `tools/catalog/lib/single.test.ts` builds the `base` set and the full set from the generator's dumps this way and compares signals,
 picker groups, qualities, speaker, constants, icons and wired entities with what the standard tables say for those modules.
+
+How the app uses the result (the confirmation before the game is run, the cache file, the switch at the next load of the window,
+the record of the mods in the project file) is in `docs/adr/0001-architecture.md`, item 15. Checked once against the real game
+(Factorio 2.1.24 with its five modules and no mods, read by the app on 2026-11-14 in 5.9 s: 2.5 s data, 0.8 s locale, 2.2 s runtime,
+0.1 s build): all 2249 signals, the groups, subgroups, qualities, the speaker and the rocket silo are what the standard catalog says
+for the five modules enabled, the 98 wired entities are the same records, and the icon table has 1135 of the 1138 ids (the other
+three belong to other module sets); the one difference is the id of an icon that the standard catalog keeps as a variant
+(`entity/factorio-logo-11tiles~space-age`).
 
 What a dump run is made of (the three commands and their output files, the private `config.ini`, the environment, the sandbox
 profile, `info.json` reading, the version line) is in `tools/catalog/lib/commands.ts`, shared by `dump.mjs` and the app's runner.
@@ -310,9 +320,11 @@ all eight sets.
 ## API
 
 ```ts
-import { loadStandardCatalog, findSignal, availableSignals, pickerTree, resolveModules, enableModule, disableModule, dependentModules, iconPath } from "@face/catalog";
+import { loadStandardCatalog, currentCatalog, setCatalog, createCatalog, findSignal, availableSignals, pickerTree, resolveModules, enableModule, disableModule, dependentModules, iconPath } from "@face/catalog";
 
-const catalog = loadStandardCatalog();
+const catalog = loadStandardCatalog();                       // the catalog that comes with the build
+currentCatalog();                                            // the catalog the editor works with: the standard one unless another was set
+setCatalog(createCatalog(data));                             // another one, read from the user's game; setCatalog(undefined) goes back
 findSignal(catalog, "item:iron-plate@legendary");            // by key or SignalId; quality is ignored
 findSignal(catalog, { kind: "item", name: "satellite" }, enabled);  // undefined when absent for these modules; variants applied
 availableSignals(catalog, enabled, { kinds, visibility });   // everything that exists, hidden signals included
@@ -341,6 +353,11 @@ iconFileLocation("__base__/graphics/icons/small-lamp.png");  // { module: "base"
 Types: `Catalog`, `CatalogSignal`, `CatalogGroup`, `CatalogSubgroup`, `ModuleInfo`, `QualityInfo`, `CatalogData` (the JSON shape),
 `SignalVisibility`, `ModuleResolution`, `PickerGroup`, `SpeakerInfo`, `SpeakerInstrumentInfo`, `SpeakerNote`. Every entry has `origin: "standard" | "custom"`; only `"standard"` is generated.
 Custom signals and groups are out of scope here; `createCatalog` and the functions do not assume the standard module names.
+
+`currentCatalog()` and `setCatalog()` are for the renderer, in the style of `entityTable()` and `setEntityTable()` of `@face/model`:
+at start it installs the catalog and the entity table the main process hands it (the ones read from the user's game, when there are
+any) before a circuit is read, and everything that needs "the" catalog asks `currentCatalog()`. What was made from the catalog
+before a `setCatalog` does not follow, so it is called once, before the session exists.
 
 ## Counts (Factorio 2.1.24)
 

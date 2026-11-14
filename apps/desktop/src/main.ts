@@ -7,6 +7,10 @@ import { APP_SETTINGS_FILE_NAME, AppSettingsStore, gameDirectoryFromEnv } from "
 import { registerAppSettingsIpc } from "./appSettingsIpc.ts";
 import { registerBlueprintIpc } from "./blueprintIpc.ts";
 import { Examples } from "./examples.ts";
+import { GAME_DATA_FILE_NAME, GameDataCache } from "./gameData/cache.ts";
+import { modDirectoryFromEnv } from "./gameData/refresh.ts";
+import { GAME_DATA_RUNS_DIRECTORY, GameDataService, usableGameData } from "./gameData/service.ts";
+import { confirmGameRead, registerGameDataIpc } from "./gameDataIpc.ts";
 import { GameIcons } from "./gameIcons/gameIcons.ts";
 import { GameSettings } from "./gameSettings.ts";
 import { APP_ID, APP_NAME, CHANNELS, type MenuCommand } from "./ipc.ts";
@@ -17,6 +21,10 @@ import { askUnsavedChanges, registerProjectIpc } from "./projectIpc.ts";
 import { handleSchemes, registerSchemes, RENDERER_URL } from "./protocols.ts";
 import { RecentProjects } from "./recentProjects.ts";
 import { hardenSession, hardenWebContents } from "./security.ts";
+// The scenario the game runs for its finished prototypes: text, bundled into this script.
+import scenarioSource from "../../../tools/catalog/runtime-dump/control.lua";
+// For the version of this application: `app.getVersion()` is Electron's own while the app is not packaged.
+import packageInfo from "../../../package.json" with { type: "json" };
 
 /** Problems with icons of one installation that are written to the log; a missing module alone accounts for hundreds. */
 const LOGGED_ICON_PROBLEMS = 20;
@@ -86,12 +94,22 @@ async function start(): Promise<void> {
   hardenSession(session.defaultSession);
   // Fails the start for a malformed value, like the other path variables, instead of leaving the app without its icons.
   gameDirectoryFromEnv(process.env);
+  modDirectoryFromEnv(process.env);
 
   const window = createWindow();
+  const userData = app.getPath("userData");
+  const host = { platform: process.platform, env: process.env, home: app.getPath("home") };
+
+  // The entity and signal data: what was read from the user's game earlier, when there is such a file and it can be used,
+  // else the data that comes with the build. Reading the file starts nothing and is done before the window loads.
+  const standardIcons = loadStandardIconTable();
+  const gameDataCache = new GameDataCache(join(userData, GAME_DATA_FILE_NAME));
+  const cached = usableGameData(await gameDataCache.load());
+  if (cached.status === "damaged") console.warn(`[face] ${cached.message}`);
 
   // The icons come from the user's installation of the game. The search for it starts here and holds nothing up: the
   // window loads meanwhile, and the first icon requests wait for the answer.
-  const iconTable = loadStandardIconTable();
+  const iconTable = cached.status === "ok" ? cached.iconTable : standardIcons;
   let iconProblems = 0;
   const gameIcons = new GameIcons(iconTable, {
     onProblem: (id, error) => {
@@ -100,19 +118,51 @@ async function start(): Promise<void> {
     },
   });
   const gameSettings = new GameSettings({
-    store: new AppSettingsStore(join(app.getPath("userData"), APP_SETTINGS_FILE_NAME)),
+    store: new AppSettingsStore(join(userData, APP_SETTINGS_FILE_NAME)),
     icons: {
       reset: (dataDirectory) => {
         iconProblems = 0;
         gameIcons.reset(dataDirectory);
       },
     },
-    host: { platform: process.platform, env: process.env, home: app.getPath("home") },
+    host,
     catalogVersion: iconTable.game.version,
     onChange: (state) => {
       if (!window.isDestroyed()) window.webContents.send(CHANNELS.appSettingsChanged, state);
     },
   });
+  const gameData = new GameDataService({
+    cache: gameDataCache,
+    cached,
+    builtInVersion: standardIcons.game.version,
+    installation: () => gameSettings.installation(),
+    host,
+    confirm: (confirmation) => confirmGameRead(window, confirmation),
+    run: { runsDirectory: join(userData, GAME_DATA_RUNS_DIRECTORY), scenarioSource, generator: `${APP_NAME} ${packageInfo.version}` },
+    onRun: (run) => {
+      if (!window.isDestroyed()) window.webContents.send(CHANNELS.gameDataRunChanged, run);
+    },
+    onActivate: (data) => {
+      iconProblems = 0;
+      gameIcons.setTable(data?.iconTable ?? standardIcons);
+      void gameSettings.setCatalogVersion(data?.version ?? standardIcons.game.version).catch((error: unknown) => console.error("[face] switching the game data failed:", error));
+    },
+  });
+  // Other data is applied by loading the window again: the page asks for its data before it reads a circuit.
+  window.webContents.on("did-start-navigation", (details) => {
+    if (details.isMainFrame && !details.isSameDocument) gameData.activate();
+  });
+  // A game that is being read is stopped before the app quits, and its folder removed.
+  let stopped = false;
+  app.on("before-quit", (event) => {
+    if (stopped || !gameData.busy) return;
+    event.preventDefault();
+    void gameData.shutdown().finally(() => {
+      stopped = true;
+      app.quit();
+    });
+  });
+
   const locations = { env: process.env, packaged: app.isPackaged, mainDirectory: __dirname, resourcesPath: process.resourcesPath };
   handleSchemes(join(__dirname, "renderer"), resolveAssetRoot(locations), {
     ready: () => gameSettings.ready(),
@@ -120,7 +170,7 @@ async function start(): Promise<void> {
     icon: (id) => gameIcons.icon(id),
   });
 
-  const recentProjects = new RecentProjects(join(app.getPath("userData"), "recent-projects.json"));
+  const recentProjects = new RecentProjects(join(userData, "recent-projects.json"));
   const examples = new Examples(resolveExamplesDirectory(locations), (file, error) => console.warn(`[face] example ${file}: ${error instanceof Error ? error.message : String(error)}`));
   const sendCommand = (command: MenuCommand): void => {
     if (!window.isDestroyed()) window.webContents.send(CHANNELS.menuCommand, command);
@@ -142,6 +192,7 @@ async function start(): Promise<void> {
   const handle = createIpcHandle(window);
   const projectsDirectory = projectsDirectoryFromEnv(process.env);
   registerAppSettingsIpc(window, handle, gameSettings);
+  registerGameDataIpc(window, handle, gameData);
   registerBlueprintIpc(handle, { window, projectsDirectory });
   registerProjectIpc(handle, {
     window,

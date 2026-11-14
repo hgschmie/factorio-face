@@ -142,6 +142,10 @@ export interface ProjectView {
   readonly wireReach: number;
   /** Counts loaded projects. Views drop what they remember about the previous project (the camera) when it changes. */
   readonly epoch: number;
+  /** The game the project was made with, when its file has a record of it: "Factorio 2.1.24 with some-mod 1.2.3". */
+  readonly madeWith: string | null;
+  /** What that game had that the data in use lacks or has differently; null when nothing differs or there is no record. */
+  readonly modsNotice: string | null;
 }
 
 /** One row of the simulation dock's trace area: one signal on the output of one entity, the state of a lamp or a speaker, or one circuit condition of a generic entity. */
@@ -283,6 +287,8 @@ export interface CatalogView {
   readonly modules: readonly ModuleView[];
   /** Module names in the project file that the catalog does not know; kept on save. */
   readonly unknownModules: readonly string[];
+  /** The data was read from the user's game: everything that game had loaded is on, nothing can be switched, and the project's own list is kept. */
+  readonly modulesFixed: boolean;
   /** Selectable qualities, lowest first; empty unless the quality module is enabled. */
   readonly qualities: readonly QualityOption[];
   /** The instruments of the programmable speaker with their notes, in the game's order, with their names in the game. */
@@ -478,6 +484,12 @@ export interface WorkbenchCommands {
   /** Resolves true when the project is on disk afterwards, false when saving failed or was cancelled. */
   save(): Promise<boolean>;
   saveAs(): Promise<boolean>;
+  /**
+   * Loads the window again, which is how other game data is applied: everything starts over with the data the main process has
+   * for it, and the project that was open last comes back. Asks about unsaved changes first. Resolves false when the user
+   * kept the window as it is or it could not be done; when it is done the window is gone before this resolves.
+   */
+  reloadWindow(): Promise<boolean>;
 
   // Blueprints of the game. An import never changes the open project: it opens a new one.
   /**

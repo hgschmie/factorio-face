@@ -1,15 +1,19 @@
 // The settings of the application on this machine, as opposed to those of a project: where the game is installed, whose icon
-// images the app reads. A modal dialog. Presentational: the folder is chosen in a native dialog of the main process.
+// images the app reads, and which entity and signal data the editor works with. A modal dialog. Presentational: the folder is
+// chosen in a native dialog of the main process, and the game is read by the main process.
 import { Modal } from "../dialog/Modal.tsx";
+import { GameDataSection } from "../gameData/GameDataSection.tsx";
+import type { GameDataController } from "../gameData/useGameData.ts";
 import { appSettingsView } from "./appSettings.ts";
 import type { AppSettingsController } from "./useAppSettings.ts";
 
 export interface AppSettingsProps {
   readonly settings: AppSettingsController;
+  readonly gameData?: GameDataController;
   close(): void;
 }
 
-export function AppSettings({ settings, close }: AppSettingsProps) {
+export function AppSettings({ settings, gameData, close }: AppSettingsProps) {
   const { state, busy, error } = settings;
   const view = state && appSettingsView(state);
   return (
@@ -70,8 +74,9 @@ export function AppSettings({ settings, close }: AppSettingsProps) {
             Reset to auto-detect
           </button>
         </div>
-        <p className="muted-note">The app only reads icon images from this folder. It does not start the game and writes nothing there.</p>
+        <p className="muted-note">The app reads icon images from this folder and writes nothing there. It starts the game only when you ask it to read the game data below.</p>
       </section>
+      {gameData && <GameDataSection gameData={gameData} />}
     </Modal>
   );
 }

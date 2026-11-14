@@ -4,7 +4,7 @@
 import { GAME_MODULES } from "@face/catalog/icons";
 import type { OpenDialogOptions } from "electron";
 import { locateGame, type AppSettingsStore, type GameLocation } from "./appSettings.ts";
-import { DETECTION_TIMEOUT_MS, inspectGameFolderInTime, type Host } from "./gameInstallation.ts";
+import { DETECTION_TIMEOUT_MS, inspectGameFolderInTime, type GameInstallation, type Host } from "./gameInstallation.ts";
 import type { AppSettingsState } from "./ipc.ts";
 import { parseGameDirectory, ValidationError } from "./validation.ts";
 
@@ -47,7 +47,7 @@ export interface GameSettingsOptions {
   /** Told the data directory in use whenever a search has ended (`GameIcons.reset`). */
   readonly icons: { reset(dataDirectory: string | undefined): void };
   readonly host: Host;
-  /** The release the catalog was generated from. */
+  /** The release the catalog in use is of: the built-in one, or the game the data was read from. */
   readonly catalogVersion: string;
   readonly timeoutMs?: number;
   /** Called after the installation in use changed while the app runs; not for the search at start. */
@@ -56,6 +56,7 @@ export interface GameSettingsOptions {
 
 export class GameSettings {
   private readonly options: GameSettingsOptions;
+  private catalogVersion: string;
   private location: Promise<GameLocation>;
   private revision = 0;
   private choosing = false;
@@ -65,6 +66,7 @@ export class GameSettings {
   /** Starts looking for the game; nothing waits for the search but `ready` and `state`. */
   constructor(options: GameSettingsOptions) {
     this.options = options;
+    this.catalogVersion = options.catalogVersion;
     this.location = this.locate();
   }
 
@@ -74,15 +76,26 @@ export class GameSettings {
   }
 
   async state(): Promise<AppSettingsState> {
-    return appSettingsState(await this.location, this.options.catalogVersion, this.revision);
+    return appSettingsState(await this.location, this.catalogVersion, this.revision);
+  }
+
+  /** The installation in use, once it is known; undefined when there is none. */
+  async installation(): Promise<GameInstallation | undefined> {
+    const location = await this.location;
+    return location.status === "chosen" || location.status === "detected" ? location.installation : undefined;
+  }
+
+  /** The catalog in use is of another release now (other game data): the installation is compared with that one, and its icons are fetched again. */
+  setCatalogVersion(version: string): Promise<AppSettingsState> {
+    return this.change(async () => void (this.catalogVersion = version));
   }
 
   /** Makes a folder the user's choice. A folder that holds no usable installation is refused with its reason and nothing is stored. */
   choose(folder: unknown): Promise<AppSettingsState> {
     return this.change(async () => {
-      const { store, host, catalogVersion, timeoutMs = DETECTION_TIMEOUT_MS } = this.options;
+      const { store, host, timeoutMs = DETECTION_TIMEOUT_MS } = this.options;
       const chosen = parseGameDirectory(folder);
-      const inspection = await inspectGameFolderInTime(chosen, catalogVersion, host.platform, timeoutMs);
+      const inspection = await inspectGameFolderInTime(chosen, this.catalogVersion, host.platform, timeoutMs);
       if (!inspection.ok) throw new ValidationError(inspection.message);
       await store.setGameDirectory(chosen);
     });
@@ -109,8 +122,8 @@ export class GameSettings {
   }
 
   private async locate(): Promise<GameLocation> {
-    const { store, icons, host, catalogVersion, timeoutMs = DETECTION_TIMEOUT_MS } = this.options;
-    const location = await locateGame(await store.get(), host, catalogVersion, timeoutMs).catch((error: unknown): GameLocation => {
+    const { store, icons, host, timeoutMs = DETECTION_TIMEOUT_MS } = this.options;
+    const location = await locateGame(await store.get(), host, this.catalogVersion, timeoutMs).catch((error: unknown): GameLocation => {
       console.error("[face] looking for the game failed:", error);
       return { status: "none" };
     });

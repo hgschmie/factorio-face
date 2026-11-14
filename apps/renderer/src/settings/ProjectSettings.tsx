@@ -170,7 +170,13 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
         <span>Signal groups</span>
         <span>Factorio {catalog.gameVersion}</span>
       </div>
-      <p className="muted-note">Signals of a group that is switched off stay in the source and are marked with a warning.</p>
+      {catalog.modulesFixed ? (
+        <p className="muted-note" data-note="modules-fixed">
+          As in your game: the data was read from your game, so everything it had loaded is on and nothing can be switched here. The project keeps its own list for the built-in data.
+        </p>
+      ) : (
+        <p className="muted-note">Signals of a group that is switched off stay in the source and are marked with a warning.</p>
+      )}
       <ul className="module-list">
         {catalog.modules.map((module) => {
           const note = consequence(module, catalog.modules);
@@ -179,7 +185,7 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
               <label>
                 <input type="checkbox" checked={module.enabled} disabled={!module.canDisable} onChange={(event) => onModuleChange(module.name, event.target.checked)} />
                 <span className="module-title">{module.title}</span>
-                <span className="module-count">{module.signalCount} signals</span>
+                <span className="module-count">{catalog.modulesFixed ? module.version : `${module.signalCount} signals`}</span>
               </label>
               {note && <small>{note}</small>}
             </li>
@@ -187,6 +193,16 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
         })}
       </ul>
       {catalog.unknownModules.length > 0 && <p className="muted-note">Not part of this catalog, kept in the project file: {catalog.unknownModules.join(", ")}.</p>}
+      {project.madeWith !== null && (
+        <p className="muted-note" data-note="made-with">
+          Made with {project.madeWith}.
+        </p>
+      )}
+      {project.modsNotice !== null && (
+        <p className="muted-note warning" data-note="mods-notice">
+          {project.modsNotice}
+        </p>
+      )}
     </div>
   );
 }

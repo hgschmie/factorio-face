@@ -2,14 +2,17 @@
 // catalog, the icon table and the entity table of one dump, and what state of the game they belong to. Pure.
 import type { CatalogData } from "@face/catalog";
 import { iconTableFile, parseIconTable, type IconTable, type IconTableFile } from "@face/catalog/icons";
-import { parseEntityTable } from "@face/model";
+import { parseEntityTable, type EntityTable } from "@face/model";
 import { createHash } from "node:crypto";
 import { STANDARD_MODULES } from "../../../../tools/catalog/lib/commands.ts";
+import type { GameDataSource, GameMod } from "../ipc.ts";
 import { ValidationError } from "../validation.ts";
 import { parseCatalogData } from "./catalogData.ts";
 import type { EnabledMod } from "./userMods.ts";
 
-export const GAME_DATA_LIMITS = { mods: 2000, nameLength: 200, notes: 500, noteLength: 500 } as const;
+export const GAME_DATA_LIMITS = { mods: 2000, nameLength: 200, notes: 500, noteLength: 500, entities: 50_000, textLength: 2000 } as const;
+
+export type { GameDataSource };
 
 /**
  * The state of the game that data was read from, as the files say it without starting the game: the version of the
@@ -25,10 +28,7 @@ export interface GameDataKey {
   readonly modSettings: string | null;
 }
 
-export interface LoadedMod {
-  readonly name: string;
-  readonly version: string;
-}
+export type LoadedMod = GameMod;
 
 export interface GameData {
   readonly key: GameDataKey;
@@ -58,7 +58,9 @@ function fail(message: string): never {
 
 function parseMods<V extends string | null>(value: unknown, what: string, validVersion: (version: unknown) => version is V): { name: string; version: V }[] {
   if (!Array.isArray(value) || value.length > GAME_DATA_LIMITS.mods) fail(`${what} are not a list of mods`);
-  return (value as unknown[]).map((mod) => (isRecord(mod) && isName(mod.name) && validVersion(mod.version) ? { name: mod.name, version: mod.version } : fail(`${what} have a malformed entry`)));
+  const mods = (value as unknown[]).map((mod) => (isRecord(mod) && isName(mod.name) && validVersion(mod.version) ? { name: mod.name, version: mod.version } : fail(`${what} have a malformed entry`)));
+  if (new Set(mods.map((mod) => mod.name)).size !== mods.length) fail(`${what} name a mod twice`);
+  return mods;
 }
 
 export function parseGameDataKey(value: unknown): GameDataKey {
@@ -97,32 +99,29 @@ export function parseGameData(value: unknown): { data: GameData; iconTable: Icon
   if (!(Number.isSafeInteger(skippedIcons) && (skippedIcons as number) >= 0)) fail("the number of skipped icons is malformed");
   const catalog = parseCatalogData(value.catalog);
   let iconTable: IconTable;
-  let entityVersion: string;
+  let entityTable: EntityTable;
   try {
     iconTable = parseIconTable(value.icons);
-    entityVersion = parseEntityTable(entities).game.version;
+    entityTable = parseEntityTable(entities);
   } catch (error) {
     return fail(error instanceof Error ? error.message : String(error));
   }
-  const versions = [catalog.game.version, iconTable.game.version, entityVersion];
+  // The table's own reader checks what the editor computes with; what it shows as text is bounded here.
+  if (entityTable.entities.length > GAME_DATA_LIMITS.entities) fail(`more than ${GAME_DATA_LIMITS.entities} entities`);
+  const unbounded = entityTable.entities.find((entity) => !isName(entity.name) || !isName(entity.type) || entity.displayName.length > GAME_DATA_LIMITS.textLength || ![...entity.placedBy, ...entity.modules].every(isName));
+  if (unbounded) fail(`the entity ${JSON.stringify(unbounded.name.slice(0, 80))} has a name that is too long or has control characters`);
+  const versions = [catalog.game.version, iconTable.game.version, entityTable.game.version];
   if (versions.some((version) => version !== key.version)) fail(`the tables are of ${versions.join(", ")}, the key is of ${key.version}`);
   const data: GameData = { key, readAt: readAt as string, mods, catalog, icons: iconTableFile(iconTable), entities: entities as Record<string, unknown>, notes: notes as string[], skippedIcons: skippedIcons as number };
   return { data, iconTable };
 }
 
-/** Where the data in use comes from, for display. */
-export type GameDataSource =
-  | { readonly kind: "built-in"; readonly version: string }
-  | { readonly kind: "game"; readonly version: string; readonly build?: number; readonly readAt: string; /** Mods beside the game's own modules. */ readonly mods: number };
+export { describeGameDataSource } from "./source.ts";
+
+/** The game's own modules among what a game loaded are not its mods. */
+export const isGameModule = (name: string): boolean => STANDARD_MODULES.includes(name);
 
 export function gameDataSource(data: GameData): GameDataSource {
-  const mods = data.mods.filter((mod) => !STANDARD_MODULES.includes(mod.name)).length;
+  const mods = data.mods.filter((mod) => !isGameModule(mod.name)).length;
   return { kind: "game", version: data.key.version, ...(data.key.build === undefined ? {} : { build: data.key.build }), readAt: data.readAt, mods };
-}
-
-/** "built in, 2.1.24", or "read from your game on 14 November 2026: 2.1.24 with 3 mods". */
-export function describeGameDataSource(source: GameDataSource, formatDate: (iso: string) => string = (iso) => new Date(iso).toLocaleDateString(undefined, { dateStyle: "long" })): string {
-  if (source.kind === "built-in") return `built in, ${source.version}`;
-  const mods = source.mods === 0 ? "without mods" : `with ${source.mods} ${source.mods === 1 ? "mod" : "mods"}`;
-  return `read from your game on ${formatDate(source.readAt)}: ${source.version} ${mods}`;
 }

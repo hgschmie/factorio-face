@@ -33,7 +33,7 @@ interface Installation {
 }
 
 export class GameIcons {
-  private readonly table: IconTable;
+  private table: IconTable;
   private readonly onProblem: ((iconId: string, error: unknown) => void) | undefined;
   private installation: Installation | undefined;
   private changes = 0;
@@ -54,6 +54,13 @@ export class GameIcons {
   reset(dataDirectory: string | undefined): void {
     this.changes++;
     this.installation = dataDirectory === undefined ? undefined : { root: realpath(dataDirectory).catch(() => undefined), icons: new Map(), sources: new Map() };
+  }
+
+  /** Switches to another icon table (the data read from the user's game, or the standard one again) and forgets everything rendered from the old one. */
+  setTable(table: IconTable): void {
+    this.table = table;
+    this.changes++;
+    if (this.installation) this.installation = { ...this.installation, icons: new Map() };
   }
 
   /** True when an installation is set and the table has the icon: `icon` then answers from the installation, or with nothing when its files are missing or damaged. */

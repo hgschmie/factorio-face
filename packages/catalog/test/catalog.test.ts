@@ -1,10 +1,13 @@
 import { STANDARD_SIGNAL_KINDS, parseSignalKey, signal, signalKey, wildcardOf, wildcardSignal } from "@face/model";
 import { describe, expect, it } from "vitest";
+import data from "../data/catalog-2.1.24.json" with { type: "json" };
 import {
   STANDARD_MODULES,
   availableQualities,
   availableSignals,
   catalogKey,
+  createCatalog,
+  currentCatalog,
   dependentModules,
   disableModule,
   enableModule,
@@ -16,8 +19,10 @@ import {
   requiredModules,
   resolveModules,
   resolveSignal,
+  setCatalog,
   speakerInstrumentNames,
   speakerInstruments,
+  type CatalogData,
   type CatalogSignal,
 } from "../src/index.ts";
 
@@ -316,5 +321,17 @@ describe("picker tree", () => {
     expect(names("production", "module")).toContain("item:quality-module");
     expect(pickerSignals(["base"]).some((s) => s.kind === "quality")).toBe(false);
     expect(pickerSignals(ALL, { parameters: true }).filter((s) => s.subgroup === "parameters")).toHaveLength(54);
+  });
+});
+
+describe("the catalog in use", () => {
+  it("is the standard one until another is set, and again when that is taken away", () => {
+    expect(currentCatalog()).toBe(catalog);
+    const other = createCatalog({ ...(data as unknown as CatalogData), game: { version: "2.1.30", build: 1 } });
+    setCatalog(other);
+    expect(currentCatalog()).toBe(other);
+    expect(loadStandardCatalog()).toBe(catalog);
+    setCatalog(undefined);
+    expect(currentCatalog()).toBe(catalog);
   });
 });

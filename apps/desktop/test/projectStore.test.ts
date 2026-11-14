@@ -109,6 +109,17 @@ describe("project file", () => {
     expect(await readProject(path)).toEqual({ path, data: changed });
   });
 
+  it("keeps the record of the game's mods across write and read, and refuses a project file whose record is malformed", async () => {
+    const path = await projectFile("game-mods");
+    const gameMods = { gameVersion: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }] };
+    const modded: ProjectData = { ...project, manifest: { ...project.manifest, gameMods } };
+    await writeProject(path, parseProjectData(modded));
+    expect(JSON.parse(strFromU8(unzipSync(await readFile(path))["face.json"]!))).toEqual({ ...project.manifest, gameMods });
+    expect(await readProject(path)).toEqual({ path, data: modded });
+    const bad = await projectFile("bad-game-mods", zipSync({ ...validEntries(), "face.json": manifestEntry({ gameMods: { gameVersion: "2.1.24", mods: [{ name: "x" }] } }) }));
+    await expect(readProject(bad)).rejects.toThrow("Mod version must be a version of three numbers");
+  });
+
   it("brings a wire reach out of range into it and refuses a project file whose wire reach is not a number", async () => {
     for (const [wireReach, expected] of [[-1, 0], [64.5, 64], [1000, 64]]) {
       const path = await projectFile(`far-reach-${wireReach}`, zipSync({ ...validEntries(), "face.json": manifestEntry({ wireReach }) }));

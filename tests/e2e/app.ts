@@ -15,6 +15,8 @@ export const PROJECTS_DIR = resolve(ROOT, ".runtime/e2e-projects");
 export const GAMES_DIR = resolve(ROOT, ".runtime/e2e-games");
 /** The one folder the app looks at for the game unless a test says otherwise. It never exists, so no run uses a game that happens to be installed on this machine. */
 export const NO_GAME_DIR = resolve(GAMES_DIR, "none");
+/** The mod directory the app reads a game with unless a test says otherwise: one that never exists, so no run looks at the mods of whoever runs the tests. */
+export const NO_MODS_DIR = resolve(GAMES_DIR, "no-user", "mods");
 export const SCREENSHOT_DIR = resolve(ROOT, ".runtime/screenshots");
 export const MEASUREMENT_DIR = resolve(ROOT, ".runtime/measurements");
 export const APP_TITLE = "FActorio Circuit Editor";
@@ -41,7 +43,7 @@ export { expect };
 export interface LaunchOptions {
   /** Profile directory; defaults to a fresh one. Pass the same directory twice to test persistence across launches. */
   readonly userData?: string;
-  /** Overrides, among them FACE_GAME_DIR (the folder auto-detection looks at; by default one that does not exist) and FACE_ASSET_ROOT (the bundled icons). */
+  /** Overrides, among them FACE_GAME_DIR (the folder auto-detection looks at; by default one that does not exist), FACE_GAME_MODS_DIR (the mod directory a game is read with; by default one that does not exist) and FACE_ASSET_ROOT (the bundled icons). */
   readonly env?: Readonly<Record<string, string>>;
   /**
    * What the window shows when the launch returns. "example", the default: the example that ships with the app, opened the way a
@@ -63,7 +65,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<RunningApp
   const app = await _electron.launch({
     args: [MAIN_SCRIPT],
     cwd: ROOT,
-    env: { ...(process.env as Record<string, string>), FACE_USER_DATA: userData, FACE_GAME_DIR: NO_GAME_DIR, ...options.env },
+    env: { ...(process.env as Record<string, string>), FACE_USER_DATA: userData, FACE_GAME_DIR: NO_GAME_DIR, FACE_GAME_MODS_DIR: NO_MODS_DIR, ...options.env },
   });
   processes.set(app, app.process());
   const page = await app.firstWindow();
