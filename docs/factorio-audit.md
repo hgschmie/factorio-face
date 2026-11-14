@@ -2,6 +2,7 @@
 
 Audit date: 2026-11-11. Scope: constant, arithmetic, decider and selector combinators, lamps, circuit wires, signals and the blueprint string format.
 Added 2026-11-12: electric poles (3.9, 6.9, 9.9) and the programmable speaker (3.10, 6.10, 9.10). Where an older section says "the five entities" it means the four combinators and the lamp; what holds for the two additions is said in their own sections.
+Added 2026-11-14: section 12, the blueprint format as `packages/blueprints` reads and writes it, with what that work added to or corrected in sections 3 to 5 and 9.
 This document drives the model types, the DSL, the blueprint importer/exporter and the simulator of "face".
 
 ## 0. How to read this document
@@ -1010,8 +1011,8 @@ reading results through `LuaCombinatorControlBehavior.signals_last_tick`, `LuaEn
 
 | Id | Fixture | Resolves |
 | --- | --- | --- |
-| F-01 | Export one of each entity type with non-default settings via `export_stack()`; record the exact JSON | selector `control_behavior` shape (flat versus `selector_conditions`), default omission, key order, `first_signal_networks` shape, `color_mode` numbers, build number in `version` |
-| F-02 | `print` every `defines.wire_connector_id`, `defines.wire_type`, `defines.direction`, `defines.control_behavior.lamp.color_mode` value | 4.2, 3.8 numeric values |
+| F-01 | Export one of each entity type with non-default settings via `export_stack()`; record the exact JSON. Probe: `tools/game-probe/blueprints.mjs` (`make probe-blueprints`) builds every sample circuit of `packages/blueprints/test/samples.ts` through the runtime API and exports it, and exports every supported entity as placed; it records `tests/fixtures/game/F-01-blueprints.json`, which `packages/blueprints/test/game.test.ts` checks. Not recorded yet (12.5) | selector `control_behavior` shape (flat versus `selector_conditions`), default omission, key order, `first_signal_networks` shape, `color_mode` numbers, build number in `version` |
+| F-02 | `print` every `defines.wire_connector_id`, `defines.wire_type`, `defines.direction`, `defines.control_behavior.lamp.color_mode` value. Part of the recording of F-01 (`defines`) | 4.2, 3.8 numeric values |
 | F-03 | Chain constant -> arithmetic -> arithmetic -> decider; log outputs per tick from tick 0 | latency per stage, constant timing, simultaneous update |
 | F-04 | Toggle a constant combinator at a known tick; log the network | constant combinator edit timing |
 | F-05 | Self-wired arithmetic (`A + 1 -> A`), self-wired decider clock | feedback, counter start value, int32 wrap of a counter at 2^31 - 1 |
@@ -1032,7 +1033,7 @@ reading results through `LuaCombinatorControlBehavior.signals_last_tick`, `LuaEn
 | F-20 | Constant combinator: two sections with the same signal, multipliers 0.5, 1.5, -1, 0.1 on odd counts, values near int32 limits, inactive section, `is_on` false | multiplier rounding, wrap |
 | F-21 | Lamp: condition true / false / default, `circuit_enabled` false with wire, `always_on`, daylight | lighting rules |
 | F-22 | Lamp colors: several mapping signals at once; components and packed RGB with 0, 255, 256, -1, 0xFFFFFF, 0x1000000; `input_networks` selection | color rules |
-| F-23 | Import round-trip: face export -> `import_stack` -> `export_stack` for each entity type, including 2x1 entities in all four directions and self-wires | exporter correctness, position rules, wire normalization |
+| F-23 | Import round-trip: face export -> `import_stack` -> `export_stack` for each entity type, including 2x1 entities in all four directions and self-wires. Part of the recording of F-01 (`reexported`, and `rebuilt`: the blueprint built, the ghosts revived, a new blueprint made) | exporter correctness, position rules, wire normalization |
 | F-25 | Programmable speaker: condition true / false / blank and held for many ticks (how often the sound starts again, with and without polyphony), no wire, `signal_value_is_pitch` with the values 0, 1, the last note and one beyond, both wires, a wildcard in the condition, volume from a signal below 0 and above 100, alert on and off; read back through `LuaEntity.parameters`, `alert_parameters`, the control behavior and the alerts of the force | every rule SP-* of `packages/simulation/CONFORMANCE.md`, the defaults of 3.10 |
 | F-26 | Electric pole relay: constant -> pole -> pole -> lamp with red and green on the same poles, a combinator behind a pole; `LuaEntity.get_signals` on the pole | one network per color through a pole, no tick added (6.9) |
 | F-24 | Wire reach: an entity B on every tile of a 29 x 29 grid around an entity A, asking `can_wire_reach` and `connect_to`: 1x1 and 2x1 entities in all four directions, both connectors, lamp, small / medium / big electric pole, steel chest. Recorded: `tests/fixtures/game/F-24-wire-reach.json` by `tools/game-probe/wire-reach.mjs` (`make probe-wire-reach`), checked by `packages/model/test/wireReachGame.test.ts` | the measure of wire reach (5.4): from where, inclusive or not, which of two reaches |
@@ -1196,6 +1197,9 @@ Status values: supported (modeled, editable in the DSL, simulated, round-tripped
 (import reports a diagnostic; the item is dropped or the import is refused as noted). These are proposals for the coordinator to decide. "pending F-nn" marks behavior that needs the named fixture
 before it can be called conformant.
 
+Decided 2026-11-14 for blueprints: nothing is "preserved-on-roundtrip-only". The editor is a circuit editor; what it does not model is dropped at import and reported (entities of other prototypes with their wires, copper wires,
+entity quality, tags, the blueprint's description, icons, snapping and tiles). Where a row below says preserved, read dropped and reported; 12.4 has the list and `packages/blueprints/README.md` the report.
+
 ### 9.1 Blueprint level
 
 | Item | Proposed status | Reason when not supported |
@@ -1356,7 +1360,7 @@ so a lamp without circuit control is displayed as "ambient" (lit only if `always
 
 ## 10. Open questions for the coordinator
 
-1. Selector `control_behavior` wire format (flat per API versus `selector_conditions` wrapper seen in game data) blocks the exporter until F-01 is run.
+1. Selector `control_behavior` wire format (flat per API versus `selector_conditions` wrapper seen in game data) blocks the exporter until F-01 is run. Since 2026-11-14 the exporter writes the flat form of the API and the importer reads both; the probe for F-01 exists and decides it when it has run (12.5).
 2. Signal order for anything outputs and selector ties needs the data dump to carry group order, subgroup order, `order` strings and quality levels, plus F-13 / F-16 to confirm the comparator.
 3. Rocket capacity needs runtime item weights (`LuaItemPrototype` at runtime), which a `--dump-data-raw` style dump does not contain. Either extend the dump task or keep the mode non-simulated.
 4. Whether 1.x strings should be converted rather than rejected: the game still imports them, so users may hold such strings.
@@ -1372,3 +1376,72 @@ The catalog generator (`tools/catalog`, see `packages/catalog/README.md`) dumped
 - Section 6.5 and open question 3: rocket capacity is computable. Every item has an engine-computed `weight` in the catalog and the rocket lift weight is in the dump (1,000,000 with Space Age; effectively unlimited without it).
 - Section 1.2: because Space Age only recommends Quality (`+` marker), there are eight valid module sets, not five; the catalog records per-set variants (for example `space-science-pack` stack size 2000 versus 200 with Space Age).
 - Open question 2: group, subgroup and order strings and quality levels are in the catalog; the comparator itself still needs fixtures F-13 and F-16.
+
+## 12. Blueprint import and export as built (2026-11-14)
+
+`packages/blueprints` implements sections 3 to 5. This section records what that work found out about the format beyond the sections above, with the same provenance tags, and what it had to assume.
+The game was not run for it either: the probe that will is in 12.5. "[assumed]" marks a choice of the exporter that nothing at hand decides; each is a line of 12.5.
+
+### 12.1 Added facts
+
+| Fact | Provenance |
+| --- | --- |
+| The API file gives no number for any define: `defines.direction`, `wire_connector_id`, `wire_type` and `control_behavior.lamp.color_mode` have `order` only (the position in the documentation, alphabetical for `direction`). The numbers of 4.2 and 5.4 are from the web and from the shipped strings, those of the lamp's color mode from nowhere | [api: defines] |
+| `LuaItemStack.import_stack` returns 0 "if the import succeeded with no errors", -1 "if the import succeeded with errors", 1 "if the import failed" | [api: LuaItemStack.import_stack] |
+| A game-written root object has its keys in the order `icons`, `entities`, `schedules`, `stock_connections`, `wires`, `tiles`, `item`, `label`, `version`, `branch_version`, each only when it has something | [data: the 89 embedded strings; `label` in three 2.0.7.0 strings of space-age/menu-simulations] |
+| An entity record is written `entity_number`, `name`, `position`, `direction`, then its own fields (`control_behavior`, `always_on`, `quality`, ...) | [data: embedded strings] |
+| Of the 89 shipped strings exactly one has circuit wires and control behaviours of the entities in scope (constant combinator, selector combinator; `base/prototypes/factoriopedia-simulations.lua`, version 1.2.10.23). Lamps occur in two strings, always without `control_behavior` (19 lamps, 16 of them `always_on`). No arithmetic or decider combinator and no speaker occurs in any | [data: decoded embedded strings] |
+| Strings with version 1.2.x (the pre-release of 2.0) have the 2.x layout: root `wires`, `sections`, connector ids. `neighbours` on poles occurs in three strings (1.1.0.14, 1.1.0.22 and the early pre-release 1.2.0.84), circuit `connections` in none | [data: decoded embedded strings] |
+| 2 x 2 poles have whole coordinates in strings the game wrote: a big pole at (-12, 224), a substation at (-8, 232) and (8, -21). This confirms the substation row of 5.4 | [data: space-age/menu-simulations/menu-simulation-vulcanus-punishment.lua, base/prototypes/factoriopedia-simulations.lua] |
+| `quality_filter` (QualityCondition) is either a quality name as a string or `{ quality?, comparator? }`; `quality_source_static` is `{ name? }`, name defaulting to normal; `quality_source_signal` is a SignalIDBase, a signal without quality | [api: QualityCondition, BlueprintQualityID, SignalIDBase] |
+| The runtime type of a speaker's `parameters`, `alert_parameters` and of `control_behavior.circuit_condition` and `circuit_parameters` marks every member as required, `volume_signal_id` and `icon_signal_id` included; a blueprint may still come without them (empty slots) | [api: ProgrammableSpeakerParameters, ProgrammableSpeakerAlertParameters, ProgrammableSpeakerBlueprintControlBehavior]; that they may be absent [assumed] |
+| A lamp's network selection is settable at run time as `LuaControlBehavior.input_networks` ("nil if this control behavior does not allow selecting the input networks"); the speaker has no such selection in its blueprint type | [api: LuaControlBehavior.input_networks, LampBlueprintControlBehavior, ProgrammableSpeakerBlueprintControlBehavior] |
+| Before 2.0 the speaker's playback mode was the boolean `playback_globally` (3.10); the importer reads it when `playback_mode` is absent | [changelog, as 3.10]; the field name in a 1.x string [unverified] |
+| A constant combinator's section is addressed at run time by `LuaConstantCombinatorControlBehavior.add_section(group?)`, `remove_section(index)` and `LuaLogisticSection.set_slot(index, { value = SignalFilter, min = count })`; an untouched combinator may already have a section (`sections_count`) | [api]; whether it has one [unverified], F-01 |
+
+### 12.2 Corrections
+
+| Section | Was | Is |
+| --- | --- | --- |
+| 4.3, 9.1 | "Major 1 is rejected", with 1.2.x left open | 1.1 and older are refused; 1.2.x is imported with a warning. The only real circuit string at hand is 1.2.10.23 and has the 2.x layout [data] |
+| 5.3 | "exporting with build 0 is expected to be accepted" | unchanged and still [unverified]; the exporter writes 2.1.24.0 (562954249961472) |
+| 3.2 | "Unknown fields must be preserved verbatim (proposal)" | not done: unknown fields are dropped and reported (decision of 2026-11-14, section 9) |
+| 9 | "preserved-on-roundtrip-only" for entities out of scope, copper wires, entity quality, tags and the blueprint's own extras | dropped and reported (same decision) |
+| 3.7 | "The importer should accept both forms; the exporter should follow the fixture result" | the importer accepts both; the exporter writes the flat form of the API until F-01 says otherwise [assumed] |
+
+### 12.3 What the exporter writes where the sources are silent
+
+All [assumed]; the game's own form is the subject of F-01. Reading does not depend on any of these: the importer takes every field with or without its default.
+
+| Topic | Written |
+| --- | --- |
+| Defaults in general | left out where the API names a default (`is_on` true, `active` true, `multiplier` 1, `copy_count_from_input` true, an output `constant` of 1, `compare_type` or, `index_comparator` =, `select_highest_quality` true, `circuit_enabled` false, `use_colors` false, `color_mode` 0, `always_on` false, both networks) |
+| Written although at a default | a constant operand of 0 and the `operation` of a configured arithmetic combinator; `comparator` and the `constant` of every condition; `select_max` and `index_constant` of a selector in select mode that is not as placed (the pre-release string has them); `random_update_interval`; `quality_source_static: { name: "normal" }`; all four members of a speaker's `parameters`, all of `alert_parameters` and `circuit_parameters`, and a blank `circuit_condition` as `{ constant: 0, comparator: "<" }` |
+| An entity as placed | no `control_behavior` at all for a combinator or a lamp; the speaker's three objects in full |
+| A constant combinator without sections | no `sections` |
+| Network selection | `{ red, green }`, both keys |
+| "Any quality" in a quality filter | no `quality_filter` when the comparator is `=`, `{ comparator }` otherwise |
+| Speaker with "signal value is pitch" | the pitch signal as `first_signal` of the condition, with `constant: 0, comparator: "<"` |
+| `color` of a lamp | `{ r, g, b, a: 1 }` with 0 to 1 per channel |
+| Wires | `[lower entity number, connector, higher, connector]`, a wire of an entity to itself with the lower connector first, the list sorted |
+| `icons` | up to four item signals, the most frequent prototypes first |
+
+### 12.4 What import drops
+
+Entities whose `name` is not one of the ten prototypes of 3.1, with every wire that has an end on one of them; copper wires (both connectors 5 or 6); wires that name an entity number or a connector that does not exist, or that join a red with a green connector.
+Of the blueprint: everything but `label`, `entities`, `wires` and `version`. Of a known entity: `quality`, `tags`, `items`, `mirror`, a `direction` on an entity that cannot turn, the logistic fields of a filter, a lamp's logistic connection, and every unknown field.
+Each is counted or named in the import report (`packages/blueprints/README.md`).
+
+### 12.5 Fixture F-01: recorded by the user, not yet
+
+`make probe-blueprints` runs `tools/game-probe/blueprints.mjs`, which needs the installed game and cannot run from an agent session. Until `tests/fixtures/game/F-01-blueprints.json` exists, these statements of this document rest on [api], [web] or [assumed] only:
+
+- 3.7: flat or wrapped selector parameters in 2.1.24;
+- 3.3: the written shape of a network selection that is not both;
+- 3.8: the numbers of the lamp's color modes; 4.2: the numbers of connectors 2 and 4; 5.4: the numbers of the four directions and the rotation of a combinator for 4, 8 and 12;
+- 3.4 to 3.8, 3.10: which defaults the game writes and which it leaves out, and what an untouched entity looks like (12.3);
+- 3.5, 3.6, 3.10 and the lamp's `control_behavior` as a whole: no string the game wrote has any of them;
+- 5.3: whether a `version` with build 0 is accepted; 5.4: whether a wire beyond its reach is dropped at import.
+
+The recording holds, per sample circuit, the blueprint the game makes of ours (`import_stack` then `export_stack`), of what it built from ours, and of the same circuit built through the runtime API, plus every supported entity as placed and the numbers of the defines.
+The tests of `packages/blueprints` named "the game (fixture F-01)" are skipped until then; afterwards every difference they show is either an entry for 12.2 or a change to the exporter.

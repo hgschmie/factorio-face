@@ -13,7 +13,8 @@
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "catalog": "node tools/catalog/generate.mjs",
     "examples": "node tools/examples/generate.ts",
-    "probe-wire-reach": "node tools/game-probe/wire-reach.mjs"
+    "probe-wire-reach": "node tools/game-probe/wire-reach.mjs",
+    "probe-blueprints": "node tools/game-probe/blueprints.mjs"
   },
   "dependencies": {
     "react": "19.3.1",

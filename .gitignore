@@ -7,3 +7,6 @@ release/
 .DS_Store
 # generated from the local Factorio installation (Wube assets, not redistributable yet)
 packages/catalog/generated/
+
+# Blueprint strings copied from the game data: Wube content, kept local until redistribution is decided.
+tests/fixtures/blueprints/shipped-*.json

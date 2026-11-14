@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 ENV := source scripts/env.sh &&
 
-.PHONY: install build typecheck test e2e run catalog examples probe-wire-reach clean
+.PHONY: install build typecheck test e2e run catalog examples probe-wire-reach probe-blueprints clean
 
 install:
 	$(ENV) npm install && node node_modules/electron/install.js
@@ -32,6 +32,10 @@ examples:
 # Records tests/fixtures/game/F-24-wire-reach.json from the installed game.
 probe-wire-reach:
 	$(ENV) npm run probe-wire-reach
+
+# Records tests/fixtures/game/F-01-blueprints.json from the installed game: what it exports and what it makes of our blueprints.
+probe-blueprints:
+	$(ENV) npm run probe-blueprints
 
 clean:
 	rm -rf dist .runtime
