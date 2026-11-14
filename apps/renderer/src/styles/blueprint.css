@@ -1,0 +1,165 @@
+/* The blueprint dialogs: paste or import, the import report, the blueprint string, what is in the way of an export. */
+.blueprint-dialog {
+  width: min(620px, 100%);
+}
+
+.blueprint-dialog section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.blueprint-dialog .section-label {
+  margin: 0;
+}
+
+.blueprint-dialog .section-label > span:last-child:not(:first-child) {
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.blueprint-dialog .muted-note {
+  line-height: 1.5;
+}
+
+.blueprint-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* A blueprint string is one long word. */
+.blueprint-text textarea {
+  height: 132px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.blueprint-text textarea[aria-invalid="true"] {
+  border-color: var(--status-error);
+}
+
+.blueprint-file,
+.blueprint-summary {
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.blueprint-file .path {
+  font-family: var(--font-mono);
+  color: var(--text-strong);
+}
+
+.book-list,
+.report-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.book-list {
+  gap: 2px;
+  max-height: 260px;
+  padding: 4px;
+  overflow: auto;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.book-list li > * {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 7px;
+  border-radius: var(--radius-sm);
+}
+
+.book-list label:not(.unavailable) {
+  cursor: pointer;
+}
+
+.book-list label:not(.unavailable):hover,
+.book-list label:has(input:checked) {
+  background: var(--surface-raised);
+}
+
+.book-list label.unavailable .book-label,
+.book-list li:not([data-kind="blueprint"], [data-kind="book"]) .book-label {
+  color: var(--text-dim);
+}
+
+.book-list input {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
+.book-list [data-kind="book"] .book-label {
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.book-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.book-list small {
+  flex-shrink: 0;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+}
+
+.report-list {
+  gap: 1px;
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+
+.report-list li {
+  padding: 6px 9px;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.report-list li + li {
+  border-top: 1px solid var(--border-edge);
+}
+
+.report-list small {
+  display: block;
+  font-size: var(--text-md);
+  color: var(--text-muted);
+}
+
+.report-list.problems li {
+  color: var(--danger-text);
+}
+
+.report-list.warnings li {
+  color: var(--notice-text);
+}
+
+.note-kind {
+  margin-right: 4px;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}

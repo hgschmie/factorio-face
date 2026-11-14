@@ -44,7 +44,17 @@ export const LIMITS = {
   /** Example projects listed from the examples directory. */
   examples: 64,
   exampleFileNameLength: 255,
+  /**
+   * Bytes of a file File > Import Blueprint reads. The importer (`DEFAULT_LIMITS` of @face/blueprints) takes a blueprint string of up to
+   * 8 MiB of characters and refuses text of more than twice that unread, which leaves room for line breaks and for the plain JSON.
+   */
+  blueprintFileBytes: 16 * 1024 * 1024,
+  /** Characters of a blueprint string File > Export Blueprint writes: the longest one the importer reads back. */
+  blueprintStringLength: 8 * 1024 * 1024,
 } as const;
+
+/** The extension a blueprint file gets unless the user names another one. The file is the blueprint string as text. */
+export const BLUEPRINT_FILE_EXTENSION = ".txt";
 
 // Project format v1 (ADR 0001, item 6): a zip archive (*.faceproj) with face.json and the *.face sources at its root; assets/ is reserved for custom icons.
 
@@ -115,6 +125,25 @@ export interface RecentProject {
   readonly openedAt: string;
 }
 
+/** A file the user chose in File > Import Blueprint, read as text. Whether it holds a blueprint is for the renderer's importer to say. */
+export interface BlueprintFileText {
+  /** The name of the file without its folders, for messages. */
+  readonly name: string;
+  readonly text: string;
+}
+
+export interface ExportBlueprintRequest {
+  /** The name of the project; the file name the save dialog suggests is made from it. Never a path. */
+  readonly name: string;
+  /** The blueprint string: the character `0` and base64. */
+  readonly text: string;
+}
+
+export interface ExportedBlueprint {
+  /** Where the user had the blueprint written. */
+  readonly path: string;
+}
+
 export const UNSAVED_CHOICES = ["save", "discard", "cancel"] as const;
 export type UnsavedChoice = (typeof UNSAVED_CHOICES)[number];
 
@@ -161,8 +190,14 @@ export const SIMPLE_MENU_COMMANDS = [
   "file.open",
   "file.save",
   "file.saveAs",
+  "file.importBlueprint",
+  "file.pasteBlueprint",
+  "file.exportBlueprint",
+  "file.showBlueprint",
   "edit.undo",
   "edit.redo",
+  // The same dialog as "file.pasteBlueprint", next to Paste; the key is on the item of the File menu.
+  "edit.pasteBlueprint",
   "edit.delete",
   "edit.selectAll",
   "view.circuit",
@@ -196,6 +231,8 @@ export const CHANNELS = {
   getRecentProjects: "face:recent:list",
   clearRecentProjects: "face:recent:clear",
   confirmUnsavedChanges: "face:confirm-unsaved",
+  importBlueprintFile: "face:blueprint:import-file",
+  exportBlueprintFile: "face:blueprint:export-file",
   paste: "face:edit:paste",
   getAppSettings: "face:app-settings:get",
   chooseGameFolder: "face:app-settings:choose-game-folder",
@@ -234,6 +271,16 @@ export interface FaceApi {
   clearRecentProjects(): Promise<IpcResult<null>>;
   /** Native Save / Discard / Cancel prompt, for replacing a project with unsaved changes. */
   confirmUnsavedChanges(): Promise<IpcResult<UnsavedChoice>>;
+  /**
+   * File > Import Blueprint: shows the native file dialog and reads the chosen file as text, up to `LIMITS.blueprintFileBytes`. Takes no
+   * arguments: the file comes from the dialog alone. Resolves with null when the user cancels or one of the two blueprint dialogs is open.
+   */
+  importBlueprintFile(): Promise<IpcResult<BlueprintFileText | null>>;
+  /**
+   * File > Export Blueprint: shows the native save dialog and writes the blueprint string there, atomically. The location comes from the
+   * dialog alone; the text must be a blueprint string. Resolves with null when the user cancels or one of the two blueprint dialogs is open.
+   */
+  exportBlueprintFile(request: ExportBlueprintRequest): Promise<IpcResult<ExportedBlueprint | null>>;
   /**
    * Makes the window paste into itself, as Edit > Paste does: the page gets a `paste` event that carries the clipboard. For the Paste
    * item of the canvas context menu, because a page cannot start a paste. It takes no arguments and returns no clipboard content.

@@ -2,7 +2,9 @@
 // native menu and the close handshake. It keeps only view state that no panel owns (the canvas view across remounts).
 import type { Point } from "@face/model";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
+import type { BlueprintFileText, FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
+import { BlueprintString, ExportProblems } from "../blueprint/ExportBlueprint.tsx";
+import { ImportBlueprint, ImportReport } from "../blueprint/ImportBlueprint.tsx";
 import { Canvas, type CanvasHandle, type CanvasViews } from "../canvas/Canvas.tsx";
 import { canFlip } from "../canvas/flip.ts";
 import { ZOOM_STEP, type CanvasView } from "../canvas/viewport.ts";
@@ -14,6 +16,7 @@ import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspe
 import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
+import type { BlueprintExport, BlueprintProblem, ImportedBlueprint, ImportReportView } from "../session/blueprints.ts";
 import { AppSettings } from "../settings/AppSettings.tsx";
 import { gameFolderHint, needsGameFolderHint } from "../settings/appSettings.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
@@ -43,6 +46,14 @@ export interface WorkbenchProps {
   /** Catalog names and icons of signals, for the inspector, the cards and the dock. */
   readonly describeSignal?: SignalDescriber;
 }
+
+/** The blueprint dialog on show: one at a time, each the answer to a command of the File menu or the next step of one. */
+type BlueprintDialog =
+  /** The text box to paste a blueprint string into; with `file`, what a chosen file holds when that is not one blueprint. */
+  | { readonly type: "import"; readonly file?: BlueprintFileText }
+  | { readonly type: "report"; readonly name: string; readonly report: ImportReportView }
+  | { readonly type: "string"; readonly exported: BlueprintExport & { readonly ok: true } }
+  | { readonly type: "problems"; readonly problems: readonly BlueprintProblem[] };
 
 /**
  * Text a field writes only when it is left (a name, a description) would be missing from a save made while the focus is still
@@ -88,6 +99,8 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
   const [appSettingsOpen, setAppSettingsOpen] = useState(false);
   const closeAppSettings = useCallback(() => setAppSettingsOpen(false), []);
   const [iconHintDismissed, setIconHintDismissed] = useState(false);
+  const [blueprintDialog, setBlueprintDialog] = useState<BlueprintDialog | null>(null);
+  const closeBlueprintDialog = useCallback(() => setBlueprintDialog(null), []);
   const revealDiagnostic = useCallback((diagnostic: Diagnostic) => editorRef.current?.reveal(diagnostic.from, diagnostic.to), []);
   // The canvas unmounts in Source mode; its views, one per display mode, are kept here so that coming back does not reset them.
   const viewsRef = useRef<CanvasViews>({});
@@ -269,6 +282,49 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
     [api],
   );
 
+  // A blueprint opens as a new project; what the import left out is reported once it is open.
+  const openBlueprint = useCallback(
+    async (blueprint: ImportedBlueprint): Promise<boolean> => {
+      if (!(await commands.openBlueprint(blueprint))) return false;
+      setBlueprintDialog(blueprint.report ? { type: "report", name: blueprint.name, report: blueprint.report } : null);
+      return true;
+    },
+    [commands],
+  );
+  // A file that holds one blueprint needs no dialog. A book, or text that is no blueprint, is shown in the import dialog.
+  const importBlueprintFile = useCallback(async (): Promise<void> => {
+    const file = await commands.chooseBlueprintFile();
+    if (!file) return;
+    const reading = commands.readBlueprint(file.text);
+    if (reading.kind === "blueprint") void openBlueprint(reading.blueprint);
+    else setBlueprintDialog({ type: "import", file });
+  }, [commands, openBlueprint]);
+  // The circuit as a blueprint string: in a dialog to copy it from, or in a file. What is in the way of one is shown instead.
+  const exportBlueprint = useCallback(
+    (target: "dialog" | "file"): void => {
+      writeFocusedField();
+      const exported = commands.exportBlueprint();
+      if (!exported.ok) setBlueprintDialog({ type: "problems", problems: exported.problems });
+      else if (target === "dialog") setBlueprintDialog({ type: "string", exported });
+      else {
+        setBlueprintDialog(null);
+        void commands.saveBlueprintFile(exported);
+      }
+    },
+    [commands],
+  );
+  const showBoard = useCallback(
+    (names: readonly string[]): void => {
+      const { circuit, mode } = stateRef.current;
+      const wanted = new Set(names);
+      setBlueprintDialog(null);
+      if (mode === "source") commands.setMode("circuit");
+      commands.setDisplayMode("blueprint");
+      commands.select(circuit.entities.filter((entity) => wanted.has(entity.name)).map((entity) => entity.id));
+    },
+    [commands],
+  );
+
   // Dirty-state handshake: main asks before closing a window that reported unsaved changes.
   useEffect(() => api?.setDirty(project.dirty), [api, project.dirty]);
   useEffect(() => api?.onSaveBeforeClose(save), [api, save]);
@@ -295,6 +351,15 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
         case "file.saveAs":
           writeFocusedField();
           return void commands.saveAs();
+        case "file.importBlueprint":
+          return void importBlueprintFile();
+        case "file.pasteBlueprint":
+        case "edit.pasteBlueprint":
+          return setBlueprintDialog({ type: "import" });
+        case "file.exportBlueprint":
+          return exportBlueprint("file");
+        case "file.showBlueprint":
+          return exportBlueprint("dialog");
         case "edit.undo":
           return history("undo");
         case "edit.redo":
@@ -328,7 +393,7 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
       }
     };
     return api.onMenuCommand(run);
-  }, [api, commands, history, save]);
+  }, [api, commands, history, save, importBlueprintFile, exportBlueprint]);
 
   const errors = state.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warnings = state.diagnostics.length - errors;
@@ -520,6 +585,10 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
 
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
       {appSettingsOpen && appSettings && <AppSettings settings={appSettings} close={closeAppSettings} />}
+      {blueprintDialog?.type === "import" && <ImportBlueprint key={blueprintDialog.file?.name} file={blueprintDialog.file} read={commands.readBlueprint} open={openBlueprint} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "report" && <ImportReport name={blueprintDialog.name} report={blueprintDialog.report} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "string" && <BlueprintString exported={blueprintDialog.exported} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "problems" && <ExportProblems problems={blueprintDialog.problems} showBoard={showBoard} close={closeBlueprintDialog} />}
 
       {!showCanvas && toast}
     </div>

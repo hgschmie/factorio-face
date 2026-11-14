@@ -6,7 +6,9 @@ import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup, SpeakerInstrumentInfo } from "@face/catalog";
 import { canRotate, DEFAULT_FACING, prototypeOf, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
+import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
 import { flipped, rotated, type FlipAxis, type RotationTurn } from "../entities/facing.ts";
+import type { BlueprintExport, BlueprintReading, ImportedBlueprint } from "../session/blueprints.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
 export type WorkbenchMode = (typeof WORKBENCH_MODES)[number];
@@ -293,7 +295,7 @@ export interface WorkbenchState {
   /** The selected wires as `wireKey`s. They exist in `circuit`; entities and wires can be selected together. */
   readonly wireSelection: readonly string[];
   readonly mode: WorkbenchMode;
-  /** View state like `mode`: not part of the document, not undoable, `edit` for every project that is opened. */
+  /** View state like `mode`: not part of the document, not undoable, `edit` for every project that is opened and `blueprint` for an imported blueprint. */
   readonly displayMode: DisplayMode;
   /** Always one the display mode offers (`toolAllowed`). */
   readonly tool: Tool;
@@ -447,6 +449,24 @@ export interface WorkbenchCommands {
   /** Resolves true when the project is on disk afterwards, false when saving failed or was cancelled. */
   save(): Promise<boolean>;
   saveAs(): Promise<boolean>;
+
+  // Blueprints of the game. An import never changes the open project: it opens a new one.
+  /**
+   * What a text holds, pasted or read from a file: a blueprint with the circuit the editor makes of it, the items of a blueprint
+   * book (`select` then names one of them, by its `path`), or why it is neither. It changes nothing.
+   */
+  readBlueprint(text: string, select?: readonly number[]): BlueprintReading;
+  /**
+   * Opens an imported blueprint as a new project on the blueprint board: without a file, so that Save asks for a location, and
+   * with unsaved changes until then. Resolves false when the user kept the current project or it could not be opened.
+   */
+  openBlueprint(blueprint: ImportedBlueprint): Promise<boolean>;
+  /** Shows the native file dialog and resolves with the text of the chosen file; undefined when the user cancelled or it could not be read. */
+  chooseBlueprintFile(): Promise<BlueprintFileText | undefined>;
+  /** The blueprint string of the circuit, or what is in the way of one. It changes nothing. */
+  exportBlueprint(): BlueprintExport;
+  /** Shows the native save dialog and writes the blueprint string there; the message on show then says where it went. Resolves false when nothing was written. */
+  saveBlueprintFile(exported: BlueprintExport & { readonly ok: true }): Promise<boolean>;
 }
 
 /** What `App` hands to the workbench. */

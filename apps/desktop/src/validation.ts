@@ -10,6 +10,7 @@ import {
   type CircuitFile,
   type CustomSignal,
   type CustomSignalGroup,
+  type ExportBlueprintRequest,
   type JsonValue,
   type ProjectData,
   type ProjectManifest,
@@ -221,6 +222,20 @@ export function parseProjectData(value: unknown): ProjectData {
 export function parseSaveProjectRequest(value: unknown): SaveProjectRequest {
   if (!isRecord(value)) fail("Save request must be an object");
   return { path: value.path === null ? null : parseProjectPath(value.path), data: parseProjectData(value.data) };
+}
+
+/** What the game writes and reads: the version character `0`, then base64 with its padding. Nothing else, so no blanks and no line breaks. */
+const BLUEPRINT_STRING = /^0[A-Za-z0-9+/]+={0,2}$/;
+
+/** What File > Export Blueprint writes to a file: a blueprint string of bounded length, and the project name the file name is suggested from. */
+export function parseExportBlueprintRequest(value: unknown): ExportBlueprintRequest {
+  if (!isRecord(value)) fail("Export request must be an object");
+  const name = parseString(value.name, "Project name", LIMITS.projectNameLength);
+  const text = value.text;
+  if (typeof text !== "string") fail("Blueprint string must be a string");
+  if (text.length > LIMITS.blueprintStringLength) fail(`Blueprint string is too long (limit ${LIMITS.blueprintStringLength} characters)`);
+  if (!BLUEPRINT_STRING.test(text)) fail("Not a blueprint string");
+  return { name, text };
 }
 
 /** Tolerant reader for the recent-projects file: malformed entries are dropped instead of failing the whole list. */

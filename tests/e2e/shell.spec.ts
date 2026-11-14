@@ -108,7 +108,7 @@ test("runs the renderer sandboxed, isolated and without remote or dynamic code",
   expect(page.url()).toBe("face-app://bundle/index.html");
   expect(inPage.nodeGlobals).toEqual(["undefined", "undefined", "undefined"]);
   expect(inPage.api).toEqual([
-    "catalogAssetUrl", "chooseGameFolder", "clearRecentProjects", "confirmUnsavedChanges", "getAppSettings", "getRecentProjects", "loadProject", "newProject",
+    "catalogAssetUrl", "chooseGameFolder", "clearRecentProjects", "confirmUnsavedChanges", "exportBlueprintFile", "getAppSettings", "getRecentProjects", "importBlueprintFile", "loadProject", "newProject",
     "onAppSettingsChanged", "onMenuCommand", "onSaveBeforeClose", "openExample", "openLastProject", "openProject", "paste", "platform", "resetGameFolder", "saveProject", "saveProjectAs", "setDirty",
   ]);
   expect(inPage.eval).toBe("EvalError");

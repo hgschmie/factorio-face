@@ -21,7 +21,8 @@ export function Modal({ title, closeLabel, className, children, close }: ModalPr
 
   useEffect(() => {
     const previous = document.activeElement;
-    panelRef.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    // The control a dialog marks as the one to start in (its text box, its main button), otherwise its first one: the close button.
+    (panelRef.current?.querySelector<HTMLElement>("[data-autofocus]:not(:disabled)") ?? panelRef.current?.querySelector<HTMLElement>(FOCUSABLE))?.focus();
     return () => {
       // The canvas is an SVG element.
       if ((previous instanceof HTMLElement || previous instanceof SVGElement) && previous.isConnected) previous.focus();

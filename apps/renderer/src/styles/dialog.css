@@ -37,3 +37,23 @@
   width: 26px;
   height: 26px;
 }
+
+/* The buttons at the foot of a dialog, the one that goes on first. */
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.dialog-actions .primary-button {
+  border-color: var(--confirm-edge);
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--confirm);
+  box-shadow: inset 0 1px var(--confirm-bright);
+}
+
+.dialog-actions .primary-button:hover:not(:disabled) {
+  border-color: var(--confirm-edge);
+  background: var(--confirm-bright);
+}

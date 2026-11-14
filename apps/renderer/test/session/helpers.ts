@@ -1,6 +1,6 @@
 import type { Entity, EntityId } from "@face/model";
 import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
-import type { AppSettingsState, FaceApi, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
+import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
 import { ProjectSession, type SessionOptions } from "../../src/session/projectSession.ts";
 import type { Scheduler } from "../../src/session/simulationRunner.ts";
@@ -88,6 +88,14 @@ export interface FakeDesktop {
   savePath: string | null;
   unsavedChoice: "save" | "discard" | "cancel";
   confirmations: number;
+  /** How often an empty project was asked for. */
+  newProjects: number;
+  /** What the file dialog of File > Import Blueprint gives; null for a cancelled dialog. */
+  blueprintFile: BlueprintFileText | null;
+  /** Where File > Export Blueprint writes; null for a cancelled dialog. */
+  blueprintPath: string | null;
+  /** What was written there. */
+  readonly blueprintExports: ExportBlueprintRequest[];
 }
 
 const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: "2.1.24", versionMatch: null, modules: [], problem: null, iconRevision: 0 };
@@ -103,10 +111,17 @@ export function fakeDesktop(): FakeDesktop {
     savePath: "/projects/saved",
     unsavedChoice: "discard",
     confirmations: 0,
+    newProjects: 0,
+    blueprintFile: null,
+    blueprintPath: "/blueprints/exported.txt",
+    blueprintExports: [],
     api: {
       platform: "test",
       catalogAssetUrl: "face-asset://catalog/",
-      newProject: () => ok({ path: null, data: createEmptyProject() }),
+      newProject: () => {
+        desktop.newProjects++;
+        return ok({ path: null, data: createEmptyProject() });
+      },
       openProject: () => ok(null),
       loadProject: (path) => {
         const data = desktop.disk.get(path);
@@ -133,6 +148,12 @@ export function fakeDesktop(): FakeDesktop {
       confirmUnsavedChanges: () => {
         desktop.confirmations++;
         return ok(desktop.unsavedChoice);
+      },
+      importBlueprintFile: () => ok(desktop.blueprintFile),
+      exportBlueprintFile: (request) => {
+        if (desktop.blueprintPath === null) return ok(null);
+        desktop.blueprintExports.push(structuredClone(request));
+        return ok({ path: desktop.blueprintPath });
       },
       paste: () => ok(null),
       getAppSettings: () => ok(NO_GAME),

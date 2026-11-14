@@ -11,6 +11,7 @@ import { loadStandardCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
 import { canRotate, DEFAULT_FACING, facingOf, isWireReach, prototypeOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
+import { DEFAULT_MODULES } from "../../../desktop/src/emptyProject.ts";
 import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
@@ -21,18 +22,18 @@ import {
   type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
 import { Analysis } from "./analysis.ts";
+import { exportCircuit, importedProject, INVALID_SOURCE_PROBLEM, readBlueprint } from "./blueprints.ts";
 import { CatalogService } from "./catalogService.ts";
 import { clipboardText, pasteShift, readClipboardText } from "./clipboard.ts";
 import { SourceDocument } from "./document.ts";
 import { checkDraft, normalizeEntity } from "./drafts.ts";
 import { languageSupport, lintTransaction } from "./editorSupport.ts";
 import { createCatalogEnvironment } from "./environment.ts";
-import { emptyProject, isDirty, openProjectFile, savedProjectFile, toProjectData, type ProjectFile, type ProjectSettings } from "./persistence.ts";
+import { emptyProject, isDirty, neverSaved, openProjectFile, PROJECT_NAME_LIMIT, savedProjectFile, toProjectData, type ProjectFile, type ProjectSettings } from "./persistence.ts";
 import { SimulationRunner, type Scheduler } from "./simulationRunner.ts";
 
 const NO_DESKTOP = "Projects can only be opened and saved in the desktop app.";
 const LAST_PROJECT_NOT_REOPENED = "The last project could not be reopened.";
-const PROJECT_NAME_LIMIT = 200;
 const NOT_A_FRAGMENT = "Nothing was pasted: the clipboard does not hold entities of a circuit.";
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
 const NO_WIRES: readonly string[] = [];
@@ -69,6 +70,8 @@ export class ProjectSession {
   private file: ProjectFile;
   private settings: ProjectSettings;
   private epoch = 0;
+  /** The speaker's instruments as a new project has them, which is what an imported blueprint opens as. Made on first use. */
+  private importInstruments: CatalogService["instruments"] | undefined;
   /** Set once the start has asked for the last project; settles when that is on show or it is clear that the empty project stays. */
   private started: Promise<void> | undefined;
 
@@ -519,12 +522,39 @@ export class ProjectSession {
         if (isWireReach(wireReach) && wireReach !== this.settings.wireReach) this.applySettings({ ...this.settings, wireReach });
       }),
 
-      newProject: () => this.replaceProject((api) => api.newProject()),
-      openProject: () => this.replaceProject((api) => api.openProject()),
-      loadProject: (path) => this.replaceProject((api) => api.loadProject(path)),
-      openExample: (file) => this.replaceProject((api) => api.openExample(file)),
+      newProject: async () => void (await this.replaceProject((api) => api.newProject())),
+      openProject: async () => void (await this.replaceProject((api) => api.openProject())),
+      loadProject: async (path) => void (await this.replaceProject((api) => api.loadProject(path))),
+      openExample: async (file) => void (await this.replaceProject((api) => api.openExample(file))),
       save: () => this.writeProject(false),
       saveAs: () => this.writeProject(true),
+
+      readBlueprint: (text, select) => readBlueprint(text, (this.importInstruments ??= new CatalogService(this.catalog, DEFAULT_MODULES).instruments), select),
+      // The main process hands out the empty project and learns by it that the window shows a project without a file.
+      openBlueprint: (blueprint) =>
+        this.replaceProject(async (api) => {
+          const empty = await api.newProject();
+          return empty.ok ? { ok: true, value: importedProject(empty.value.data, blueprint) } : empty;
+        }, true),
+      chooseBlueprintFile: async () => {
+        const api = this.api;
+        if (!api) return void this.fail(NO_DESKTOP);
+        return this.unwrap(await api.importBlueprintFile()) ?? undefined;
+      },
+      // The circuit on show lags behind a source with errors; a blueprint of it would not be the blueprint of the project.
+      exportBlueprint: () => (this.editable ? exportCircuit(this.analysis.circuit, this.services.instruments) : { ok: false, problems: [INVALID_SOURCE_PROBLEM] }),
+      saveBlueprintFile: async (exported) => {
+        const api = this.api;
+        if (!api) {
+          this.fail(NO_DESKTOP);
+          return false;
+        }
+        const written = this.unwrap(await api.exportBlueprintFile({ name: this.settings.name, text: exported.string }));
+        if (!written) return false;
+        const warnings = exported.warnings.length;
+        this.change(() => this.show(`Blueprint exported to ${written.path}${warnings === 0 ? "" : `, with ${warnings} ${warnings === 1 ? "warning" : "warnings"}: File > Show Blueprint String lists ${warnings === 1 ? "it" : "them"}`}.`));
+        return true;
+      },
     };
   }
 
@@ -545,11 +575,14 @@ export class ProjectSession {
     if (modulesChanged || reachChanged) this.analyze();
   }
 
-  /** Replaces everything with `project`: a new document with an empty history, no selection, simulation at tick 0. */
-  load(project: LoadedProject): void {
+  /**
+   * Replaces everything with `project`: a new document with an empty history, no selection, simulation at tick 0. `imported` says that
+   * it is a blueprint of the game: it is shown on the blueprint board, where every entity of it has its tile, and it counts as changed.
+   */
+  load(project: LoadedProject, imported = false): void {
     this.change(() => {
       const { file, source, settings } = openProjectFile(project);
-      this.file = file;
+      this.file = imported ? neverSaved(file) : file;
       this.settings = settings;
       this.epoch++;
       this.selection = [];
@@ -557,7 +590,7 @@ export class ProjectSession {
       this.draft = null;
       this.show(null);
       this.tool = SELECT_TOOL;
-      this.displayMode = "edit";
+      this.displayMode = imported ? "blueprint" : "edit";
       this.coalesce = undefined;
       this.pendingSelection = undefined;
       this.lintShown = 0;
@@ -626,13 +659,18 @@ export class ProjectSession {
     return choice === "discard";
   }
 
-  private async replaceProject(load: (api: FaceApi) => Promise<IpcResult<LoadedProject | null>>): Promise<void> {
+  /** Resolves true when the project `load` gives is on show: false when the user kept the current one, cancelled, or it could not be read. */
+  private async replaceProject(load: (api: FaceApi) => Promise<IpcResult<LoadedProject | null>>, imported = false): Promise<boolean> {
     const api = this.api;
-    if (!api) return this.fail(NO_DESKTOP);
+    if (!api) {
+      this.fail(NO_DESKTOP);
+      return false;
+    }
     // A project chosen while the start is still asking for the last one is opened after it, not replaced by it.
     await this.started;
-    if (!(await this.mayReplaceProject(api))) return;
+    if (!(await this.mayReplaceProject(api))) return false;
     const project = this.unwrap(await load(api));
-    if (project) this.load(project);
+    if (project) this.load(project, imported);
+    return Boolean(project);
   }
 }

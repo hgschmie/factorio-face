@@ -28,6 +28,8 @@ src/
     catalogService.ts  per module set: SignalResolver, signal info, picker tree, module list for the settings
     environment.ts     simulation environment from the catalog (order, stack sizes, rocket capacity, qualities)   (pure)
     persistence.ts     project file mapping, dirty comparison, the empty project a session begins with   (pure)
+    blueprints.ts      blueprints of the game: what a pasted text or a file holds, the list of a book, the wording of the import
+                       report, the project a blueprint opens as, the blueprint string of the circuit and what is in its way   (pure)
     completion.ts      completion candidates from the language's expectations and the catalog   (pure)
     editorSupport.ts   CodeMirror glue: token kinds, lint transaction, completion source
     useProjectSession.ts  React binding (useSyncExternalStore) and the `window.faceSession` probe
@@ -92,7 +94,12 @@ src/
     appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
     useAppSettings.ts  the state as the main process reports it, and the two requests that change it
   dialog/
-    Modal.tsx          the modal dialog: backdrop, title, close button, focus kept inside and given back
+    Modal.tsx          the modal dialog: backdrop, title, close button, focus kept inside and given back; it starts in the
+                       control marked `data-autofocus`, otherwise in its first one
+  blueprint/
+    ImportBlueprint.tsx  the dialog to paste a blueprint string into (also: what is in the way of a chosen file, the list of a
+                       blueprint book), and the report on what an import left out
+    ExportBlueprint.tsx  the dialog with the blueprint string to copy, and the one that lists what is in the way of a blueprint
   shortcuts/
     shortcuts.ts       the shortcut table: every key of the app, key matching, labels per platform, the arrow distance   (pure)
     ShortcutOverview.tsx  the modal overview of all shortcuts
@@ -137,7 +144,8 @@ below).
 `toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `placeHere`, `unplace`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
-`loadProject`, `openExample`, `save`, `saveAs`).
+`loadProject`, `openExample`, `save`, `saveAs`) and blueprints (`readBlueprint`, `openBlueprint`, `chooseBlueprintFile`, `exportBlueprint`,
+`saveBlueprintFile`; see "Blueprints of the game").
 
 ## How the session works
 
@@ -824,6 +832,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Zoom In, Zoom Out, Fit to Content | `⌘+`, `⌘-`, `⌘0` | `Ctrl++`, `Ctrl+-`, `Ctrl+0` | menu |
 | Run / Pause, Step, Reset | `⌘R`, `⌘T`, `⇧⌘R` | `Ctrl+R`, `Ctrl+T`, `Ctrl+Shift+R` | menu |
 | New, Open, Save, Save As | `⌘N`, `⌘O`, `⌘S`, `⇧⌘S` | `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S` | menu |
+| Import Blueprint, Paste Blueprint String, Export Blueprint, Show Blueprint String | `⇧⌘O`, `⇧⌘B`, `⇧⌘E`, `⇧⌘C` | `Ctrl+Shift+O`, `Ctrl+Shift+B`, `Ctrl+Shift+E`, `Ctrl+Shift+C` | menu |
 | Application settings (Settings... in the application menu on macOS, in the File menu elsewhere) | `⌘,` | `Ctrl+,` | menu |
 
 - **Scopes.** `circuit`: handled by `Workbench` with one `keydown` listener on the document, wherever the focus is while the
@@ -882,6 +891,56 @@ An icon the installation should have but lacks (a module that is not installed) 
 The URL of an icon does not say where it comes from, and an image does not fetch an unchanged URL again. When the installation in use
 changes while the app runs, the state of the application settings carries a higher `iconRevision`; both resolvers take it, append it
 as `?r=<n>` (`revisionQuery`; nothing for revision 0, the installation found at start) and probe again.
+
+## Blueprints of the game
+
+The File menu has a group of four commands (`menu.ts`; the keys are in the table above): Import Blueprint... (`file.importBlueprint`),
+Paste Blueprint String... (`file.pasteBlueprint`, and once more in the Edit menu under Paste as `edit.pasteBlueprint`, without a key),
+Export Blueprint... (`file.exportBlueprint`) and Show Blueprint String (`file.showBlueprint`). The format, the mapping and what an import
+drops are the business of `@face/blueprints`; `session/blueprints.ts` (pure) turns its results into what the dialogs show, and the
+session has five commands for it. `Workbench` holds which of the four dialogs is on show (`BlueprintDialog`, one at a time).
+
+- **In, three ways, one result.** `readBlueprint(text, select?)` says what a text holds (`BlueprintReading`): a blueprint with the
+  source of its circuit and its report, the rows of a blueprint book, or an error as a sentence. `openBlueprint(blueprint)` opens it
+  as a new project: the empty project of the main process (`newProject()`, which also tells the main process that the window has no
+  file) with the label as its name ("Imported blueprint" without one; control characters and line breaks removed, 200 characters) and
+  the printed circuit as its source. It has no path, it is shown on the blueprint board (`displayMode` `blueprint`: every entity has
+  its tile) and it counts as changed until it is saved (`neverSaved`), so Save asks for a location, the window asks before it closes,
+  and it is not a recent project. The prompt for unsaved changes of the project it replaces comes first; `openBlueprint` resolves
+  false when the user kept that project. The speaker's instruments are those of the modules a new project has.
+- **The paste dialog** (`ImportBlueprint`, dialog "Paste blueprint string"): a text box that starts with the focus, read on every
+  change (`useDeferredValue`, so typing does not wait for a long string). Below it, while the box is not blank: the error
+  (`[data-message="error"]`, the box is `aria-invalid`), or what the blueprint is (`[data-message="blueprint"]`: `"Name": 4 entities.`
+  or `5 of 9 entities can be imported. ...`), or the book. Import is enabled only for something that can be imported; Cancel, Escape
+  and the backdrop close. When the user keeps the current project in the unsaved-changes prompt the dialog stays with its text.
+- **A book** is listed as the package returns it: every item in its order, a book inside it followed by its own items, indented by
+  its depth (`bookRows`: label or "Blueprint without a label", "12 entities, 4 known to the editor", `importable`). The blueprints
+  are radio buttons (`role="radiogroup"` "Blueprints of the book"); one without an entity the editor knows, a planner and a book
+  are listed and cannot be chosen. The first importable one is chosen at the start.
+- **A file** (Import Blueprint...): `chooseBlueprintFile()` has the main process show the file dialog and read the file; the renderer
+  gets the text and the file name. One blueprint opens at once, without a dialog. A book or an error is shown in the same dialog
+  ("Import blueprint"), with the name of the file in place of the text box.
+- **Nothing to open.** A blueprint without an entity the editor knows (or without entities) is an error of the dialog: "The editor
+  knows none of the 3 entities of this blueprint (transport-belt, inserter), so there is nothing to import."
+- **The report** (`ImportReport`, dialog "Blueprint imported", after the project is open; `importReport` makes its lines): the
+  summary ("Imported 5 of 9 entities and 2 wires."), the dropped entities per prototype ("3 x transport-belt"), the wires ("2 circuit
+  wires to dropped entities went with them.", "1 copper wire (power) was dropped: the editor has circuit wires only.", invalid wires),
+  the notes on settings (`Ignored` / `Invalid` / `Changed` / `Reset`, the prototype, the field and what became of it, the entities by
+  name) and what of the blueprint itself is not kept (description, snapping, tiles, ...; the warnings of the package). An import with
+  nothing in any of these has no report: the circuit just opens. The icons of a blueprint never count, every blueprint has them.
+- **Untrusted text.** The importer bounds the text (16 MiB looked at, 8 MiB of string, 32 MiB unpacked, 5000 known entities) and
+  never throws. What a blueprint can put into a dialog is bounded here: names to 80 characters, messages to 600, the lists of the
+  report to 50 lines (`REPORT_LINES`), a book to 1000 rows (`BOOK_ROWS`). Everything is rendered as text.
+- **Out.** `exportBlueprint()` gives the blueprint string of the circuit with the game version it is written for and the warnings
+  of the export, or the problems (`BlueprintExport`); while the source has errors the one problem is that (`invalid-source`), because
+  the circuit on show is not the circuit of the source. Show Blueprint String opens `BlueprintString`: the string in a read-only box,
+  in focus and selected, "Copy" (a copy of the selection through `document.execCommand("copy")`, the mechanism of the canvas menu:
+  the clipboard API is refused by the app's permission handlers), "Factorio 2.1.24" (`[data-fact="version"]`) and the warnings.
+  Export Blueprint... calls `saveBlueprintFile(exported)`: the main process shows the save dialog (suggested name from the project
+  name, `.txt`) and writes the string; the toast then says where it went and how many warnings there are.
+- **Problems.** Neither is produced while something is in the way: `ExportProblems` (dialog "No blueprint yet") lists the problems
+  of the package with the entity names (`[data-problem="no-tile|off-grid|overlap|custom-signal|..."]`). For entities without a tile
+  it offers "Show blueprint board": the board, with those entities selected, where "Place all" is.
 
 ## Application settings
 

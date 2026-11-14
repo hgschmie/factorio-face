@@ -114,6 +114,10 @@ export const SHORTCUTS = [
   menu("file.open", "File", "Open project"),
   menu("file.save", "File", "Save"),
   menu("file.saveAs", "File", "Save as"),
+  menu("file.importBlueprint", "File", "Import a blueprint from a file"),
+  menu("file.pasteBlueprint", "File", "Paste a blueprint string"),
+  menu("file.exportBlueprint", "File", "Export the blueprint to a file"),
+  menu("file.showBlueprint", "File", "Show the blueprint string"),
   menu("app.settings", "File", "Application settings"),
 ] as const satisfies readonly Shortcut[];
 

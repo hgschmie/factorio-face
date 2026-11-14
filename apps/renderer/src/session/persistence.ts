@@ -4,6 +4,8 @@ import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
 import type { CircuitFile, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 
 export const DEFAULT_FILE_NAME = "main.face";
+/** Longest project name: what the main process accepts in a manifest. */
+export const PROJECT_NAME_LIMIT = 200;
 
 /** The editable project settings. */
 export interface ProjectSettings {
@@ -39,6 +41,14 @@ export function openProjectFile(project: LoadedProject): { readonly file: Projec
   const source = files.find((file) => file.name === fileName)?.source ?? "";
   const settings: ProjectSettings = { name: manifest.name, modules: manifest.modules, wireReach: manifest.wireReach ?? DEFAULT_WIRE_REACH };
   return { file: { path: project.path, manifest, fileName, otherFiles: files.filter((file) => file.name !== fileName), savedSource: source, savedSettings: settings }, source, settings };
+}
+
+/**
+ * The file of a project that exists nowhere but in the window (an imported blueprint): it counts as changed until it is saved,
+ * so that closing the window or opening another project asks first.
+ */
+export function neverSaved(file: ProjectFile): ProjectFile {
+  return { ...file, savedSource: "" };
 }
 
 function sameModules(a: readonly string[], b: readonly string[]): boolean {

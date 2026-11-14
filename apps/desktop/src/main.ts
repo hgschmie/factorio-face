@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { APP_SETTINGS_FILE_NAME, AppSettingsStore, gameDirectoryFromEnv } from "./appSettings.ts";
 import { registerAppSettingsIpc } from "./appSettingsIpc.ts";
+import { registerBlueprintIpc } from "./blueprintIpc.ts";
 import { Examples } from "./examples.ts";
 import { GameIcons } from "./gameIcons/gameIcons.ts";
 import { GameSettings } from "./gameSettings.ts";
@@ -139,12 +140,14 @@ async function start(): Promise<void> {
   await installMenu();
 
   const handle = createIpcHandle(window);
+  const projectsDirectory = projectsDirectoryFromEnv(process.env);
   registerAppSettingsIpc(window, handle, gameSettings);
+  registerBlueprintIpc(handle, { window, projectsDirectory });
   registerProjectIpc(handle, {
     window,
     recentProjects,
     examples,
-    projectsDirectory: projectsDirectoryFromEnv(process.env),
+    projectsDirectory,
     onRecentProjectsChanged: () => void installMenu(),
     onProjectPathChanged: (path) => {
       if (process.platform === "darwin" && !window.isDestroyed()) window.setRepresentedFilename(path ?? "");

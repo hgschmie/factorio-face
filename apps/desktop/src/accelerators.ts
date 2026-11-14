@@ -11,6 +11,11 @@ export const MENU_ACCELERATORS = {
   "file.open": "CmdOrCtrl+O",
   "file.save": "CmdOrCtrl+S",
   "file.saveAs": "CmdOrCtrl+Shift+S",
+  // With Shift, like Save As: the plain keys with these letters are text commands of the browser (Ctrl+I, Ctrl+B) or taken (Ctrl+O, Ctrl+C).
+  "file.importBlueprint": "CmdOrCtrl+Shift+O",
+  "file.pasteBlueprint": "CmdOrCtrl+Shift+B",
+  "file.exportBlueprint": "CmdOrCtrl+Shift+E",
+  "file.showBlueprint": "CmdOrCtrl+Shift+C",
   "edit.undo": "CmdOrCtrl+Z",
   "edit.redo": { mac: "Shift+Cmd+Z", other: "Ctrl+Y" },
   "edit.selectAll": "CmdOrCtrl+A",

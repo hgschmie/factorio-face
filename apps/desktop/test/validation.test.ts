@@ -7,6 +7,7 @@ import {
   parseBoolean,
   parseCircuitFileName,
   parseExampleFileName,
+  parseExportBlueprintRequest,
   parseGameDirectory,
   parseManifest,
   parseManifestFile,
@@ -259,6 +260,58 @@ describe("project data and save requests", () => {
   it("checks booleans strictly", () => {
     expect(parseBoolean(true, "flag")).toBe(true);
     expect(() => parseBoolean("true", "flag")).toThrow(ValidationError);
+  });
+});
+
+describe("blueprint export requests", () => {
+  const text = "0eNqVkMEKwjAQRH9l2XMQe1DBq78h";
+
+  it("accepts a blueprint string with the name of the project, and nothing else of the request", () => {
+    expect(parseExportBlueprintRequest({ name: "Feedback example", text })).toEqual({ name: "Feedback example", text });
+    for (const padded of ["0QQ==", "0QUI=", "0QUJD", "0a+/9"]) expect(parseExportBlueprintRequest({ name: "n", text: padded }).text).toBe(padded);
+    // A path next to them is not part of the request: where the file goes is for the save dialog to say.
+    expect(parseExportBlueprintRequest({ name: "n", text, path: "/etc/passwd", directory: "/etc" })).toEqual({ name: "n", text });
+  });
+
+  it("takes a string up to the limit of the importer and no longer one", () => {
+    const longest = "0" + "A".repeat(LIMITS.blueprintStringLength - 1);
+    expect(parseExportBlueprintRequest({ name: "n", text: longest }).text).toHaveLength(LIMITS.blueprintStringLength);
+    expect(() => parseExportBlueprintRequest({ name: "n", text: longest + "A" })).toThrow(/too long/);
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["the version character alone", "0"],
+    ["another version character", "1eNqVkMEK"],
+    ["plain JSON", '{"blueprint":{}}'],
+    ["a line break at the end", `${text}\n`],
+    ["a line break inside", `0eNqV\nkMEK`],
+    ["a blank", "0eNqV kMEK"],
+    ["a path", "0/../../etc/passwd\0"],
+    ["characters outside base64", "0eNqV-kMEK_"],
+    ["padding in the middle", "0eN=qV"],
+    ["too much padding", "0eNqV==="],
+    ["a script", "0<script>"],
+    ["a number", 5],
+    ["nothing", undefined],
+    ["an object", { toString: () => text }],
+  ])("refuses %s as the text", (_name, value) => {
+    expect(() => parseExportBlueprintRequest({ name: "n", text: value })).toThrow(ValidationError);
+  });
+
+  it.each([
+    ["no name", undefined],
+    ["an empty name", ""],
+    ["a name with a line break", "a\nb"],
+    ["a name with a NUL", "a\0b"],
+    ["an oversized name", "n".repeat(LIMITS.projectNameLength + 1)],
+    ["a name that is no string", ["n"]],
+  ])("refuses %s", (_name, name) => {
+    expect(() => parseExportBlueprintRequest({ name, text })).toThrow(ValidationError);
+  });
+
+  it.each([["a string", text], ["null", null], ["an array", [{ name: "n", text }]], ["nothing", undefined]])("refuses %s as the request", (_name, value) => {
+    expect(() => parseExportBlueprintRequest(value)).toThrow(ValidationError);
   });
 });
 
