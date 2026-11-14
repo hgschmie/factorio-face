@@ -18,6 +18,8 @@ interface ReachCase {
   readonly a: ProbedEntity;
   readonly b: ProbedEntity;
   readonly reach: number;
+  /** Its own range, where it is not the fixture's. */
+  readonly range?: number;
   readonly rows: readonly string[];
 }
 
@@ -38,7 +40,7 @@ function entityOf(probed: ProbedEntity, origin: Point): PlacedShape | undefined 
 }
 
 /** The placements on which the model and the game disagree, as "(x, y) game 1 model 0". */
-function mismatches({ rows }: ReachCase, range: number, connectsAt: (origin: Point) => boolean): string[] {
+function mismatches({ rows, range = fixture.range }: ReachCase, connectsAt: (origin: Point) => boolean): string[] {
   const wrong: string[] = [];
   rows.forEach((row, r) => {
     [...row].forEach((cell, c) => {
@@ -51,13 +53,12 @@ function mismatches({ rows }: ReachCase, range: number, connectsAt: (origin: Poi
 }
 
 describe(`wire reach against Factorio ${fixture.gameVersion} (F-24)`, () => {
-  const side = 2 * fixture.range + 1;
-
   it("has the cases the rule rests on", () => {
     expect(fixture.cases.length).toBeGreaterThanOrEqual(13);
     const names = new Set(fixture.cases.flatMap(({ a, b }) => [a.name, b.name]));
     expect([...names]).toEqual(expect.arrayContaining(["constant-combinator", "decider-combinator", "small-lamp", "small-electric-pole", "medium-electric-pole", "big-electric-pole", "steel-chest"]));
-    for (const { a, b, reach, rows } of fixture.cases) {
+    for (const { a, b, reach, range = fixture.range, rows } of fixture.cases) {
+      const side = 2 * range + 1;
       expect(rows.length).toBe(side);
       expect(rows.every((row) => new RegExp(`^[01]{${side}}$`).test(row))).toBe(true);
       // The game takes the smaller reach of the two entities.
@@ -68,7 +69,7 @@ describe(`wire reach against Factorio ${fixture.gameVersion} (F-24)`, () => {
 
   it.each(fixture.cases.map((probed) => [probed.label, probed] as const))("%s: the distance between the footprints decides", (_label, probed) => {
     const { a, b, reach } = probed;
-    expect(mismatches(probed, fixture.range, (origin) => footprintDistance({ x: 0, y: 0, width: a.width, height: a.height }, { ...origin, width: b.width, height: b.height }) <= reach)).toEqual([]);
+    expect(mismatches(probed, (origin) => footprintDistance({ x: 0, y: 0, width: a.width, height: a.height }, { ...origin, width: b.width, height: b.height }) <= reach)).toEqual([]);
   });
 
   const own = fixture.cases.filter(({ a, b }) => isPrototypeName(a.name) && isPrototypeName(b.name));
@@ -91,13 +92,13 @@ describe(`wire reach against Factorio ${fixture.gameVersion} (F-24)`, () => {
 
   it.each(own.map((probed) => [probed.label, probed] as const))("%s: the editor's entities get the same verdict", (_label, probed) => {
     const first = entityOf(probed.a, { x: 0, y: 0 })!;
-    expect(mismatches(probed, fixture.range, (origin) => !wireSpan(first, entityOf(probed.b, origin)!, DEFAULT_WIRE_REACH).tooLong)).toEqual([]);
+    expect(mismatches(probed, (origin) => !wireSpan(first, entityOf(probed.b, origin)!, DEFAULT_WIRE_REACH).tooLong)).toEqual([]);
   });
 
   it("would not pass with the distance between the centers", () => {
     const centers = fixture.cases.map((probed) => {
       const { a, b } = probed;
-      return mismatches(probed, fixture.range, (origin) => Math.hypot(origin.x + b.width / 2 - a.width / 2, origin.y + b.height / 2 - a.height / 2) <= probed.reach).length;
+      return mismatches(probed, (origin) => Math.hypot(origin.x + b.width / 2 - a.width / 2, origin.y + b.height / 2 - a.height / 2) <= probed.reach).length;
     });
     expect(centers.every((count) => count > 0)).toBe(true);
   });

@@ -6,6 +6,9 @@ every prototype that can be a circuit signal, with English name, order, group/su
 - `data/catalog-2.1.24.json` - generated, committed. No image data.
 - `data/icons-2.1.24.json` - generated, committed: the icon table, which says for every icon id which image files of the game it is
   composited from. Paths and numbers only, no image data.
+- `../model/data/entities-2.1.24.json` - generated, committed: the entity table, every prototype a circuit wire connects to with its
+  tile size, directions and wire reach (see "Entity table"). It lives in `@face/model`, which reads it and cannot depend on this
+  package; the generator, its dumps and its `--check` are the same.
 - `generated/icons/**.png`, `generated/manifest.json` - generated, git-ignored (Wube artwork; local builds only). The app does not need
   them: it renders icons from the user's installation of the game (see "Icons"). They are its fallback when no installation is in use,
   and the reference the generator's output is compared against.
@@ -18,7 +21,7 @@ every prototype that can be a circuit signal, with English name, order, group/su
 ```
 make catalog                                        # runs the game 25 times headless (under a minute), writes JSON, icons, manifest
 node tools/catalog/generate.mjs --reuse-dumps       # rebuild from the dumps in .runtime/factorio-dump without starting the game
-node tools/catalog/generate.mjs --reuse-dumps --check   # exit 1 if the committed catalog or icon table is out of date
+node tools/catalog/generate.mjs --reuse-dumps --check   # exit 1 if the committed catalog, icon table or entity table is out of date
 node tools/catalog/generate.mjs --from-dumps --no-icons # never starts the game: fails when the dumps are missing or of another version
 node tools/catalog/generate.mjs --from-dumps --output .runtime/catalog-compare   # everything into a scratch directory, to compare
 node tools/catalog/compare-icons.mjs                # compare rendered icons with a game icon dump, if one is present
@@ -27,8 +30,9 @@ node tools/catalog/compare-icons.mjs                # compare rendered icons wit
 Options: `--accept-version`, `--reuse-dumps`, `--from-dumps`, `--no-icons`, `--no-sandbox`, `--check`, `--output <dir>`. Environment:
 `FACTORIO_BIN`, `FACTORIO_DATA`.
 
-`--output <dir>` writes `data/` and `generated/` below `<dir>` instead of this package and touches nothing here; `diff -r` against
-`generated/icons` then shows whether a change to the generator or the compositor changes a single byte.
+`--output <dir>` writes `data/` and `generated/` below `<dir>` instead of this package (the entity table into that `data/` too) and
+touches nothing here; `diff -r` against `generated/icons` then shows whether a change to the generator or the compositor changes a
+single byte.
 
 `--reuse-dumps` starts the game after all when a dump is missing or stale; `--from-dumps` is the way to rebuild where the game cannot run
 (an agent session, CI): it reads the dumps and the game's data files (`info.json`, the locale files for the speaker) and nothing else.
@@ -36,9 +40,10 @@ With `--no-icons` it leaves `generated/icons` as it is.
 
 The generator is pinned to 2.1.24. It reads the `info.json` of all five modules and the binary's `--version`; any other version stops it
 with a clear message unless `--accept-version` is given, in which case it writes `data/catalog-<version>.json` and
-`data/icons-<version>.json` (then update the imports in `src/standard.ts` and `src/standardIconTable.ts` and the pinned numbers in the
-tests). The run is idempotent: the catalog is rewritten only when its content changes (`provenance.generatedAt` is the time of the last
-content change), the icon table has no timestamp and is rewritten only when its text changes, and icons are byte-identical between runs.
+`data/icons-<version>.json` and `entities-<version>.json` (then update the imports in `src/standard.ts`, `src/standardIconTable.ts` and
+`packages/model/src/entityTable.ts` and the pinned numbers in the tests). The run is idempotent: the catalog is rewritten only when its
+content changes (`provenance.generatedAt` is the time of the last content change), the icon table and the entity table have no timestamp
+and are rewritten only when their text changes, and icons are byte-identical between runs.
 
 ## Extraction method
 
@@ -46,7 +51,7 @@ All data comes from the game itself. For each of the eight module sets the game 
 
 | Run | Command | Used for |
 | --- | --- | --- |
-| data | `--dump-data` | `data.raw`: icon definitions (`icon`, `icons`, `icon_size`, tint, scale, shift), utility constants |
+| data | `--dump-data` | `data.raw`: icon definitions (`icon`, `icons`, `icon_size`, tint, scale, shift), utility constants; for the entity table the wire distances, collision boxes, tile sizes, flags and default signals |
 | locale | `--dump-prototype-locale` | English display names per prototype type (config `locale=en`) |
 | runtime | `--test-scenario face-catalog-dump --test-ticks 600` | the engine's finalised prototypes |
 
@@ -54,7 +59,9 @@ The runtime run exists because `data.raw` is the input of the engine, not its re
 reads `prototypes.*` on the first tick and writes `script-output/face-runtime-dump.json`. Only this gives: the effective `group`, `subgroup`
 and `order` (recipes and entities inherit them from products and items), computed item weights, `LuaRecipePrototype.hide_from_signal_gui`
 and `LuaAsteroidChunkPrototype.hide_from_signal_gui` / `item_signal_alias` (derived by the engine), `LuaVirtualSignalPrototype.special`,
-`items_to_place_this` of entities, and the rocket silo lift weight. `--test-scenario` is new in 2.1.24 and runs headless.
+`items_to_place_this` of entities, and the rocket silo lift weight. Since 2026-11-14 it also writes `circuit_entities`: for every
+prototype with a wire reach what the entity table needs and `data.raw` lacks or only implies (see "Entity table"). `--test-scenario` is new
+in 2.1.24 and runs headless.
 
 Module sets are selected through `mod-list.json` in an isolated mod directory. Dependencies per `info.json`: `elevated-rails -> base`,
 `recycler -> base`, `quality -> base, recycler`, `space-age -> base, elevated-rails, recycler, + quality`. The `+` marker (changelog 2.1.0:
@@ -168,6 +175,75 @@ checked against the running GUI. The docs say that
 
 Picker order: groups by `order`, subgroups by `order`, signals by `order`, each compared bytewise with the name as tie-breaker (signals: kind
 before name). Groups and subgroups without signals (`tiles`, `effects` for the default picker) are omitted.
+
+## Entity table
+
+`packages/model/data/entities-2.1.24.json` (14 kB) has the 98 prototypes of the game that a circuit wire connects to, whether or not
+the editor can do anything with them yet. `@face/model` reads it (`STANDARD_ENTITY_TABLE`, `parseEntityTable`); the ten prototypes the
+editor has take their size, rotation and wire reach from it. Built by `tools/catalog/lib/entities.mjs`; the facts behind the rules are in
+`docs/factorio-audit.md` 13.
+
+```
+{
+  "schema": 1,
+  "game": {"version":"2.1.24","build":87808},
+  "generator": "tools/catalog/generate.mjs",
+  "runtimeChecked": false,
+  "defaults": {"width":1,"height":1,"directions":1,"wireReach":9,"modules":["base"]},
+  "entities": [
+    {"name":"accumulator","type":"accumulator","displayName":"Accumulator","width":2,"height":2,"signals":{"output":"virtual:signal-A"}},
+    ...
+```
+
+One record per line, sorted by name, fields in one order, no timestamp. A field at its default is left out:
+
+| Field | Meaning | From | Left out when |
+| --- | --- | --- | --- |
+| `name`, `type` | prototype name and prototype type | `data.raw` | never |
+| `displayName` | the game's English name | locale dump | never |
+| `width`, `height` | tiles covered facing north | `tile_width` / `tile_height`, else the size of `collision_box` rounded up | 1 |
+| `directions` | 1 (cannot be turned), 2 (north and east: `two_direction_only`), 4, 8 or 16 (`building-direction-8-way`, `-16-way`) | whether it turns at all: runtime dump, else the provisional table; how many ways: `data.raw` | 1 |
+| `wireReach` | reach of a circuit wire in tiles, normal quality | `circuit_wire_max_distance`; `maximum_wire_distance` of an electric pole; `wire_max_distance` of a power switch | 9 |
+| `hidden` | not offered for building | runtime dump (`hidden`), which must agree with `data.raw` | false |
+| `offGrid` | flag `placeable-off-grid` | `data.raw` | false |
+| `collisionBox` | `[left, top, right, bottom]` around the center, facing north | `data.raw` | the tile size is the size of the box rounded up (all but three) |
+| `placedBy` | items that build it; `[]` when there is none | runtime dump (`items_to_place_this`) | it is the one item of the entity's name |
+| `signals` | the `default_<key>_signal` fields as `{ key: "kind:name" }`, keys sorted | `data.raw` | there are none |
+| `modules`, `removedBy` | as in the catalog ("Provenance rules") | presence in the eight dumps | `["base"]`; absent |
+
+Selection is by rule, there is no list of names: a prototype is in the table when its `circuit_wire_max_distance` is above 0, or it is an
+`electric-pole` with a `maximum_wire_distance` above 0, or a `power-switch` with a `wire_max_distance` above 0. That gives 79 prototypes
+with `base` alone, 80 with the recycler and 98 with Space Age, in 48 prototype types.
+
+The table has no variants. Every module set that has a prototype must give the same record for it, field by field; the build fails
+naming the prototype, the fields and the two sets otherwise. In 2.1.24 all eight agree.
+
+### What is provisional, and what the next run against the game checks
+
+Whether a prototype can be turned is not in `data.raw`; the game says it at run time (`LuaEntityPrototype.supports_direction`). The
+scenario records it since 2026-11-14, but the dumps under `.runtime/factorio-dump` are older, and an agent session cannot start the game.
+Until then the generator takes it from `PROVISIONAL_ROTATION` in `tools/catalog/lib/entities.mjs`: one entry per prototype type, yes or
+no, and for the crafting machines (`assembling-machine`, `furnace`) "has fluid boxes or is not square". The file says so with
+`"runtimeChecked": false`, and the generator prints a note.
+
+`make catalog` (the full run, which starts the game) then has `circuit_entities` in every runtime dump and compares, for each of the 98 in
+each of the eight module sets:
+
+- the selection: the prototypes with `get_max_circuit_wire_distance() > 0` or `get_max_wire_distance() > 0` are exactly those the rule on
+  `data.raw` selects;
+- `type`, `tile_width` x `tile_height` against `width` x `height`, the reach at normal quality against `wireReach` (for a pole, and
+  for a prototype without a circuit distance, `get_max_wire_distance`; else `get_max_circuit_wire_distance`);
+- `supports_direction` against the provisional table, the flags `placeable-off-grid`, `building-direction-8-way` and `-16-way`, and
+  `two_direction_only` where a script can read it;
+- every `default_*_signal` the game answers with against `signals`: another signal, or one where `data.raw` has none (a default of
+  the engine's own). A field the game gives no answer for is not compared: a script cannot read every such field of every type.
+
+Any difference stops the generator after the dumps and before it writes the catalog or a table, with one line per point ("gun-turret:
+supports_direction is false at run time, the provisional rotation table says true for type ammo-turret"). The fix is then in
+`entities.mjs`: correct the entry, or the rule that derived the value; `--reuse-dumps` builds again without another run of the game. When nothing differs the file is rewritten with `"runtimeChecked": true` and is otherwise unchanged; from then on
+`supports_direction` of the dump is what the table is built from, and `PROVISIONAL_ROTATION` only cross-checks it. The scenario also
+records both wire distances for every quality; the generator prints how many prototypes reach further at higher quality, the table keeps
+the reach at normal quality (the editor has no entity quality).
 
 ## Data format
 

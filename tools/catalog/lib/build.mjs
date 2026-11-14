@@ -118,7 +118,7 @@ function recordsOfSet(set, fallbackNames) {
 }
 
 /** Module helpers bound to the dependency graph read from the info.json files. */
-function moduleAlgebra(modules) {
+export function moduleAlgebra(modules) {
   const byName = new Map(modules.map((m) => [m.name, m]));
   const closure = (names) => {
     const out = new Set();
@@ -190,7 +190,8 @@ function collapse(label, versions, sets, algebra) {
   return { ...base, modules, ...(removedBy ? { removedBy } : {}), ...(variants.length ? { variants } : {}) };
 }
 
-function collapseAll(label, perSet, sets, algebra) {
+/** `collapse` for every record of `perSet` (one Map of records by name per set, in the order of `sets`), sorted by name. */
+export function collapseAll(label, perSet, sets, algebra) {
   const names = new Set(perSet.flatMap((records) => [...records.keys()]));
   return [...names].sort(compare).map((name) => {
     const versions = new Map();

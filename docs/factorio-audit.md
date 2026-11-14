@@ -3,6 +3,7 @@
 Audit date: 2026-11-11. Scope: constant, arithmetic, decider and selector combinators, lamps, circuit wires, signals and the blueprint string format.
 Added 2026-11-12: electric poles (3.9, 6.9, 9.9) and the programmable speaker (3.10, 6.10, 9.10). Where an older section says "the five entities" it means the four combinators and the lamp; what holds for the two additions is said in their own sections.
 Added 2026-11-14: section 12, the blueprint format as `packages/blueprints` reads and writes it, with what that work added to or corrected in sections 3 to 5 and 9.
+Added 2026-11-14: section 13, all 98 prototypes a circuit wire connects to: how they are selected, their footprints, reaches and directions, and which of that is the game's own word. The editor still has the ten prototypes of 3.1.
 This document drives the model types, the DSL, the blueprint importer/exporter and the simulator of "face".
 
 ## 0. How to read this document
@@ -203,7 +204,7 @@ Note the level gap: legendary is 5, not 4 [data]. Quality comparisons (`<`, `>`,
 ### 3.1 Prototypes
 
 Complete list across core, base, space-age, quality, recycler, elevated-rails. For the four combinators and the lamp there is exactly one prototype per type; no module adds variants or copies [data: grep over all six modules].
-The type `electric-pole` has four prototypes and `programmable-speaker` one, all from base and the same in all eight module sets [data: dump, `data-raw-dump.json` of every set]. The editor keeps these values in one table, `PROTOTYPES` in `packages/model/src/prototypes.ts`.
+The type `electric-pole` has four prototypes and `programmable-speaker` one, all from base and the same in all eight module sets [data: dump, `data-raw-dump.json` of every set]. The editor reads size, rotation and wire reach of these ten from the entity table the catalog generator writes from the game's dumps (section 13; `PROTOTYPES` in `packages/model/src/prototypes.ts` adds the kind of each).
 
 | Name | Type | Module | Collision box | Tile size (north) | Rotatable | Power | Wire reach | Provenance |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -807,7 +808,8 @@ The value exceeds 2^32 but stays below 2^53, so a JavaScript number holds it exa
 | `snap-to-grid` etc. | blueprint-level, do not change entity coordinates' meaning | [web] |
 
 The exporter must emit positions that respect tile alignment, otherwise the game re-snaps or rejects; `set_blueprint_entities` has a `fix_positions` option at runtime [api].
-Wire reach is 9 tiles for the four combinators, the lamp and the speaker [data: core/lualib/circuit-connector-sprites.lua: every `*_circuit_wire_max_distance` of the game is 9]; an electric pole has its own (3.9); a layout generator must keep wired entities within reach (the game drops or refuses over-long wires [unverified]).
+Wire reach is 9 tiles for the four combinators, the lamp and the speaker [data: core/lualib/circuit-connector-sprites.lua: `default_circuit_wire_max_distance = 9` and every `*_circuit_wire_max_distance` there is 9]; an electric pole has its own (3.9),
+and so have two entities the editor does not have yet, the power switch (10) and the agricultural tower (30) (13.3); a layout generator must keep wired entities within reach (the game drops or refuses over-long wires [unverified]).
 How the game measures [game: fixture F-24, 2.1.24, `LuaWireConnector.can_wire_reach` and `connect_to` with the reach check, no mismatch in any recorded placement]:
 
 - The distance of a wire is the straight line between the nearest points of the two entities' tile footprints: per axis the gap between the footprints in tiles, 0 where they overlap on that axis, then the hypotenuse of
@@ -816,7 +818,7 @@ How the game measures [game: fixture F-24, 2.1.24, `LuaWireConnector.can_wire_re
 - Nothing else matters: not the facing beyond the footprint it gives, not the connector that is wired (input or output of a combinator), not the collision box (a lamp, +-0.15, behaves like a constant combinator, +-0.35).
 - The reach of a wire is the smaller of the two entities' reaches: a constant combinator (9) and a small electric pole (7.5) connect up to 7.5, a constant combinator and a big electric pole (32) up to 9.
 
-The editor implements this in `packages/model/src/wireReach.ts` (`wireSpan`): a pole has the reach of its prototype (`PROTOTYPES`), every other entity the reach of the project (a setting, 9 by default, 0 for unlimited),
+The editor implements this in `packages/model/src/wireReach.ts` (`wireSpan`): a pole has the reach of its prototype (`PROTOTYPES`; the rule for all prototypes is `hasOwnWireReach`, 13.3), every other entity the reach of the project (a setting, 9 by default, 0 for unlimited),
 and a wire may span the smaller of the two; an unlimited end does not limit. `packages/model/test/wireReachGame.test.ts` checks this against every placement of the recording with the editor's own entities.
 Not recorded yet: the substation, the speaker, and pole against pole (the smaller of two reaches when neither is 9, a reach above 9); `tools/game-probe/wire-reach.lua` has these cases since 2026-11-12 and the fixture gets them with the next `make probe-wire-reach`.
 
@@ -1445,3 +1447,161 @@ Each is counted or named in the import report (`packages/blueprints/README.md`).
 
 The recording holds, per sample circuit, the blueprint the game makes of ours (`import_stack` then `export_stack`), of what it built from ours, and of the same circuit built through the runtime API, plus every supported entity as placed and the numbers of the defines.
 The tests of `packages/blueprints` named "the game (fixture F-01)" are skipped until then; afterwards every difference they show is either an entry for 12.2 or a change to the exporter.
+
+## 13. The wired entities: every prototype a circuit wire connects to (2026-11-14)
+
+The editor is to get every entity that can be on a circuit network. This section is the inventory: what the game's dumps say about all of them. The data is in `packages/model/data/entities-2.1.24.json`, written by the catalog generator
+(`tools/catalog/lib/entities.mjs`; format in `packages/catalog/README.md`, "Entity table") and read by `@face/model` (`STANDARD_ENTITY_TABLE`). Kinds, language, simulation and user interface for the 88 prototypes beyond 3.1 do not exist yet.
+"[data: dump]" here means `data-raw-dump.json` (`--dump-data`) of all eight module sets; "[runtime dump]" the scenario's `face-runtime-dump.json`. The game was not run for this section.
+
+### 13.1 Selection
+
+A prototype is selected when `circuit_wire_max_distance > 0`, or it is of type `electric-pole` with `maximum_wire_distance > 0`, or of type `power-switch` with `wire_max_distance > 0` [data: dump]. No list of names is involved.
+
+| Module set | Selected | Prototype types |
+| --- | --- | --- |
+| `base`, `base+elevated-rails` | 79 | 45 |
+| with `recycler` (and with `quality`) | 80: adds `recycler` | 45 |
+| with `space-age` (with or without `quality`) | 98: adds 18 | 48 |
+
+Space Age adds `agricultural-tower`, `asteroid-collector`, `big-mining-drill`, `biochamber`, `biolab`, `crusher`, `cryogenic-plant`, `electromagnetic-plant`, `foundry`, `heating-tower`, `railgun-turret`, `rocket-turret`, `space-platform-hub`,
+`stack-inserter`, `tesla-turret`, `turbo-loader`, `turbo-splitter`, `turbo-transport-belt`. Elevated Rails and Quality add none.
+No prototype has one of the three fields with a value of 0 or below, and none outside the two named types has `maximum_wire_distance` or `wire_max_distance` [data: dump], so the rule has no borderline case in 2.1.24.
+The 98 names are exactly the 98 of the user's overview (`/Users/henning/factorio/entity-categorization.md`), which was compiled from the Lua sources and the API by hand.
+Whether the engine agrees with the rule (`get_max_circuit_wire_distance() > 0 or get_max_wire_distance() > 0` over all entity prototypes) is recorded by the scenario since this section was written and checked by the next `make catalog` [unverified until then].
+
+### 13.2 Footprints
+
+Tile size facing north: `tile_width` and `tile_height` where the prototype sets them, else the size of `collision_box` rounded up to whole tiles [api: LuaEntityPrototype.tile_width "Specifies the tiling size of the entity, is used to decide, if the center
+should be in the center of the tile (odd tile size dimension) or on the tile border (even tile size dimension)"]; that the default is the collision box rounded up is the prototype documentation as remembered [unverified] and agrees with the three sizes F-24 recorded from the engine (1 x 1, 1 x 2, 2 x 2).
+For all 98 the next `make catalog` compares the result with the engine's `tile_width` and `tile_height` [unverified until then].
+
+Thirteen footprints occur [data: dump]:
+
+| Tiles (north) | Count | Prototypes |
+| --- | --- | --- |
+| 1 x 1 | 41 | chests, inserters, belts, pipes, small and medium pole, lamp, speaker, constant combinator, rail signals, wall, land mine, display panel, heat pipe, offshore pump |
+| 1 x 2 | 8 | arithmetic, decider and selector combinator, pump, the four loaders |
+| 2 x 1 | 4 | the four splitters |
+| 2 x 2 | 10 | accumulator, big pole, substation, power switch, burner mining drill, stone and steel furnace, gun turret, laser turret, train stop |
+| 2 x 3 | 2 | crusher, flamethrower turret |
+| 2 x 4 | 1 | recycler |
+| 3 x 2 | 2 | boiler, heat exchanger |
+| 3 x 3 | 17 | assembling machines 1 to 3, chemical plant, centrifuge, biochamber, electric furnace, lab, radar, storage tank, electric mining drill, pumpjack, heating tower, agricultural tower, asteroid collector, artillery turret, rocket turret |
+| 3 x 5 | 1 | railgun turret |
+| 4 x 4 | 3 | roboport, electromagnetic plant, tesla turret |
+| 5 x 5 | 6 | oil refinery, nuclear reactor, foundry, cryogenic plant, biolab, big mining drill |
+| 8 x 8 | 2 | cargo landing pad, space platform hub |
+| 9 x 9 | 1 | rocket silo |
+
+Eighteen are not square (the rows 1 x 2, 2 x 1, 2 x 3, 2 x 4, 3 x 2, 3 x 5). Exceptions to "the collision box rounded up":
+
+| Prototype | `tile_width` x `tile_height` | Collision box | The box alone would give |
+| --- | --- | --- | --- |
+| `train-stop` | 2 x 2 | +-0.5 x +-0.5 | 1 x 1 |
+| `offshore-pump` | 1 x 1 | x -0.6 to 0.6, y -1.05 to 0.3 | 2 x 2 |
+| `railgun-turret` | height 5 (no width) | x +-1.41, y -1.9 to 2.1 | 3 x 4 |
+| `asteroid-collector` | 3 x 3 | +-1.2 | 3 x 3: explicit, but no exception |
+
+The table keeps the collision box of the first three (`collisionBox`), because fixture F-24 has so far only shown that the tile footprint decides wire reach for entities whose box fits their tiles (13.6).
+`land-mine` has the flag `placeable-off-grid`: its center is anywhere, so it has no tile footprint in the sense of 5.4 (`offGrid`).
+`pipe-to-ground` has a box that is not symmetric (y -0.29 to 0.2) and is 1 x 1 by either rule.
+Tile size, collision box, flags and reach of every prototype are the same in every module set that has it [data: dump, compared field by field by the generator, which fails otherwise]. The only difference between the sets in these prototypes is the flag `hide-alt-info`, which Space Age adds to `cargo-landing-pad`.
+
+### 13.3 Wire reach
+
+| Reach | Prototypes | Field |
+| --- | --- | --- |
+| 9 | 93: every one not named below, the medium electric pole among them | `circuit_wire_max_distance`; the pole `maximum_wire_distance` |
+| 7.5, 18, 32 | `small-electric-pole`, `substation`, `big-electric-pole` | `maximum_wire_distance` |
+| 10 | `power-switch` | `wire_max_distance`; it has no `circuit_wire_max_distance` |
+| 30 | `agricultural-tower` | `circuit_wire_max_distance` [data: space-age/prototypes/entity/entities.lua, `circuit_wire_max_distance = 30`] |
+
+[data: dump] for all. This corrects 5.4, which took 9 for every entity that is not a pole.
+That the one distance of a pole is also its circuit reach is [game: fixture F-24] for three poles (3.9); that the same holds for the power switch's `wire_max_distance`, and that the tower's 30 is what the game applies, is [unverified]: `tools/game-probe/wire-reach.lua` asks since this section was written (13.6).
+
+The editor's rule (`hasOwnWireReach` in `packages/model/src/entityTable.ts`): a prototype has a reach of its own when it is an electric pole, or when its reach is not the standard 9. Every other prototype has the reach of the project, a setting that defaults to 9.
+The first half keeps what the editor did before this section: the medium pole reaches 9 whatever the project says, because the project's setting stands for `default_circuit_wire_max_distance` and a pole's reach never came from that.
+Under this rule six of the 98 have their own reach: the four poles, the power switch and the agricultural tower.
+Quality: "Increases the wire reach at higher qualities" [data: core locale, as 3.9]. The scenario now records `get_max_wire_distance(quality)` and `get_max_circuit_wire_distance(quality)` for every quality; the table has the reach at normal quality.
+
+### 13.4 Directions
+
+`data.raw` says in how many ways an entity is built only through flags: `building-direction-8-way` (`flamethrower-turret`, `railgun-turret`) and `building-direction-16-way` (`rail-signal`, `rail-chain-signal`), and through `two_direction_only` (`storage-tank`) [data: dump].
+Whether a prototype can be turned at all is decided by the engine per prototype class and readable only at run time: `LuaEntityPrototype.supports_direction`, "Whether this entity prototype could possibly ever be rotated" [api].
+The table's `directions` is 1 for a prototype that cannot be turned, else 16, 8, 2 or 4 by the flags above.
+
+Until the scenario has run (it records `supports_direction` since this section was written), "can be turned" is PROVISIONAL: one entry per prototype type in `PROVISIONAL_ROTATION` (`tools/catalog/lib/entities.mjs`). What the entries rest on:
+
+| Entry | Types | Rests on |
+| --- | --- | --- |
+| yes | the four combinators | the editor's values before this section (3.1, 5.4); a shipped selector has direction 8 [data: embedded strings] |
+| no | `lamp`, `electric-pole`, `programmable-speaker` | the editor's values before this section (3.1, 3.9, 3.10) |
+| yes | `inserter`, `transport-belt`, `splitter`, `loader`, `pipe-to-ground`, `pump`, `offshore-pump`, `boiler`, `mining-drill`, `storage-tank`, `train-stop`, `rail-signal`, `rail-chain-signal`, `asteroid-collector` | at least one prototype of the type has a `direction` in a blueprint string the game ships [data: 76 embedded blueprint strings of `factorio-data` decode as they stand; 12.1 counts 89 in all] |
+| yes | `ammo-turret`, `electric-turret`, `fluid-turret` | [changelog 0.10.1] "Turrets are rotatable when building and their direction is preserved in blueprints"; [changelog 2.1.7] "Flamethrower turrets can now be rotated 8 ways instead of 4"; the 8-way flag on two of them. No shipped string has a turret with a direction (42 gun turrets, all without) |
+| has fluid boxes, or is not square | `assembling-machine`, `furnace` | [changelog 2.0.25] "Fixed that assemblers without fluid boxes were incorrectly considered rotatable"; [changelog 2.0.34] "Fixed unrotatable furnaces being rotated when overbuilt with a blueprint"; shipped strings have a `crusher` (2 x 3, no fluid boxes), a `foundry` and a `chemical-plant` with a direction |
+| no | every other type: the containers, `accumulator`, `agricultural-tower`, `artillery-turret`, `cargo-landing-pad`, `display-panel`, `heat-pipe`, `infinity-pipe`, `lab`, `land-mine`, `pipe`, `power-switch`, `radar`, `reactor`, `roboport`, `rocket-silo`, `space-platform-hub`, `wall` | [unverified]: nothing at hand says they turn. A string cannot show that an entity does not: `direction` is omitted for north |
+
+By the crafting machine rule `assembling-machine-1`, `centrifuge` and the three furnaces of base do not turn; the other assembling machines and the recycler do. All eighteen prototypes that are not square turn under these entries, as they must.
+The least certain entries are `artillery-turret` (its own prototype class, not a turret's), the containers (2.1.7 added `ContainerPrototype::direction_count` [changelog]; no prototype of the game sets it) and `agricultural-tower`.
+For a square prototype a wrong entry changes nothing about its footprint; it decides whether a `direction` is read and written for it.
+The next `make catalog` fails with one line per prototype on which the game disagrees (`packages/catalog/README.md`, "What is provisional").
+
+How the game writes the direction of an entity with 2, 8 or 16 directions into a blueprint is not covered here; for 4 see 5.4.
+
+### 13.5 Hidden prototypes, placing items, default signals
+
+Thirteen prototypes are `hidden` [data: dump] [runtime dump, identical]: the chests of the game's editor and scenarios (`red-chest`, `blue-chest`, `bottomless-chest`, `infinity-chest`, `linked-chest`, `proxy-container`, `crash-site-chest-1`, `crash-site-chest-2`),
+`infinity-pipe` and the four loaders.
+Four of them have no item that places them (`items_to_place_this` empty): `red-chest`, `blue-chest` and the two crash site chests. Each of the other 94 is placed by exactly one item, which has the entity's name [runtime dump].
+Group, subgroup and order of every entity are in the signal catalog (`packages/catalog`, kind `entity`), which also has the display names; the table repeats the English name (`displayName`) because the model cannot read the catalog.
+Two names are not what the prototype name suggests: `small-lamp` is "Lamp", `stone-wall` is "Wall"; both crash site chests are "Chest capsule".
+
+Forty prototypes set one or more `default_*_signal` fields [data: dump]; all are virtual signals:
+
+| Field (`default_..._signal`) | Signal | Prototypes |
+| --- | --- | --- |
+| `empty_slots` | `signal-E` | 16: every container but the two crash site chests, `cargo-landing-pad`, `space-platform-hub` |
+| `stack_control_input` | `signal-S` | the 6 inserters |
+| `fluid_temperature` | `signal-T` | `pipe`, `pipe-to-ground`, `infinity-pipe`, `storage-tank` |
+| `temperature` | `signal-T` | `heat-pipe`, `nuclear-reactor`, `heating-tower` |
+| `technology_level` | `signal-L` | `lab`, `biolab` |
+| `output` | `signal-A`; `signal-G` | `accumulator`; `stone-wall` |
+| `red`, `green`, `blue`, `rgb` | `signal-red`, `-green`, `-blue`, `-white` | `small-lamp` (3.8) |
+| `red_output`, `orange_output`, `green_output`; `blue_output` | `signal-red`, `-yellow`, `-green`; `-blue` | `rail-signal`, `rail-chain-signal`; the chain signal alone |
+| `train_stopped`, `trains_count`, `trains_limit`, `priority` | `signal-T`, `-C`, `-L`, `-P` | `train-stop` |
+| `available_logistic_output`, `total_logistic_output`, `available_construction_output`, `total_construction_output`, `roboport_count_output` | `signal-X`, `-Y`, `-Z`, `-T`, `-R` | `roboport` |
+| `launched` | `signal-R` | `rocket-silo` |
+| `speed`, `damage_taken` | `signal-V`, `-D` | `space-platform-hub` |
+| `game_tick_output`, `day_tick_output`, `day_length_output` | `signal-T`, `-D`, `-L` | `selector-combinator` (3.1) |
+
+`data.raw` has only what a prototype sets; the API names further fields that no prototype of the game sets (`default_recipe_finished_signal`, `default_working_signal` of the crafting machines [api]). Whether the engine fills in a default of its own for any of them
+is asked by the scenario for every such field; a signal it answers with that `data.raw` lacks or has otherwise stops the generator [unverified until the next `make catalog`].
+
+### 13.6 What is from where
+
+| Fact | Source today | Checked against the engine by |
+| --- | --- | --- |
+| Which prototypes; type; reach; collision box; flags; `two_direction_only`; default signals | [data: dump] | the next `make catalog` (`circuit_entities` in the runtime dump) |
+| Tile size | [data: dump] with the rule of 13.2 | the same |
+| `hidden`, placing items | [runtime dump] | already the engine's |
+| English name | `--dump-prototype-locale` | already the engine's |
+| Modules | presence in the eight dumps | already the engine's |
+| Can be turned | PROVISIONAL table (13.4) | the next `make catalog`, which fails on a difference |
+| That the tile footprint decides wire reach also for a 2 x 2 footprint around a box of one tile (train stop), a box larger than its tile (offshore pump), a 3 x 5 with a box of 3 x 4 (railgun turret), a 16-way entity (rail signals), the larger and oblong footprints (3 x 3, 5 x 5, 9 x 9, 3 x 2, 2 x 4), and that the reaches 10 and 30 are applied | [unverified]; F-24 has 1 x 1, 1 x 2 and 2 x 2 with reaches 7.5, 9, 32 | the next `make probe-wire-reach`: the cases are in `tools/game-probe/wire-reach.lua`, and `packages/model/test/wireReachGame.test.ts` then applies the footprint rule to every one of them |
+
+The probe now runs the game with its five standard modules (the railgun turret, the recycler and the agricultural tower are not in `base`). A case the game cannot set up, because a script may not place the entity there or the game moves it off the tiles
+asked for, is left out of the fixture and named in the tool's output; the tool then exits with an error after writing the others. An entity that belongs on the rail grid (train stop, rail signals) is A of its case and may be moved by whole tiles.
+
+### 13.7 What the dumps contradict or qualify in the user's overview
+
+The overview's inventory stands: the same 98 names, 13 of them hidden, none from Elevated Rails or Quality, one from the recycler module. The dumps add or qualify:
+
+- Wire reach is not uniform: besides the poles, the power switch reaches 10 and the agricultural tower 30 (13.3). The overview does not mention reach.
+- The radar is listed as a pure relay. Since 2.1.7 it has settings of its own: a mode, `surface` or `universe`, and a universe channel [changelog 2.1.7: "Added "universe" mode of operation to radar circuit connections for transfer of cross-surface signals",
+  `LuaRadarControlBehavior::mode, universe_channel`] [api: `defines.control_behavior.radar.mode`, `LuaEntityPrototype.default_universe_channel`]. The dump has no field for it (`radar` sets no `default_universe_channel`); an editor entity for the radar needs these two settings.
+- "Quality levels do not create additional entity prototypes" is right, but quality is not without effect on a circuit layout: it changes the wire reach (13.3).
+- Four of the hidden prototypes cannot be placed by any item (13.5), so a palette that offers "everything with an item" has 94 entries, 85 of them not hidden.
+- Send, receive and relay are not properties of a prototype in the dump; the default signals of 13.5 are the only trace of them there. They agree with the overview where they exist (an accumulator and a wall have an output signal, an inserter a stack size input, a lamp colour inputs),
+  and the classification as a whole stays the overview's [api, as stated there].
+- Not every wired entity sits on the tile grid or in one of four directions: the land mine is off the grid, the rail signals have 16 directions, two turrets 8, the storage tank 2 (13.2, 13.4).

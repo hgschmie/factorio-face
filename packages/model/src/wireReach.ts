@@ -1,9 +1,10 @@
 // Wire reach: how far apart two entities may be for a circuit wire between them.
 //
-// The reach is per entity, as in the game: an electric pole has its own (`PROTOTYPES`: 7.5 tiles for a small one, 32 for a big
-// one), every other entity has the reach of the project, a setting (9 tiles in the game for all of them; docs/factorio-audit.md
-// 5.4). A wire may span the smaller reach of its two ends. The project's reach may be set to "unlimited"; an end that is
-// unlimited does not limit, so a wire between two such ends is never too long and one to a pole has the pole's reach.
+// The reach is per entity, as in the game: an electric pole has its own (7.5 tiles for a small one, 32 for a big one), and so has
+// every other prototype the game gives another reach than its standard 9 (`hasOwnWireReach`; none of the editor's entities so
+// far). Every other entity has the reach of the project, a setting (9 tiles in the game; docs/factorio-audit.md 5.4, 13.3). A
+// wire may span the smaller reach of its two ends. The project's reach may be set to "unlimited"; an end that is unlimited does
+// not limit, so a wire between two such ends is never too long and one to a pole has the pole's reach.
 //
 // The measure is the game's rule, verified against Factorio 2.1.24 by fixture F-24 (tests/fixtures/game/F-24-wire-reach.json,
 // recorded by tools/game-probe/wire-reach.mjs): the straight line between the nearest points of the two tile footprints, that is
@@ -11,10 +12,11 @@
 // when that distance is at most the reach. Neither the facing beyond the footprint, nor the connector, nor the collision box matter.
 
 import { facingOf, footprintBox, type PlacedShape, type TileBox } from "./footprint.ts";
+import { STANDARD_WIRE_REACH } from "./entityTable.ts";
 import { prototypeData, prototypeOf, PROTOTYPES, withArticle, type EntityShape, type PrototypeName } from "./prototypes.ts";
 
-/** The reach of a project that does not set one. */
-export const DEFAULT_WIRE_REACH = 9;
+/** The reach of a project that does not set one: the game's. */
+export const DEFAULT_WIRE_REACH = STANDARD_WIRE_REACH;
 
 /** The reach that stands for "no limit". */
 export const UNLIMITED_WIRE_REACH = 0;

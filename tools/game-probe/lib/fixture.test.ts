@@ -3,11 +3,13 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 interface Probed { name: string; width: number; height: number; facing?: string; connector?: string; reach: number }
-interface Recording { game_version: string; range: number; cases: { label: string; a: Probed; b: Probed; rows: string[] }[] }
-interface Fixture { id: string; source: string; gameVersion: string; range: number; cases: { label: string; a: Probed; b: Probed; reach: number; rows: string[] }[] }
+interface RecordedCase { label: string; a?: Probed; b?: Probed; range?: number; rows?: string[]; error?: string }
+interface Recording { game_version: string; range: number; cases: RecordedCase[] }
+interface Fixture { id: string; source: string; gameVersion: string; range: number; cases: { label: string; a: Probed; b: Probed; reach: number; range?: number; rows: string[] }[] }
 
-const { buildFixture, serialiseFixture } = (await import(/* @vite-ignore */ new URL("./fixture.mjs", import.meta.url).href)) as {
+const { buildFixture, failedCases, serialiseFixture } = (await import(/* @vite-ignore */ new URL("./fixture.mjs", import.meta.url).href)) as {
   buildFixture(recording: Recording, source: string): Fixture;
+  failedCases(recording: Recording): RecordedCase[];
   serialiseFixture(fixture: Fixture): string;
 };
 
@@ -34,6 +36,24 @@ describe("wire reach fixture", () => {
     expect(serialiseFixture(buildFixture(recording([{ label: "constant - constant", a: { ...constant }, b: { ...constant }, rows: ["010", "111", "010"] }]), "test"))).toBe(text);
   });
 
+  it("lets a case have a range of its own and says so only where it differs", () => {
+    const wide = ["00100", "01110", "11111", "01110", "00100"];
+    const fixture = buildFixture(recording([{ label: "near", a: constant, b: constant, range: 1, rows: ["010", "111", "010"] }, { label: "far", a: pole, b: pole, range: 2, rows: wide }]), "test");
+    expect(fixture.cases.map((probed) => probed.range)).toEqual([undefined, 2]);
+    expect(Object.keys(fixture.cases[1]!)).toEqual(["label", "a", "b", "reach", "range", "rows"]);
+    const text = serialiseFixture(fixture);
+    expect(JSON.parse(text)).toEqual(fixture);
+    expect(text).toContain('      "reach": 7.5,\n      "range": 2,\n      "rows": [\n        "00100",');
+    expect(() => buildFixture(recording([{ label: "far", a: pole, b: pole, range: 2, rows: ["010", "111", "010"] }]), "test")).toThrow("far: not a 5 x 5 grid");
+  });
+
+  it("leaves out the cases the game could not set up and names them", () => {
+    const recorded = recording([{ label: "tower - tower", error: "no prototype agricultural-tower with the enabled modules" }, { label: "constant - constant", a: constant, b: constant, rows: ["010", "111", "010"] }]);
+    expect(buildFixture(recorded, "test").cases.map((probed) => probed.label)).toEqual(["constant - constant"]);
+    expect(failedCases(recorded)).toEqual([{ label: "tower - tower", error: "no prototype agricultural-tower with the enabled modules" }]);
+    expect(failedCases(recording([]))).toEqual([]);
+  });
+
   it("refuses a recording that is not a full grid of answers or has no reach", () => {
     const one = (rows: string[], b = constant): Recording => recording([{ label: "bad", a: constant, b, rows }]);
     expect(() => buildFixture(one(["111", "111"]), "test")).toThrow("bad: not a 3 x 3 grid");
@@ -51,5 +71,16 @@ describe("wire reach fixture", () => {
     const { PROTOTYPE_NAMES } = await import("@face/model");
     const scenario = readFileSync(new URL("../wire-reach.lua", import.meta.url), "utf8");
     for (const name of PROTOTYPE_NAMES) expect(scenario, name).toContain(`"${name}"`);
+  });
+
+  it("asks the game about the footprints and reaches of the entity table that the editor's prototypes do not have", async () => {
+    const { STANDARD_ENTITY_TABLE: table, STANDARD_WIRE_REACH } = await import("@face/model");
+    const scenario = readFileSync(new URL("../wire-reach.lua", import.meta.url), "utf8");
+    const asked = table.entities.filter((entity) => scenario.includes(`"${entity.name}"`));
+    // Every prototype whose tiles are not those of its collision box, and every reach that is not the standard one.
+    for (const entity of table.entities.filter((candidate) => candidate.collisionBox || candidate.wireReach !== STANDARD_WIRE_REACH)) expect(asked, entity.name).toContain(entity);
+    const footprints = new Set(asked.map((entity) => `${entity.width}x${entity.height}`));
+    expect([...footprints]).toEqual(expect.arrayContaining(["1x1", "1x2", "2x1", "2x2", "2x4", "3x2", "3x3", "3x5", "5x5", "9x9"]));
+    expect(asked.some((entity) => entity.directions === 16)).toBe(true);
   });
 });

@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 // Records fixture F-24 from the locally installed game: which placements of one entity a circuit wire from another reaches.
 // The cases are in wire-reach.lua: the combinators and the lamp in every direction, the four electric poles (each with its own
-// reach, also against each other) and the programmable speaker. A case added there is in the fixture after the next run.
-// The game runs headless and sandboxed like the catalog dump (tools/catalog/lib/dump.mjs); the scenario is wire-reach.lua.
+// reach, also against each other), the programmable speaker, and from the other wired entities the odd footprints and reaches
+// (docs/factorio-audit.md 13). A case added there is in the fixture after the next run. The game runs with its five standard
+// modules, for the entities of Space Age among the cases, headless and sandboxed like the catalog dump
+// (tools/catalog/lib/dump.mjs); the scenario is wire-reach.lua.
 import fs from "node:fs";
 import path from "node:path";
-import { locateGame, runScenario } from "../catalog/lib/dump.mjs";
-import { buildFixture, serialiseFixture } from "./lib/fixture.mjs";
+import { STANDARD_MODULES, locateGame, modSetId, runScenario } from "../catalog/lib/dump.mjs";
+import { buildFixture, failedCases, serialiseFixture } from "./lib/fixture.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const PROBE_ROOT = path.join(ROOT, ".runtime", "game-probe");
@@ -49,16 +51,17 @@ function main() {
 
   fs.mkdirSync(PROBE_ROOT, { recursive: true });
   const dumpRoot = fs.realpathSync(PROBE_ROOT);
-  const errorFile = path.join(dumpRoot, "sets", "base", "script-output", ERROR_OUTPUT);
+  const errorFile = path.join(dumpRoot, "sets", modSetId(STANDARD_MODULES), "script-output", ERROR_OUTPUT);
   fs.rmSync(errorFile, { force: true });
   let run;
   try {
-    run = record({ ...locateGame(), dumpRoot, mods: ["base"], sandbox: true, log: (line) => console.log(`  ${line}`) });
+    run = record({ ...locateGame(), dumpRoot, mods: STANDARD_MODULES, sandbox: true, log: (line) => console.log(`  ${line}`) });
   } catch (error) {
     if (fs.existsSync(errorFile)) fail(`the scenario failed: ${fs.readFileSync(errorFile, "utf8")}`);
     throw error;
   }
-  const recorded = buildFixture(JSON.parse(fs.readFileSync(run.outputFile, "utf8")), SOURCE);
+  const recording = JSON.parse(fs.readFileSync(run.outputFile, "utf8"));
+  const recorded = buildFixture(recording, SOURCE);
   const text = serialiseFixture(recorded);
   const relative = path.relative(ROOT, FIXTURE);
   const same = fs.existsSync(FIXTURE) && fs.readFileSync(FIXTURE, "utf8") === text;
@@ -69,6 +72,8 @@ function main() {
     fs.writeFileSync(FIXTURE, text);
   }
   console.log(`wire-reach: Factorio ${recorded.gameVersion}, ${recorded.cases.length} cases; ${relative} ${same ? "is up to date" : "written"}`);
+  const failed = failedCases(recording);
+  if (failed.length) fail(`the game could not set up ${failed.length} case(s), which are not in the fixture:\n${failed.map(({ label, error }) => `  ${label}: ${error}`).join("\n")}`);
 }
 
 try {

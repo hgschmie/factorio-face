@@ -3,6 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { LOCALE_SECTIONS, SPEAKER_LOCALE_SECTIONS, buildCatalog } from "./build.mjs";
 import { DUMP_OUTPUTS, RUNTIME_DUMP_FILE, modSetId, validModSets } from "./dump.mjs";
+import { buildEntityTable } from "./entities.mjs";
 import { readLocaleSections } from "./locale.mjs";
 
 export const DUMP_STAMP_FILE = "dump-info.json";
@@ -32,9 +33,9 @@ function loadSet(dumpRoot, mods, dataDir) {
 }
 
 /**
- * Builds the catalog from the dumps of every valid module set and proves that the provenance rules reproduce each of them.
- * The build variant ("mac-arm64, full") stays out of the result so that it is the same on every platform.
- * @returns { catalog, icons } as `buildCatalog` does
+ * Builds the catalog and the entity table from the dumps of every valid module set and proves that the provenance rules
+ * reproduce each of them. The build variant ("mac-arm64, full") stays out of the result so that it is the same on every platform.
+ * @returns { catalog, icons } as `buildCatalog` does, and { entities: { table, notes } } as `buildEntityTable` does
  */
 export function buildFromDumps({ dumpRoot, dataDir, modules, game }) {
   const sets = validModSets(modules).map((mods) => loadSet(dumpRoot, mods, dataDir));
@@ -43,5 +44,6 @@ export function buildFromDumps({ dumpRoot, dataDir, modules, game }) {
     const active = Object.keys(set.runtime.active_mods).sort().join();
     if (active !== [...set.mods].sort().join()) throw new Error(`${set.id}: the game loaded ${active}`);
   }
-  return buildCatalog({ sets, modules, game: { version: game.version, build: game.build } });
+  const input = { sets, modules, game: { version: game.version, build: game.build } };
+  return { ...buildCatalog(input), entities: buildEntityTable(input) };
 }

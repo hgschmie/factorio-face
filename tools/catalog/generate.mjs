@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-// Generates the signal catalog and its icon table from the locally installed game. See packages/catalog/README.md.
+// Generates the signal catalog, its icon table and the entity table from the locally installed game. See packages/catalog/README.md.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { KINDS } from "./lib/build.mjs";
 import { DUMP_COMMANDS, gameVersion, locateGame, modSetId, readModuleInfos, runDump, validModSets } from "./lib/dump.mjs";
+import { entityTableText } from "./lib/entities.mjs";
 import { iconFileRenderer, iconTableText } from "./lib/iconFiles.ts";
 import { watchedLocations } from "./lib/isolation.mjs";
 import { DUMP_STAMP_FILE, buildFromDumps, completeDumps, moduleVersions } from "./lib/sets.mjs";
@@ -22,8 +23,9 @@ const USAGE = `Usage: node tools/catalog/generate.mjs [options]
                      and fail when the dumps are missing or of another version
   --no-icons         skip rendering packages/catalog/generated/icons
   --no-sandbox       run the game without sandbox-exec (the before/after isolation check still applies)
-  --check            fail if the committed catalog or icon table differs from the generated one; write nothing
-  --output <dir>     write data/ and generated/ below <dir> instead of packages/catalog, to compare a run with what is there
+  --check            fail if the committed catalog, icon table or entity table differs from the generated one; write nothing
+  --output <dir>     write data/ and generated/ below <dir> instead of packages/catalog (the entity table, which is otherwise
+                     in packages/model/data, into its data/ as well), to compare a run with what is there
   --help
 
 Environment: FACTORIO_BIN (default /Applications/factorio.app/Contents/MacOS/factorio), FACTORIO_DATA (default: the
@@ -84,6 +86,8 @@ function main() {
   if (outputAt >= 0) args.splice(outputAt, 2);
   const packageDir = output ? path.resolve(output) : path.join(ROOT, "packages", "catalog");
   const iconRoot = path.join(packageDir, "generated", "icons");
+  // The model reads the entity table and cannot depend on the catalog package, which imports the model.
+  const modelDataDir = output ? path.join(packageDir, "data") : path.join(ROOT, "packages", "model", "data");
   const unknown = args.filter((arg) => !FLAGS.includes(arg));
   if (unknown.length) fail(`unknown option ${unknown.join(" ")}\n\n${USAGE}`);
   if (args.includes("--help")) return console.log(USAGE);
@@ -141,8 +145,9 @@ function main() {
     console.log(`catalog: reusing dumps of ${stamp.dumpedAt} in ${dumpRoot}`);
   }
 
-  // 2. Build the catalog from all sets and prove the provenance rules reproduce each of them.
-  const { catalog, icons } = buildFromDumps({ dumpRoot, dataDir, modules, game });
+  // 2. Build the catalog and the entity table from all sets and prove the provenance rules reproduce each of them.
+  const { catalog, icons, entities } = buildFromDumps({ dumpRoot, dataDir, modules, game });
+  for (const note of entities.notes) console.log(`catalog: note: ${note}`);
   const template = (command) => ["factorio", "--config", "<dump>/sets/<set>/config/config.ini", "--mod-directory", "<dump>/sets/<set>/mods", "--no-log-rotation", ...DUMP_COMMANDS[command]].join(" ");
   catalog.provenance = {
     generator: "tools/catalog/generate.mjs",
@@ -154,16 +159,20 @@ function main() {
   };
 
   // 3. Write the catalog only when its content (ignoring the timestamp) changed, so repeated runs are no-ops. The icon
-  //    table (which image files make up each icon; no artwork) carries no timestamp and is compared as text.
+  //    table (which image files make up each icon; no artwork) and the entity table carry no timestamp and are compared as text.
   const target = path.join(packageDir, "data", `catalog-${game.version}.json`);
   const catalogText = serialise(catalog);
   const previous = fs.existsSync(target) ? readJson(target) : undefined;
   const sameContent = previous !== undefined && JSON.stringify({ ...previous, provenance: { ...previous.provenance, generatedAt: "" } }) === JSON.stringify({ ...JSON.parse(catalogText), provenance: { ...catalog.provenance, generatedAt: "" } });
   const tableTarget = path.join(packageDir, "data", `icons-${game.version}.json`);
   const table = iconTableText(catalog.game, icons);
+  const sameText = (file, text) => fs.existsSync(file) && fs.readFileSync(file, "utf8") === text;
+  const entityTarget = path.join(modelDataDir, `entities-${game.version}.json`);
+  const entityText = entityTableText(entities.table);
   const outputs = [
     { file: target, same: sameContent, text: catalogText },
-    { file: tableTarget, same: fs.existsSync(tableTarget) && fs.readFileSync(tableTarget, "utf8") === table, text: table },
+    { file: tableTarget, same: sameText(tableTarget, table), text: table },
+    { file: entityTarget, same: sameText(entityTarget, entityText), text: entityText },
   ];
   const relative = (file) => path.relative(ROOT, file);
   if (option("--check")) {
@@ -171,12 +180,15 @@ function main() {
     if (outdated.length) fail(`out of date: ${outdated.join(", ")}`);
     return console.log(`catalog: up to date: ${outputs.map(({ file }) => relative(file)).join(", ")}`);
   }
-  fs.mkdirSync(path.dirname(target), { recursive: true });
   for (const { file, same, text } of outputs) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
     if (!same) fs.writeFileSync(file, text);
     console.log(`catalog: ${same ? `${relative(file)} unchanged` : `wrote ${relative(file)}`}`);
   }
-  if (game.version !== EXPECTED_VERSION) console.log(`catalog: note: packages/catalog/src/standard.ts and standardIconTable.ts still import the files of ${EXPECTED_VERSION}; point them at the new files and re-pin the tests.`);
+  if (game.version !== EXPECTED_VERSION) {
+    const importers = "packages/catalog/src/standard.ts, standardIconTable.ts and packages/model/src/entityTable.ts";
+    console.log(`catalog: note: ${importers} still import the files of ${EXPECTED_VERSION}; point them at the new files and re-pin the tests.`);
+  }
 
   // 4. Icons (Wube artwork: git-ignored), composited by the code the app renders with.
   if (!option("--no-icons")) {
@@ -205,7 +217,9 @@ function main() {
   fs.writeFileSync(path.join(packageDir, "generated", "manifest.json"), JSON.stringify(manifest, null, 1) + "\n");
 
   const count = (records) => records.length;
-  console.log(`catalog: Factorio ${game.version} (build ${game.build}); ${KINDS.map(({ kind }) => `${kind} ${count(catalog.signals[kind])}`).join(", ")}; groups ${count(catalog.groups)}, subgroups ${count(catalog.subgroups)}`);
+  const signalCounts = KINDS.map(({ kind }) => `${kind} ${count(catalog.signals[kind])}`).join(", ");
+  const otherCounts = `groups ${count(catalog.groups)}, subgroups ${count(catalog.subgroups)}; wired entities ${count(entities.table.entities)}`;
+  console.log(`catalog: Factorio ${game.version} (build ${game.build}); ${signalCounts}; ${otherCounts}`);
 }
 
 try {
