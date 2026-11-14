@@ -1,8 +1,9 @@
 // Topology: one network per connected set of same-colored connection points, found with union-find. Red and green never mix.
 // Every connection point an entity has (`TERMINALS`) is a member in its own right: the two of a combinator, the one of a lamp,
-// and the one of a pole, on which all wires of a color so become one network.
+// and the one of a pole, on which all wires of a color so become one network. Radars are joined without wires (G-RADAR).
 
 import { TERMINALS, WIRE_COLORS, terminalKey, type Circuit, type Entity, type EntityKind, type TerminalRef, type TerminalSide, type WireColor } from "@face/model";
+import { radarGroup } from "./entity.ts";
 import { defaultEnvironment, type SimulationEnvironment } from "./environment.ts";
 import { semanticFingerprint } from "./fingerprint.ts";
 import type { CompiledCircuit, CompiledNetwork, SimulationNote, TerminalNetworks } from "./types.ts";
@@ -28,6 +29,8 @@ export const POINT_ROLES: Readonly<Record<EntityKind, PointRoles>> = {
   // P-RELAY: a pole has no behaviour. Its point is read only so that a snapshot can show what is on the two networks it joins.
   pole: { reads: "io" },
   speaker: { reads: "in" },
+  // G-SILENT: a generic entity reads its one point for its conditions and for the snapshot, and sends nothing.
+  entity: { reads: "io" },
 };
 
 function find(parent: Int32Array, i: number): number {
@@ -85,6 +88,23 @@ export function compile(circuit: Circuit, env: SimulationEnvironment = defaultEn
     }
     parent[find(parent, a)] = find(parent, b);
     wired[wire.color][a] = wired[wire.color][b] = 1;
+  }
+
+  // G-RADAR: the radars of one group are joined per color as if by a wire. A group without any real wire of a color has no
+  // network of that color: radars alone connect nothing.
+  const radars = new Map<string, number[]>();
+  for (const entity of entities) {
+    const group = entity.kind === "entity" ? radarGroup(entity) : undefined;
+    if (group !== undefined) radars.set(group, [...(radars.get(group) ?? []), slot({ entity: entity.id, side: "io" })!]);
+  }
+  for (const members of radars.values()) {
+    for (const color of WIRE_COLORS) {
+      if (members.length < 2 || !members.some((n) => wired[color][n])) continue;
+      for (const n of members) {
+        parents[color][find(parents[color], n)] = find(parents[color], members[0]!);
+        wired[color][n] = 1;
+      }
+    }
   }
 
   const networks: CompiledNetwork[] = [];

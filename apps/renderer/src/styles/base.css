@@ -244,6 +244,11 @@ kbd {
   --kind-color: var(--kind-speaker);
 }
 
+/* Generic entities: the neutral gray of the pole until the entity package gives their groups a look. */
+.kind-entity {
+  --kind-color: var(--kind-pole);
+}
+
 /* Placeholder entity pictograms (icons/EntityIcon.tsx) */
 .entity-glyph .frame {
   fill: var(--surface-inset);

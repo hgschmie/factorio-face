@@ -11,6 +11,7 @@ describe("connection points", () => {
     for (const kind of ENTITY_KINDS) for (const side of Object.values(POINT_ROLES[kind])) expect(TERMINALS[kind], kind).toContain(side);
     expect(POINT_ROLES.pole).toEqual({ reads: "io" });
     expect(POINT_ROLES.speaker).toEqual({ reads: "in" });
+    expect(POINT_ROLES.entity).toEqual({ reads: "io" });
     expect(ENTITY_KINDS.filter((kind) => POINT_ROLES[kind].reads && POINT_ROLES[kind].writes)).toEqual(["arithmetic", "decider", "selector"]);
   });
 });

@@ -3,16 +3,39 @@
 --   1. imports the blueprint string this project exported and exports it again (what its own parser kept of it),
 --   2. builds that blueprint, revives the ghosts, and exports a new blueprint of what stands there,
 --   3. builds the same circuit from the runtime API alone, without a blueprint of ours, and exports that.
--- It also exports every supported entity as it is placed, untouched, and records the numbers behind the defines a blueprint uses.
+-- It also exports every supported entity as it is placed, untouched, and records the numbers behind the defines a blueprint uses,
+-- those of the enums of the generic entities among them.
 -- Everything goes to script-output/face-blueprints.json. A step that fails is recorded with its error and the rest goes on.
 
 local OUTPUT = "face-blueprints.json"
 local ERROR_OUTPUT = "face-blueprints-error.txt"
-local HALF = 40
+local HALF = 64
 local AREA = { { -HALF, -HALF }, { HALF, HALF } }
+-- Every prototype of the editor: the ten with a kind of their own, then the generic ones (the entity table of packages/model).
 local FRESH = {
-  "constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp",
-  "small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation", "programmable-speaker",
+  "constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "small-electric-pole", "medium-electric-pole", "big-electric-pole",
+  "substation", "programmable-speaker", "accumulator", "active-provider-chest", "agricultural-tower", "artillery-turret", "assembling-machine-1", "assembling-machine-2",
+  "assembling-machine-3", "asteroid-collector", "big-mining-drill", "biochamber", "biolab", "blue-chest", "boiler", "bottomless-chest", "buffer-chest", "bulk-inserter", "burner-inserter",
+  "burner-mining-drill", "cargo-landing-pad", "centrifuge", "chemical-plant", "crash-site-chest-1", "crash-site-chest-2", "crusher", "cryogenic-plant", "display-panel", "electric-furnace",
+  "electric-mining-drill", "electromagnetic-plant", "express-loader", "express-splitter", "express-transport-belt", "fast-inserter", "fast-loader", "fast-splitter", "fast-transport-belt",
+  "flamethrower-turret", "foundry", "gun-turret", "heat-exchanger", "heat-pipe", "heating-tower", "infinity-chest", "infinity-pipe", "inserter", "iron-chest", "lab", "land-mine",
+  "laser-turret", "linked-chest", "loader", "long-handed-inserter", "nuclear-reactor", "offshore-pump", "oil-refinery", "passive-provider-chest", "pipe", "pipe-to-ground", "power-switch",
+  "proxy-container", "pump", "pumpjack", "radar", "rail-chain-signal", "rail-signal", "railgun-turret", "recycler", "red-chest", "requester-chest", "roboport", "rocket-silo",
+  "rocket-turret", "space-platform-hub", "splitter", "stack-inserter", "steel-chest", "steel-furnace", "stone-furnace", "stone-wall", "storage-chest", "storage-tank", "tesla-turret",
+  "train-stop", "transport-belt", "turbo-loader", "turbo-splitter", "turbo-transport-belt", "wooden-chest",
+}
+-- Each fresh entity has a cell of this many tiles to itself (the rocket silo covers nine), this many cells to a row.
+local FRESH_CELL = 10
+local FRESH_COLUMNS = 12
+-- The enums of the generic entities, by the name the recording has them under.
+local ENUM_DEFINES = {
+  inserter_hand_read_mode = { "inserter", "hand_read_mode" },
+  mining_drill_resource_read_mode = { "mining_drill", "resource_read_mode" },
+  transport_belt_content_read_mode = { "transport_belt", "content_read_mode" },
+  radar_mode = { "radar", "mode" },
+  roboport_read_items_mode = { "roboport", "read_items_mode" },
+  rocket_silo_read_mode = { "rocket_silo", "read_mode" },
+  single_fluid_box_exclusive_mode = { "single_fluid_box", "exclusive_mode" },
 }
 local LAMP_SIGNALS = { "red_signal", "green_signal", "blue_signal", "rgb_signal" }
 
@@ -80,6 +103,21 @@ local function set_speaker(entity, spec)
   behavior.circuit_parameters = spec.behavior.circuit_parameters
 end
 
+-- A generic entity: every setting is an attribute of its control behaviour, an enum a member of defines.control_behavior.
+local function set_behavior(entity, assignments)
+  local behavior = entity.get_or_create_control_behavior()
+  if not behavior then error("no control behaviour") end
+  for _, assignment in ipairs(assignments) do
+    local value = assignment.value
+    if assignment.define then
+      value = defines.control_behavior
+      for _, key in ipairs(assignment.define) do value = value[key] end
+    end
+    local ok, err = pcall(function() behavior[assignment.attribute] = value end)
+    if not ok then error(assignment.attribute .. ": " .. tostring(err)) end
+  end
+end
+
 -- One entity of a case, placed and set through the runtime API.
 local function build_native(surface, spec)
   local direction = spec.direction and defines.direction[spec.direction] or nil
@@ -90,6 +128,7 @@ local function build_native(surface, spec)
   if spec.parameters then entity.get_or_create_control_behavior().parameters = spec.parameters end
   if spec.lamp then set_lamp(entity, spec.lamp) end
   if spec.speaker then set_speaker(entity, spec.speaker) end
+  if spec.behavior then set_behavior(entity, spec.behavior) end
   return entity
 end
 
@@ -141,15 +180,19 @@ local function record_case(surface, case)
   return out
 end
 
--- Every supported entity as the game places it. `touch` also gives each its control behaviour, as a first wire does.
+-- Every supported entity as the game places it, each on a cell of its own. `touch` also gives each its control behaviour, as a
+-- first wire does. A prototype the game does not place here (it wants rails, water or a space platform under it) is left out;
+-- the tests of packages/blueprints name the ones that are missing from the recording.
 local function record_fresh(surface, touch)
   clear(surface)
   for index, name in ipairs(FRESH) do
     local proto = prototypes.entity[name]
-    local position = { x = (index - 6) * 4 + proto.tile_width / 2, y = proto.tile_height / 2 }
-    local entity = surface.create_entity({ name = name, position = position, force = "player" })
-    if not entity then error("cannot place " .. name) end
-    if touch then entity.get_or_create_control_behavior() end
+    if proto then
+      local column, row = (index - 1) % FRESH_COLUMNS, math.floor((index - 1) / FRESH_COLUMNS)
+      local position = { x = (column - FRESH_COLUMNS / 2) * FRESH_CELL + proto.tile_width / 2, y = (row - 5) * FRESH_CELL + proto.tile_height / 2 }
+      local ok, entity = pcall(surface.create_entity, { name = name, position = position, force = "player" })
+      if ok and entity and touch then pcall(entity.get_or_create_control_behavior) end
+    end
   end
   local inventory = game.create_inventory(1)
   local text = blueprint_of(surface, inventory[1])
@@ -180,6 +223,10 @@ local function run()
     fresh = {},
     cases = {},
   }
+  for name, path in pairs(ENUM_DEFINES) do
+    local ok, values = pcall(function() return defines.control_behavior[path[1]][path[2]] end)
+    if ok and values then out.defines[name] = numbers(values) end
+  end
   for _, variant in ipairs({ { key = "placed", touch = false }, { key = "with_control_behavior", touch = true } }) do
     local ok, result = pcall(record_fresh, surface, variant.touch)
     out.fresh[variant.key] = ok and { string = result } or { error = tostring(result) }

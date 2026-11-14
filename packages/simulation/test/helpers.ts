@@ -10,12 +10,15 @@ import {
   type ArithmeticOperation,
   type Circuit,
   type Comparator,
+  type Condition,
   type ConstantCombinator,
   type ConstantSection,
   type DeciderCombinator,
   type DeciderCondition,
   type DeciderOutput,
   type Entity,
+  type EntitySettings,
+  type GenericEntity,
   type Lamp,
   type NetworkSelection,
   type Operand,
@@ -29,7 +32,10 @@ import {
   type Wire,
   type WireColor,
 } from "@face/model";
-import { compile, createEnvironment, createSimulation, networkOf, type LampState, type SignalList, type Simulation, type SimulationEnvironment, type SimulationOptions, type SpeakerState } from "../src/index.ts";
+import {
+  compile, createEnvironment, createSimulation, networkOf, POINT_ROLES,
+  type ConditionStates, type LampState, type SignalList, type Simulation, type SimulationEnvironment, type SimulationOptions, type SpeakerState,
+} from "../src/index.ts";
 
 export const EACH = wildcardSignal("each");
 export const ANYTHING = wildcardSignal("anything");
@@ -120,6 +126,16 @@ export function speaker(id: string, props: Partial<Omit<Speaker, "id" | "name" |
   return { ...base(id), ...DEFAULT_ENTITY.speaker, ...props };
 }
 
+/** A generic entity: a prototype of the game with the settings that differ from its defaults. */
+export function entity(id: string, prototype: string, settings: EntitySettings = {}): GenericEntity {
+  return { ...base(id), kind: "entity", prototype, settings };
+}
+
+/** A condition as a lamp, a speaker and a generic entity have it. */
+export function when(first: SignalSpec, comparator: Comparator, second: number | SignalSpec): Condition {
+  return { first: sig(first), comparator, second: typeof second === "number" ? { type: "constant", value: second } : { type: "signal", signal: sig(second) } };
+}
+
 /** A cut of the game's instrument table: enough to tell the first instrument, the first note and the end of a list. */
 export const INSTRUMENTS: readonly SpeakerInstrument[] = [
   { name: "alarms", notes: ["alarm-1", "alarm-2", "siren"] },
@@ -167,7 +183,7 @@ export interface Feed {
   readonly seed?: number;
 }
 
-/** Wires constant combinators with the given values to the entity's input, one per color. */
+/** Wires constant combinators with the given values to the point the entity reads from, one per color. */
 export function fed(entity: Entity, feed: Feed): Circuit {
   const entities: Entity[] = [entity];
   const wires: Wire[] = [];
@@ -175,19 +191,25 @@ export function fed(entity: Entity, feed: Feed): Circuit {
     const values = feed[color];
     if (!values) continue;
     entities.push(constant(`feed-${color}`, values));
-    wires.push(wire(color, `feed-${color}.out`, `${entity.id}.in`));
+    const side = POINT_ROLES[entity.kind].reads ?? "in";
+    wires.push(wire(color, `feed-${color}.out`, side === "io" ? entity.id : `${entity.id}.${side}`));
   }
   return circuit(entities, wires);
 }
 
 /** Output of a combinator one tick after its input (given per wire color) appears. */
-export function evaluate(entity: Exclude<Entity, Lamp | ConstantCombinator | Pole | Speaker>, feed: Feed = {}): Record<string, number> {
+export function evaluate(entity: Exclude<Entity, Lamp | ConstantCombinator | Pole | Speaker | GenericEntity>, feed: Feed = {}): Record<string, number> {
   return outputOf(simulate(fed(entity, feed), 1, feed), entity.id);
 }
 
 /** State of a speaker for the given input; like a lamp it is evaluated from the current content. */
 export function speakerState(entity: Speaker, feed: Feed = {}): SpeakerState {
   return simulate(fed(entity, feed), 0, feed).snapshot().entities[entity.id]!.speaker!;
+}
+
+/** The conditions of a generic entity for the given input; undefined when the snapshot reports none. */
+export function conditionsOf(target: GenericEntity, feed: Feed = {}): ConditionStates | undefined {
+  return simulate(fed(target, feed), 0, feed).snapshot().entities[target.id]!.conditions;
 }
 
 /** State of a lamp for the given input; lamps evaluate from the current content, so no tick has to pass. */

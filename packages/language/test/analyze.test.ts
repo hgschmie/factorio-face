@@ -561,6 +561,12 @@ describe("diagnostics", () => {
     expectCodes(speaker("instrument = organ note = x"), []);
   });
 
+  it("missing-prototype", () => {
+    expectCodes(circuit("entity e { }"), ["missing-prototype"]);
+    expectCodes(circuit("entity e { read-contents = true when item:a > 1 }"), ["missing-prototype"]);
+    expectCodes(circuit("entity e { prototype = steel-chest }"), []);
+  });
+
   it("has a test for every diagnostic code", () => {
     expect([...seen].sort()).toEqual(Object.keys(DIAGNOSTIC_SEVERITY).sort());
   });

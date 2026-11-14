@@ -10,6 +10,7 @@ export type { HistoryOptions, Trace } from "./history.ts";
 export { semanticCanonicalForm, semanticFingerprint } from "./fingerprint.ts";
 export { FIXTURE_FORMAT, FIXTURE_PROVENANCES, runFixture, validateFixture } from "./fixture.ts";
 export type { ConformanceFixture, FixtureExpectation, FixtureFailure, FixtureLampExpectation, FixtureNetworkExpectation, FixtureProvenance, FixtureSignals, FixtureSpeakerExpectation } from "./fixture.ts";
+export { circuitConditions } from "./entity.ts";
 export { ARITHMETIC, COMPARE, toInt32 } from "./int32.ts";
 export { RULES } from "./rules.ts";
 export type { Rules } from "./rules.ts";

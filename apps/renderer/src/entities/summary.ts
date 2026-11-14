@@ -1,5 +1,8 @@
 // Configuration summaries shown on entity cards: one line, two for an entity that needs them (a speaker). Pure.
-import { prototypeData, type ArithmeticCombinator, type Condition, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type Operand, type Pole, type SelectorCombinator, type SignalId, type Speaker } from "@face/model";
+import {
+  ENABLE_CONDITION, prototypeData, settingSpecsOf,
+  type ArithmeticCombinator, type Condition, type ConstantCombinator, type DeciderCombinator, type Entity, type GenericEntity, type Lamp, type Operand, type Pole, type SelectorCombinator, type SignalId, type Speaker,
+} from "@face/model";
 import { shortSignal } from "./signalText.ts";
 
 const OPERATOR_SYMBOLS: Readonly<Record<string, string>> = { "*": "×", "/": "÷", "-": "−", "!=": "≠", "<=": "≤", ">=": "≥" };
@@ -81,6 +84,18 @@ function poleSummary(entity: Pole): string {
   return `${wireReach === undefined ? "" : `reach ${wireReach} · `}${width}x${height}`;
 }
 
+/**
+ * Generic entities: minimal until the entity package (selector, drawing, inspector). What the entity is says the heading of its
+ * card; the line is its enable condition where its type has one, else how many settings differ from a new one.
+ */
+function genericSummary(entity: GenericEntity): string {
+  const condition = entity.settings[ENABLE_CONDITION] as Condition | undefined;
+  if (condition) return conditionText(condition);
+  if (settingSpecsOf(entity.prototype).some((spec) => spec.key === ENABLE_CONDITION)) return "no condition";
+  const set = Object.keys(entity.settings).length;
+  return set === 0 ? "default settings" : `${set} ${set === 1 ? "setting" : "settings"}`;
+}
+
 /** The instruments of the game with their notes, by name and in the game's order, as far as a summary needs them. */
 export type InstrumentNames = readonly { readonly name: string; readonly notes: readonly { readonly name: string }[] }[];
 
@@ -122,6 +137,8 @@ export function summaryLines(entity: Entity, instruments?: InstrumentNames): rea
       return [poleSummary(entity)];
     case "speaker":
       return speakerSummary(entity, instruments);
+    case "entity":
+      return [genericSummary(entity)];
   }
 }
 

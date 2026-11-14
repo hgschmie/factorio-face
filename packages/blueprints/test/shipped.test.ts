@@ -76,15 +76,21 @@ describe.skipIf(!present)("blueprint strings shipped with the game (local only: 
         prototype = substation
     }
 
+    entity display_panel1 at (280, 560) tile (9.5, -16.5) {
+        prototype = display-panel
+        blueprint-data = "{\\"control_behavior\\":{\\"parameters\\":[{\\"condition\\":{\\"first_signal\\":{\\"type\\":\\"virtual\\",\\"name\\":\\"signal-anything\\"},\\"constant\\":1,\\"comparator\\":\\"=\\"},\\"icon\\":{\\"type\\":\\"virtual\\",\\"name\\":\\"signal-anything\\"}}]},\\"icon\\":{\\"name\\":\\"repair-pack\\"}}"
+    }
+
     wire red constant1.out <-> selector1.in
+    wire red selector1.out <-> display_panel1
 }
 `);
     expect(report).toEqual({
       version: "1.2.10.23",
-      entities: 3,
-      dropped: [{ name: "display-panel", count: 1, reason: "unknown" }, { name: "electric-energy-interface", count: 1, reason: "unknown" }],
-      // The wire from the selector's output to the display panel goes with the panel.
-      wires: { imported: 1, copper: 0, toDropped: 1, invalid: 0 },
+      entities: 4,
+      // The display panel is a generic entity: its messages and its icon are kept for the blueprint, unread.
+      dropped: [{ name: "electric-energy-interface", count: 1, reason: "unknown" }],
+      wires: { imported: 2, copper: 0, toDropped: 0, invalid: 0 },
       settings: [{ prototype: "substation", field: "quality", kind: "ignored", message: "is something the editor does not have", count: 1, entities: ["pole1"] }],
       ignored: ["icons"],
       warnings: ["The blueprint is from a pre-release of Factorio 2.0 (1.2.10.23)"],
@@ -94,12 +100,15 @@ describe.skipIf(!present)("blueprint strings shipped with the game (local only: 
   it("exports that circuit with the filters, the positions and the wire as the game wrote them", () => {
     const result = exportBlueprint(importOf("circuit").circuit, { instruments: INSTRUMENTS });
     if (!result.ok) throw new Error("export failed");
-    const [constant, selector, pole] = result.data.blueprint.entities;
+    const [constant, selector, pole, panel] = result.data.blueprint.entities;
     // The constant combinator is byte for byte what the game wrote: section and filter shape, explicit quality and comparator.
     expect(constant).toEqual(original("circuit").entities[0]);
     expect(selector).toEqual({ entity_number: 2, name: "selector-combinator", position: { x: 6.5, y: -21 }, direction: 8, control_behavior: { operation: "random", random_update_interval: 15 } });
     expect(pole).toEqual({ entity_number: 3, name: "substation", position: { x: 8, y: -21 } });
-    expect(result.data.blueprint.wires).toEqual([original("circuit").wires[0]]);
+    // The display panel is what the game wrote, messages and icon included, under its new number.
+    expect(panel).toEqual({ ...original("circuit").entities[4], entity_number: 4 });
+    expect(JSON.stringify(panel)).toBe(JSON.stringify({ ...original("circuit").entities[4], entity_number: 4 }));
+    expect(result.data.blueprint.wires).toEqual([original("circuit").wires[0], [2, 3, 4, 1]]);
   });
 
   it("imports lamps that are always on, in the row the game has them in", () => {
@@ -112,16 +121,21 @@ describe.skipIf(!present)("blueprint strings shipped with the game (local only: 
     expect(result.ok && result.data.blueprint.entities).toEqual(original("lamps").entities);
   });
 
-  it("drops what is not a circuit: belts, machines and the copper wires between poles", () => {
+  it("imports belts, inserters, chests and machines as generic entities, and drops what no circuit wire connects to and the copper wires between poles", () => {
     const poles = importOf("poles");
-    expect(poles.circuit.entities.map((entity) => entity.kind)).toEqual(["pole", "pole", "pole", "pole", "pole", "pole"]);
+    expect(poles.circuit.entities.map((entity) => (entity.kind === "entity" ? entity.prototype : entity.kind))).toEqual(["pole", "pole", "pole", "pole", "pole", "pole", ...Array.from({ length: 4 }, () => "assembling-machine-2")]);
+    expect(poles.circuit.entities.map((entity) => entity.kind === "entity" && entity.blueprintData).filter(Boolean)).toEqual(['{"recipe":"iron-gear-wheel"}']);
     expect(poles.circuit.wires).toEqual([]);
-    expect(poles.report).toMatchObject({ dropped: [{ name: "assembling-machine-2", count: 4, reason: "unknown" }, { name: "electric-energy-interface", count: 1, reason: "unknown" }], wires: { imported: 0, copper: 5, toDropped: 0, invalid: 0 }, settings: [] });
+    expect(poles.report).toMatchObject({ dropped: [{ name: "electric-energy-interface", count: 1, reason: "unknown" }], wires: { imported: 0, copper: 5, toDropped: 0, invalid: 0 }, settings: [] });
     const mixed = importOf("poles-and-lamps");
-    expect(mixed.report.entities).toBe(7);
+    expect(mixed.report.entities).toBe(37);
     expect(mixed.report.wires).toEqual({ imported: 0, copper: 3, toDropped: 0, invalid: 0 });
-    expect(mixed.report.dropped.reduce((sum, entry) => sum + entry.count, 0)).toBe(31);
+    expect(mixed.report.dropped).toEqual([{ name: "electric-energy-interface", count: 1, reason: "unknown" }]);
     expect(mixed.report.settings).toEqual([]);
+    // Every entity that came in goes out as the game wrote it, but for its number.
+    const kept = original("poles-and-lamps").entities.filter((entity) => entity.name !== "electric-energy-interface");
+    const result = exportBlueprint(mixed.circuit);
+    expect(result.ok && result.data.blueprint.entities).toEqual(kept.map((entity, index) => ({ ...entity, entity_number: index + 1 })));
   });
 
   it("imports the 2 x 2 poles on the whole coordinates the game gives them", () => {

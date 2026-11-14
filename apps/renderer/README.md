@@ -344,7 +344,7 @@ green wire tokens, every `var()` resolves, the window background of the main pro
 | Accent | `--accent`, `--accent-fill`, `--accent-bright`, `--accent-border`, `--focus-ring` |
 | Confirm | `--confirm`, `--confirm-bright`, `--confirm-edge` |
 | Wires | `--wire-red`, `--wire-green`, `--wire-casing` (canvas); `--wire-red-ui`, `--wire-green-ui` and their `-surface` / `-border` (controls) |
-| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow), `--kind-pole` (a neutral gray: it does nothing of its own), `--kind-speaker` (sand, warm like the lamp it is grouped with and no second yellow); a `kind-<kind>` class sets `--kind-color` |
+| Entity kinds | `--kind-constant` (pink), `--kind-arithmetic` (cyan), `--kind-decider` (violet), `--kind-selector` (blue), `--kind-lamp` (yellow), `--kind-pole` (a neutral gray: it does nothing of its own), `--kind-speaker` (sand, warm like the lamp it is grouped with and no second yellow); `kind-entity` (the generic entities) has the pole's gray until the entity package; a `kind-<kind>` class sets `--kind-color` |
 | Status | `--status-ok`, `--status-warning`, `--status-error`, `--danger*`, `--notice-*` |
 | Traces and syntax | `--trace-1` ... `-3`, `--syntax-signal`, `-number`, `-string`, `-atom` |
 | Typography | `--font-ui`, `--font-mono`, `--text-xs` ... `--text-xl`, `--tracking-label` |
@@ -1051,6 +1051,34 @@ connection point (`TERMINALS`: `io`) gets its pins, its wiring and its place on 
   board and the wire inspector name the reach that applied, also a pole's own, and all three follow the prototype.
 - Completion offers a pole by its bare name and the instruments and notes of the catalog (`session/completion.ts`); the analysis gets
   the instrument list from `CatalogService.instruments`, the simulation environment from `environmentData`.
+
+## Generic entities (kind `entity`), as far as the renderer has them
+
+The model has 88 further prototypes of the game as one kind, `entity` (chests, inserters, belts, machines, train stops, ...; `ENTITY_SETTINGS` of
+`@face/model`, `docs/dsl.md` "entity"). The renderer shows them and lets them be moved, turned, wired, renamed and deleted like any entity; it does
+not offer them in the selector and has no form for their settings yet. Every place that handles them is marked with a comment that names the
+entity package (selector, drawing, inspector). What there is:
+
+- **Names** (`entities/kindInfo.ts`): `entityTitle` is the game's name of the prototype ("Fast inserter"), as for a pole; `KIND_INFO.entity` has the
+  category line "Game entity"; a description is a note of the project.
+- **Icon** (`entities/registry.ts`, `prototypeIconId`): the icon of the item that places the prototype (`placedBy` of the entity table; for all but
+  four chests of the game's editor an item of its name). `useCatalogEntityIcons` probes all 98 prototypes; without the image an entity shows the
+  boxed pictogram without a mark.
+- **Card** (`entities/summary.ts`, `canvas/EntityCard.tsx`): the summary line is the enable condition (`when`) where the entity has one, "no condition"
+  where its type has one and it is not set, else the number of settings that differ from a new entity. The two input rows show the networks on its
+  one connection point; the third row says `enabled` or `disabled` while the simulation reports the enable condition (`EntityStatus.enabled`, from
+  `EntitySnapshot.conditions.when`: only with a condition and a wire). `data-status` is `enabled`, `disabled` or absent. Other conditions (splitter
+  sides, harvest, ...) are in the snapshot and not shown yet.
+- **Canvases**: the one connection point is `io`, drawn like a pole's: one pair of pins in the middle of the top edge of the card and of the top end
+  of the footprint, whatever the entity faces. The board draws the footprint the model gives (1 x 1 up to 9 x 9, the ones that are not square turned
+  with the entity), with the icon and the name in the middle; no arrows, since there is no input and output half.
+- **Inspector** (`inspector/EntitySettingsForm.tsx`): name, facing, description and connections as for every entity, and in place of a form a note
+  with the prototype and that its settings are edited in the source for now.
+- **Dock**: nothing is traced for them (`isTraceable`): they send nothing in the simulation.
+- **Selector**: unchanged, ten entries (`registry.ts`); "Entities in use" lists only what the selector offers.
+- **Blueprints**: an import of them reports nothing dropped; what the editor does not model is in the source as `blueprint-data`.
+
+Tests: `test/genericEntity.test.ts`, `tests/e2e/genericEntities.spec.ts`.
 
 ## Commands
 

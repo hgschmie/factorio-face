@@ -88,6 +88,28 @@ circuit "All kinds \"quoted\" \\ name" {
     speaker tune { pitch = virtual:signal-P instrument = piano note = "F#3" playback = surface volume = 0 }
     speaker chime { when everything < virtual:signal-B instrument = "drum-kit" note = hat-1 playback = local }
 
+    entity feeder at (720, 0) tile (16.5, 0.5) facing north {
+        description = "Feeds the furnace"
+        prototype = fast-inserter
+        when item:iron-plate < 100
+        logistic when anything > virtual:signal-L
+        networks = red
+        output-networks = none
+        set-filters = true
+        read-hand = hold
+        set-stack-size = true
+        stack-size-signal = virtual:signal-X
+        blueprint-data = "{\"filters\":[{\"index\":1,\"name\":\"iron-plate\"}],\"use_filters\":true,\"quality\":\"rare\"}"
+    }
+    entity box { prototype = steel-chest read-contents = false read-empty-slots = true }
+    entity belt facing west { prototype = "express-transport-belt" read-contents = entire-belt-hold }
+    entity side { prototype = splitter input-left when item:coal > 0; output-right when everything <= 5 set-filter = true }
+    entity stop tile (20, 4) { prototype = train-stop; send-to-train = false, read-trains-count = true trains-count-signal = virtual:signal-C }
+    entity dish { prototype = radar mode = universe channel = virtual:signal-1 }
+    entity tank facing south { prototype = storage-tank read-contents = segment-contents }
+    entity sign { prototype = display-panel blueprint-data = "{\"text\":\"Grüße \\\"quoted\\\" \\\\ 日本語\",\"control_behavior\":{\"parameters\":[]}}" }
+    entity defaults { prototype = wooden-chest read-contents = true empty-slots-signal = virtual:signal-E }
+
     wire red bare.out <-> each_op.in
     wire green each_op.out <-> each_op.in
     wire red gate.in <-> each_op.out
@@ -98,4 +120,7 @@ circuit "All kinds \"quoted\" \\ name" {
     wire green sub <-> mid; wire green near <-> mid
     wire red far <-> alarm.in
     wire green tune.in <-> relay
+    wire red gate.out <-> feeder
+    wire green feeder <-> box; wire red box <-> relay
+    wire green dish <-> stop
 }

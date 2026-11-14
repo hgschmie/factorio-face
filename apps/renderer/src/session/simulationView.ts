@@ -1,5 +1,5 @@
 // Turns engine snapshots into what the dock and the cards show. Pure functions over snapshots and history.
-import { signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
+import { ENABLE_CONDITION, signalKey, terminalKey, type Circuit, type Entity, type EntityId, type RgbColor, type SignalId } from "@face/model";
 import { POINT_ROLES, type CompiledCircuit, type EntitySnapshot, type History, type SignalList, type TerminalNetworks, type TickSnapshot } from "@face/simulation";
 import { shortSignal, signalListText } from "../entities/signalText.ts";
 import { soundText } from "../entities/summary.ts";
@@ -44,6 +44,9 @@ function statusOf(snapshot: EntitySnapshot, wires: TerminalNetworks | undefined)
     return { label: lit ? (color ? `lit ${color}` : "lit") : "off", active: lit, input, lamp: { lit, color } };
   }
   if (snapshot.speaker) return { label: speakerText(snapshot.speaker), active: snapshot.speaker.playing, input, speaker: snapshot.speaker };
+  // Generic entities: minimal until the entity package (selector, drawing, inspector). Only the enable condition is shown.
+  const enabled = snapshot.conditions?.[ENABLE_CONDITION];
+  if (enabled !== undefined) return { label: enabled ? "enabled" : "disabled", active: false, input, enabled };
   // A relay: it emits nothing and has no state, so there is nothing to say beyond the two networks it joins.
   if (!isTraceable(snapshot.kind)) return { label: "", active: false, input };
   const output = snapshot.output ?? [];
@@ -98,7 +101,7 @@ export function tracedEntities(circuit: Circuit, selection: readonly EntityId[])
 
 function inputsText(snapshot: EntitySnapshot | undefined): string {
   if (!snapshot?.input) return "No input terminal";
-  if (snapshot.kind === "pole") return `Red: ${listText(snapshot.input.red)}\nGreen: ${listText(snapshot.input.green)}`;
+  if (snapshot.kind === "pole" || snapshot.kind === "entity") return `Red: ${listText(snapshot.input.red)}\nGreen: ${listText(snapshot.input.green)}`;
   return `Input red: ${listText(snapshot.input.red)}\nInput green: ${listText(snapshot.input.green)}\nInput sum: ${listText(snapshot.input.combined)}`;
 }
 

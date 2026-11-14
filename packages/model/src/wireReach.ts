@@ -1,8 +1,8 @@
 // Wire reach: how far apart two entities may be for a circuit wire between them.
 //
 // The reach is per entity, as in the game: an electric pole has its own (7.5 tiles for a small one, 32 for a big one), and so has
-// every other prototype the game gives another reach than its standard 9 (`hasOwnWireReach`; none of the editor's entities so
-// far). Every other entity has the reach of the project, a setting (9 tiles in the game; docs/factorio-audit.md 5.4, 13.3). A
+// every other prototype the game gives another reach than its standard 9 (`hasOwnWireReach`: the power switch with 10 and the
+// agricultural tower with 30). Every other entity has the reach of the project, a setting (9 tiles in the game; docs/factorio-audit.md 5.4, 13.3). A
 // wire may span the smaller reach of its two ends. The project's reach may be set to "unlimited"; an end that is unlimited does
 // not limit, so a wire between two such ends is never too long and one to a pole has the pole's reach.
 //
@@ -114,7 +114,7 @@ export function formatWireReach(reach: number): string {
 
 /** Whose reach it is, for a sentence: "the project", "a small electric pole". */
 export function wireReachOwner(limit: WireReach): string {
-  return limit.of === "project" ? "the project" : withArticle(PROTOTYPES[limit.of].label);
+  return limit.of === "project" ? "the project" : withArticle(PROTOTYPES[limit.of]?.label ?? limit.of);
 }
 
 /** The reach that applied and why, as a clause: "the wire reach of the project is 9", "the wire reach of a small electric pole is 7.5". */

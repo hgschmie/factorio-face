@@ -67,7 +67,10 @@ async function blueprintPath(name: string): Promise<string> {
 
 const position = (x: number, y: number) => ({ x, y });
 
-/** A blueprint as the game writes it: three entities the editor knows and five it does not, wires between both, a copper wire. */
+/**
+ * A blueprint as the game writes it: five entities the editor knows and four it does not (rails and a gate, which carry no
+ * circuit wire; belts, inserters and chests are entities of the editor), wires between both, a copper wire.
+ */
 const MIXED = {
   blueprint: {
     icons: [{ signal: { name: "constant-combinator" }, index: 1 }],
@@ -76,10 +79,10 @@ const MIXED = {
       { entity_number: 1, name: "constant-combinator", position: position(0.5, 0.5), control_behavior: { sections: { sections: [{ index: 1, filters: [{ index: 1, name: "iron-plate", quality: "normal", comparator: "=", count: 5 }] }] } } },
       { entity_number: 2, name: "decider-combinator", position: position(3, 0.5), direction: 4, quality: "rare" },
       { entity_number: 3, name: "small-lamp", position: position(4.5, 0.5) },
-      { entity_number: 4, name: "transport-belt", position: position(0.5, 2.5) },
-      { entity_number: 5, name: "transport-belt", position: position(1.5, 2.5) },
-      { entity_number: 6, name: "transport-belt", position: position(2.5, 2.5) },
-      { entity_number: 7, name: "inserter", position: position(3.5, 2.5) },
+      { entity_number: 4, name: "straight-rail", position: position(0.5, 2.5) },
+      { entity_number: 5, name: "straight-rail", position: position(1.5, 2.5) },
+      { entity_number: 6, name: "straight-rail", position: position(2.5, 2.5) },
+      { entity_number: 7, name: "gate", position: position(3.5, 2.5) },
       { entity_number: 8, name: "medium-electric-pole", position: position(6.5, 0.5) },
       { entity_number: 9, name: "medium-electric-pole", position: position(6.5, 4.5) },
     ],
@@ -103,12 +106,12 @@ const BOOK = {
     label: "Circuits",
     active_index: 0,
     blueprints: [
-      { index: 0, blueprint: { item: "blueprint", label: "Belts only", entities: [{ entity_number: 1, name: "transport-belt", position: position(0.5, 0.5) }], version: 562954249109504 } },
+      { index: 0, blueprint: { item: "blueprint", label: "Belts only", entities: [{ entity_number: 1, name: "straight-rail", position: position(0.5, 0.5) }], version: 562954249109504 } },
       { index: 1, blueprint: { item: "blueprint", label: "Two lamps", entities: [lamp(1, 0), lamp(2, 1)], wires: [[1, 1, 2, 1]], version: 562954249109504 } },
       { index: 2, deconstruction_planner: { item: "deconstruction-planner", label: "Trees", version: 562954249109504 } },
       {
         index: 3,
-        blueprint_book: { item: "blueprint-book", label: "Inner", blueprints: [{ index: 0, blueprint: { item: "blueprint", label: "Three lamps", entities: [lamp(1, 0), lamp(2, 1), lamp(3, 2), { entity_number: 4, name: "inserter", position: position(0.5, 2.5) }], version: 562954249109504 } }] },
+        blueprint_book: { item: "blueprint-book", label: "Inner", blueprints: [{ index: 0, blueprint: { item: "blueprint", label: "Three lamps", entities: [lamp(1, 0), lamp(2, 1), lamp(3, 2), { entity_number: 4, name: "gate", position: position(0.5, 2.5) }], version: 562954249109504 } }] },
       },
     ],
     version: 562954249109504,
@@ -248,7 +251,7 @@ test("imports the entities the editor knows from a pasted blueprint and reports 
 
   const report = dialog(page, "Blueprint imported");
   await expect(report.locator('[data-message="summary"]')).toHaveText('"Counter with belt": Imported 5 of 9 entities and 2 wires.');
-  await expect(report.getByRole("region", { name: "Dropped entities" }).getByRole("listitem")).toHaveText(["3 x transport-belt", "1 x inserter"]);
+  await expect(report.getByRole("region", { name: "Dropped entities" }).getByRole("listitem")).toHaveText(["3 x straight-rail", "1 x gate"]);
   await expect(report.getByRole("region", { name: "Wires" }).getByRole("listitem")).toHaveText([
     "2 circuit wires to dropped entities went with them.",
     "1 copper wire (power) was dropped: the editor has circuit wires only.",
@@ -327,7 +330,7 @@ test("shows why a text is not a blueprint and keeps the dialog open", async ({ a
   const cases: readonly (readonly [string, string])[] = [
     [encodeBlueprintString(MIXED).slice(0, 120), "The blueprint string is damaged or incomplete: it cannot be unpacked."],
     [encodeBlueprintString({ upgrade_planner: { item: "upgrade-planner" } }), "This is an upgrade planner, not a blueprint; the editor imports blueprints only."],
-    [encodeBlueprintString({ blueprint: { item: "blueprint", entities: [{ entity_number: 1, name: "transport-belt", position: position(0.5, 0.5) }] } }), "The editor knows none of the 1 entity of this blueprint (transport-belt), so there is nothing to import."],
+    [encodeBlueprintString({ blueprint: { item: "blueprint", entities: [{ entity_number: 1, name: "straight-rail", position: position(0.5, 0.5) }] } }), "The editor knows none of the 1 entity of this blueprint (straight-rail), so there is nothing to import."],
   ];
   for (const [text, message] of cases) {
     await box.fill(text);

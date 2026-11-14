@@ -1,7 +1,8 @@
 // Identity of the simulation-relevant content of a circuit. Fields are listed explicitly per entity kind: a new model field
 // takes part only once it is added here, which is the point where its effect on the simulation has to be decided.
 
-import { signalKey, wireKey, type Circuit, type DeciderOutput, type Entity, type Operand, type SignalId } from "@face/model";
+import { signalKey, wireKey, type Circuit, type Condition, type DeciderOutput, type Entity, type Operand, type SignalId } from "@face/model";
+import { circuitConditions, inputNetworksOf, radarGroup } from "./entity.ts";
 
 type Json = string | number | boolean | null | readonly Json[];
 
@@ -9,6 +10,7 @@ const key = (id: SignalId | undefined): Json => (id ? signalKey(id) : null);
 const networks = (n: { readonly red: boolean; readonly green: boolean }): Json => (n.red ? 1 : 0) + (n.green ? 2 : 0);
 const operand = (o: Operand): Json => (o.type === "constant" ? [o.value] : [key(o.signal), networks(o.networks)]);
 const output = (o: DeciderOutput): Json => [key(o.signal), o.copyCountFromInput, o.constant, networks(o.networks)];
+const condition = (c: Condition): Json => [key(c.first), c.comparator, c.second.type === "constant" ? [c.second.value] : [key(c.second.signal)]];
 
 function canonicalEntity(e: Entity): Json {
   switch (e.kind) {
@@ -63,6 +65,10 @@ function canonicalEntity(e: Entity): Json {
         e.showAlert,
       ];
     }
+    case "entity":
+      // Of all settings only the circuit conditions with the networks they read reach a snapshot, and a radar's group the networks.
+      // The prototype counts through them alone: it says which settings are conditions and whether the entity is a radar.
+      return [e.id, e.kind, circuitConditions(e).map(([name, c]) => [name, condition(c)]), networks(inputNetworksOf(e)), radarGroup(e) ?? null];
   }
 }
 

@@ -3,12 +3,13 @@
 
 import { analyze, checkEntity, printCircuit } from "@face/language";
 import {
-  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, facingOf, isPrototypeName, LAMP_COLOR_MODES, NORMAL_QUALITY, normalizeWire, prototypeOf, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
+  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, entityNameBase, facingOf, isPrototypeName, LAMP_COLOR_MODES, NORMAL_QUALITY, normalizeWire, prototypeOf, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
   SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, TERMINALS, tileOrigin, wildcardOf, wireKey,
-  type Circuit, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction, type Entity, type EntityKind, type EntityOfKind, type Operand, type Point,
+  type Circuit, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction, type Entity, type EntityKind, type EntityOfKind, type Operand, type Point,
   type PrototypeName, type PrototypeOfKind, type RgbColor, type SelectorMode, type SpeakerInstrument, type TerminalSide, type Wire, type WireColor,
 } from "@face/model";
-import { Fields, float32, isObject, type Json, type NoteKind, type NoteSink } from "./reader.ts";
+import { readGeneric } from "./generic.ts";
+import { circuitCondition, Fields, float32, isObject, type Json, type NoteKind, type NoteSink } from "./reader.ts";
 import { CONNECTOR, formatVersion, unpackVersion } from "./schema.ts";
 import { decodeBlueprintString, DEFAULT_LIMITS, type BlueprintLimits, type DecodeErrorCode } from "./string.ts";
 
@@ -196,16 +197,6 @@ const SELECTOR_FIELDS = [
   "select_max", "index_signal", "index_constant", "index_comparator", "count_signal", "random_update_interval", "quality_filter", "select_highest_quality", "select_quality_from_signal", "quality_source_static",
   "quality_source_signal", "quality_destination_signal", "day_length_signal", "day_tick_signal", "game_tick_signal",
 ] as const;
-
-/** A condition as a lamp and a speaker have it. Undefined without a left side: the language has no blank condition. */
-function circuitCondition(fields: Fields | undefined): Condition | undefined {
-  if (!fields) return undefined;
-  const first = fields.signal("first_signal");
-  const comparator = fields.comparator("comparator", "<");
-  const signalSecond = fields.signal("second_signal");
-  const constant = fields.int32("constant", 0);
-  return first ? { first, comparator, second: signalSecond ? { type: "signal", signal: signalSecond } : { type: "constant", value: constant } } : undefined;
-}
 
 function readConstant(entity: Fields): Settings<"constant"> {
   const behavior = entity.fields("control_behavior");
@@ -447,8 +438,9 @@ function readSpeaker(entity: Fields, instruments: readonly SpeakerInstrument[] |
   };
 }
 
-function readSettings(prototype: PrototypeName, entity: Fields, instruments: readonly SpeakerInstrument[] | undefined): Settings<EntityKind> {
-  switch (PROTOTYPES[prototype].kind) {
+/** The settings of a prototype with a kind of its own. */
+function readSettings(kind: Exclude<EntityKind, "entity">, prototype: PrototypeName, entity: Fields, instruments: readonly SpeakerInstrument[] | undefined): Settings<EntityKind> {
+  switch (kind) {
     case "constant": return readConstant(entity);
     case "arithmetic": return readArithmetic(entity);
     case "decider": return readDecider(entity);
@@ -495,7 +487,11 @@ function expressible(entity: Entity, note: NoteSink): Entity {
   if (check.ok) return entity;
   note("reset", "control_behavior", `cannot be kept by the editor (${check.message}); the entity has the settings of a new one`);
   const { id, name, position, placement } = entity;
-  const fresh = entity.kind === "pole" ? { ...DEFAULT_ENTITY.pole, prototype: entity.prototype } : DEFAULT_ENTITY[entity.kind];
+  // A generic entity keeps what the blueprint said beyond its settings; that is data, not something the language has to express.
+  const fresh =
+    entity.kind === "pole" ? { ...DEFAULT_ENTITY.pole, prototype: entity.prototype }
+    : entity.kind === "entity" ? { ...DEFAULT_ENTITY.entity, prototype: entity.prototype, ...(entity.blueprintData !== undefined && { blueprintData: entity.blueprintData }) }
+    : DEFAULT_ENTITY[entity.kind];
   return { ...fresh, id, name, position, ...(placement && { placement }) } as Entity;
 }
 
@@ -595,7 +591,7 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
   const numbers = new Set<number>();
   const imported: Imported[] = [];
   const byNumber = new Map<number, Entity>();
-  const counters = new Map<EntityKind, number>();
+  const counters = new Map<string, number>();
 
   for (const raw of listOf(blueprint.entities)) {
     const record = isObject(raw) ? raw : {};
@@ -603,7 +599,8 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
     const prototype = typeof record.name === "string" ? record.name : "";
     const hasNumber = typeof number === "number" && Number.isInteger(number);
     if (hasNumber) numbers.add(number);
-    if (!isPrototypeName(prototype)) {
+    const kind = isPrototypeName(prototype) ? PROTOTYPES[prototype]!.kind : undefined;
+    if (!kind) {
       drop(prototype || "(no name)", prototype ? "unknown" : "invalid");
       continue;
     }
@@ -613,24 +610,32 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
       continue;
     }
     if (imported.length >= limits.maxEntities) return fail("too-many-entities", `The blueprint has more than ${limits.maxEntities} entities that the editor knows`);
-    const kind = PROTOTYPES[prototype].kind;
-    const count = (counters.get(kind) ?? 0) + 1;
-    counters.set(kind, count);
-    // The naming rule of the editor for a new entity: the kind and the first free number.
-    const name = `${kind}${count}`;
-    const note = notes.for(prototype, name);
-    const fields = new Fields(record, "", note);
-    fields.skip("entity_number", "name", "position");
     const shape = { kind, prototype };
-    const direction = readDirection(fields, canRotate(shape));
-    if (fields.boolean("mirror", false)) fields.changed("mirror", "is on; the editor does not mirror entities");
-    fields.unsupported("quality", NORMAL_QUALITY);
-    const settings = readSettings(prototype, fields, options.instruments);
-    // The game has the description on the four combinators; anywhere else the field is not one of the entity.
-    const description = kind === "lamp" || kind === "pole" || kind === "speaker" ? undefined : fields.string("player_description");
-    fields.done();
-    // East is what an entity faces without saying so.
-    const placement = { tile, ...(canRotate(shape) && direction !== "east" && { direction }) };
+    // The naming rule of the editor for a new entity: what it is (`entityNameBase`) and the first free number.
+    const base = entityNameBase(shape);
+    const count = (counters.get(base) ?? 0) + 1;
+    counters.set(base, count);
+    const name = `${base}${count}`;
+    const note = notes.for(prototype, name);
+    let settings: Settings<EntityKind>;
+    let direction: Direction;
+    let description: string | undefined;
+    if (kind === "entity") {
+      ({ settings, direction } = readGeneric(prototype, record, note));
+    } else {
+      const fields = new Fields(record, "", note);
+      fields.skip("entity_number", "name", "position");
+      direction = readDirection(fields, canRotate(shape));
+      if (fields.boolean("mirror", false)) fields.changed("mirror", "is on; the editor does not mirror entities");
+      fields.unsupported("quality", NORMAL_QUALITY);
+      settings = readSettings(kind, prototype, fields, options.instruments);
+      // The game has the description on the four combinators; anywhere else the field is not one of the entity.
+      description = kind === "lamp" || kind === "pole" || kind === "speaker" ? undefined : fields.string("player_description");
+      fields.done();
+    }
+    // East is what an entity faces without saying so; an entity of two directions faces north or east (`facingOf`).
+    const facing = facingOf({ ...shape, placement: { direction } });
+    const placement = { tile, ...(canRotate(shape) && facing !== "east" && { direction: facing }) };
     const entity = { ...settings, id: `e${imported.length + 1}`, name, position: { x: 0, y: 0 }, placement, ...(description && { description }) } as Entity;
     imported.push({ number, entity });
     byNumber.set(number, entity);

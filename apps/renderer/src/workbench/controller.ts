@@ -184,7 +184,7 @@ export interface SpeakerStatus {
 export interface EntityStatus {
   /**
    * The output or the state as plain text, for example `A 5, B 10 +3`, `no output`, `lit #ff0000`, `playing piano F#3` or `silent`.
-   * Empty for an entity that neither emits nor has a state (a pole).
+   * Empty for an entity that neither emits nor has a state (a pole); `enabled` or `disabled` for a generic entity with an enable condition.
    */
   readonly label: string;
   /** Highlights the card: a lit lamp, a speaker that plays. */
@@ -197,6 +197,8 @@ export interface EntityStatus {
   readonly lamp?: { readonly lit: boolean; readonly color?: string };
   /** Speakers only. */
   readonly speaker?: SpeakerStatus;
+  /** Generic entities with an enable condition and a wire only: whether the condition holds. */
+  readonly enabled?: boolean;
 }
 
 export interface SimulationView {

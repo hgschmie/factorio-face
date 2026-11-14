@@ -1,7 +1,7 @@
 // Reading blueprint JSON that may hold anything: every field is asked for by name with the type it should have, a value of
 // another type is reported and replaced by the default, and what nobody asked for is reported as not known to the editor.
 
-import { BOTH_NETWORKS, COMPARATORS, isInt32, signal, STANDARD_SIGNAL_KINDS, type Comparator, type NetworkSelection, type SignalId, type StandardSignalKind } from "@face/model";
+import { BOTH_NETWORKS, COMPARATORS, isInt32, signal, STANDARD_SIGNAL_KINDS, type Comparator, type Condition, type NetworkSelection, type SignalId, type StandardSignalKind } from "@face/model";
 
 export type Json = Readonly<Record<string, unknown>>;
 
@@ -208,4 +208,14 @@ export class Fields {
     }
     for (const child of this.children) child.done();
   }
+}
+
+/** A circuit condition as every entity with one connector has it. Undefined without a left side: the language has no blank condition. */
+export function circuitCondition(fields: Fields | undefined): Condition | undefined {
+  if (!fields) return undefined;
+  const first = fields.signal("first_signal");
+  const comparator = fields.comparator("comparator", "<");
+  const signalSecond = fields.signal("second_signal");
+  const constant = fields.int32("constant", 0);
+  return first ? { first, comparator, second: signalSecond ? { type: "signal", signal: signalSecond } : { type: "constant", value: constant } } : undefined;
 }

@@ -1,0 +1,1919 @@
+{
+ "source": "runtime-api.json (stage runtime): the concept BlueprintEntity, the concepts of its control_behavior fields, defines.control_behavior",
+ "apiVersion": "2.1.23",
+ "types": {
+  "accumulator": {
+   "behavior": "AccumulatorBlueprintControlBehavior",
+   "fields": []
+  },
+  "agricultural-tower": {
+   "behavior": "AgriculturalTowerBlueprintControlBehavior",
+   "fields": []
+  },
+  "ammo-turret": {
+   "behavior": "TurretBlueprintControlBehavior",
+   "fields": [
+    "ignore-unprioritised",
+    "priority-list"
+   ]
+  },
+  "arithmetic-combinator": {
+   "behavior": "ArithmeticCombinatorBlueprintControlBehavior",
+   "fields": [
+    "player_description"
+   ]
+  },
+  "artillery-turret": {
+   "behavior": "ArtilleryTurretBlueprintControlBehavior",
+   "fields": [
+    "artillery_auto_targeting"
+   ]
+  },
+  "artillery-wagon": {
+   "fields": [
+    "artillery_auto_targeting",
+    "color",
+    "copy_color_from_train_stop",
+    "enable_logistics_while_moving",
+    "grid",
+    "orientation",
+    "stock_connections"
+   ]
+  },
+  "assembling-machine": {
+   "behavior": "AssemblingMachineBlueprintControlBehavior",
+   "fields": [
+    "recipe",
+    "recipe_quality"
+   ]
+  },
+  "asteroid-collector": {
+   "behavior": "AsteroidCollectorBlueprintControlBehavior",
+   "fields": [
+    "chunk-filter",
+    "result-inventory"
+   ]
+  },
+  "boiler": {
+   "behavior": "BoilerBlueprintControlBehavior",
+   "fields": []
+  },
+  "car": {
+   "fields": [
+    "ammo_inventory",
+    "driver_is_main_gunner",
+    "enable_logistics_while_moving",
+    "grid",
+    "orientation",
+    "request_filters",
+    "selected_gun_index",
+    "trunk_inventory"
+   ]
+  },
+  "cargo-landing-pad": {
+   "behavior": "CargoLandingPadBlueprintControlBehavior",
+   "fields": [
+    "bar",
+    "request_filters"
+   ]
+  },
+  "cargo-wagon": {
+   "fields": [
+    "color",
+    "copy_color_from_train_stop",
+    "enable_logistics_while_moving",
+    "grid",
+    "inventory",
+    "orientation",
+    "stock_connections"
+   ]
+  },
+  "constant-combinator": {
+   "behavior": "ConstantCombinatorBlueprintControlBehavior",
+   "fields": [
+    "player_description"
+   ]
+  },
+  "container": {
+   "behavior": "ContainerBlueprintControlBehavior",
+   "fields": [
+    "bar",
+    "filters"
+   ]
+  },
+  "decider-combinator": {
+   "behavior": "DeciderCombinatorBlueprintControlBehavior",
+   "fields": [
+    "player_description"
+   ]
+  },
+  "display-panel": {
+   "behavior": "DisplayPanelBlueprintControlBehavior",
+   "fields": [
+    "always_show",
+    "icon",
+    "show_in_chart",
+    "text"
+   ]
+  },
+  "electric-energy-interface": {
+   "fields": [
+    "buffer_size",
+    "power_production",
+    "power_usage"
+   ]
+  },
+  "electric-turret": {
+   "behavior": "TurretBlueprintControlBehavior",
+   "fields": [
+    "ignore-unprioritised",
+    "priority-list"
+   ]
+  },
+  "fluid-turret": {
+   "behavior": "TurretBlueprintControlBehavior",
+   "fields": [
+    "ignore-unprioritised",
+    "priority-list"
+   ]
+  },
+  "fluid-wagon": {
+   "fields": [
+    "color",
+    "copy_color_from_train_stop",
+    "enable_logistics_while_moving",
+    "grid",
+    "orientation",
+    "stock_connections"
+   ]
+  },
+  "furnace": {
+   "behavior": "FurnaceBlueprintControlBehavior",
+   "fields": []
+  },
+  "heat-interface": {
+   "fields": [
+    "mode",
+    "temperature"
+   ]
+  },
+  "heat-pipe": {
+   "behavior": "HeatPipeBlueprintControlBehavior",
+   "fields": []
+  },
+  "infinity-cargo-wagon": {
+   "fields": [
+    "color",
+    "copy_color_from_train_stop",
+    "enable_logistics_while_moving",
+    "grid",
+    "infinity_settings",
+    "inventory",
+    "orientation",
+    "stock_connections"
+   ]
+  },
+  "infinity-container": {
+   "behavior": "LogisticContainerBlueprintControlBehavior",
+   "fields": [
+    "bar",
+    "filters",
+    "infinity_settings",
+    "override_logistic_mode",
+    "request_filters",
+    "saved_request_filters",
+    "saved_request_from_buffers",
+    "saved_set_requests",
+    "saved_storage_filters"
+   ]
+  },
+  "infinity-pipe": {
+   "fields": [
+    "infinity_settings"
+   ]
+  },
+  "inserter": {
+   "behavior": "InserterBlueprintControlBehavior",
+   "fields": [
+    "drop_position",
+    "filter_mode",
+    "filters",
+    "override_stack_size",
+    "pickup_position",
+    "spoil_priority",
+    "use_filters"
+   ]
+  },
+  "lab": {
+   "behavior": "LabBlueprintControlBehavior",
+   "fields": []
+  },
+  "lamp": {
+   "behavior": "LampBlueprintControlBehavior",
+   "fields": [
+    "always_on",
+    "color"
+   ]
+  },
+  "land-mine": {
+   "behavior": "LandMineBlueprintControlBehavior",
+   "fields": []
+  },
+  "lane-splitter": {
+   "fields": [
+    "filter",
+    "input_priority",
+    "output_priority"
+   ]
+  },
+  "linked-belt": {
+   "fields": [
+    "belt_link",
+    "type"
+   ]
+  },
+  "linked-container": {
+   "fields": [
+    "link_id"
+   ]
+  },
+  "loader": {
+   "behavior": "LoaderBlueprintControlBehavior",
+   "fields": [
+    "belt_stack_size_override",
+    "filter_mode",
+    "filters",
+    "type"
+   ]
+  },
+  "loader-1x1": {
+   "behavior": "LoaderBlueprintControlBehavior",
+   "fields": [
+    "belt_stack_size_override",
+    "filter_mode",
+    "filters",
+    "type"
+   ]
+  },
+  "locomotive": {
+   "fields": [
+    "color",
+    "copy_color_from_train_stop",
+    "enable_logistics_while_moving",
+    "grid",
+    "orientation",
+    "schedule",
+    "stock_connections"
+   ]
+  },
+  "logistic-container": {
+   "behavior": "LogisticContainerBlueprintControlBehavior",
+   "fields": [
+    "bar",
+    "filters",
+    "request_filters"
+   ]
+  },
+  "mining-drill": {
+   "behavior": "MiningDrillBlueprintControlBehavior",
+   "fields": [
+    "filter"
+   ]
+  },
+  "offshore-pump": {
+   "behavior": "GenericOnOffBlueprintControlBehavior",
+   "fields": []
+  },
+  "pipe": {
+   "behavior": "SingleFluidBoxBlueprintControlBehavior",
+   "fields": []
+  },
+  "pipe-to-ground": {
+   "behavior": "SingleFluidBoxBlueprintControlBehavior",
+   "fields": []
+  },
+  "power-switch": {
+   "behavior": "GenericOnOffBlueprintControlBehavior",
+   "fields": [
+    "switch_state"
+   ]
+  },
+  "programmable-speaker": {
+   "behavior": "ProgrammableSpeakerBlueprintControlBehavior",
+   "fields": [
+    "alert_parameters",
+    "parameters"
+   ]
+  },
+  "proxy-container": {
+   "behavior": "ProxyContainerBlueprintControlBehavior",
+   "fields": []
+  },
+  "pump": {
+   "behavior": "PumpBlueprintControlBehavior",
+   "fields": [
+    "fluid_filter"
+   ]
+  },
+  "radar": {
+   "behavior": "RadarBlueprintControlBehavior",
+   "fields": []
+  },
+  "rail-chain-signal": {
+   "behavior": "RailSignalBaseBlueprintControlBehavior",
+   "fields": [
+    "rail_layer"
+   ]
+  },
+  "rail-signal": {
+   "behavior": "RailSignalBaseBlueprintControlBehavior",
+   "fields": [
+    "rail_layer"
+   ]
+  },
+  "reactor": {
+   "behavior": "ReactorBlueprintControlBehavior",
+   "fields": []
+  },
+  "roboport": {
+   "behavior": "RoboportBlueprintControlBehavior",
+   "fields": [
+    "request_filters"
+   ]
+  },
+  "rocket-silo": {
+   "behavior": "RocketSiloBlueprintControlBehavior",
+   "fields": [
+    "launch_to_orbit_automatically",
+    "recipe",
+    "recipe_quality",
+    "use_transitional_requests"
+   ]
+  },
+  "selector-combinator": {
+   "behavior": "SelectorCombinatorParameters",
+   "fields": [
+    "player_description"
+   ]
+  },
+  "space-platform-hub": {
+   "behavior": "SpacePlatformHubBlueprintControlBehavior",
+   "fields": [
+    "bar",
+    "providing_to_other_platforms",
+    "request_filters",
+    "request_missing_construction_materials"
+   ]
+  },
+  "spider-vehicle": {
+   "fields": [
+    "ammo_inventory",
+    "automatic_targeting_parameters",
+    "color",
+    "driver_is_main_gunner",
+    "enable_logistics_while_moving",
+    "grid",
+    "label",
+    "request_filters",
+    "selected_gun_index",
+    "trunk_inventory"
+   ]
+  },
+  "splitter": {
+   "behavior": "SplitterBlueprintControlBehavior",
+   "fields": [
+    "filter",
+    "input_priority",
+    "output_priority"
+   ]
+  },
+  "storage-tank": {
+   "behavior": "SingleFluidBoxBlueprintControlBehavior",
+   "fields": []
+  },
+  "train-stop": {
+   "behavior": "TrainStopBlueprintControlBehavior",
+   "fields": [
+    "color",
+    "manual_trains_limit",
+    "priority",
+    "station"
+   ]
+  },
+  "transport-belt": {
+   "behavior": "TransportBeltBlueprintControlBehavior",
+   "fields": []
+  },
+  "turret": {
+   "behavior": "TurretBlueprintControlBehavior",
+   "fields": [
+    "ignore-unprioritised",
+    "priority-list"
+   ]
+  },
+  "underground-belt": {
+   "fields": [
+    "type"
+   ]
+  },
+  "valve": {
+   "fields": [
+    "valve_threshold_override"
+   ]
+  },
+  "wall": {
+   "behavior": "WallBlueprintControlBehavior",
+   "fields": []
+  }
+ },
+ "behaviors": {
+  "AccumulatorBlueprintControlBehavior": [
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_signal",
+    "type": "SignalID",
+    "optional": false
+   },
+   {
+    "name": "read_charge",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   }
+  ],
+  "AgriculturalTowerBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "enable_harvesting_condition",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "enable_planting_condition",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "harvesting_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "planting_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "ArithmeticCombinatorBlueprintControlBehavior": [
+   {
+    "name": "arithmetic_conditions",
+    "type": "ArithmeticCombinatorParameters",
+    "optional": false
+   }
+  ],
+  "ArtilleryTurretBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_ammo",
+    "type": "boolean",
+    "optional": true
+   }
+  ],
+  "AssemblingMachineBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "include_in_crafting",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_fuel",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_ingredients",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_recipe_finished",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_working",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "recipe_finished_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "set_recipe",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "working_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "AsteroidCollectorBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_set_filters",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "include_hands",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   }
+  ],
+  "BoilerBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_fuel",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "CargoLandingPadBlueprintControlBehavior": [
+   {
+    "name": "empty_slots_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "read_empty_slots",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_requests",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "ConstantCombinatorBlueprintControlBehavior": [
+   {
+    "name": "is_on",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "sections",
+    "type": "LogisticSections",
+    "optional": false
+   }
+  ],
+  "ContainerBlueprintControlBehavior": [
+   {
+    "name": "empty_slots_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "read_empty_slots",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "DeciderCombinatorBlueprintControlBehavior": [
+   {
+    "name": "decider_conditions",
+    "type": "DeciderCombinatorParameters",
+    "optional": false
+   }
+  ],
+  "DisplayPanelBlueprintControlBehavior": [
+   {
+    "name": "parameters",
+    "type": "[DisplayPanelMessageDefinition]",
+    "optional": true
+   }
+  ],
+  "FurnaceBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "include_in_crafting",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_fuel",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_ingredients",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_recipe_finished",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_working",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "recipe_finished_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "working_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "GenericOnOffBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   }
+  ],
+  "HeatPipeBlueprintControlBehavior": [
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_temperature",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "temperature_signal",
+    "type": "SignalID",
+    "optional": false
+   }
+  ],
+  "InserterBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_hand_read_mode",
+    "type": "defines.control_behavior.inserter.hand_read_mode",
+    "optional": true,
+    "default": "pulse"
+   },
+   {
+    "name": "circuit_read_hand_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_set_filters",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_set_stack_size",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "stack_control_input_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "LabBlueprintControlBehavior": [
+   {
+    "name": "conditions",
+    "type": "[ResearchCondition]",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "read_fuel",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "read_research_cost",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "read_technology_level",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "set_research",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "technology_level_signal",
+    "type": "SignalID",
+    "optional": false
+   }
+  ],
+  "LampBlueprintControlBehavior": [
+   {
+    "name": "blue_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "color_mode",
+    "type": "defines.control_behavior.lamp.color_mode",
+    "optional": true,
+    "default": "defines.control_behavior.lamp.color_mapping"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "green_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "red_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "rgb_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "use_colors",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "LandMineBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   }
+  ],
+  "LoaderBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_read_transfers",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_set_filters",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   }
+  ],
+  "LogisticContainerBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_condition_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "empty_slots_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "read_empty_slots",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_requests",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "MiningDrillBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_read_resources",
+    "type": "boolean",
+    "optional": false
+   },
+   {
+    "name": "circuit_resource_read_mode",
+    "type": "defines.control_behavior.mining_drill.resource_read_mode",
+    "optional": false
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   }
+  ],
+  "ProgrammableSpeakerBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": false
+   },
+   {
+    "name": "circuit_parameters",
+    "type": "ProgrammableSpeakerCircuitParameters",
+    "optional": false
+   }
+  ],
+  "ProxyContainerBlueprintControlBehavior": [
+   {
+    "name": "empty_slots_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "read_empty_slots",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "PumpBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "set_filter",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "RadarBlueprintControlBehavior": [
+   {
+    "name": "mode",
+    "type": "defines.control_behavior.radar.mode",
+    "optional": true,
+    "default": "defines.control_behavior.radar.mode.surface"
+   },
+   {
+    "name": "universe_channel",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "RailSignalBaseBlueprintControlBehavior": [
+   {
+    "name": "blue_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "circuit_close_signal",
+    "type": "boolean",
+    "optional": false
+   },
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": false
+   },
+   {
+    "name": "circuit_read_signal",
+    "type": "boolean",
+    "optional": false
+   },
+   {
+    "name": "green_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "orange_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "red_output_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "ReactorBlueprintControlBehavior": [
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_fuel",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_temperature",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "temperature_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "RoboportBlueprintControlBehavior": [
+   {
+    "name": "available_construction_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "available_logistic_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_items_mode",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "read_robot_stats",
+    "type": "boolean",
+    "optional": true
+   },
+   {
+    "name": "roboport_count_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "total_construction_output_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "total_logistic_output_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "RocketSiloBlueprintControlBehavior": [
+   {
+    "name": "launched_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_items_mode",
+    "type": "defines.control_behavior.rocket_silo.read_mode",
+    "optional": true,
+    "default": "logistic_inventory"
+   },
+   {
+    "name": "read_launched",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "SelectorCombinatorParameters": [
+   {
+    "name": "operation",
+    "type": "SelectorCombinatorParameterOperation",
+    "optional": true,
+    "default": "\"select\""
+   }
+  ],
+  "SingleFluidBoxBlueprintControlBehavior": [
+   {
+    "name": "circuit_mode_of_operation",
+    "type": "defines.control_behavior.single_fluid_box.exclusive_mode",
+    "optional": true,
+    "default": "send_contents"
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_temperature",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "temperature_signal",
+    "type": "SignalID",
+    "optional": false
+   }
+  ],
+  "SpacePlatformHubBlueprintControlBehavior": [
+   {
+    "name": "damage_taken_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "empty_slots_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_contents",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "read_damage_taken",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_empty_slots",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_moving_from",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_moving_to",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_speed",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "send_to_platform",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "set_requests",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "speed_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "SplitterBlueprintControlBehavior": [
+   {
+    "name": "input_left_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "input_right_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_left_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_right_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "set_filter",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_input_side",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_output_side",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "TrainStopBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "priority_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "read_from_train",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_stopped_train",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "read_trains_count",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "send_to_train",
+    "type": "boolean",
+    "optional": true,
+    "default": "true"
+   },
+   {
+    "name": "set_priority",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_trains_limit",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "train_stopped_signal",
+    "type": "SignalID",
+    "optional": false
+   },
+   {
+    "name": "trains_count_signal",
+    "type": "SignalID",
+    "optional": true
+   },
+   {
+    "name": "trains_limit_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ],
+  "TransportBeltBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_contents_read_mode",
+    "type": "defines.control_behavior.transport_belt.content_read_mode",
+    "optional": false
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "circuit_read_hand_contents",
+    "type": "boolean",
+    "optional": false
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   }
+  ],
+  "TurretBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "circuit_enabled",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "connect_to_logistic_network",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "ignore_unlisted_targets_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "logistic_condition",
+    "type": "CircuitCondition",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "read_ammo",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_ignore_unlisted_targets",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   },
+   {
+    "name": "set_priority_list",
+    "type": "boolean",
+    "optional": true,
+    "default": "false"
+   }
+  ],
+  "WallBlueprintControlBehavior": [
+   {
+    "name": "circuit_condition",
+    "type": "CircuitCondition",
+    "optional": false
+   },
+   {
+    "name": "circuit_open_gate",
+    "type": "boolean",
+    "optional": false
+   },
+   {
+    "name": "circuit_read_sensor",
+    "type": "boolean",
+    "optional": false
+   },
+   {
+    "name": "input_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_networks",
+    "type": "CircuitNetworkSelection",
+    "optional": true
+   },
+   {
+    "name": "output_signal",
+    "type": "SignalID",
+    "optional": true
+   }
+  ]
+ },
+ "defines": {
+  "defines.control_behavior.inserter.hand_read_mode": [
+   "hold",
+   "pulse"
+  ],
+  "defines.control_behavior.lamp.color_mode": [
+   "color_mapping",
+   "components",
+   "packed_rgb"
+  ],
+  "defines.control_behavior.mining_drill.resource_read_mode": [
+   "entire_patch",
+   "this_miner"
+  ],
+  "defines.control_behavior.radar.mode": [
+   "surface",
+   "universe"
+  ],
+  "defines.control_behavior.roboport.read_items_mode": [
+   "logistics",
+   "missing_requests",
+   "none"
+  ],
+  "defines.control_behavior.rocket_silo.read_mode": [
+   "logistic_inventory",
+   "none",
+   "orbital_requests"
+  ],
+  "defines.control_behavior.single_fluid_box.exclusive_mode": [
+   "none",
+   "send_contents",
+   "send_segment_contents"
+  ],
+  "defines.control_behavior.transport_belt.content_read_mode": [
+   "entire_belt_hold",
+   "hold",
+   "pulse"
+  ]
+ }
+}

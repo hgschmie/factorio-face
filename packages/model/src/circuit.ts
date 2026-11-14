@@ -12,13 +12,18 @@ export type WireColor = (typeof WIRE_COLORS)[number];
 /**
  * The connection points an entity can have. `in` and `out` are the two connectors of an arithmetic, decider or selector
  * combinator, and the one connector of an entity that only reads (`in`) or only writes (`out`). `io` is the one connector of an
- * entity that is neither: a pole, which only joins the wires on it. In the language an `io` point is the bare entity name.
+ * entity that is neither: a pole, which only joins the wires on it, and every other entity of the game (kind `entity`), which may
+ * read and write on its one connector. In the language an `io` point is the bare entity name.
  */
 export const TERMINAL_SIDES = ["in", "out", "io"] as const;
 export type TerminalSide = (typeof TERMINAL_SIDES)[number];
 
-/** A kind is a family of behaviour. Which game prototype an entity is: `prototypes.ts`. */
-export const ENTITY_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp", "pole", "speaker"] as const;
+/**
+ * A kind is a family of behaviour. Which game prototype an entity is: `prototypes.ts`. The kind `entity` is every prototype of the
+ * game that has no kind of its own (chests, inserters, belts, machines, ...): its settings are a table per prototype type
+ * (`entitySettings.ts`), not fields of an interface.
+ */
+export const ENTITY_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp", "pole", "speaker", "entity"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
 
 /** Connection points per entity kind. In the game only the arithmetic, decider and selector combinator have two; every other entity has one. */
@@ -30,6 +35,7 @@ export const TERMINALS: Readonly<Record<EntityKind, readonly TerminalSide[]>> = 
   lamp: ["in"],
   pole: ["io"],
   speaker: ["in"],
+  entity: ["io"],
 };
 
 export interface Point {
@@ -243,7 +249,32 @@ export interface Speaker extends EntityBase {
   readonly alertMessage: string;
 }
 
-export type Entity = ConstantCombinator | ArithmeticCombinator | DeciderCombinator | SelectorCombinator | Lamp | Pole | Speaker;
+// Every other entity of the game
+
+/** The value of one setting of a generic entity: what its `SettingSpec` (`entitySettings.ts`) says, a word for an enum. */
+export type SettingValue = boolean | string | SignalId | Condition | NetworkSelection;
+
+/** Settings by the key of their spec (the word of the language). A setting at its default is absent: `normalizeSettings`. */
+export type EntitySettings = Readonly<Record<string, SettingValue>>;
+
+/**
+ * An entity of the game without a kind of its own: a chest, an inserter, a belt, an assembling machine, a train stop. The prototype
+ * says which one and with it the size, the wire reach and, through its type, which circuit settings it has (`settingSpecsOf`).
+ * It has one connection point, `io`, and sends nothing in the simulation; its conditions are evaluated.
+ */
+export interface GenericEntity extends EntityBase {
+  readonly kind: "entity";
+  readonly prototype: PrototypeOfKind<"entity">;
+  readonly settings: EntitySettings;
+  /**
+   * What a blueprint says about the entity that the editor does not model (recipe, filters, quality, a direction that is no
+   * quarter turn, fields of the control behaviour without a setting): the JSON text of an object laid out like the blueprint
+   * entity, kept as it is and written back on export with the modelled fields over it. Absent when there is nothing.
+   */
+  readonly blueprintData?: string;
+}
+
+export type Entity = ConstantCombinator | ArithmeticCombinator | DeciderCombinator | SelectorCombinator | Lamp | Pole | Speaker | GenericEntity;
 export type EntityOfKind<K extends EntityKind> = Extract<Entity, { kind: K }>;
 
 // Wires
@@ -303,4 +334,6 @@ export const DEFAULT_ENTITY: { readonly [K in EntityKind]: NewEntity<K> } = {
   lamp: { kind: "lamp", inputNetworks: BOTH_NETWORKS, alwaysOn: false, useColors: false, colorMode: "mapping" },
   pole: { kind: "pole", prototype: "small-electric-pole" },
   speaker: { kind: "speaker", volume: 100, playbackMode: "local", allowPolyphony: false, stopPlayingSounds: false, showAlert: false, showOnMap: true, alertMessage: "" },
+  // The prototype only fills the place: whoever makes a generic entity says which one it is.
+  entity: { kind: "entity", prototype: "wooden-chest", settings: {} },
 };

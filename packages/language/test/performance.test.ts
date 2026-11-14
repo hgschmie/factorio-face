@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addWire, analyze, applyChanges, deleteEntities, moveEntity, renameEntity, tokenize, updateEntity } from "../src/index.ts";
+import { addWire, analyze, applyChanges, deleteEntities, moveEntity, printCircuit, renameEntity, tokenize, updateEntity } from "../src/index.ts";
 import { idOf } from "./helpers.ts";
 
 /** The prototype's scale fixture in the production language: a chain of 1,000 entities joined by 999 wires. */
@@ -64,6 +64,20 @@ describe("scale", () => {
     const deleted = analyze(applyChanges(source, changes[2]!), parse);
     expect([deleted.circuit!.entities.length, deleted.circuit!.wires.length]).toEqual([999, 997]);
     expect(elapsed).toBeLessThan(1000);
+  });
+
+  it("analyzes and prints 1,000 generic entities with settings from the table", () => {
+    const prototypes = ["fast-inserter", "steel-chest", "transport-belt", "assembling-machine-2", "train-stop", "splitter", "requester-chest", "roboport"];
+    const settings = ["when item:iron-plate < 100 read-hand = hold", "read-contents = false", "read-contents = pulse", "set-recipe = true read-working = true working-signal = virtual:signal-W", "read-trains-count = true", "input-left when anything > 0", "set-requests = true", "read-items = none"];
+    const text = `circuit "generic" {\n${Array.from({ length: 1000 }, (_, i) => `    entity g${i} { prototype = ${prototypes[i % 8]} ${settings[i % 8]} blueprint-data = "{\\"quality\\":\\"rare\\"}" }`).join("\n")}\n}\n`;
+    analyze(text.slice(0, 2000));
+    const [result, elapsed] = time(() => analyze(text));
+    expect(result.diagnostics).toEqual([]);
+    const [printed, printing] = time(() => printCircuit(result.circuit!));
+    console.info(`[language performance] 1,000 generic entities: analyze ${elapsed.toFixed(1)} ms, print ${printing.toFixed(1)} ms`);
+    expect(analyze(printed).circuit!.entities.map(({ id: _id, position: _position, ...rest }) => rest)).toEqual(result.circuit!.entities.map(({ id: _id, position: _position, ...rest }) => rest));
+    expect(elapsed).toBeLessThan(2000);
+    expect(printing).toBeLessThan(1000);
   });
 
   it("auto-places 1,000 entities without positions quickly and without overlap", () => {

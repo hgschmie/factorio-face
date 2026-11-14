@@ -1,6 +1,6 @@
 // The entity selector as data: the groups of the palette and their entries, the keys, the place tool that carries a
 // prototype, and the open state of the groups that is remembered on this machine.
-import { PROTOTYPE_NAMES, PROTOTYPES } from "@face/model";
+import { entityTable, PROTOTYPE_NAMES, PROTOTYPES } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { entriesInUse, KEYED_KINDS, keyedKindOf, PALETTE_ENTRIES, PALETTE_GROUPS, paletteGroupOf, prototypeIconId } from "../src/entities/registry.ts";
 import { placeFacing, sameTool, SELECT_TOOL, turnedTool, type PlaceTool } from "../src/workbench/controller.ts";
@@ -16,14 +16,19 @@ describe("palette registry", () => {
     expect(new Set(PALETTE_GROUPS.map((group) => group.id)).size).toBe(PALETTE_GROUPS.length);
   });
 
-  it("offers every prototype the model has exactly once, with the data of the model", () => {
-    expect(PALETTE_ENTRIES.map((entry) => entry.prototype).sort()).toEqual([...PROTOTYPE_NAMES].sort());
+  it("offers every prototype with a kind of its own exactly once, with the data of the model; the generic entities are not offered yet", () => {
+    const dedicated = PROTOTYPE_NAMES.filter((name) => PROTOTYPES[name]!.kind !== "entity");
+    expect(PALETTE_ENTRIES.map((entry) => entry.prototype).sort()).toEqual([...dedicated].sort());
     for (const entry of PALETTE_ENTRIES) {
-      expect(entry.kind).toBe(PROTOTYPES[entry.prototype].kind);
-      expect(entry.label.toLowerCase()).toBe(PROTOTYPES[entry.prototype].label);
+      expect(entry.kind).toBe(PROTOTYPES[entry.prototype]!.kind);
+      expect(entry.label.toLowerCase()).toBe(PROTOTYPES[entry.prototype]!.label);
       expect(entry.description.length).toBeGreaterThan(0);
     }
     expect(PALETTE_ENTRIES).toHaveLength(10);
+    // The selector is as it was; the 88 generic prototypes of the model get their groups with the entity package.
+    expect(PROTOTYPE_NAMES).toHaveLength(98);
+    expect(paletteGroupOf({ kind: "entity", prototype: "iron-chest" })).toBeUndefined();
+    expect(entriesInUse([{ kind: "entity", prototype: "iron-chest" }, { kind: "lamp" }]).map((entry) => entry.prototype)).toEqual(["small-lamp"]);
   });
 
   it("says what sets an entry apart: the tiles and the reach of a pole, nothing for a lamp", () => {
@@ -48,6 +53,9 @@ describe("palette registry", () => {
     expect(paletteGroupOf({ kind: "pole" })?.id).toBe("power-poles");
     expect(paletteGroupOf({ kind: "pole", prototype: "substation" })?.id).toBe("power-poles");
     expect(paletteGroupOf({ kind: "decider" })?.pinned).toBe(true);
+    // The icon is the one of the item that places the entity: for all but four chests of the game's editor an item of its name.
+    const withoutItem = ["blue-chest", "crash-site-chest-1", "crash-site-chest-2", "red-chest"];
+    expect(PROTOTYPE_NAMES.filter((name) => entityTable().byName.get(name)!.placedBy.length === 0).sort()).toEqual(withoutItem);
     expect(PROTOTYPE_NAMES.map(prototypeIconId)).toEqual(PROTOTYPE_NAMES.map((name) => `item/${name}`));
   });
 

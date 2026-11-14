@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import {
-  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, SPEAKER_PLAYBACK_MODES, TERMINALS, prototypesOf, signal, wildcardSignal,
-  wireKey,
-  type Circuit, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityKind, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type Wire,
+  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, SPEAKER_PLAYBACK_MODES, TERMINALS, normalizedSettings, prototypesOf, settingSpecsOf, signal,
+  wildcardSignal, wireKey,
+  type Circuit, type Condition, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityKind, type EntitySettings, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec,
+  type SettingValue, type SignalId, type Wire,
 } from "@face/model";
 import { analyze, type ParseResult } from "../src/index.ts";
 
@@ -134,6 +135,40 @@ export class Generator {
     }
   }
 
+  /** A circuit condition as a lamp, a speaker and a generic entity have it. */
+  condition(): Condition {
+    return { first: this.pick([this.signal(), wildcardSignal("anything"), wildcardSignal("everything")]), comparator: this.pick(COMPARATORS), second: this.chance() ? { type: "constant", value: this.int32() } : { type: "signal", signal: this.signal() } };
+  }
+
+  setting(spec: SettingSpec): SettingValue {
+    switch (spec.type) {
+      case "boolean": return this.chance();
+      case "enum": return this.pick(spec.values).word;
+      case "signal": return this.signal();
+      case "networks": return this.networks();
+      case "condition": return this.condition();
+    }
+  }
+
+  /** Some of the settings a prototype has, in the form of the model: none at its default. */
+  settings(prototype: string): EntitySettings {
+    const settings: Record<string, SettingValue> = {};
+    for (const spec of settingSpecsOf(prototype)) if (this.chance(0.4)) settings[spec.key] = this.setting(spec);
+    return normalizedSettings(prototype, settings);
+  }
+
+  /** What a blueprint may say about an entity beyond its circuit settings, as the JSON text the model keeps. */
+  blueprintData(): string {
+    return JSON.stringify(this.pick<object>([
+      { recipe: "iron-gear-wheel" },
+      { quality: "rare", bar: 3 },
+      { items: [{ id: { name: "speed-module" }, items: { in_inventory: [{ inventory: 4, stack: 0 }] } }] },
+      { tags: { note: 'say "hi"\n to a back\\slash, Grüße 日本語 → 𝒜', nested: { list: [1, -2.5, true, null, "//"] } } },
+      { station: "Iron ore\tpickup", manual_trains_limit: 2, color: { r: 1, g: 0.5, b: 0, a: 1 } },
+      {},
+    ]));
+  }
+
   /** A random entity that the language can express exactly. */
   entity(kind: EntityKind, name: string): Entity {
     const base = {
@@ -190,6 +225,10 @@ export class Generator {
       }
       case "pole":
         return { ...base, kind, prototype: this.pick(prototypesOf("pole")) };
+      case "entity": {
+        const prototype = this.pick(prototypesOf("entity"));
+        return { ...base, kind, prototype, settings: this.settings(prototype), ...(this.chance(0.3) ? { blueprintData: this.blueprintData() } : {}) };
+      }
       case "speaker": {
         const pitch = this.chance(0.3);
         const condition = { first: this.pick([this.signal(), wildcardSignal("anything"), wildcardSignal("everything")]), comparator: this.pick(COMPARATORS), second: this.chance() ? { type: "constant" as const, value: this.int32() } : { type: "signal" as const, signal: this.signal() } };

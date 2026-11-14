@@ -98,6 +98,12 @@ export interface SpeakerState {
   readonly alert?: boolean;
 }
 
+/**
+ * Generic entities only: per circuit condition of the entity, by the key of its setting (`when`, `harvest-when`,
+ * `input-left-when`), whether it holds at this tick. `when` is the condition that enables the entity.
+ */
+export type ConditionStates = Readonly<Record<string, boolean>>;
+
 export interface EntityInput {
   readonly red: SignalList;
   readonly green: SignalList;
@@ -109,15 +115,18 @@ export interface EntitySnapshot {
   readonly kind: EntityKind;
   /**
    * Content of the networks on the connection point the entity reads: the input terminal of a combinator, a lamp or a speaker,
-   * and the one point of a pole, which only joins the networks. Absent for an entity that reads nothing (a constant combinator).
+   * and the one point of a pole, which only joins the networks, and of a generic entity. Absent for an entity that reads nothing (a
+   * constant combinator).
    */
   readonly input?: EntityInput;
-  /** Signals the entity emits at this tick. Absent for an entity that emits nothing (a lamp, a pole, a speaker). */
+  /** Signals the entity emits at this tick. Absent for an entity that emits nothing (a lamp, a pole, a speaker, a generic entity). */
   readonly output?: SignalList;
   /** Lamps only. */
   readonly lamp?: LampState;
   /** Speakers only. */
   readonly speaker?: SpeakerState;
+  /** Generic entities only, and only for one that has a circuit condition and a circuit wire; the logistic condition is not among them. */
+  readonly conditions?: ConditionStates;
 }
 
 export interface SnapshotTotals {
@@ -129,6 +138,8 @@ export interface SnapshotTotals {
   readonly emitting: number;
   readonly lampsLit: number;
   readonly speakersPlaying: number;
+  /** Generic entities whose enable condition (`conditions.when`) does not hold. */
+  readonly entitiesDisabled: number;
 }
 
 /** Immutable (frozen) state at one tick. Parts that did not change since the previous snapshot are shared by reference. */

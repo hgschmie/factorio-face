@@ -34,7 +34,7 @@ const fixture = JSON.parse(readFileSync(new URL("../../../tests/fixtures/game/F-
 /** The editor's entity for a probed one with its top-left tile on `origin`; undefined for a prototype the editor does not have. */
 function entityOf(probed: ProbedEntity, origin: Point): PlacedShape | undefined {
   if (!isPrototypeName(probed.name)) return undefined;
-  const shape = { kind: PROTOTYPES[probed.name].kind, prototype: probed.name };
+  const shape = { kind: PROTOTYPES[probed.name]!.kind, prototype: probed.name };
   const direction = probed.facing ?? "north";
   return { ...shape, placement: { tile: tileCenter(shape, direction, origin), direction } };
 }

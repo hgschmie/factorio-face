@@ -56,7 +56,7 @@ export interface CstWire extends Range {
   readonly b?: CstTerminal;
 }
 
-/** `name.in`, `name.out`, or the bare `name` of an entity with one connection point that is neither (a pole). */
+/** `name.in`, `name.out`, or the bare `name` of an entity with one connection point that is neither (a pole, a generic entity). */
 export interface CstTerminal extends Range {
   readonly name: Token;
   /** Absent for a bare name. */
@@ -106,6 +106,8 @@ export interface CstCondition extends Range {
 
 export interface CstWhen extends Range {
   readonly type: "when";
+  /** The word in front of `when` that says which condition of a generic entity it is (`logistic when ...`); absent for the enable condition. */
+  readonly role?: Token;
   readonly keyword: Token;
   readonly conditions: readonly CstCondition[];
 }

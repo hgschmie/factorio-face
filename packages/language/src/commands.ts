@@ -2,7 +2,7 @@
 // Unrelated text, comments, spacing and declaration order are never touched.
 
 import {
-  canRotate, DEFAULT_ENTITY, DEFAULT_FACING, DIRECTIONS, facingOf, hasTerminal, isInt32, isTileCenter, NORMAL_QUALITY, prototypeData, prototypesOf, rotateTile, wireKey,
+  canRotate, DEFAULT_ENTITY, DEFAULT_FACING, DIRECTIONS, entityNameBase, facingOf, hasTerminal, isInt32, isTileCenter, NORMAL_QUALITY, prototypeData, prototypesOf, rotateTile, wireKey,
   type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type TerminalRef, type WireColor,
 } from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
@@ -326,22 +326,27 @@ function checkPosition(position: Point): Point {
 }
 
 /**
- * Appends a declaration with default configuration after the last entity. Generates `constant1`, `lamp2`, ... when no name is given.
- * With `facing` other than east the declaration gets a `facing` clause, unless the kind cannot rotate (a lamp). With `tile` (the
- * game's center position, on the grid for the entity in that direction) it gets a `tile` clause. `prototype` says which game
- * prototype of the kind the entity is (a `big-electric-pole`); without it it is the first of the kind.
+ * Appends a declaration with default configuration after the last entity. Generates `constant1`, `lamp2`, ... when no name is given;
+ * a generic entity is named after its prototype, `fast_inserter1` (`entityNameBase`). With `facing` other than east the declaration
+ * gets a `facing` clause, unless the entity cannot rotate (a lamp). With `tile` (the game's center position, on the grid for the
+ * entity in that direction) it gets a `tile` clause. `prototype` says which game prototype of the kind the entity is (a
+ * `big-electric-pole`); without it it is the first of the kind. A generic entity (kind `entity`) has to say which one it is.
  */
 export function addEntity(parse: ParseResult, kind: EntityKind, position: Point, name?: string, tile?: Point, facing?: Direction, prototype?: PrototypeName): { changes: TextChange[]; name: string } {
   const edit = new Edit(parse);
   const taken = new Set(edit.circuit.entities.map((e) => e.name));
-  if (name === undefined) {
-    let n = 1;
-    while (taken.has(`${kind}${n}`)) n++;
-    name = `${kind}${n}`;
-  } else checkName(name, taken);
-  if (prototype !== undefined && !(prototypesOf(kind) as readonly string[]).includes(prototype)) throw new EditError("invalid-entity", `'${prototype}' is not a ${kind}; use ${prototypesOf(kind).join(", ")}`);
+  if (kind === "entity" && prototype === undefined) throw new EditError("invalid-entity", "A new entity needs its prototype: which entity of the game it is");
+  if (prototype !== undefined && !(prototypesOf(kind) as readonly string[]).includes(prototype)) {
+    throw new EditError("invalid-entity", kind === "entity" ? `'${prototype}' is not an entity of the game that the editor has under the kind 'entity'` : `'${prototype}' is not a ${kind}; use ${prototypesOf(kind).join(", ")}`);
+  }
   // Only a kind with several prototypes carries one.
   const shape = { ...DEFAULT_ENTITY[kind], ...(prototype !== undefined && "prototype" in DEFAULT_ENTITY[kind] && { prototype }) };
+  if (name === undefined) {
+    const base = entityNameBase(shape);
+    let n = 1;
+    while (taken.has(`${base}${n}`)) n++;
+    name = `${base}${n}`;
+  } else checkName(name, taken);
   const direction = facing !== undefined && canRotate(shape) && facing !== DEFAULT_FACING ? facing : undefined;
   if (tile && !isTileCenter(shape, direction ?? DEFAULT_FACING, tile)) {
     throw new EditError("invalid-position", `tile (${tile.x}, ${tile.y}) is not on the tile grid for a new ${prototypeData(shape).label}${direction ? ` facing ${direction}` : ""}`);
@@ -444,7 +449,8 @@ export function arrangeEntities(parse: ParseResult, arrangements: readonly Entit
     if (direction !== undefined) checkDirection(direction);
     const entity = edit.model(id);
     const facing = facingOf(entity);
-    const turned = direction !== undefined && canRotate(entity) ? direction : facing;
+    // What the entity faces after the turn: nothing new for one that cannot rotate, north or east for one the game builds two ways.
+    const turned = direction !== undefined && canRotate(entity) ? facingOf({ ...entity, placement: { ...entity.placement, direction } }) : facing;
     if (tile && !isTileCenter(entity, turned, tile)) throw new EditError("invalid-position", `tile (${tile.x}, ${tile.y}) is not on the tile grid for '${name}'${turned === facing ? "" : ` facing ${turned}`}`);
     const current = entity.placement?.tile;
     const center = tile ?? (current && turned !== facing ? rotateTile(entity, current, facing, turned) : undefined);

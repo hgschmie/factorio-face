@@ -280,9 +280,14 @@ class Parser {
     return { from: open.from, to: this.lastEnd, open, close, statements };
   }
 
+  /** `<role> when`: a word in front of `when` names one of the further conditions of a generic entity. */
+  private startsRoleCondition(): boolean {
+    return (this.tok.kind === "ident" || this.tok.kind === "word") && this.is("when", this.peek());
+  }
+
   private startsStatement(): boolean {
     const token = this.tok;
-    if (isSignalToken(token)) return true;
+    if (isSignalToken(token) || this.startsRoleCondition()) return true;
     if (token.kind === "keyword" && (token.text === "when" || token.text === "else" || token.text === "output" || token.text === "section")) return true;
     return isWordLike(token) && this.is("=", this.peek());
   }
@@ -298,6 +303,13 @@ class Parser {
     }
     if (isSignalToken(token)) return this.assign(kind);
     if (isWordLike(token) && assignment) return this.property(kind, section);
+    if (this.startsRoleCondition()) return this.when(kind, this.next());
+    // A word at the end of the input may become a property or the role of a condition.
+    if (kind === "entity" && !section && (token.kind === "ident" || token.kind === "word") && this.peek().kind === "eof") {
+      this.next();
+      this.keywords("when");
+      this.expected("'=' or 'when'");
+    }
     return undefined;
   }
 
@@ -368,7 +380,7 @@ class Parser {
     return { type: "assign", from: target.from, to: this.lastEnd, target, first, operator, second };
   }
 
-  private when(kind: EntityKind): CstWhen {
+  private when(kind: EntityKind, role?: Token): CstWhen {
     const keyword = this.next();
     const conditions: CstCondition[] = [];
     let join: Token | undefined;
@@ -380,7 +392,7 @@ class Parser {
       if (!this.is("and") && !this.is("or")) break;
       join = this.next();
     }
-    return { type: "when", from: keyword.from, to: this.lastEnd, keyword, conditions };
+    return { type: "when", from: role?.from ?? keyword.from, to: this.lastEnd, role, keyword, conditions };
   }
 
   private condition(kind: EntityKind, join: Token | undefined): CstCondition {

@@ -3,9 +3,11 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { ENTITY_SETTINGS, PROTOTYPE_NAMES, PROTOTYPES, STANDARD_ENTITY_TABLE } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { encodeBlueprintString } from "../../../packages/blueprints/src/index.ts";
-import { SAMPLES } from "../../../packages/blueprints/test/samples.ts";
+import { defineGroup, enumSettings } from "../../../packages/blueprints/test/gameNames.ts";
+import { GENERIC_SAMPLES, SAMPLES } from "../../../packages/blueprints/test/samples.ts";
 import { probeCases, type ProbeCase } from "./blueprintCases.ts";
 
 interface Exported { string: string; blueprint: unknown }
@@ -121,6 +123,55 @@ describe("blueprint probe: what the game is sent", () => {
     expect(entity("lamps", 5).lamp!.behavior).toMatchObject({ use_colors: true, color_mode: "components" });
     expect(entity("electric poles", 2)).toEqual({ name: "big-electric-pole", position: { x: 5, y: 1 } });
     expect(entity("programmable speakers", 1).speaker).toMatchObject({ parameters: { playback_volume: 0.625, playback_mode: "global" }, alert_parameters: { show_alert: true }, behavior: { circuit_parameters: { instrument_id: 0, note_id: 6 } } });
+  });
+
+  it("gives a generic entity its settings as assignments to the control behaviour of the runtime API, a flag before what it switches on", () => {
+    const belts = cases.find((entry) => entry.label === "generic entities: belts and inserters")!;
+    expect(belts.entities.map((entity) => entity.name)).toEqual(["constant-combinator", "fast-inserter", "transport-belt", "splitter", "loader"]);
+    expect(belts.wires).toEqual([[1, "circuit_red", 2, "circuit_red"], [1, "circuit_red", 5, "circuit_red"], [2, "circuit_green", 3, "circuit_green"], [3, "circuit_red", 4, "circuit_red"]]);
+    const [, inserter, belt, splitter] = belts.entities;
+    expect(inserter).toMatchObject({ name: "fast-inserter", position: { x: 2.5, y: 0.5 }, direction: "east" });
+    expect(inserter!.behavior!.map((assignment) => assignment.attribute)).toEqual([
+      "circuit_enable_disable", "circuit_condition", "connect_to_logistic_network", "logistic_condition", "input_networks", "output_networks", "circuit_set_filters", "circuit_read_hand_contents", "circuit_hand_read_mode",
+      "circuit_set_stack_size", "circuit_stack_control_signal",
+    ]);
+    expect(inserter!.behavior).toContainEqual({ attribute: "circuit_condition", value: { first_signal: { type: "virtual", name: "signal-A" }, constant: 5, comparator: ">" } });
+    // A mode goes by the name of its define: its number is what the game is asked for.
+    expect(inserter!.behavior).toContainEqual({ attribute: "circuit_hand_read_mode", define: ["inserter", "hand_read_mode", "hold"] });
+    expect(belt!.behavior!.slice(-2)).toEqual([{ attribute: "read_contents", value: true }, { attribute: "read_contents_mode", define: ["transport_belt", "content_read_mode", "entire_belt_hold"] }]);
+    // The two conditions of a side share their flag, which is set once.
+    expect(splitter!.behavior!.map((assignment) => assignment.attribute)).toEqual(["set_input_side", "input_left_condition", "input_right_condition", "set_output_side", "output_left_condition", "output_right_condition", "input_networks", "set_filter"]);
+    // An entity without settings has nothing to assign.
+    const panel = cases.flatMap((entry) => entry.entities).find((entity) => entity.name === "display-panel")!;
+    expect(panel).toEqual({ name: "display-panel", position: panel.position });
+  });
+
+  it("sends every generic sample with every setting of its prototype, every mode by its define", () => {
+    const generic = cases.filter((entry) => entry.label.startsWith("generic entities"));
+    expect(generic.map((entry) => entry.label)).toEqual(GENERIC_SAMPLES.map(([label]) => label));
+    const modes = new Set(enumSettings().map(({ spec }) => spec.field));
+    for (const entity of generic.flatMap((entry) => entry.entities)) {
+      if (PROTOTYPES[entity.name]?.kind !== "entity") continue;
+      const { settings } = ENTITY_SETTINGS[STANDARD_ENTITY_TABLE.byName.get(entity.name)!.type]!;
+      expect((entity.behavior ?? []).length, entity.name).toBeGreaterThanOrEqual(settings.length);
+      for (const assignment of entity.behavior ?? []) {
+        expect(assignment.attribute, entity.name).toMatch(/^[a-z_]+$/);
+        expect(assignment.define === undefined ? assignment.value !== undefined : assignment.define.length === 3, `${entity.name} ${assignment.attribute}`).toBe(true);
+      }
+    }
+    const defined = generic.flatMap((entry) => entry.entities).flatMap((entity) => (entity.behavior ?? []).filter((assignment) => assignment.define).map((assignment) => assignment.define!.slice(0, 2).join("_")));
+    expect(new Set(defined)).toEqual(new Set(enumSettings().map(({ define }) => defineGroup(define!))));
+    expect(modes.size).toBeGreaterThan(0);
+  });
+
+  it("asks the game for every prototype of the editor as it is placed, and for the numbers of every mode", () => {
+    const scenario = readFileSync(new URL("../blueprints.lua", import.meta.url), "utf8");
+    expect(PROTOTYPE_NAMES).toHaveLength(98);
+    for (const name of PROTOTYPE_NAMES) expect(scenario, name).toContain(`"${name}"`);
+    for (const { key, define } of enumSettings()) {
+      expect(define, key).toBeDefined();
+      expect(scenario, key).toContain(`${defineGroup(define!)} = { "${define!.path[0]}", "${define!.path[1]}" }`);
+    }
   });
 
   it("composes the scenario: the cases as one line of ASCII in front of blueprints.lua", () => {

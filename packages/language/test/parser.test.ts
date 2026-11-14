@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyze, parse, type CstEntity, type CstWire, type Range } from "../src/index.ts";
+import { analyze, parse, type CstEntity, type CstWhen, type CstWire, type Range } from "../src/index.ts";
 import { circuit, fixture, random } from "./helpers.ts";
 
 const slice = (source: string, range: Range | undefined) => (range ? source.slice(range.from, range.to) : undefined);
@@ -178,6 +178,23 @@ describe("error recovery", () => {
     expect(result.cst.circuit!.members).toHaveLength(1);
   });
 
+  it("parses the conditions of a generic entity, the role in front of `when` being part of the statement", () => {
+    const text = circuit("entity e { prototype = inserter when item:a > 1 logistic when item:b < 2; input-left when anything = 0 read-hand = hold }");
+    const { cst, diagnostics } = parse(text);
+    expect(diagnostics).toEqual([]);
+    const statements = (cst.circuit!.members[0] as CstEntity).body!.statements;
+    expect(statements.map((s) => s.type)).toEqual(["property", "when", "when", "when", "property"]);
+    expect(statements.map((s) => slice(text, s))).toEqual(["prototype = inserter", "when item:a > 1", "logistic when item:b < 2", "input-left when anything = 0", "read-hand = hold"]);
+    expect(statements.filter((s): s is CstWhen => s.type === "when").map((s) => slice(text, s.role))).toEqual([undefined, "logistic", "input-left"]);
+    // Any word in front of `when` is a role to the parser; which roles a prototype has is for the analysis.
+    expect(parse(circuit("entity e { prototype = inserter stray when item:a > 1 }")).diagnostics).toEqual([]);
+    // A word that is neither a property nor a role is skipped with one error, and the statements behind it are read.
+    const lost = parse(circuit("entity e { prototype = inserter stray read-hand = hold }"));
+    expect(lost.diagnostics.map((d) => d.message)).toEqual(["Unexpected 'stray'; expected a statement or '}'"]);
+    expect((lost.cst.circuit!.members[0] as CstEntity).body!.statements).toHaveLength(2);
+    expect(messages('circuit "t" { entity e { prototype = inserter logistic')).toEqual(["Expected '=' or 'when' but found the end of the file", "Missing '}' to close this block"]);
+  });
+
   it("reports lexical errors once and keeps parsing", () => {
     const result = parse(circuit('lamp a { description = "open\n always-on = true ? }'));
     expect(result.diagnostics.map((d) => d.message)).toEqual(["Unterminated string", "Unexpected character '?'"]);
@@ -187,7 +204,7 @@ describe("error recovery", () => {
   it("never throws and always terminates on mutated and random input", () => {
     const base = fixture("all-kinds.face");
     const next = random(7);
-    const pieces = ["{", "}", "(", ")", "[", "]", "=", "<->", '"', "/*", "//", "\n", " ", "wire", "constant", "when", "output", "else", "section", "circuit", "each", "virtual:signal-A", "red", ".", ",", "5", "-", "at", "x", "import", "@", "and"];
+    const pieces = ["{", "}", "(", ")", "[", "]", "=", "<->", '"', "/*", "//", "\n", " ", "wire", "constant", "when", "output", "else", "section", "circuit", "each", "virtual:signal-A", "red", ".", ",", "5", "-", "at", "x", "import", "@", "and", "entity", "prototype", "logistic", "blueprint-data"];
     for (let round = 0; round < 400; round++) {
       let source = base;
       for (let edits = 1 + Math.floor(next() * 4); edits > 0; edits--) {

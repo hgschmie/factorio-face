@@ -119,6 +119,17 @@ function SpeakerRow({ y, playing, text }: { readonly y: number; readonly playing
   );
 }
 
+/** Generic entities: minimal until the entity package (selector, drawing, inspector). Whether the enable condition holds, in the place of the output row. */
+function EnabledRow({ y, enabled }: { readonly y: number; readonly enabled: boolean }) {
+  return (
+    <g className="card-row enabled-state" data-row="enabled" transform={`translate(0,${y})`}>
+      <text className={enabled ? "row-value" : "row-none"} x={STATUS_ROWS.contentX} y={ROW_BASELINE}>
+        {enabled ? "enabled" : "disabled"}
+      </text>
+    </g>
+  );
+}
+
 const ORIGIN = { x: 0, y: 0 };
 const PIN_TITLES: Readonly<Record<TerminalSide, string>> = { in: "input", out: "output", io: "connection" };
 
@@ -223,6 +234,7 @@ export function CardFace({ entity, outline = false, shadow = false, pinEdges = N
               {status.output && <StatusRow kind="out" y={rowY(status.input ? 2 : 0)} pitch={rows.pitch} lines={status.input ? 1 : 3} signals={status.output} describeSignal={describeSignal} />}
               {status.lamp && <LampRow y={rowY(2)} lit={status.lamp.lit} color={status.lamp.color} />}
               {status.speaker && <SpeakerRow y={rowY(2)} playing={status.speaker.playing} text={status.label} />}
+              {status.enabled !== undefined && <EnabledRow y={rowY(2)} enabled={status.enabled} />}
             </>
           )}
         </>

@@ -3,8 +3,11 @@
 // Every signal, quality, instrument and note is one of Factorio 2.1.24 with all standard modules, so that the game takes them.
 
 import { loadStandardCatalog, speakerInstrumentNames } from "@face/catalog";
-import { analyze } from "@face/language";
-import { facingOf, tileCenter, type Circuit, type SpeakerInstrument } from "@face/model";
+import { analyze, printFragment } from "@face/language";
+import {
+  ENTITY_SETTINGS, entityNameBase, entityTable, facingOf, normalizedSettings, settingDefault, settingSpecsOf, signal, tileCenter, tileSize,
+  type Circuit, type Condition, type Entity, type EntityPrototype, type EntitySettings, type SettingSpec, type SettingValue, type SpeakerInstrument, type Wire,
+} from "@face/model";
 import { exportBlueprint } from "../src/export.ts";
 import type { BlueprintFile } from "../src/schema.ts";
 
@@ -12,6 +15,83 @@ export interface Sample {
   readonly label: string;
   /** Member declarations of a circuit, without `tile`: `placed` gives every entity its place. */
   readonly source: string;
+}
+
+// The generic entities (kind `entity`): one prototype per control behaviour of the settings table, each with every setting of its
+// row away from its default, so that every field is written and the game is asked about every one of them.
+
+const CONDITIONS: readonly Condition[] = [
+  { first: signal("virtual", "signal-A"), comparator: ">", second: { type: "constant", value: 5 } },
+  { first: signal("item", "iron-plate"), comparator: "<=", second: { type: "signal", signal: signal("virtual", "signal-B") } },
+  { first: signal("virtual", "signal-anything"), comparator: "!=", second: { type: "constant", value: -3 } },
+  { first: signal("virtual", "signal-everything"), comparator: "<", second: { type: "constant", value: 100 } },
+  { first: signal("fluid", "water"), comparator: ">=", second: { type: "constant", value: 2147483647 } },
+];
+
+/** A value of a setting that is not its default; `index` is the position of the setting among those of its type in the row. */
+export function sampleValue(spec: SettingSpec, prototype: Pick<EntityPrototype, "signals">, index: number): SettingValue {
+  const fallback = settingDefault(spec, prototype);
+  switch (spec.type) {
+    case "boolean": return !spec.default;
+    // The digits: no prototype has one of them as a default.
+    case "signal": return signal("virtual", `signal-${index % 10}`);
+    case "networks": return spec.field === "input_networks" ? { red: true, green: false } : { red: false, green: true };
+    case "condition": return CONDITIONS[index % CONDITIONS.length]!;
+    case "enum": return spec.values.findLast((entry) => entry.word !== fallback)!.word;
+  }
+}
+
+/** The settings of a prototype with every one of them away from its default. */
+export function configuredSettings(prototype: string): EntitySettings {
+  const game = entityTable().byName.get(prototype)!;
+  const counts = new Map<string, number>();
+  const values = settingSpecsOf(prototype).map((spec): [string, SettingValue] => {
+    const index = counts.get(spec.type) ?? 0;
+    counts.set(spec.type, index + 1);
+    return [spec.key, sampleValue(spec, game, index)];
+  });
+  return normalizedSettings(prototype, Object.fromEntries(values));
+}
+
+/** Per sample the prototypes that stand in it, in rows of four behind a constant combinator. Those of one sample are about the same size. */
+export const GENERIC_SAMPLES: readonly (readonly [label: string, prototypes: readonly string[]])[] = [
+  ["generic entities: chests", ["steel-chest", "requester-chest", "linked-chest", "proxy-container"]],
+  ["generic entities: belts and inserters", ["fast-inserter", "transport-belt", "splitter", "loader"]],
+  ["generic entities: pipes, pumps and switches", ["pipe", "infinity-pipe", "pump", "offshore-pump", "power-switch", "heat-pipe", "accumulator"]],
+  ["generic entities: walls, turrets and rails", ["stone-wall", "land-mine", "gun-turret", "display-panel", "rail-signal", "rail-chain-signal", "train-stop"]],
+  ["generic entities: machines", ["assembling-machine-2", "electric-furnace", "lab", "electric-mining-drill", "boiler"]],
+  ["generic entities: towers and tanks", ["agricultural-tower", "artillery-turret", "asteroid-collector", "storage-tank", "radar"]],
+  ["generic entities: reactor and roboport", ["nuclear-reactor", "roboport"]],
+  ["generic entities: rocket silo", ["rocket-silo"]],
+  ["generic entities: cargo landing pad", ["cargo-landing-pad"]],
+  ["generic entities: space platform hub", ["space-platform-hub"]],
+];
+
+/** Entities per row of the layout. */
+const COLUMNS = 4;
+
+/**
+ * The source of a sample of generic entities: a constant combinator and the prototypes, configured, each wired to the one before
+ * it (the first of a row to the one above it), so that every one is on a circuit network and no wire is longer than it reaches.
+ */
+function genericSource(prototypes: readonly string[]): string {
+  const base = { position: { x: 0, y: 0 } };
+  const source: Entity = { ...base, id: "e0", name: "source", kind: "constant", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: signal("virtual", "signal-A"), count: 1 }] }] };
+  const counters = new Map<string, number>();
+  const entities = prototypes.map((prototype, index): Entity => {
+    const name = entityNameBase({ kind: "entity", prototype });
+    const count = (counters.get(name) ?? 0) + 1;
+    counters.set(name, count);
+    return { ...base, id: `e${index + 1}`, name: `${name}${count}`, kind: "entity", prototype, settings: configuredSettings(prototype) };
+  });
+  const all = [source, ...entities];
+  const side = (entity: Entity) => (entity.kind === "constant" ? "out" : "io") as "out" | "io";
+  const wires = all.slice(1).map((entity, index): Wire => {
+    const other = all[(index + 1) % COLUMNS === 0 ? index + 1 - COLUMNS : index]!;
+    // One green wire per sample, for the second connector.
+    return { color: index === 1 ? "green" : "red", a: { entity: other.id, side: side(other) }, b: { entity: entity.id, side: side(entity) } };
+  });
+  return printFragment({ entities: all, wires });
 }
 
 export const SAMPLES: readonly Sample[] = [
@@ -213,19 +293,30 @@ export const SAMPLES: readonly Sample[] = [
       wire red seconds.out <-> bell.in
     `,
   },
+  ...GENERIC_SAMPLES.map(([label, prototypes]): Sample => ({ label, source: genericSource(prototypes) })),
 ];
+
+/** The prototype types of the settings table that no sample has; every control behaviour should be in one. */
+export function unsampledBehaviors(): string[] {
+  const types = new Set(GENERIC_SAMPLES.flatMap(([, prototypes]) => prototypes.map((prototype) => entityTable().byName.get(prototype)!.type)));
+  const sampled = new Set([...types].map((type) => ENTITY_SETTINGS[type]!.behavior));
+  // A row whose behaviour is assumed is asked about by itself.
+  return Object.entries(ENTITY_SETTINGS).filter(([type, row]) => (row.assumed ? !types.has(type) : !sampled.has(row.behavior))).map(([type]) => type);
+}
 
 export const INSTRUMENTS: readonly SpeakerInstrument[] = speakerInstrumentNames(loadStandardCatalog());
 
-/** Entities per row of the layout; with cells of two tiles nothing in a sample of up to twelve entities is further apart than a wire reaches. */
-const COLUMNS = 4;
-
-/** Every entity on a cell of two by two tiles, row by row: room for each footprint in any direction. */
+/**
+ * Every entity on a square cell of its own, four to a row: room for each footprint in any direction. A cell is two tiles wide, with
+ * which nothing in a sample of up to twelve small entities is further apart than a wire reaches, and as wide as the largest
+ * footprint where a circuit has larger entities.
+ */
 export function placed(circuit: Circuit): Circuit {
+  const cell = Math.max(2, ...circuit.entities.map((entity) => Math.max(tileSize(entity).width, tileSize(entity).height)));
   return {
     ...circuit,
     entities: circuit.entities.map((entity, index) => {
-      const origin = { x: (index % COLUMNS) * 2, y: Math.floor(index / COLUMNS) * 2 };
+      const origin = { x: (index % COLUMNS) * cell, y: Math.floor(index / COLUMNS) * cell };
       return { ...entity, placement: { ...entity.placement, tile: tileCenter(entity, facingOf(entity), origin) } };
     }),
   };

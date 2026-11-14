@@ -66,7 +66,7 @@ describe("speaker condition", () => {
     const c = circuit([constant("c", { A: 1 }), speaker("on", { condition: when("A", ">", 0) }), speaker("off", { condition: when("A", ">", 1) }), pole("p")], [wire("red", "c.out", "p"), wire("red", "p", "on.in"), wire("red", "p", "off.in")]);
     const snapshot = simulate(c).snapshot();
     expect(Object.keys(snapshot.entities.on!).sort()).toEqual(["input", "kind", "speaker"]);
-    expect(snapshot.totals).toEqual({ entities: 4, networks: 1, signals: 1, emitting: 1, lampsLit: 0, speakersPlaying: 1 });
+    expect(snapshot.totals).toEqual({ entities: 4, networks: 1, signals: 1, emitting: 1, lampsLit: 0, speakersPlaying: 1, entitiesDisabled: 0 });
     expect(compile(c).networks[0]).toMatchObject({ emitters: ["c"], readers: ["off", "on", "p"] });
   });
 

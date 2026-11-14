@@ -44,9 +44,14 @@ export function canRotate(entity: EntityShape): boolean {
   return prototypeData(entity).rotatable;
 }
 
-/** The direction the output points to: what the declaration says, east without a clause, and always east for an entity that cannot rotate. */
+/**
+ * The direction the output points to: what the declaration says, east without a clause, and always east for an entity that cannot
+ * rotate. An entity the game builds in two directions only (the storage tank) faces north or east: south is north, west is east.
+ */
 export function facingOf(entity: PlacedShape): Direction {
-  return canRotate(entity) ? (entity.placement?.direction ?? DEFAULT_FACING) : DEFAULT_FACING;
+  const { rotatable, twoWay } = prototypeData(entity);
+  const direction = rotatable ? (entity.placement?.direction ?? DEFAULT_FACING) : DEFAULT_FACING;
+  return twoWay ? (direction === "south" ? "north" : direction === "west" ? "east" : direction) : direction;
 }
 
 /** The tiles an entity covers when it faces `direction`. One that cannot rotate covers the same in every direction. */
@@ -74,8 +79,12 @@ export function footprintBox(entity: EntityShape, direction: Direction, center: 
   return { x: center.x - width / 2, y: center.y - height / 2, width, height };
 }
 
-/** True when `center` is on the grid for the entity and direction. */
+/**
+ * True when `center` is on the grid for the entity and direction. An entity the game places off the grid (the land mine) stands
+ * anywhere: every center is one for it. For overlaps it counts with the nearest tile (`occupiedTiles`).
+ */
 export function isTileCenter(entity: EntityShape, direction: Direction, center: Point): boolean {
+  if (prototypeData(entity).offGrid) return true;
   const { width, height } = tileSize(entity, direction);
   return Number.isInteger(center.x - width / 2) && Number.isInteger(center.y - height / 2);
 }

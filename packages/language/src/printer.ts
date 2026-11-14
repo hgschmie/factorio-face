@@ -2,11 +2,11 @@
 // for every circuit the language can express (see `checkEntity` in commands.ts for the exceptions).
 
 import {
-  DEFAULT_ENTITY, isValidSignalName, NORMAL_QUALITY, prototypeOf, prototypesOf, wildcardOf,
-  type Circuit, type Condition, type ConstantSection, type DeciderOutput, type Entity, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type TerminalRef, type TerminalSide,
-  type WireColor,
+  conditionRole, DEFAULT_ENTITY, entityTable, isValidSignalName, NORMAL_QUALITY, prototypeOf, prototypesOf, settingDefault, settingSpecsOf, wildcardOf,
+  type Circuit, type Condition, type ConstantSection, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec, type SettingValue, type SignalId,
+  type TerminalRef, type TerminalSide, type WireColor,
 } from "@face/model";
-import { NO_NETWORK, PROTOTYPE_PROPERTY } from "./schema.ts";
+import { BLUEPRINT_DATA_PROPERTY, NO_NETWORK, PROTOTYPE_PROPERTY } from "./schema.ts";
 import { encodeString, isKeyword } from "./tokens.ts";
 
 export interface PrintOptions {
@@ -53,11 +53,15 @@ function printQuality(name: string): string {
   return name === "signal" ? encodeString(name) : printName(name);
 }
 
-/** `when S > 5`: the circuit condition of a lamp or a speaker; nothing for one without a first signal. */
-function conditionItem(condition: Condition | undefined): StatementItem[] {
+/**
+ * `when S > 5`: the circuit condition of a lamp or a speaker; nothing for one without a first signal. A further condition of a
+ * generic entity has its role in front, `logistic when S > 5`, and the key of its setting.
+ */
+function conditionItem(condition: Condition | undefined, key = "when"): StatementItem[] {
   if (!condition?.first) return [];
   const second = condition.second.type === "constant" ? printInteger(condition.second.value) : printSignal(condition.second.signal);
-  return [{ key: "when", text: `when ${printSignal(condition.first)} ${condition.comparator} ${second}`, implicit: false }];
+  const role = key === "when" ? undefined : conditionRole(key);
+  return [{ key, text: `${role === undefined ? "" : `${role} `}when ${printSignal(condition.first)} ${condition.comparator} ${second}`, implicit: false }];
 }
 
 /** The word for a selection other than the default of both networks. */
@@ -149,6 +153,32 @@ function selectorItems(mode: SelectorMode): StatementItem[] {
   return items;
 }
 
+/** The value of a setting that is written as a property; undefined for both networks, which is said by saying nothing. */
+function printSetting(spec: SettingSpec, value: SettingValue): string | undefined {
+  switch (spec.type) {
+    case "boolean":
+    case "enum": return String(value);
+    case "signal": return printSignal(value as SignalId);
+    case "networks": return networkWord(value as NetworkSelection);
+    case "condition": return undefined;
+  }
+}
+
+/**
+ * The settings of a generic entity in the order of its prototype's table. A setting the entity does not hold is at its default:
+ * an implicit item, so that a statement that says the default by hand has its counterpart.
+ */
+function genericItems(entity: EntityOfKind<"entity">): StatementItem[] {
+  const game = entityTable().byName.get(entity.prototype);
+  return settingSpecsOf(entity.prototype).flatMap((spec): StatementItem[] => {
+    const held = entity.settings[spec.key];
+    if (spec.type === "condition") return conditionItem(held as Condition | undefined, spec.key);
+    const value = held ?? (game && settingDefault(spec, game));
+    const text = value === undefined ? undefined : printSetting(spec, value);
+    return text === undefined ? [] : [property(spec.key, text, held === undefined)];
+  });
+}
+
 /**
  * The statements of `entity` in canonical order. `sections` forces `section` blocks even where bare filters would do
  * (used when the existing source already has section blocks).
@@ -157,8 +187,9 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
   const unit = options.unit ?? "    ";
   const items: StatementItem[] = [];
   if (entity.description !== undefined) items.push(property("description", encodeString(entity.description)));
-  // A kind with several game prototypes says which one it is; the first of the kind goes without saying.
-  if (prototypesOf(entity.kind).length > 1) items.push(property(PROTOTYPE_PROPERTY, prototypeOf(entity), prototypeOf(entity) === prototypesOf(entity.kind)[0]));
+  // A kind with several game prototypes says which one it is; the first of the kind goes without saying, except for a generic entity.
+  if (entity.kind === "entity") items.push(property(PROTOTYPE_PROPERTY, printName(entity.prototype)));
+  else if (prototypesOf(entity.kind).length > 1) items.push(property(PROTOTYPE_PROPERTY, prototypeOf(entity), prototypeOf(entity) === prototypesOf(entity.kind)[0]));
   const signal = (key: string, id: SignalId | undefined) => {
     if (id) items.push(property(key, printSignal(id)));
   };
@@ -202,6 +233,10 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
     }
     case "pole":
       break;
+    case "entity":
+      items.push(...genericItems(entity));
+      if (entity.blueprintData !== undefined) items.push(property(BLUEPRINT_DATA_PROPERTY, encodeString(entity.blueprintData)));
+      break;
     case "speaker": {
       const defaults = DEFAULT_ENTITY.speaker;
       const flag = (key: string, value: boolean, fallback: boolean) => items.push(property(key, String(value), value === fallback));
@@ -241,7 +276,7 @@ export function printEntity(entity: Entity, options: PrintOptions = {}): string 
   return [`${entity.kind} ${entity.name}${printClauses(entity)} {`, ...statements, "}"].join("\n");
 }
 
-/** A wire end as the language writes it: `name.in`, `name.out`, or the bare name for the one connection point of a pole (`io`). */
+/** A wire end as the language writes it: `name.in`, `name.out`, or the bare name for the one connection point of a pole or a generic entity (`io`). */
 export function printTerminal(name: string, side: TerminalSide): string {
   return side === "io" ? name : `${name}.${side}`;
 }

@@ -15,7 +15,8 @@ import { createSession, EMPTY_SOURCE, fakeDesktop, type } from "./helpers.ts";
 const VERSION = 562954249109504;
 const at = (x: number, y: number) => ({ x, y });
 const lamp = (number: number, x: number, more: object = {}) => ({ entity_number: number, name: "small-lamp", position: at(x + 0.5, 0.5), ...more });
-const belt = (number: number, x: number) => ({ entity_number: number, name: "transport-belt", position: at(x + 0.5, 2.5) });
+/** An entity the editor does not have: a rail carries no circuit wire. (Belts, inserters and chests are entities of the editor.) */
+const belt = (number: number, x: number) => ({ entity_number: number, name: "straight-rail", position: at(x + 0.5, 2.5) });
 const blueprint = (body: object) => ({ blueprint: { item: "blueprint", version: VERSION, ...body } });
 const read = (data: unknown, select?: readonly number[]): BlueprintReading => readBlueprint(typeof data === "string" ? data : encodeBlueprintString(data), [], select);
 
@@ -31,7 +32,7 @@ const MIXED = blueprint({
   description: "Next to a belt.",
   icons: [{ signal: { name: "small-lamp" }, index: 1 }],
   "snap-to-grid": at(2, 2),
-  entities: [lamp(1, 0), lamp(2, 1, { quality: "rare" }), { entity_number: 3, name: "medium-electric-pole", position: at(4.5, 0.5) }, belt(4, 0), belt(5, 1), belt(6, 2), { entity_number: 7, name: "inserter", position: at(3.5, 2.5) }],
+  entities: [lamp(1, 0), lamp(2, 1, { quality: "rare" }), { entity_number: 3, name: "medium-electric-pole", position: at(4.5, 0.5) }, belt(4, 0), belt(5, 1), belt(6, 2), { entity_number: 7, name: "gate", position: at(3.5, 2.5) }],
   wires: [[1, 1, 2, 1], [2, 2, 3, 2], [2, 1, 7, 1], [4, 1, 7, 1], [3, 5, 3, 5], [1, 1, 99, 1]],
 });
 
@@ -94,7 +95,7 @@ describe("reading a text", () => {
     ["a planner", encodeBlueprintString({ deconstruction_planner: { item: "deconstruction-planner" } }), "This is a deconstruction planner, not a blueprint; the editor imports blueprints only."],
     ["an old blueprint", encodeBlueprintString({ blueprint: { item: "blueprint", entities: [lamp(1, 0)], version: 281479275675648 } }), "This blueprint is from Factorio 1.1, which stored circuits differently. Import it into Factorio 2 and export it again."],
     ["a blueprint without entities", encodeBlueprintString(blueprint({ label: "Empty" })), "This blueprint has no entities."],
-    ["a blueprint of unknown entities", encodeBlueprintString(blueprint({ entities: [belt(1, 0), belt(2, 1)] })), "The editor knows none of the 2 entities of this blueprint (transport-belt), so there is nothing to import."],
+    ["a blueprint of unknown entities", encodeBlueprintString(blueprint({ entities: [belt(1, 0), belt(2, 1)] })), "The editor knows none of the 2 entities of this blueprint (straight-rail), so there is nothing to import."],
     ["an empty book", encodeBlueprintString({ blueprint_book: { item: "blueprint-book", label: "Nothing" } }), "The blueprint book 'Nothing' has no blueprints."],
   ])("says why %s cannot be imported, as a sentence", (_name, text, message) => {
     expect(read(text)).toEqual({ kind: "error", message });
@@ -148,9 +149,9 @@ describe("a blueprint book", () => {
   });
 
   it("gives the blueprint a row selects, and says why another row gives none", () => {
-    expect(imported(BOOK, [4, 0])).toMatchObject({ name: "Three lamps", entities: 3, total: 4, report: { summary: "Imported 3 of 4 entities and 0 wires.", dropped: ["1 x transport-belt"] } });
+    expect(imported(BOOK, [4, 0])).toMatchObject({ name: "Three lamps", entities: 3, total: 4, report: { summary: "Imported 3 of 4 entities and 0 wires.", dropped: ["1 x straight-rail"] } });
     expect(imported(BOOK, [1])).toMatchObject({ name: "Imported blueprint", entities: 2, report: null });
-    expect(read(BOOK, [0])).toMatchObject({ kind: "error", message: "The editor knows none of the 1 entity of this blueprint (transport-belt), so there is nothing to import." });
+    expect(read(BOOK, [0])).toMatchObject({ kind: "error", message: "The editor knows none of the 1 entity of this blueprint (straight-rail), so there is nothing to import." });
     expect(read(BOOK, [3])).toEqual({ kind: "error", message: "This is an upgrade planner, not a blueprint; the editor imports blueprints only." });
     expect(read(BOOK, [9])).toEqual({ kind: "error", message: "The blueprint book has no such blueprint." });
     // A book inside the book lists its own items.
@@ -170,7 +171,7 @@ describe("the import report", () => {
   it("says what was imported, what was dropped by prototype, which wires went and which settings changed", () => {
     expect(imported(MIXED).report).toEqual({
       summary: "Imported 3 of 7 entities and 2 wires.",
-      dropped: ["3 x transport-belt", "1 x inserter"],
+      dropped: ["3 x straight-rail", "1 x gate"],
       wires: [
         "2 circuit wires to dropped entities went with them.",
         "1 copper wire (power) was dropped: the editor has circuit wires only.",
@@ -193,9 +194,9 @@ describe("the import report", () => {
       settings: [],
       remarks: [],
     });
-    expect(importReport({ ...CLEAN, entities: 1, dropped: [{ name: "small-lamp", count: 2, reason: "invalid" }, { name: "pipe", count: 1, reason: "unknown" }] })).toMatchObject({
+    expect(importReport({ ...CLEAN, entities: 1, dropped: [{ name: "small-lamp", count: 2, reason: "invalid" }, { name: "gate", count: 1, reason: "unknown" }] })).toMatchObject({
       summary: "Imported 1 of 4 entities and 2 wires.",
-      dropped: ["2 x small-lamp (without a usable entity number or position)", "1 x pipe"],
+      dropped: ["2 x small-lamp (without a usable entity number or position)", "1 x gate"],
     });
   });
 

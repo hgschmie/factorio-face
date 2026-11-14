@@ -1,9 +1,10 @@
 // The tests that hold this package against a recording of the game (fixture F-01, tools/game-probe/blueprints.mjs). They are
 // written against the shape of the recording, so that game.test.ts can run them on the real one once it exists and, always, on
 // a recording made up from this package's own exports, which proves the tests themselves.
-import { DEFAULT_ENTITY, PROTOTYPES, type Circuit, type Entity, type PrototypeName } from "@face/model";
+import { DEFAULT_ENTITY, PROTOTYPE_NAMES, PROTOTYPES, type Circuit, type Entity, type PrototypeName } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { decodeBlueprintString, DIRECTION_NUMBERS, importBlueprint, LAMP_COLOR_MODE_NUMBERS, CONNECTOR, type BlueprintEntity, type BlueprintWire, type ImportReport } from "../src/index.ts";
+import { defineGroup, enumSettings } from "./gameNames.ts";
 import { exportedSamples, INSTRUMENTS } from "./samples.ts";
 
 export interface RecordedBlueprint {
@@ -49,7 +50,8 @@ export function arrangement(circuit: Circuit): { entities: unknown[]; wires: str
   const places = new Map(circuit.entities.map((entity) => [entity.id, place(entity)]));
   const entities = circuit.entities
     .map((entity) => {
-      const { id: _id, name: _name, position: _position, placement, ...settings } = entity;
+      // What a generic entity keeps of its blueprint is what the editor does not model; the game adds to it as it likes (a station name).
+      const { id: _id, name: _name, position: _position, placement, blueprintData: _kept, ...settings } = entity as Entity & { blueprintData?: string };
       return { place: place(entity), ...(placement?.direction && { direction: placement.direction }), ...(JSON.parse(JSON.stringify(settings)) as object) };
     })
     .sort((a, b) => a.place.localeCompare(b.place));
@@ -67,7 +69,8 @@ function rounded<T>(value: T): T {
 
 /**
  * The entities of a blueprint without their numbers, in the order of their places, the whole moved to the origin; and the circuit
- * wires between them by those places. What is left is how each entity and each wire is written.
+ * wires between them by those places. What is left is how each entity and each wire is written. Of a generic entity that is its
+ * direction and its control behaviour: every other field is one the editor only keeps.
  */
 export function shape(recorded: RecordedBlueprint["blueprint"]): { entities: unknown[]; wires: string[] } {
   const entities = recorded.blueprint?.entities ?? [];
@@ -79,7 +82,9 @@ export function shape(recorded: RecordedBlueprint["blueprint"]): { entities: unk
     entities: entities
       .map((entity) => {
         const { entity_number: _number, position: _position, ...rest } = entity;
-        return { place: place(entity), ...rounded(rest) };
+        const { name, direction, control_behavior: behavior } = entity;
+        const written = PROTOTYPES[name]?.kind === "entity" ? { name, ...(direction !== undefined && { direction }), ...(behavior !== undefined && { control_behavior: behavior }) } : rest;
+        return { place: place(entity), ...rounded(written) };
       })
       .sort((a, b) => a.place.localeCompare(b.place)),
     wires: circuitWires.map((wire) => [`${places.get(wire[0])}#${wire[1]}`, `${places.get(wire[2])}#${wire[3]}`].sort().join(" ")).sort(),
@@ -90,8 +95,8 @@ const QUIET = { dropped: [], settings: [], warnings: [] };
 
 /** The entity of the editor for a prototype as the game places it: the defaults of its kind. */
 function freshEntity(prototype: PrototypeName): object {
-  const kind = PROTOTYPES[prototype].kind;
-  return JSON.parse(JSON.stringify(kind === "pole" ? { ...DEFAULT_ENTITY.pole, prototype } : DEFAULT_ENTITY[kind])) as object;
+  const kind = PROTOTYPES[prototype]!.kind;
+  return JSON.parse(JSON.stringify(kind === "pole" || kind === "entity" ? { ...DEFAULT_ENTITY[kind], prototype } : DEFAULT_ENTITY[kind])) as object;
 }
 
 /** Defines the tests for a recording inside the current `describe`. */
@@ -112,6 +117,16 @@ export function recordingTests(recording: Recording): void {
     expect({ mapping: colorMode!.color_mapping, components: colorMode!.components, "packed-rgb": colorMode!.packed_rgb }).toEqual(LAMP_COLOR_MODE_NUMBERS);
   });
 
+  it("has the numbers the settings table gives the modes of the generic entities (F-02)", () => {
+    for (const { key, spec, define } of enumSettings()) {
+      if (!define) throw new Error(`no define for ${key}`);
+      const numbers = recording.defines[defineGroup(define)];
+      expect(numbers, defineGroup(define)).toBeDefined();
+      const valued = spec.values.filter((entry) => entry.value !== undefined);
+      expect(Object.fromEntries(valued.map((entry) => [entry.word, numbers![define.members[entry.word]!]])), key).toEqual(Object.fromEntries(valued.map((entry) => [entry.word, entry.value])));
+    }
+  });
+
   it("decodes every blueprint string of the game to the JSON it holds", () => {
     expect(blueprints().length).toBeGreaterThan(0);
     for (const recorded of blueprints()) expect(decodeBlueprintString(recorded.string)).toEqual({ ok: true, data: recorded.blueprint });
@@ -128,10 +143,15 @@ export function recordingTests(recording: Recording): void {
       if (!("string" in fresh)) throw new Error(fresh.error);
       const { circuit, report } = importOf(fresh);
       expect(report).toMatchObject(QUIET);
-      const defaults = circuit.entities.map(({ id: _id, name: _name, position: _position, placement: _placement, ...settings }) => [settings.kind === "pole" ? settings.prototype : settings.kind, JSON.parse(JSON.stringify(settings))]);
+      // What a generic entity keeps of its blueprint is not a setting of the editor (a train stop has a name, a chest a bar).
+      const defaults = circuit.entities.map((entity) => {
+        const { id: _id, name: _name, position: _position, placement: _placement, blueprintData: _kept, ...settings } = entity as Entity & { blueprintData?: string };
+        return ["prototype" in settings ? settings.prototype : settings.kind, JSON.parse(JSON.stringify(settings))];
+      });
       const prototypes = (fresh.blueprint.blueprint?.entities ?? []).map((entity) => entity.name as PrototypeName);
-      expect(prototypes.length).toBe(Object.keys(PROTOTYPES).length);
-      expect(defaults).toEqual(prototypes.map((prototype) => [PROTOTYPES[prototype].kind === "pole" ? prototype : PROTOTYPES[prototype].kind, freshEntity(prototype)]));
+      // A prototype the game could not place for the recording is named here.
+      expect(PROTOTYPE_NAMES.filter((name) => !prototypes.includes(name))).toEqual([]);
+      expect(defaults).toEqual(prototypes.map((prototype) => [PROTOTYPES[prototype]!.kind === "pole" || PROTOTYPES[prototype]!.kind === "entity" ? prototype : PROTOTYPES[prototype]!.kind, freshEntity(prototype)]));
     });
   });
 

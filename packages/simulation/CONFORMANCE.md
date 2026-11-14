@@ -16,13 +16,17 @@ When a game fixture disagrees: change the place named in the table, update the t
 - **Two-phase tick.** State is the output held by every arithmetic, decider and selector combinator. The content of a network at tick t is the int32-wrapping sum of the outputs held by its emitters.
   `step()` lets every combinator read the content of tick t, then commits all new outputs at once; they are on the networks at tick t + 1. Evaluation order has no effect.
 - **Tick 0 / reset state.** After `createSimulation` and after `reset()`: tick is 0, every arithmetic, decider and selector output is empty, constant combinators emit their configured signals,
-  random generators are re-seeded, runtime notes are cleared. A snapshot of tick t shows the network content of tick t, what every entity reads and holds at tick t, and lamp and speaker states computed from the content of tick t.
+  random generators are re-seeded, runtime notes are cleared. A snapshot of tick t shows the network content of tick t, what every entity reads and holds at tick t, and lamp and speaker states and the conditions of the generic entities computed from the content of tick t.
 - **Connection points.** A network is the set of connection points joined by wires of one color. An entity is not assumed to have an input and an output: every point a kind has
   (`TERMINALS` in `@face/model`) is a member in its own right, and `POINT_ROLES` in `compile.ts` says per kind from which point it reads and to which it writes, if any. The three
   combinators with two connectors read on `in` and write on `out`; a constant combinator only writes, a lamp and a speaker only read, a pole (one point, `io`) does neither.
-  A snapshot shows for every entity that reads what is on the networks of that point (`input`), and for a pole what is on the two networks it joins.
+  A generic entity (kind `entity`: every other prototype of the game) has one point, `io`, on which the game's entity may read and write; here it reads and writes nothing (G-SILENT).
+  A snapshot shows for every entity that reads what is on the networks of that point (`input`), and for a pole and a generic entity what is on the two networks it joins.
+  Radars are the one case of points joined without a wire: `compile` joins them per color (G-RADAR).
 - **Clock.** The selector's time mode reads `environment.time.startTick + tick`. The random mode draws on simulation ticks (since reset) and is seeded per entity from `options.seed` and the entity id.
-- **Scope limits.** Every entity is powered and not frozen; there is no day/night cycle; there is no sound and no time in a sound (a speaker is reported as triggered or not per tick); logistic groups are not shared between combinators; a circuit is immutable while it runs
+- **Scope limits.** Every entity is powered and not frozen; there is no day/night cycle; there is no sound and no time in a sound (a speaker is reported as triggered or not per tick); logistic groups are not shared between combinators;
+  a generic entity has no contents, no state and no logistic network: it sends none of the signals its settings say it reads out, and what its conditions decide (an inserter that stops, a gate that opens) is reported as true or false and has no further effect;
+  all radars of a circuit are on one surface and of one force; a circuit is immutable while it runs
   (an edit means `compile` again; `semanticFingerprint` tells whether the running simulation must be reset). Fixture F-04 (editing a constant combinator at a known tick) therefore has no counterpart in the engine yet.
 - **Signal order.** `SimulationEnvironment.compareSignals` supplies the order used by anything outputs, selector ties and snapshot lists; remaining ties are broken by signal key.
   The default environment orders by `kind:name`, then quality level. The catalog adapter is expected to compare group order, subgroup order, `order` string, name and quality level (audit open question 2, pending F-13 / F-16).
@@ -184,6 +188,29 @@ None of this is validated against the game: fixture F-25 is the probe that has t
 | SP-VOLUME-ZERO | A volume of 0, also from an absent volume signal, still counts as playing | 6.10 | F-25 | assumed | `speaker.ts` `planSpeaker` |
 | SP-ALERT | The alert is shown at exactly the ticks at which the speaker is reported as playing, when `show_alert` is set; icon, message and `show_on_map` are not part of the snapshot | 6.10 | F-25 | documented (when), assumed (per tick) | `speaker.ts` `planSpeaker` |
 
+### Generic entities and the radar
+
+Every prototype of the game without a kind of its own is of the kind `entity`; which settings it has is a table per prototype type (`ENTITY_SETTINGS` in `@face/model`, `docs/factorio-audit.md` 14).
+Of those settings the simulation uses the circuit conditions, the input network selection and, for a radar, mode and channel. Everything else is kept for the blueprint.
+None of this section has a game fixture: F-27 and F-28 name the recordings that would decide it.
+
+| Rule | Chosen behavior | Audit | Fixture | Status | Source |
+| --- | --- | --- | --- | --- | --- |
+| G-SILENT | A generic entity has one connection point, reads it and emits nothing, whatever its settings say the game's entity sends (contents, a pulse, a temperature, a signal state): the editor has no contents to report. The wires on it are one network per color, as on a pole | 14 | F-27 | by design (the entity's output is not simulated); one connector per color documented | `compile.ts` `POINT_ROLES` |
+| G-CONDITION | Every circuit condition among its settings (`when`, the enable condition, and `harvest-when`, `plant-when`, `input-left-when`, `input-right-when`, `output-left-when`, `output-right-when`, `ignore-unlisted-when`, `close-when`, `open-gate-when`) is evaluated at every tick from the current tick's content, like a lamp's (T-LAMP), and reported as `conditions[key]`; there is no latency. A condition is among the settings exactly while its flag in the blueprint is on | 14 | F-27 | assumed | `entity.ts` `planEntity`, `engine.ts` `snapshot` |
+| G-NETWORKS | Both sides of every condition read the networks the entity's `networks` setting (`input_networks`) selects: the wrapping sum of red and green without one, one color, or nothing (N-NONE). `output-networks` has no effect | 14 | F-27 | documented (the selection, API: "Which circuit networks (red/green) to read signals from. Defaults to both wire colors"), assumed (that it scopes every condition, and both sides) | `entity.ts` `inputNetworksOf` |
+| G-WILDCARD | everything / anything work on the left side as in a lamp (L-WILDCARD, including D-RHS-EXCLUDED); each, or a wildcard on the right side, makes the entity invalid: it reports no conditions | 2.4 | F-27 | assumed | `validate.ts` `checkGeneric` |
+| G-UNWIRED | Without a circuit wire (any color) no condition applies: the snapshot has no `conditions` and the entity does not count as disabled | 14 | F-27 | assumed (as L-UNWIRED) | `entity.ts` `planEntity` |
+| G-BLANK | The model holds no condition without a left side (`isSettingValue`); such a value, or one of another type, or a condition the prototype's type does not have, is no condition of the entity | 14 | none | by design | `entity.ts` `circuitConditions` |
+| G-LOGISTIC | The logistic condition (`logistic-when`) reads the logistic network, which the simulation does not have: it is kept and never evaluated, and it is not in `conditions` | 14 | none | by design | `entity.ts` `circuitConditions` |
+| G-DISABLED | An entity counts as disabled (`totals.entitiesDisabled`) exactly when its enable condition `when` is reported and false; the other conditions do not enable or disable | 14 | F-27 | assumed | `engine.ts` `snapshot` |
+| G-RADAR | All radars in surface mode (the default) are joined per color as if by a wire: one red and one green network for all of them, with no tick in between. Radars without any real wire of a color in the group form no network of that color; a single radar is an entity with one point like any other | 13.7 | F-28 | documented (changelog 2.0: "wirelessly transmit a single channel of red and green signals on each planet/surface"), assumed (a circuit is one surface and one force; no latency; no power needed, T-POWER) | `compile.ts` `compile`, `entity.ts` `radarGroup` |
+| G-RADAR-UNIVERSE | Radars in universe mode with the same channel signal (kind, name and quality) are joined the same way; radars of different channels, and surface and universe radars, are not | 13.7 | F-28 | documented (API: "Radars on the same force with the same channel in universe mode are connected to each other with hidden radar wires"), assumed (the quality counts; the two modes stay apart) | `entity.ts` `radarGroup` |
+| G-RADAR-CHANNEL | A radar in universe mode without a channel is connected to no other radar (static note `unconfigured`). The prototype's `default_universe_channel` is not applied: no prototype of the game sets one | 13.7 | F-28 | assumed | `entity.ts` `radarGroup`, `validate.ts` |
+
+The fingerprint of a generic entity has what these rules read and nothing else: its circuit conditions by key, the input network selection and the radar group (`fingerprint.ts`). Two prototypes of one type, a setting that only the game uses, the logistic
+condition and the kept blueprint data do not change it; the fingerprints of circuits without generic entities are what they were.
+
 ## Fixture format
 
 Files: `tests/fixtures/conformance/*.json` at the repository root, one fixture per file. `packages/simulation/test/fixtures.test.ts` validates and runs every file in that directory,
@@ -208,6 +235,7 @@ so game-recorded fixtures only have to be dropped in. Types: `ConformanceFixture
 | `expect[].networks[]` | `{ terminal: {entity, side}, color, signals }` | Content of the network of that color on any of its member terminals; the point of a pole has the side `io` |
 | `expect[].lamps` | `{ [entityId]: { lit, color? } }` | Lamp state; `color` omitted = not checked, `null` = no color, `{r, g, b}` = 0..255 |
 | `expect[].speakers` | `{ [entityId]: { playing, instrument?, note?, volume?, alert? } }` | Speaker state; a field that is omitted is not checked |
+| `expect[].conditions` | `{ [entityId]: { [settingKey]: boolean } \| null }` | Generic entity: all conditions the snapshot reports for it, compared as a whole; `null` = it reports none (no circuit condition, or no wire) |
 
 Signal keys are `kind:name` or `kind:name@quality` (`signalKey` of `@face/model`). Tick 0 is the reset state described above; a game recording has to be aligned to it
 (game tick at which the blueprint's combinators have just been built and have not yet produced output).
@@ -238,6 +266,8 @@ Fixtures marked `documented` assert steady-state ticks only, so they do not depe
 | `F-22-lamp-colors` | F-22 | assumed |
 | `F-25-speaker` | F-25 | assumed |
 | `F-26-pole-relay` | F-26 | documented |
+| `F-27-entity-conditions` | F-27 | assumed |
+| `F-28-radar-networks` | F-28 | assumed |
 
 Not covered by a fixture file, by nature: F-01, F-02, F-23 (blueprint export, `packages/blueprints`), F-04 (constant edit timing, see scope limits),
 F-08, F-09, F-14 (else with wildcards), F-15 (covered by unit tests named after the fixture id in `packages/simulation/test`).

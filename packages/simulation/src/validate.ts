@@ -1,6 +1,10 @@
 // Static checks per entity. A note with severity "error" silences the entity; the evaluators rely on that and do not re-check.
 
-import { signalKey, wildcardOf, type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator, type SignalId, type Speaker } from "@face/model";
+import {
+  gamePrototype, signalKey, wildcardOf,
+  type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type GenericEntity, type Lamp, type SelectorCombinator, type SignalId, type Speaker,
+} from "@face/model";
+import { circuitConditions, radarGroup } from "./entity.ts";
 import type { SimulationEnvironment } from "./environment.ts";
 import type { NoteCode, NoteSeverity, SimulationNote } from "./types.ts";
 
@@ -129,6 +133,17 @@ function checkSpeaker(entity: Speaker, env: SimulationEnvironment, report: Repor
   }
 }
 
+function checkGeneric(entity: GenericEntity, report: Report): void {
+  for (const [key, condition] of circuitConditions(entity)) {
+    // G-WILDCARD: as for a lamp.
+    if (isEach(condition.first)) report("error", "invalid-wildcard", `The condition '${key}' accepts no each signal.`, condition.first);
+    if (condition.second.type === "signal" && isWildcard(condition.second.signal)) {
+      report("error", "invalid-wildcard", "Wildcards are not supported on the right-hand side of a condition.", condition.second.signal);
+    }
+  }
+  if (gamePrototype(entity).type === "radar" && radarGroup(entity) === undefined) report("info", "unconfigured", "A radar in universe mode without a channel is connected to no other radar (assumed).");
+}
+
 export function validateEntity(entity: Entity, env: SimulationEnvironment): SimulationNote[] {
   const notes: SimulationNote[] = [];
   const report: Report = (severity, code, message, signal) => {
@@ -154,6 +169,9 @@ export function validateEntity(entity: Entity, env: SimulationEnvironment): Simu
       break;
     case "speaker":
       checkSpeaker(entity, env, report);
+      break;
+    case "entity":
+      checkGeneric(entity, report);
       break;
   }
   return notes;

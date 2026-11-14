@@ -1,8 +1,8 @@
 // One table of statement forms, properties and legal values per entity kind. Validation, the canonical printer and completion all read it.
 
 import {
-  ARITHMETIC_OPERATIONS, COMPARATORS, ENTITY_KINDS, LAMP_COLOR_MODES, prototypesOf, SELECTOR_OPERATIONS, SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, WILDCARDS, WIRE_COLORS,
-  type EntityKind, type SelectorOperation, type Wildcard,
+  ARITHMETIC_OPERATIONS, COMPARATORS, conditionRole, ENTITY_KINDS, ENTITY_SETTINGS, LAMP_COLOR_MODES, prototypesOf, SELECTOR_OPERATIONS, settingSpecsOf, SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, WILDCARDS, WIRE_COLORS,
+  type EntityKind, type SelectorOperation, type SettingSpec, type Wildcard,
 } from "@face/model";
 
 export type ValueSpec =
@@ -16,7 +16,7 @@ export type ValueSpec =
   /** A quality prototype name: a bare word or a quoted string. */
   | { readonly type: "quality" }
   /** A name from the game data that the language does not know by itself: a bare word or a quoted string. */
-  | { readonly type: "name"; readonly of: "instrument" | "note" }
+  | { readonly type: "name"; readonly of: "instrument" | "note" | "prototype" }
   | { readonly type: "signal"; readonly wildcards: readonly Wildcard[] }
   | { readonly type: "enum"; readonly values: readonly string[] };
 
@@ -43,6 +43,34 @@ const DESCRIPTION: PropertySpec = { name: "description", values: [{ type: "strin
 
 /** The property that says which game prototype an entity is. */
 export const PROTOTYPE_PROPERTY = "prototype";
+
+/** The property of a generic entity that holds what a blueprint says about it and the editor does not model, as JSON text. */
+export const BLUEPRINT_DATA_PROPERTY = "blueprint-data";
+
+const NETWORK_WORDS = oneOf(...WIRE_COLORS, NO_NETWORK);
+
+/** What a setting of a generic entity is written as: `word = value`. A condition is a statement, not a property. */
+function settingProperty(spec: SettingSpec): PropertySpec[] {
+  switch (spec.type) {
+    case "boolean": return [{ name: spec.key, values: [BOOL], detail: `${spec.label} (default ${spec.default})` }];
+    case "enum": return [{ name: spec.key, values: [oneOf(...spec.values.map((value) => value.word))], detail: `${spec.label} (default ${spec.default})` }];
+    case "signal": return [{ name: spec.key, values: [SIGNAL], detail: spec.prototypeDefault === undefined ? spec.label : `${spec.label} (default: the one of the prototype)` }];
+    case "networks": return [{ name: spec.key, values: [NETWORK_WORDS], detail: `${spec.label}: one wire color or none (default both)` }];
+    case "condition": return [];
+  }
+}
+
+const GENERIC_PROTOTYPE: PropertySpec = { name: PROTOTYPE_PROPERTY, values: [{ type: "name", of: "prototype" }], detail: "Which entity of the game this is, by its name in a blueprint (required)" };
+const BLUEPRINT_DATA: PropertySpec = { name: BLUEPRINT_DATA_PROPERTY, values: [{ type: "string" }], detail: "What a blueprint says about the entity beyond its circuit settings, as JSON text; kept for the export" };
+
+/** Every setting word of every prototype type, a word once per form it has (`read-contents` is a switch for a chest and a mode for a belt). */
+function allSettingProperties(): PropertySpec[] {
+  const seen = new Set<string>();
+  return Object.values(ENTITY_SETTINGS).flatMap((row) => row.settings.flatMap(settingProperty)).filter((property) => {
+    const form = `${property.name} ${JSON.stringify(property.values)}`;
+    return seen.has(form) ? false : seen.add(form);
+  });
+}
 
 const OWN_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
   constant: [{ name: "enabled", values: [BOOL], detail: "Whether the combinator outputs its signals (default true)" }],
@@ -76,6 +104,8 @@ const OWN_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
     { name: "color", values: [{ type: "color" }], detail: "Static color, #rrggbb" },
   ],
   pole: [],
+  // Every setting any generic entity has; `propertiesFor` narrows them to the ones of a prototype.
+  entity: [...allSettingProperties(), BLUEPRINT_DATA],
   speaker: [
     { name: "pitch", values: [SIGNAL], detail: "Signal value is pitch: the value of this signal picks the note, 1 being the first of the instrument; takes the place of 'when'" },
     { name: "instrument", values: [{ type: "name", of: "instrument" }], detail: "Instrument (sound category) by its name in the game data (default: the first)" },
@@ -92,14 +122,18 @@ const OWN_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
   ],
 };
 
-/** A kind with several game prototypes takes `prototype = <name>`; the first of the kind is the default. */
+/** A kind with several game prototypes takes `prototype = <name>`; the first of the kind is the default. A generic entity always says which one it is. */
 function prototypeProperty(kind: EntityKind): PropertySpec[] {
+  if (kind === "entity") return [GENERIC_PROTOTYPE];
   const names = prototypesOf(kind);
   return names.length > 1 ? [{ name: PROTOTYPE_PROPERTY, values: [oneOf(...names)], detail: `Which ${kind} of the game this is (default ${names[0]})` }] : [];
 }
 
+// The generic kind stands first: where all properties are listed by name, a word it shares with another kind (`networks`, `prototype`) is described by that kind.
+const KINDS_GENERIC_FIRST: readonly EntityKind[] = ["entity", ...ENTITY_KINDS.filter((kind) => kind !== "entity")];
+
 export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = Object.fromEntries(
-  ENTITY_KINDS.map((kind) => [kind, [DESCRIPTION, ...prototypeProperty(kind), ...OWN_PROPERTIES[kind]]]),
+  KINDS_GENERIC_FIRST.map((kind) => [kind, [DESCRIPTION, ...prototypeProperty(kind), ...OWN_PROPERTIES[kind]]]),
 ) as Record<EntityKind, PropertySpec[]>;
 
 export const SECTION_PROPERTIES: readonly PropertySpec[] = [
@@ -118,6 +152,7 @@ export const STATEMENT_FORMS: Readonly<Record<EntityKind, readonly StatementForm
   lamp: ["property", "when"],
   pole: ["property"],
   speaker: ["property", "when"],
+  entity: ["property", "when"],
 };
 
 /** Keywords that start a non-property statement, per entity kind. */
@@ -129,6 +164,7 @@ export const STATEMENT_KEYWORDS: Readonly<Record<EntityKind, readonly string[]>>
   lamp: ["when"],
   pole: [],
   speaker: ["when"],
+  entity: ["when"],
 };
 
 /** Signal slots outside property values and the wildcards each accepts. */
@@ -143,38 +179,60 @@ export const SIGNAL_SLOTS = {
   "lamp.operand": [],
   "speaker.condition": ["anything", "everything"],
   "speaker.operand": [],
+  "entity.condition": ["anything", "everything"],
+  "entity.operand": [],
 } as const satisfies Record<string, readonly Wildcard[]>;
 export type SignalSlot = keyof typeof SIGNAL_SLOTS;
 
 export const ARITHMETIC_OPERATORS: readonly string[] = ARITHMETIC_OPERATIONS;
 export const COMPARATOR_TOKENS: readonly string[] = COMPARATORS;
 
-/** Properties legal in an entity of `kind`; for selectors narrowed to `operation` when given. */
-export function propertiesFor(kind: EntityKind, operation?: SelectorOperation): readonly PropertySpec[] {
+/**
+ * What narrows the properties of a kind: the `operation` of a selector, the `prototype` of a generic entity. Undefined, or a
+ * prototype the editor does not have: every property of the kind.
+ */
+export type PropertyVariant = SelectorOperation | string;
+
+/** The properties of a generic entity of one prototype: its settings in the order of the table, between what every entity has. */
+function genericProperties(prototype: string): readonly PropertySpec[] | undefined {
+  const specs = settingSpecsOf(prototype);
+  return prototypesOf("entity").includes(prototype) ? [DESCRIPTION, GENERIC_PROTOTYPE, ...specs.flatMap(settingProperty), BLUEPRINT_DATA] : undefined;
+}
+
+/** Properties legal in an entity of `kind`; for a selector narrowed to its operation and for a generic entity to its prototype when given. */
+export function propertiesFor(kind: EntityKind, variant?: PropertyVariant): readonly PropertySpec[] {
   const all = ENTITY_PROPERTIES[kind];
-  return operation === undefined ? all : all.filter((p) => !p.operations || p.operations.includes(operation));
+  if (variant === undefined) return all;
+  if (kind === "entity") return genericProperties(variant) ?? all;
+  return all.filter((p) => !p.operations || (p.operations as readonly string[]).includes(variant));
 }
 
 export type PropertyLookup = { readonly status: "ok"; readonly spec: PropertySpec } | { readonly status: "inapplicable"; readonly operations: readonly SelectorOperation[] } | { readonly status: "unknown" };
 
-export function lookupProperty(kind: EntityKind, name: string, operation: SelectorOperation | undefined, inSection = false): PropertyLookup {
+/** `inapplicable`: the kind has the property, but not for this variant; `operations` names the selector operations it belongs to (none for a generic entity). */
+export function lookupProperty(kind: EntityKind, name: string, variant: PropertyVariant | undefined, inSection = false): PropertyLookup {
   if (inSection) {
     const spec = SECTION_PROPERTIES.find((p) => p.name === name);
     return spec ? { status: "ok", spec } : { status: "unknown" };
   }
   const named = ENTITY_PROPERTIES[kind].filter((p) => p.name === name);
-  const spec = named.find((p) => !p.operations || operation === undefined || p.operations.includes(operation));
+  const spec = propertiesFor(kind, variant).find((p) => p.name === name);
   if (spec) return { status: "ok", spec };
   return named.length ? { status: "inapplicable", operations: named.flatMap((p) => p.operations ?? []) } : { status: "unknown" };
 }
 
-export function propertyNames(kind: EntityKind, operation?: SelectorOperation, inSection = false): string[] {
-  return [...new Set((inSection ? SECTION_PROPERTIES : propertiesFor(kind, operation)).map((p) => p.name))];
+export function propertyNames(kind: EntityKind, variant?: PropertyVariant, inSection = false): string[] {
+  return [...new Set((inSection ? SECTION_PROPERTIES : propertiesFor(kind, variant)).map((p) => p.name))];
+}
+
+/** The words in front of `when` that a generic entity of this prototype takes: `logistic`, `harvest`. The enable condition has none. */
+export function conditionRoles(prototype: string): string[] {
+  return settingSpecsOf(prototype).flatMap((spec) => (spec.type === "condition" ? (conditionRole(spec.key) ?? []) : []));
 }
 
 /** Enum words accepted by a property (including `true`/`false` for booleans). Empty when the property takes no fixed words. */
-export function enumValues(kind: EntityKind, property: string, operation?: SelectorOperation, inSection = false): string[] {
-  const lookup = lookupProperty(kind, property, operation, inSection);
+export function enumValues(kind: EntityKind, property: string, variant?: PropertyVariant, inSection = false): string[] {
+  const lookup = lookupProperty(kind, property, variant, inSection);
   if (lookup.status !== "ok") return [];
   return lookup.spec.values.flatMap((v) => (v.type === "enum" ? v.values : v.type === "bool" ? ["true", "false"] : v.type === "comparator" ? COMPARATOR_TOKENS : []));
 }

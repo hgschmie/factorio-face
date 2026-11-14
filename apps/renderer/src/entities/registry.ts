@@ -1,7 +1,8 @@
 // The entity selector as data: which entities can be placed, in which group and in which order. The palette, its count, the
 // digit keys and the icon probes read it; a further entity of the game is a name in a group here (and its row in `PROTOTYPES`
 // of @face/model), a further category a group. Pure.
-import { PROTOTYPES, prototypeOf, type EntityKind, type EntityShape, type PrototypeName } from "@face/model";
+// Generic entities (kind `entity`, 88 prototypes of the model) are not offered yet: the entity package builds their groups.
+import { entityTable, PROTOTYPES, prototypeOf, type EntityKind, type EntityShape, type PrototypeName } from "@face/model";
 import { KIND_INFO, prototypeFacts, prototypeLabel } from "./kindInfo.ts";
 
 interface GroupSpec {
@@ -25,9 +26,13 @@ const GROUPS: readonly GroupSpec[] = [
 /** Catalog icon ids of the prototypes whose icon is not the one of the item of the same name. */
 const ICON_IDS: Readonly<Partial<Record<PrototypeName, string>>> = {};
 
-/** The icon of a prototype below the catalog icon root, without extension: `item/big-electric-pole`. */
+/**
+ * The icon of a prototype below the catalog icon root, without extension: `item/big-electric-pole`. It is the icon of the item
+ * that places the entity, which for all but a few has the entity's name (`placedBy` of the entity table). A prototype without
+ * such an item (four chests of the game's editor) gets an id nothing is served for and keeps its pictogram.
+ */
 export function prototypeIconId(prototype: PrototypeName): string {
-  return ICON_IDS[prototype] ?? `item/${prototype}`;
+  return ICON_IDS[prototype] ?? `item/${entityTable().byName.get(prototype)?.placedBy[0] ?? prototype}`;
 }
 
 /** One entity the palette offers. */
@@ -52,7 +57,7 @@ export interface PaletteGroup {
 }
 
 function entryOf(prototype: PrototypeName): PaletteEntry {
-  const shape = { kind: PROTOTYPES[prototype].kind, prototype };
+  const shape = { kind: PROTOTYPES[prototype]!.kind, prototype };
   return { ...shape, label: prototypeLabel(shape), description: KIND_INFO[shape.kind].description, facts: prototypeFacts(shape) };
 }
 

@@ -67,10 +67,13 @@ describe("wire reach fixture", () => {
     expect(serialiseFixture(JSON.parse(text) as Fixture)).toBe(text);
   });
 
-  it("asks the game about every prototype the editor has", async () => {
-    const { PROTOTYPE_NAMES } = await import("@face/model");
+  it("asks the game about every prototype the editor has a kind of its own for", async () => {
+    const { PROTOTYPE_NAMES, PROTOTYPES } = await import("@face/model");
     const scenario = readFileSync(new URL("../wire-reach.lua", import.meta.url), "utf8");
-    for (const name of PROTOTYPE_NAMES) expect(scenario, name).toContain(`"${name}"`);
+    // Of the generic entities it asks about those whose footprint or reach is not the usual one: the next test.
+    const own = PROTOTYPE_NAMES.filter((name) => PROTOTYPES[name]!.kind !== "entity");
+    expect(own).toHaveLength(10);
+    for (const name of own) expect(scenario, name).toContain(`"${name}"`);
   });
 
   it("asks the game about the footprints and reaches of the entity table that the editor's prototypes do not have", async () => {

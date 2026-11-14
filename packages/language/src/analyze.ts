@@ -1,18 +1,22 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isTileCenter, normalizeWire,
-  prototypeData, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, tileUnit, wildcardOf, wildcardSignal, WILDCARDS, wireKey, wireSpan, withArticle,
+  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isPrototypeName, isTileCenter,
+  normalizedSettings, normalizeWire, PROTOTYPES, prototypeData, prototypesOf, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, tileUnit, wildcardOf, wildcardSignal, WILDCARDS, wireKey, wireSpan,
+  withArticle,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
-  type Entity, type EntityId, type EntityKind, type EntityOfKind, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeOfKind, type RgbColor,
-  type SelectorMode, type SelectorOperation, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
+  type Entity, type EntityId, type EntityKind, type EntityOfKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeOfKind, type RgbColor,
+  type SelectorMode, type SelectorOperation, type SettingValue, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
 import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
 import { printTerminal } from "./printer.ts";
-import { lookupProperty, NO_NETWORK, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_FORMS, type PropertySpec, type SignalSlot, type StatementForm } from "./schema.ts";
+import {
+  BLUEPRINT_DATA_PROPERTY, conditionRoles, lookupProperty, NO_NETWORK, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_FORMS,
+  type PropertySpec, type PropertyVariant, type SignalSlot, type StatementForm,
+} from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
 
 /** Catalog awareness is injected; the language itself knows no signal names. */
@@ -117,9 +121,12 @@ export interface ParseResult {
 
 const KIND_LABEL: Readonly<Record<EntityKind, string>> = {
   constant: "constant combinator", arithmetic: "arithmetic combinator", decider: "decider combinator", selector: "selector combinator", lamp: "lamp", pole: "electric pole", speaker: "programmable speaker",
+  entity: "entity",
 };
 /** "A lamp", "An electric pole". */
 const aKind = (kind: EntityKind): string => capitalize(withArticle(KIND_LABEL[kind]));
+/** The same for one entity; a generic entity is named by its prototype: "A fast inserter". */
+const anEntity = (entity: EntityShape): string => capitalize(withArticle(entity.kind === "entity" ? (genericPrototype(entity.prototype)?.label ?? "entity") : KIND_LABEL[entity.kind]));
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 const FORM_LABEL: Readonly<Record<StatementForm, string>> = { property: "properties", assign: "signal assignments", when: "a 'when' statement", output: "'output' statements", section: "'section' blocks" };
 const MAX_LOST = 256;
@@ -128,7 +135,7 @@ export function statementKey(statement: CstStatement, kind: EntityKind): string 
   switch (statement.type) {
     case "property": return statement.name.text;
     case "assign": return kind === "arithmetic" ? "expression" : "filter";
-    case "when": return "when";
+    case "when": return conditionKey(statement.role?.text);
     case "output": return statement.else ? "else" : "output";
     case "section": return "section";
   }
@@ -150,7 +157,10 @@ interface Sorted {
   readonly values: Map<string, PropertyValue>;
   readonly properties: Map<string, CstProperty>;
   readonly assigns: CstAssign[];
+  /** The `when` statements without a role; at most one. */
   readonly whens: CstWhen[];
+  /** Generic entities: every condition statement by the key of its setting (`when`, `logistic-when`). */
+  readonly conditions: Map<string, CstWhen>;
   readonly outputs: CstOutput[];
   readonly sections: CstSection[];
 }
@@ -324,8 +334,10 @@ class Analyzer {
   }
 
   /** Validates statement forms and properties of one block and groups the statements by form. */
-  sort(kind: EntityKind, statements: readonly CstStatement[], inSection: boolean, operation?: SelectorOperation): Sorted {
-    const sorted: Sorted = { values: new Map(), properties: new Map(), assigns: [], whens: [], outputs: [], sections: [] };
+  sort(kind: EntityKind, statements: readonly CstStatement[], inSection: boolean, variant?: PropertyVariant): Sorted {
+    const sorted: Sorted = { values: new Map(), properties: new Map(), assigns: [], whens: [], conditions: new Map(), outputs: [], sections: [] };
+    // A generic entity whose prototype is missing or unknown has one error for that; its settings cannot be judged.
+    const generic = kind === "entity" && !inSection ? genericPrototype(variant) : undefined;
     const forms: readonly StatementForm[] = inSection ? ["property", "assign"] : STATEMENT_FORMS[kind];
     for (const statement of statements) {
       if (!forms.includes(statement.type)) {
@@ -335,11 +347,17 @@ class Analyzer {
       switch (statement.type) {
         case "property": {
           const name = statement.name.text;
-          const lookup = lookupProperty(kind, name, operation, inSection);
-          if (lookup.status === "unknown") {
+          const lookup = lookupProperty(kind, name, variant, inSection);
+          if (kind === "entity" && lookup.status !== "ok") {
+            if (generic) this.report(statement.name, "unknown-property", `${capitalize(withArticle(generic.label))} (${generic.prototype}) has no setting '${name}'; it has ${generic.words.join(", ")}`);
+            else if (lookup.status === "unknown") this.report(statement.name, "unknown-property", `Unknown property '${name}' in an entity; no entity of the game has it`);
+          } else if (kind === "entity" && !generic && name !== "description" && name !== PROTOTYPE_PROPERTY && name !== BLUEPRINT_DATA_PROPERTY) {
+            // Without a prototype the value cannot be judged either: the word may be a switch for one type and a mode for another.
+            sorted.properties.set(name, statement);
+          } else if (lookup.status === "unknown") {
             this.report(statement.name, "unknown-property", `Unknown property '${name}' in ${inSection ? "a section" : withArticle(KIND_LABEL[kind])}; expected one of ${propertyNames(kind, undefined, inSection).join(", ")}`);
           } else if (lookup.status === "inapplicable") {
-            this.report(statement.name, "contradictory-statement", `Property '${name}' does not apply to operation '${operation}'; it belongs to ${lookup.operations.join(", ")}`);
+            this.report(statement.name, "contradictory-statement", `Property '${name}' does not apply to operation '${variant}'; it belongs to ${lookup.operations.join(", ")}`);
           } else if (sorted.properties.has(name)) {
             this.report(statement, "duplicate-statement", `Duplicate property '${name}'`);
           } else {
@@ -353,10 +371,21 @@ class Analyzer {
           if (kind === "arithmetic" && sorted.assigns.length) this.report(statement, "duplicate-statement", "An arithmetic combinator has exactly one expression");
           else sorted.assigns.push(statement);
           break;
-        case "when":
-          if (sorted.whens.length) this.report(statement, "duplicate-statement", "Only one 'when' statement is allowed; combine conditions with 'and' / 'or'");
+        case "when": {
+          const key = statementKey(statement, kind);
+          if (kind === "entity") {
+            const role = statement.role?.text;
+            const form = role === undefined ? "'when'" : `'${role} when'`;
+            if (generic && !generic.conditions.includes(key)) {
+              const has = generic.conditions.map((own) => `'${[conditionRole(own), "when"].filter(Boolean).join(" ")}'`);
+              this.report(statement.role ?? statement.keyword, "invalid-statement", `${capitalize(withArticle(generic.label))} (${generic.prototype}) has no ${form} condition; it has ${has.length ? has.join(", ") : "no conditions"}`);
+            } else if (sorted.conditions.has(key)) this.report(statement, "duplicate-statement", `Duplicate ${form} condition`);
+            else sorted.conditions.set(key, statement);
+          } else if (statement.role) this.report(statement.role, "invalid-statement", `${aKind(kind)} has no '${statement.role.text} when' condition; write 'when'`);
+          else if (sorted.whens.length) this.report(statement, "duplicate-statement", "Only one 'when' statement is allowed; combine conditions with 'and' / 'or'");
           else sorted.whens.push(statement);
           break;
+        }
         case "output":
           sorted.outputs.push(statement);
           break;
@@ -379,7 +408,7 @@ class Analyzer {
   entity(node: CstEntity, id: EntityId, name: string, position: Point): Entity {
     const statements = node.body?.statements ?? [];
     const operation = node.kind === "selector" ? this.selectorOperation(statements) : undefined;
-    const sorted = this.sort(node.kind, statements, false, operation);
+    const sorted = this.sort(node.kind, statements, false, node.kind === "entity" ? declaredPrototype(statements)?.name : operation);
     const tile = this.point(node.tile, false);
     const direction = node.facing?.direction?.text as Direction | undefined;
     const placement: Placement | undefined = tile || direction ? compact({ tile, direction }) : undefined;
@@ -394,7 +423,44 @@ class Analyzer {
       case "lamp": return { ...base, ...this.lamp(sorted) };
       case "pole": return { ...base, kind: "pole", prototype: (sorted.values.get(PROTOTYPE_PROPERTY)?.value as PrototypeOfKind<"pole"> | undefined) ?? DEFAULT_ENTITY.pole.prototype };
       case "speaker": return { ...base, ...this.speaker(sorted, label) };
+      case "entity": return { ...base, ...this.generic(sorted, statements, label) };
     }
+  }
+
+  /**
+   * A generic entity: which prototype it is, the settings its prototype type has (in the form of the model: none at its default)
+   * and the blueprint data kept with it. Without a usable prototype it has one error and no settings.
+   */
+  private generic(sorted: Sorted, statements: readonly CstStatement[], label: Range): Omit<EntityOfKind<"entity">, "id" | "name" | "position"> {
+    const declared = declaredPrototype(statements);
+    const data = sorted.values.get(BLUEPRINT_DATA_PROPERTY)?.value as string | undefined;
+    if (data !== undefined && !isJsonObject(data)) this.report(sorted.properties.get(BLUEPRINT_DATA_PROPERTY)!.value!, "invalid-value", `'${BLUEPRINT_DATA_PROPERTY}' is the JSON text of an object, as a blueprint has it for the entity`);
+    const blueprintData = data !== undefined && isJsonObject(data) ? data : undefined;
+    if (!declared) {
+      if (!sorted.properties.has(PROTOTYPE_PROPERTY)) this.report(label, "missing-prototype", `An entity says which entity of the game it is: add '${PROTOTYPE_PROPERTY} = <name>', for example '${PROTOTYPE_PROPERTY} = steel-chest'`);
+      return compact({ kind: "entity" as const, prototype: "", settings: {}, blueprintData });
+    }
+    const { name: prototype, token } = declared;
+    if (!genericPrototype(prototype)) {
+      const own = isPrototypeName(prototype) ? PROTOTYPES[prototype]!.kind : undefined;
+      const near = prototypesOf("entity").filter((candidate) => candidate.includes(prototype) || prototype.includes(candidate)).slice(0, 5);
+      const hint = near.length ? `; did you mean ${near.join(", ")}?` : "; the names are the game's, as a blueprint has them (steel-chest, fast-inserter, transport-belt)";
+      this.report(token, "invalid-value", own ? `'${prototype}' has a kind of its own: declare it as '${own} <name> { ... }'` : `Unknown prototype '${prototype}'${hint}`);
+      return compact({ kind: "entity" as const, prototype, settings: {}, blueprintData });
+    }
+    const settings: Record<string, SettingValue> = {};
+    for (const spec of settingSpecsOf(prototype)) {
+      if (spec.type === "condition") {
+        const when = sorted.conditions.get(spec.key);
+        const condition = when && this.circuitCondition(when, "entity");
+        if (condition) settings[spec.key] = condition;
+        continue;
+      }
+      const value = sorted.values.get(spec.key);
+      if (!value) continue;
+      settings[spec.key] = spec.type === "networks" ? networkSelection(value.value as string) : (value.value as SettingValue);
+    }
+    return compact({ kind: "entity" as const, prototype, settings: normalizedSettings(prototype, settings), blueprintData });
   }
 
   private selectorOperation(statements: readonly CstStatement[]): SelectorOperation {
@@ -537,19 +603,19 @@ class Analyzer {
   }
 
   /** The circuit condition of an entity with one connector: a single comparison whose signals take no network selection. */
-  private circuitCondition(when: CstWhen, kind: "lamp" | "speaker"): Condition | undefined {
+  private circuitCondition(when: CstWhen, kind: "lamp" | "speaker" | "entity"): Condition | undefined {
     const [condition, ...extra] = when.conditions as readonly [CstCondition | undefined, ...CstCondition[]];
-    for (const other of extra) this.report(other, "syntax-error", `A ${kind} condition is a single comparison`);
+    for (const other of extra) this.report(other, "syntax-error", `${capitalize(withArticle(kind))} condition is a single comparison`);
     if (!condition) return undefined;
     const first = this.slot(condition.first?.signal, `${kind}.condition`);
-    this.noNetworks(condition.first, kind === "lamp" ? "A lamp condition signal (use the lamp's 'networks' property)" : "A speaker condition signal");
+    this.noNetworks(condition.first, kind === "lamp" ? "A lamp condition signal (use the lamp's 'networks' property)" : kind === "speaker" ? "A speaker condition signal" : "An entity condition signal (use the 'networks' property)");
     let second: Condition["second"] | undefined;
     if (condition.second?.type === "int") {
       const value = this.int(condition.second.token);
       if (value !== undefined) second = { type: "constant", value };
     } else if (condition.second) {
       const signal = this.slot(condition.second.ref.signal, `${kind}.operand`);
-      this.noNetworks(condition.second.ref, `A ${kind} condition signal`);
+      this.noNetworks(condition.second.ref, `${capitalize(withArticle(kind))} condition signal`);
       if (signal) second = { type: "signal", signal };
     }
     return first && second && condition.comparator ? { first, comparator: condition.comparator.text as Comparator, second } : undefined;
@@ -614,6 +680,34 @@ class Analyzer {
     const found = instrument === undefined ? known[0]! : known.find((candidate) => candidate.name === instrument);
     if (!found) this.report(instrumentRange!, "unknown-instrument", `Unknown instrument '${instrument}'; the game has ${known.map((candidate) => candidate.name).join(", ")}`);
     else if (note !== undefined && !found.notes.includes(note)) this.report(noteRange!, "unknown-note", `The instrument '${found.name}' has no note '${note}'`);
+  }
+}
+
+/** The prototype a generic entity declaration names: the value of its first `prototype` property, bare or quoted. */
+function declaredPrototype(statements: readonly CstStatement[]): { name: string; token: Token } | undefined {
+  for (const statement of statements) {
+    if (statement.type !== "property" || statement.name.text !== PROTOTYPE_PROPERTY || !statement.value) continue;
+    const token = statement.value;
+    const name = token.kind === "ident" || token.kind === "word" ? token.text : token.kind === "string" ? decodeString(token.text) : "";
+    if (name) return { name, token };
+  }
+  return undefined;
+}
+
+/** What a prototype of the kind `entity` takes, for the messages: its label, its property words and the keys of its conditions. Undefined for any other name. */
+function genericPrototype(prototype: string | undefined): { prototype: string; label: string; words: string[]; conditions: string[] } | undefined {
+  if (prototype === undefined || !isPrototypeName(prototype) || PROTOTYPES[prototype]!.kind !== "entity") return undefined;
+  const conditions = settingSpecsOf(prototype).flatMap((spec) => (spec.type === "condition" ? [spec.key] : []));
+  const statements = ["when", ...conditionRoles(prototype).map((role) => `${role} when`)].slice(conditions.includes("when") ? 0 : 1);
+  return { prototype, label: PROTOTYPES[prototype]!.label, words: [...propertyNames("entity", prototype), ...statements], conditions };
+}
+
+function isJsonObject(text: string): boolean {
+  try {
+    const value: unknown = JSON.parse(text);
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  } catch {
+    return false;
   }
 }
 
@@ -834,7 +928,7 @@ function analyzeMembers(members: readonly CstMember[], analyzer: Analyzer, previ
       const side: TerminalSide = cst.side ? (cst.side.text as "in" | "out") : "io";
       if (!hasTerminal(entity.kind, side)) {
         const has = TERMINALS[entity.kind].map((own) => `'${printTerminal(entity.name, own)}'`).join(" or ");
-        analyzer.report(cst, "invalid-terminal", side === "io" ? `${aKind(entity.kind)} is wired at a terminal: write ${has}` : `${aKind(entity.kind)} has no '${side}' terminal${hasTerminal(entity.kind, "io") ? `; write the bare name ${has}` : ""}`);
+        analyzer.report(cst, "invalid-terminal", side === "io" ? `${anEntity(entity)} is wired at a terminal: write ${has}` : `${anEntity(entity)} has no '${side}' terminal${hasTerminal(entity.kind, "io") ? `; write the bare name ${has}` : ""}`);
         return undefined;
       }
       return { range: range(cst), nameRange: range(cst.name), entity: entity.id, side };
@@ -875,7 +969,7 @@ function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[]
   const nodeOf = new Map(entities.map((entity, i) => [entity.id, nodes[i]!]));
   for (const entity of entities) {
     const node = nodeOf.get(entity.id)!;
-    if (node.facing?.direction && !canRotate(entity)) analyzer.report(node.facing, "unused-facing", `${aKind(entity.kind)} cannot be rotated; 'facing' is ignored`);
+    if (node.facing?.direction && !canRotate(entity)) analyzer.report(node.facing, "unused-facing", `${anEntity(entity)} cannot be rotated; 'facing' is ignored`);
     const tile = entity.placement?.tile;
     const facing = facingOf(entity);
     if (!node.tile || !tile || isTileCenter(entity, facing, tile)) continue;

@@ -3,14 +3,25 @@
 // its control behaviour, connect the wires), so that the game can build it without reading a blueprint of ours and export its
 // own. Bundled with esbuild by blueprints.mjs, because the language package is not plain enough for Node's type stripping.
 
-import { canRotate, facingOf, prototypeOf, TERMINALS, type Circuit, type Entity, type Point } from "@face/model";
+import { canRotate, ENTITY_SETTINGS, facingOf, gamePrototype, prototypeOf, TERMINALS, type Circuit, type Entity, type EntityOfKind, type Point } from "@face/model";
 import type { BlueprintEntity, BlueprintFile, BlueprintSignal, LampControlBehavior, SpeakerControlBehavior } from "../../../packages/blueprints/src/index.ts";
+import { ENUM_DEFINES, runtimeAttribute } from "../../../packages/blueprints/test/gameNames.ts";
 import { exportedSamples, sampleCircuit, SAMPLES } from "../../../packages/blueprints/test/samples.ts";
 
 /** A LogisticFilter of the runtime API: the slot of a constant combinator section. */
 interface NativeFilter {
   readonly value: { readonly type: string; readonly name: string; readonly quality: string; readonly comparator: "=" };
   readonly min: number;
+}
+
+/**
+ * One assignment to the control behaviour of a generic entity: the attribute of the runtime API and its value, which for an enum
+ * is a member of `defines.control_behavior` named by its path, because the number is what the probe is to find out.
+ */
+export interface NativeAssignment {
+  readonly attribute: string;
+  readonly value?: unknown;
+  readonly define?: readonly string[];
 }
 
 export interface NativeEntity {
@@ -26,6 +37,8 @@ export interface NativeEntity {
   readonly parameters?: unknown;
   readonly lamp?: { readonly always_on: boolean; readonly color?: BlueprintEntity["color"]; readonly behavior?: Omit<LampControlBehavior, "color_mode"> & { readonly color_mode: string } };
   readonly speaker?: { readonly parameters: BlueprintEntity["parameters"]; readonly alert_parameters: BlueprintEntity["alert_parameters"]; readonly behavior?: SpeakerControlBehavior };
+  /** A generic entity: its settings as assignments to its control behaviour, in this order. */
+  readonly behavior?: readonly NativeAssignment[];
 }
 
 /** Entity index from 1, a member of `defines.wire_connector_id`, and the same for the other end. */
@@ -40,6 +53,30 @@ export interface ProbeCase {
 
 /** `defines.control_behavior.lamp.color_mode` by the editor's word for the mode. */
 const COLOR_MODE_NAMES = { mapping: "color_mapping", components: "components", "packed-rgb": "packed_rgb" } as const;
+
+/**
+ * The settings of a generic entity for the runtime API: every field this project wrote into its `control_behavior`, under the
+ * name the control behaviour of the game has for it. A flag comes before the condition or the mode it switches on.
+ */
+function nativeBehavior(entity: EntityOfKind<"entity">, record: BlueprintEntity): NativeAssignment[] {
+  const { behavior, settings } = ENTITY_SETTINGS[gamePrototype(entity).type]!;
+  const written = (record.control_behavior ?? {}) as Readonly<Record<string, unknown>>;
+  const assignments = new Map<string, NativeAssignment>();
+  const assign = (field: string, define?: readonly string[]): void => {
+    if (written[field] !== undefined && !assignments.has(field)) assignments.set(field, { attribute: runtimeAttribute(behavior, field), ...(define ? { define } : { value: written[field] }) });
+  };
+  for (const spec of settings) {
+    if (spec.type === "condition") assign(spec.flag);
+    if (spec.type !== "enum") assign(spec.field);
+    else {
+      if (spec.flag) assign(spec.flag.field);
+      const define = ENUM_DEFINES[`${behavior}.${spec.field}`];
+      const member = define?.members[String(entity.settings[spec.key] ?? spec.default)];
+      assign(spec.field, define && member !== undefined ? [...define.path, member] : undefined);
+    }
+  }
+  return [...assignments.values()];
+}
 
 function nativeEntity(entity: Entity, record: BlueprintEntity): NativeEntity {
   const base = {
@@ -75,6 +112,10 @@ function nativeEntity(entity: Entity, record: BlueprintEntity): NativeEntity {
     }
     case "pole":
       return base;
+    case "entity": {
+      const assignments = nativeBehavior(entity, record);
+      return { ...base, ...(assignments.length > 0 && { behavior: assignments }) };
+    }
     case "speaker":
       return { ...base, speaker: { parameters: record.parameters, alert_parameters: record.alert_parameters, behavior: record.control_behavior as SpeakerControlBehavior } };
   }

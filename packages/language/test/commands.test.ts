@@ -212,7 +212,7 @@ describe("addEntity", () => {
   it("creates default configurations that parse back to the model defaults", () => {
     for (const kind of ENTITY_KINDS) {
       const empty = valid('circuit "t" {\n}\n');
-      const { changes, name } = addEntity(empty, kind, { x: 20, y: -40 }, "fresh");
+      const { changes, name } = addEntity(empty, kind, { x: 20, y: -40 }, "fresh", undefined, undefined, kind === "entity" ? DEFAULT_ENTITY.entity.prototype : undefined);
       const after = valid(applyChanges(empty.source, changes));
       expect(name).toBe("fresh");
       expect(withoutId(after.circuit.entities[0]!)).toEqual({ ...DEFAULT_ENTITY[kind], name: "fresh", position: { x: 20, y: -40 } });
@@ -378,7 +378,7 @@ describe("updateEntity: description", () => {
   const ENCODED = '"first line\\nsecond \\"quoted\\" \\\\ line\\n\\n\\ttabbed, Grüße 日本語 → 𝒜\\r\\n// no comment"';
 
   it("adds the property as one line at the top of the body, for every kind", () => {
-    const statements = { constant: "item:a = 1", arithmetic: "item:a = item:b + 1", decider: "output item:a = 1", selector: "operation = count", lamp: "always-on = true", pole: "prototype = substation", speaker: "volume = 50" };
+    const statements = { constant: "item:a = 1", arithmetic: "item:a = item:b + 1", decider: "output item:a = 1", selector: "operation = count", lamp: "always-on = true", pole: "prototype = substation", speaker: "volume = 50", entity: "prototype = steel-chest" };
     for (const kind of ENTITY_KINDS) {
       const source = circuit(`    // above\n    ${kind} e at (0, 0) { // head\n        // inside\n        ${statements[kind]} // first\n    }\n    // below`);
       const { changes, result } = describeAs(source, "e", AWKWARD);

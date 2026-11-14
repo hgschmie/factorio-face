@@ -69,7 +69,7 @@ describe("kinds", () => {
     expect(prototypeFacts({ kind: "pole" })).toBe("1 tile, wire reach 7.5");
     expect(prototypeFacts({ kind: "pole", prototype: "big-electric-pole" })).toBe("2 x 2 tiles, wire reach 32");
     // The game has a description on the combinators only.
-    expect(ENTITY_KINDS.filter((kind) => !KIND_INFO[kind].describedInGame)).toEqual(["lamp", "pole", "speaker"]);
+    expect(ENTITY_KINDS.filter((kind) => !KIND_INFO[kind].describedInGame)).toEqual(["lamp", "pole", "speaker", "entity"]);
   });
 
   it("sums a pole up by its reach and its tiles and a speaker by what it plays and when", () => {
@@ -100,7 +100,8 @@ describe("kinds", () => {
     expect(speakerText({ playing: true })).toBe("playing");
     expect(speakerText({ playing: true, instrument: "piano", note: "F#3", volume: 100 })).toBe("playing piano F#3");
     expect(speakerText({ playing: true, instrument: "piano", note: "F#3", volume: 62.5, alert: true })).toBe("playing piano F#3 at 62.5%");
-    expect(ENTITY_KINDS.filter((kind) => !isTraceable(kind))).toEqual(["pole"]);
+    // A generic entity sends nothing in the simulation; its enable condition shows on its card, not in a trace.
+    expect(ENTITY_KINDS.filter((kind) => !isTraceable(kind))).toEqual(["pole", "entity"]);
   });
 });
 

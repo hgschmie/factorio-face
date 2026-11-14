@@ -18,6 +18,8 @@ export const KIND_INFO: Readonly<Record<EntityKind, KindInfo>> = {
   lamp: { label: "Lamp", description: "See a condition light up", category: "Condition indicator", describedInGame: false },
   pole: { label: "Pole", description: "Relay signals over a distance", category: "Signal relay", describedInGame: false },
   speaker: { label: "Speaker", description: "Sound an alert on a condition", category: "Condition indicator", describedInGame: false },
+  // Generic entities: minimal until the entity package (selector, drawing, inspector). The label is the prototype's (`entityTitle`).
+  entity: { label: "Entity", description: "An entity of the game on the circuit network", category: "Game entity", describedInGame: false },
 };
 
 export function capitalized(text: string): string {

@@ -1,7 +1,7 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, facingOf, tileCenter, type Circuit, type Entity, type EntityKind, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, tileCenter, type Circuit, type Entity, type EntityKind, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
 import { decodeBlueprintString, exportBlueprint, importBlueprint, type ImportReport } from "../src/index.ts";
@@ -23,10 +23,10 @@ function withoutCustomSignals<T>(value: T): T {
   return (record.kind === "custom" ? { ...mapped, kind: "virtual", name: `${String(record.name)}.custom` } : mapped) as T;
 }
 
-/** A generated circuit as one that can stand in the game: every entity on tiles of its own, facing as it does. */
+/** A generated circuit as one that can stand in the game: every entity on tiles of its own (the largest covers nine by nine), facing as it does. */
 function blueprintable(circuit: Circuit): Circuit {
   const entities = withoutCustomSignals(circuit.entities).map((entity, index): Entity => {
-    const origin = { x: (index % 6) * 3, y: Math.floor(index / 6) * 3 };
+    const origin = { x: (index % 6) * 10, y: Math.floor(index / 6) * 10 };
     return { ...entity, placement: { ...entity.placement, tile: tileCenter(entity, facingOf(entity), origin) } };
   });
   return { ...circuit, entities };
@@ -34,27 +34,33 @@ function blueprintable(circuit: Circuit): Circuit {
 
 /**
  * What a circuit is after it went to a blueprint and back, as far as the trip changes it:
- * - the names are new, by the naming rule of the editor (kind and number, in the order of the entities), and so are the ids;
+ * - the names are new, by the naming rule of the editor (what the entity is and a number, in the order of the entities), and so are the ids;
  * - the edit positions are derived from the tiles (not compared here);
  * - facing east is not said, and an entity that cannot turn faces nothing;
- * - an empty description is none, and the description of a lamp, a pole or a speaker is not in a blueprint;
+ * - an empty description is none, and the description of anything but a combinator is not in a blueprint;
+ * - an entity that is built in two directions only faces north or east; kept blueprint data that holds nothing is none;
  * - a section group without a name is no group;
  * - the first instrument and the first note of an instrument go without saying;
  * - the source signal of a quality transfer has no quality of its own.
  */
 function afterRoundTrip(circuit: Circuit, instruments: readonly SpeakerInstrument[]): Circuit {
-  const counters = new Map<EntityKind, number>();
+  const counters = new Map<string, number>();
   const entities = circuit.entities.map((entity): Entity => {
-    const count = (counters.get(entity.kind) ?? 0) + 1;
-    counters.set(entity.kind, count);
+    const called = entityNameBase(entity);
+    const count = (counters.get(called) ?? 0) + 1;
+    counters.set(called, count);
     const { description, placement, ...rest } = entity;
     const facing = facingOf(entity);
     const base = {
       ...rest,
-      name: `${entity.kind}${count}`,
+      name: `${called}${count}`,
       placement: { tile: placement!.tile!, ...(canRotate(entity) && facing !== "east" && { direction: facing }) },
       ...(description && isCombinator(entity.kind) && { description }),
     } as Entity;
+    if (base.kind === "entity") {
+      const { blueprintData, ...generic } = base;
+      return { ...generic, ...(blueprintData !== undefined && blueprintData !== "{}" && { blueprintData }) };
+    }
     if (base.kind === "constant") return { ...base, sections: base.sections.map(({ group, ...section }) => ({ ...(group && { group }), ...section })) };
     if (base.kind === "speaker") {
       const { instrument, note, ...speaker } = base;
@@ -109,7 +115,7 @@ describe("round trip: editor to blueprint to editor", () => {
       for (const entity of circuit.entities) kinds.add(entity.kind);
       roundTrip(circuit, GENERATED_INSTRUMENTS);
     }
-    expect([...kinds].sort()).toEqual(["arithmetic", "constant", "decider", "lamp", "pole", "selector", "speaker"]);
+    expect([...kinds].sort()).toEqual(["arithmetic", "constant", "decider", "entity", "lamp", "pole", "selector", "speaker"]);
   });
 
   it("changes exactly what the normal form says", () => {
@@ -159,7 +165,7 @@ describe("round trip: blueprint to editor to blueprint", () => {
       description: "not kept",
       icons: [{ signal: { name: "decider-combinator" }, index: 1 }],
       entities: [
-        { entity_number: 10, name: "transport-belt", position: { x: -5.5, y: 0.5 }, direction: 4 },
+        { entity_number: 10, name: "gate", position: { x: -5.5, y: 0.5 }, direction: 4 },
         {
           entity_number: 20,
           name: "constant-combinator",
@@ -191,7 +197,7 @@ describe("round trip: blueprint to editor to blueprint", () => {
         { entity_number: 60, name: "small-lamp", position: { x: 10.5, y: 0.5 }, always_on: false, control_behavior: { circuit_enabled: true, circuit_condition: { first_signal: A, comparator: ">" }, use_colors: false, color_mode: 0 }, color: { r: 255, g: 128, b: 0, a: 255 } },
         { entity_number: 70, name: "big-electric-pole", position: { x: 13, y: 1 }, quality: "normal" },
         { entity_number: 80, name: "substation", position: { x: 16, y: 1 } },
-        { entity_number: 90, name: "roboport", position: { x: 20, y: 2 } },
+        { entity_number: 90, name: "straight-rail", position: { x: 20, y: 2 } },
         {
           entity_number: 100,
           name: "programmable-speaker",
@@ -262,7 +268,7 @@ describe("round trip: blueprint to editor to blueprint", () => {
     expect(report).toEqual({
       version: "2.0.72.0",
       entities: 8,
-      dropped: [{ name: "roboport", count: 1, reason: "unknown" }, { name: "transport-belt", count: 1, reason: "unknown" }],
+      dropped: [{ name: "gate", count: 1, reason: "unknown" }, { name: "straight-rail", count: 1, reason: "unknown" }],
       wires: { imported: 6, copper: 1, toDropped: 2, invalid: 0 },
       settings: [],
       ignored: ["description", "icons"],

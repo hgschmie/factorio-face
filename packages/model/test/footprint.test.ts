@@ -12,11 +12,15 @@ const box = (x: number, y: number, width = 1, height = 1): TileBox => ({ x, y, w
 const placed = (id: string, kind: EntityKind, tile?: Point, direction?: Direction): PlacedEntity => ({ id, kind, placement: tile || direction ? { tile, direction } : undefined });
 const pole = (prototype: PrototypeName): EntityShape => ({ kind: "pole", prototype });
 /** One shape per prototype of the table. */
-const SHAPES: readonly EntityShape[] = PROTOTYPE_NAMES.map((prototype) => ({ kind: PROTOTYPES[prototype].kind, prototype }));
+const SHAPES: readonly EntityShape[] = PROTOTYPE_NAMES.map((prototype) => ({ kind: PROTOTYPES[prototype]!.kind, prototype }));
+/** The kinds with a prototype of their own, which an entity is without saying which; a generic entity always says its prototype. */
+const OWN_KINDS = ENTITY_KINDS.filter((kind) => kind !== "entity");
+/** The prototypes with a kind of their own, in the order of their kinds. */
+const OWN_NAMES = PROTOTYPE_NAMES.filter((name) => PROTOTYPES[name]!.kind !== "entity");
 
 describe("prototypes", () => {
   it("names the game prototype of every kind, the first of a kind being its default", () => {
-    expect(ENTITY_KINDS.map((kind) => prototypeOf({ kind }))).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "small-electric-pole", "programmable-speaker"]);
+    expect(OWN_KINDS.map((kind) => prototypeOf({ kind }))).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "small-electric-pole", "programmable-speaker"]);
     expect(prototypesOf("pole")).toEqual(["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"]);
     expect(prototypesOf("lamp")).toEqual(["small-lamp"]);
     for (const kind of ENTITY_KINDS) expect(prototypesOf(kind).length).toBeGreaterThan(0);
@@ -27,10 +31,10 @@ describe("prototypes", () => {
 
   it("has the sizes, the rotation and the wire reaches of the game data", () => {
     const row = (name: PrototypeName) => {
-      const { width, height, rotatable, wireReach } = PROTOTYPES[name] as { width: number; height: number; rotatable: boolean; wireReach?: number };
+      const { width, height, rotatable, wireReach } = PROTOTYPES[name]!;
       return `${width}x${height}${rotatable ? " turns" : ""}${wireReach === undefined ? "" : ` reach ${wireReach}`}`;
     };
-    expect(Object.fromEntries(PROTOTYPE_NAMES.map((name) => [name, row(name)]))).toEqual({
+    expect(Object.fromEntries(OWN_NAMES.map((name) => [name, row(name)]))).toEqual({
       "constant-combinator": "1x1 turns",
       "arithmetic-combinator": "1x2 turns",
       "decider-combinator": "1x2 turns",
@@ -49,7 +53,7 @@ describe("prototypes", () => {
 
 describe("footprints", () => {
   it("gives the combinators with two terminals two tiles along their direction and every other default prototype one tile", () => {
-    for (const kind of ENTITY_KINDS) {
+    for (const kind of OWN_KINDS) {
       const long = LONG.includes(kind);
       expect(tileSize({ kind })).toEqual(long ? { width: 2, height: 1 } : { width: 1, height: 1 });
       expect(tileSize({ kind }, "west")).toEqual(tileSize({ kind }, "east"));
@@ -64,7 +68,7 @@ describe("footprints", () => {
   });
 
   it("lets every combinator rotate and nothing else", () => {
-    expect(ENTITY_KINDS.filter((kind) => canRotate({ kind }))).toEqual(["constant", "arithmetic", "decider", "selector"]);
+    expect(OWN_KINDS.filter((kind) => canRotate({ kind }))).toEqual(["constant", "arithmetic", "decider", "selector"]);
     expect(SHAPES.filter((shape) => shape.kind === "pole").some(canRotate)).toBe(false);
   });
 

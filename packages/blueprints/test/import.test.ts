@@ -1,5 +1,5 @@
 import { checkEntity, printCircuit } from "@face/language";
-import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, PROTOTYPE_NAMES, PROTOTYPES, prototypesOf, TERMINALS, type EntityKind, type TerminalSide } from "@face/model";
+import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, PROTOTYPE_NAMES, PROTOTYPES, prototypeOf, prototypesOf, TERMINALS, type EntityKind, type TerminalSide } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { connectorId, encodeBlueprintString, importBlueprint, importBlueprintString, inspectBlueprint, packVersion, type ImportErrorCode, type ImportOptions } from "../src/index.ts";
 import { A, B, blueprintOf, imported, importedEntity, IRON } from "./helpers.ts";
@@ -105,7 +105,7 @@ describe("import: versions", () => {
 
 describe("import: books and other items", () => {
   const blueprint = (label: string, entities: readonly unknown[]) => ({ blueprint: { item: "blueprint", label, entities, version: packVersion(2, 1, 24) } });
-  const belt = { entity_number: 9, name: "transport-belt", ...at(9.5, 0.5) };
+  const gate = { entity_number: 9, name: "gate", ...at(9.5, 0.5) };
   const book = {
     blueprint_book: {
       item: "blueprint-book",
@@ -113,9 +113,9 @@ describe("import: books and other items", () => {
       active_index: 0,
       version: packVersion(2, 1, 24),
       blueprints: [
-        { index: 0, ...blueprint("Lamps", [lamp(1), lamp(2), belt]) },
+        { index: 0, ...blueprint("Lamps", [lamp(1), lamp(2), gate]) },
         { index: 1, deconstruction_planner: { item: "deconstruction-planner", label: "Trees" } },
-        { index: 2, blueprint_book: { item: "blueprint-book", label: "Inner", blueprints: [{ index: 0, ...blueprint("Belts", [belt]) }, { index: 3, ...blueprint("Pole", [{ entity_number: 1, name: "substation", ...at(1, 1) }]) }] } },
+        { index: 2, blueprint_book: { item: "blueprint-book", label: "Inner", blueprints: [{ index: 0, ...blueprint("Gates", [gate]) }, { index: 3, ...blueprint("Pole", [{ entity_number: 1, name: "substation", ...at(1, 1) }]) }] } },
         { index: 5, upgrade_planner: { item: "upgrade-planner" } },
         { index: 6, blueprint: { item: "blueprint" } },
         { index: 7, something_else: {} },
@@ -126,7 +126,7 @@ describe("import: books and other items", () => {
     { path: [0], kind: "blueprint", label: "Lamps", entities: 3, known: 2 },
     { path: [1], kind: "deconstruction-planner", label: "Trees", entities: 0, known: 0 },
     { path: [2], kind: "book", label: "Inner", entities: 0, known: 0 },
-    { path: [2, 0], kind: "blueprint", label: "Belts", entities: 1, known: 0 },
+    { path: [2, 0], kind: "blueprint", label: "Gates", entities: 1, known: 0 },
     { path: [2, 1], kind: "blueprint", label: "Pole", entities: 1, known: 1 },
     { path: [3], kind: "upgrade-planner", label: "", entities: 0, known: 0 },
     { path: [4], kind: "blueprint", label: "", entities: 0, known: 0 },
@@ -142,7 +142,7 @@ describe("import: books and other items", () => {
   it("imports the blueprint of a book that is chosen by its path", () => {
     expect(imported(book, { select: [0] }).circuit).toMatchObject({ name: "Lamps", entities: [{ name: "lamp1" }, { name: "lamp2" }] });
     expect(imported(book, { select: [2, 1] }).circuit).toMatchObject({ name: "Pole", entities: [{ kind: "pole", prototype: "substation" }] });
-    expect(imported(book, { select: [2, 0] }).report).toMatchObject({ entities: 0, dropped: [{ name: "transport-belt", count: 1, reason: "unknown" }] });
+    expect(imported(book, { select: [2, 0] }).report).toMatchObject({ entities: 0, dropped: [{ name: "gate", count: 1, reason: "unknown" }] });
   });
 
   it("lists the book inside a book when that is chosen, and refuses what is not a blueprint or not there", () => {
@@ -167,7 +167,7 @@ describe("import: books and other items", () => {
   });
 
   it("describes a single blueprint", () => {
-    expect(inspectBlueprint(blueprint("One", [lamp(1), belt]))).toEqual({ kind: "blueprint", label: "One", entities: 2, known: 1, version: "2.1.24.0" });
+    expect(inspectBlueprint(blueprint("One", [lamp(1), gate]))).toEqual({ kind: "blueprint", label: "One", entities: 2, known: 1, version: "2.1.24.0" });
     expect(inspectBlueprint({ blueprint: {} })).toEqual({ kind: "blueprint", label: "", entities: 0, known: 0 });
   });
 });
@@ -176,13 +176,13 @@ describe("import: what is dropped", () => {
   const data = blueprintOf(
     [
       lamp(1),
-      { entity_number: 2, name: "transport-belt", ...at(1.5, 1.5), direction: 4 },
-      { entity_number: 3, name: "transport-belt", ...at(2.5, 1.5) },
-      { entity_number: 4, name: "inserter", ...at(3.5, 1.5), control_behavior: { circuit_enabled: true } },
+      { entity_number: 2, name: "gate", ...at(1.5, 1.5), direction: 4 },
+      { entity_number: 3, name: "gate", ...at(2.5, 1.5) },
+      { entity_number: 4, name: "straight-rail", ...at(3.5, 1.5), control_behavior: { circuit_enabled: true } },
       { entity_number: 5, name: "medium-electric-pole", ...at(5.5, 0.5) },
       { entity_number: 6, name: "medium-electric-pole", ...at(9.5, 0.5) },
       { entity_number: 7, name: "modded-combinator", ...at(7.5, 7.5) },
-      { entity_number: 8, name: "transport-belt", ...at(4.5, 1.5) },
+      { entity_number: 8, name: "gate", ...at(4.5, 1.5) },
       { entity_number: 9, name: "power-switch", ...at(12, 1) },
     ],
     [[1, 1, 5, 1], [1, 1, 4, 1], [4, 2, 5, 2], [5, 5, 6, 5], [5, 2, 6, 2], [6, 5, 9, 5], [9, 6, 6, 5], [2, 1, 3, 1], [1, 1, 77, 1]],
@@ -190,13 +190,13 @@ describe("import: what is dropped", () => {
 
   it("drops the entities of prototypes the editor does not know and says which, the most frequent first", () => {
     const { circuit, report } = imported(data);
-    expect(circuit.entities.map((entity) => entity.name)).toEqual(["lamp1", "pole1", "pole2"]);
-    expect(report.entities).toBe(3);
+    // The power switch is one of the entities a circuit wire connects to; gates and rails are not.
+    expect(circuit.entities.map((entity) => entity.name)).toEqual(["lamp1", "pole1", "pole2", "power_switch1"]);
+    expect(report.entities).toBe(4);
     expect(report.dropped).toEqual([
-      { name: "transport-belt", count: 3, reason: "unknown" },
-      { name: "inserter", count: 1, reason: "unknown" },
+      { name: "gate", count: 3, reason: "unknown" },
       { name: "modded-combinator", count: 1, reason: "unknown" },
-      { name: "power-switch", count: 1, reason: "unknown" },
+      { name: "straight-rail", count: 1, reason: "unknown" },
     ]);
     expect(report.settings).toEqual([]);
   });
@@ -204,14 +204,17 @@ describe("import: what is dropped", () => {
   it("drops their wires with them, and the copper wires between poles, and counts each", () => {
     const { circuit, report } = imported(data);
     expect(printCircuit(circuit).split("\n").filter((line) => line.includes("wire"))).toEqual(["    wire red lamp1.in <-> pole1", "    wire green pole1 <-> pole2"]);
-    expect(report.wires).toEqual({ imported: 2, copper: 1, toDropped: 5, invalid: 1 });
+    expect(report.wires).toEqual({ imported: 2, copper: 3, toDropped: 3, invalid: 1 });
   });
 
   it("knows every prototype of the editor and nothing else", () => {
-    const entities = [...PROTOTYPE_NAMES, "steel-chest", "", "Small-Lamp", "toString", "__proto__"].map((name, index) => ({ entity_number: index + 1, name, ...at(index * 3, 0) }));
+    const entities = [...PROTOTYPE_NAMES, "gate", "straight-rail", "", "Small-Lamp", "toString", "__proto__"].map((name, index) => ({ entity_number: index + 1, name, ...at(index * 3, 0) }));
     const { circuit, report } = imported(blueprintOf(entities));
-    expect(circuit.entities.map((entity) => (entity.kind === "pole" ? entity.prototype : entity.kind))).toEqual(["constant", "arithmetic", "decider", "selector", "lamp", "small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation", "speaker"]);
-    expect(report.dropped.map((entry) => `${entry.name} ${entry.reason}`).sort()).toEqual(["(no name) invalid", "Small-Lamp unknown", "__proto__ unknown", "steel-chest unknown", "toString unknown"]);
+    expect(PROTOTYPE_NAMES).toHaveLength(98);
+    expect(circuit.entities.map((entity) => prototypeOf(entity))).toEqual(PROTOTYPE_NAMES);
+    expect(circuit.entities.slice(0, 10).map((entity) => (entity.kind === "pole" ? entity.prototype : entity.kind))).toEqual(["constant", "arithmetic", "decider", "selector", "lamp", "small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation", "speaker"]);
+    expect(circuit.entities.slice(10).every((entity) => entity.kind === "entity")).toBe(true);
+    expect(report.dropped.map((entry) => `${entry.name} ${entry.reason}`).sort()).toEqual(["(no name) invalid", "Small-Lamp unknown", "__proto__ unknown", "gate unknown", "straight-rail unknown", "toString unknown"]);
   });
 
   it("drops a known entity that has no number of its own or no position, as invalid", () => {
@@ -223,7 +226,7 @@ describe("import: what is dropped", () => {
   });
 
   it("refuses a blueprint with more known entities than the limit, and counts only those", () => {
-    const entities = [...Array.from({ length: 5 }, (_, i) => lamp(i + 1)), ...Array.from({ length: 50 }, (_, i) => ({ entity_number: 100 + i, name: "transport-belt", ...at(i, 5.5) }))];
+    const entities = [...Array.from({ length: 5 }, (_, i) => lamp(i + 1)), ...Array.from({ length: 50 }, (_, i) => ({ entity_number: 100 + i, name: "gate", ...at(i, 5.5) }))];
     expect(codeOf(blueprintOf(entities), { limits: { maxEntities: 5 } })).toBe("ok");
     expect(importBlueprint(blueprintOf(entities), { limits: { maxEntities: 4 } })).toEqual({ ok: false, code: "too-many-entities", message: "The blueprint has more than 4 entities that the editor knows" });
   });
@@ -718,7 +721,7 @@ describe("import: programmable speaker", () => {
 
 describe("import: wires", () => {
   const SIDES: readonly (readonly [EntityKind, TerminalSide])[] = ENTITY_KINDS.flatMap((kind) => TERMINALS[kind].map((side) => [kind, side] as const));
-  const entity = (number: number, kind: EntityKind) => ({ entity_number: number, name: prototypesOf(kind)[0], ...at(number * 3 + (PROTOTYPES[prototypesOf(kind)[0]!].height > 1 ? 0 : 0.5), 0.5), direction: 4 });
+  const entity = (number: number, kind: EntityKind) => ({ entity_number: number, name: prototypesOf(kind)[0], ...at(number * 3 + (PROTOTYPES[prototypesOf(kind)[0]!]!.height > 1 ? 0 : 0.5), 0.5), direction: 4 });
 
   it("reads a wire between every two kinds of connection point, in both colors and in either order", () => {
     for (const [aKind, aSide] of SIDES) {

@@ -45,6 +45,8 @@ export interface FixtureExpectation {
   readonly networks?: readonly FixtureNetworkExpectation[];
   readonly lamps?: Readonly<Record<EntityId, FixtureLampExpectation>>;
   readonly speakers?: Readonly<Record<EntityId, FixtureSpeakerExpectation>>;
+  /** Generic entities: all conditions the snapshot reports for the entity, by setting key; null: it reports none. */
+  readonly conditions?: Readonly<Record<EntityId, Readonly<Record<string, boolean>> | null>>;
 }
 
 export interface ConformanceFixture {
@@ -162,6 +164,12 @@ function checkTick(fixture: ConformanceFixture, expectation: FixtureExpectation,
         if (expected[field] !== undefined && speaker[field] !== expected[field]) fail(`speaker ${id}`, `expected ${field} ${JSON.stringify(expected[field])}, got ${JSON.stringify(speaker[field])}`);
       }
     }
+  }
+  for (const [id, expected] of Object.entries(expectation.conditions ?? {})) {
+    const entity = snapshot.entities[id];
+    const sorted = (states: Readonly<Record<string, boolean>> | null | undefined): string => JSON.stringify(states ? Object.entries(states).sort(([a], [b]) => (a < b ? -1 : 1)) : null);
+    if (entity?.kind !== "entity") fail(`conditions ${id}`, "no such generic entity");
+    else if (sorted(entity.conditions) !== sorted(expected)) fail(`conditions ${id}`, `expected ${JSON.stringify(expected)}, got ${JSON.stringify(entity.conditions ?? null)}`);
   }
   return failures;
 }

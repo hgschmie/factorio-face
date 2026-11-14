@@ -6,6 +6,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { DEFAULT_ENTITY, PROTOTYPE_NAMES, PROTOTYPES, tileCenter, type Entity } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { CONNECTOR, DIRECTION_NUMBERS, encodeBlueprintString, exportBlueprint, LAMP_COLOR_MODE_NUMBERS, packVersion, type BlueprintFile } from "../src/index.ts";
+import { defineGroup, enumSettings } from "./gameNames.ts";
 import { arrangement, recordingTests, shape, type RecordedBlueprint, type Recording } from "./recording.ts";
 import { exportedSamples } from "./samples.ts";
 import { imported } from "./helpers.ts";
@@ -25,7 +26,7 @@ function rebuiltByAGame(data: BlueprintFile): RecordedBlueprint {
   const { entities, wires = [], ...rest } = data.blueprint;
   const number = (old: number): number => entities.length + 1 - old;
   const moved = [...entities].reverse().map((entity) => ({ ...entity, entity_number: number(entity.entity_number), position: { x: entity.position.x - 17, y: entity.position.y + 4 } }));
-  const poles = moved.filter((entity) => PROTOTYPES[entity.name as keyof typeof PROTOTYPES].kind === "pole").map((entity) => entity.entity_number);
+  const poles = moved.filter((entity) => PROTOTYPES[entity.name]?.kind === "pole").map((entity) => entity.entity_number);
   const copper = poles.slice(1).map((pole, index) => [poles[index]!, CONNECTOR.poleCopper, pole, CONNECTOR.poleCopper]);
   const rewired = wires.map(([from, fromConnector, to, toConnector]) => (number(from) <= number(to) ? [number(from), fromConnector, number(to), toConnector] : [number(to), toConnector, number(from), fromConnector]));
   return recorded({ blueprint: { ...rest, entities: moved, wires: [...copper, ...rewired.reverse()], version: packVersion(2, 1, 24, 3) } });
@@ -34,9 +35,11 @@ function rebuiltByAGame(data: BlueprintFile): RecordedBlueprint {
 /** One entity of every prototype with the settings of a new one, as this package exports it. */
 function freshBlueprint(): RecordedBlueprint {
   const entities = PROTOTYPE_NAMES.map((prototype, index): Entity => {
-    const kind = PROTOTYPES[prototype].kind;
+    const kind = PROTOTYPES[prototype]!.kind;
     const shape = { kind, prototype };
-    return { ...(kind === "pole" ? { ...DEFAULT_ENTITY.pole, prototype } : DEFAULT_ENTITY[kind]), id: `e${index}`, name: `e${index}`, position: { x: 0, y: 0 }, placement: { tile: tileCenter(shape, "north", { x: index * 4, y: 0 }), direction: "north" } } as Entity;
+    // Ten tiles apart: the largest footprint is nine tiles wide.
+    const placement = { tile: tileCenter(shape, "north", { x: index * 10, y: 0 }), direction: "north" };
+    return { ...(kind === "pole" || kind === "entity" ? { ...DEFAULT_ENTITY[kind], prototype } : DEFAULT_ENTITY[kind]), id: `e${index}`, name: `e${index}`, position: { x: 0, y: 0 }, placement } as Entity;
   });
   const result = exportBlueprint({ name: "", entities, wires: [] });
   if (!result.ok) throw new Error("the fresh entities do not export");
@@ -52,6 +55,7 @@ function madeUpRecording(): Recording {
       wire_connector_id: { circuit_red: 1, circuit_green: 2, combinator_input_red: 1, combinator_input_green: 2, combinator_output_red: 3, combinator_output_green: 4, pole_copper: 5, power_switch_left_copper: 5, power_switch_right_copper: 6 },
       wire_type: { red: 0, green: 1, copper: 2 },
       lamp_color_mode: { color_mapping: LAMP_COLOR_MODE_NUMBERS.mapping, components: LAMP_COLOR_MODE_NUMBERS.components, packed_rgb: LAMP_COLOR_MODE_NUMBERS["packed-rgb"] },
+      ...Object.fromEntries(enumSettings().map(({ spec, define }) => [defineGroup(define!), Object.fromEntries(spec.values.filter((entry) => entry.value !== undefined).map((entry) => [define!.members[entry.word]!, entry.value!]))])),
     },
     fresh: { placed: freshBlueprint(), withControlBehavior: freshBlueprint() },
     cases: exportedSamples().map(({ label, data }) => {

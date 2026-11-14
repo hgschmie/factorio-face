@@ -94,9 +94,12 @@ describe("standard entity table", () => {
   });
 });
 
+/** The prototypes with a kind of their own; every other one of the table is a generic entity (entitySettings.test.ts). */
+const OWN_NAMES = PROTOTYPE_NAMES.filter((name) => PROTOTYPES[name]!.kind !== "entity");
+
 describe("the editor's prototypes", () => {
   it("are what they were when their game data was written by hand", () => {
-    expect(PROTOTYPES).toEqual({
+    expect(Object.fromEntries(OWN_NAMES.map((name) => [name, PROTOTYPES[name]]))).toEqual({
       "constant-combinator": { kind: "constant", label: "constant combinator", width: 1, height: 1, rotatable: true },
       "arithmetic-combinator": { kind: "arithmetic", label: "arithmetic combinator", width: 1, height: 2, rotatable: true },
       "decider-combinator": { kind: "decider", label: "decider combinator", width: 1, height: 2, rotatable: true },
@@ -109,11 +112,11 @@ describe("the editor's prototypes", () => {
       "programmable-speaker": { kind: "speaker", label: "programmable speaker", width: 1, height: 1, rotatable: false },
     });
     expect(Object.keys(PROTOTYPES)).toEqual([...PROTOTYPE_NAMES]);
-    for (const name of PROTOTYPE_NAMES) expect("wireReach" in PROTOTYPES[name]).toBe(hasOwnWireReach(get(name)));
+    for (const name of PROTOTYPE_NAMES) expect("wireReach" in PROTOTYPES[name]!).toBe(hasOwnWireReach(get(name)));
   });
 
   it("are in the table of the game, none of them hidden or of a module other than base", () => {
-    for (const name of PROTOTYPE_NAMES) expect(get(name)).toMatchObject({ name, hidden: false, modules: ["base"], placedBy: [name] });
+    for (const name of OWN_NAMES) expect(get(name)).toMatchObject({ name, hidden: false, modules: ["base"], placedBy: [name] });
     expect(entityTable()).toBe(STANDARD_ENTITY_TABLE);
   });
 });

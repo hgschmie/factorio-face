@@ -2,7 +2,7 @@
 // docs/factorio-audit.md 3; the shapes the game has not confirmed yet are listed in the README of this package (fixture F-01).
 
 import {
-  canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, isTileCenter, NORMAL_QUALITY, prototypeOf, signalKey, TERMINALS, wireSpan,
+  canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, gamePrototype, isTileCenter, NORMAL_QUALITY, prototypeOf, signalKey, TERMINALS, wireSpan,
   type Circuit, type Condition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type SpeakerInstrument, type TerminalRef, type WireColor,
 } from "@face/model";
 import {
@@ -10,6 +10,7 @@ import {
   type Blueprint, type BlueprintCondition, type BlueprintDeciderOutput, type BlueprintEntity, type BlueprintFile, type BlueprintNetworks, type BlueprintSection, type BlueprintSignal, type BlueprintWire,
   type SelectorControlBehavior,
 } from "./schema.ts";
+import { parseBlueprintData, writeGeneric } from "./generic.ts";
 import { encodeBlueprintString } from "./string.ts";
 
 export interface ExportOptions {
@@ -22,7 +23,7 @@ export interface ExportOptions {
   readonly version?: number;
 }
 
-export type ExportProblemCode = "empty" | "no-tile" | "off-grid" | "overlap" | "custom-signal" | "unknown-instrument" | "unknown-note";
+export type ExportProblemCode = "empty" | "no-tile" | "off-grid" | "overlap" | "custom-signal" | "unknown-instrument" | "unknown-note" | "invalid-blueprint-data";
 
 /** Why a circuit cannot become a blueprint. One per code and cause; `entities` are the names of all entities it is about. */
 export interface ExportProblem {
@@ -74,6 +75,13 @@ class Exporter {
 
   private optional(id: SignalId | undefined): BlueprintSignal | undefined {
     return id && this.signal(id);
+  }
+
+  /** The kept data of a generic entity; what is not the JSON of an object is a problem and counts as none. */
+  private kept(entity: EntityOfKind<"entity">): Readonly<Record<string, unknown>> {
+    const kept = parseBlueprintData(entity.blueprintData);
+    if (!kept) this.problems.push({ code: "invalid-blueprint-data", entities: [entity.name], message: `'${entity.name}' cannot be exported: its blueprint data ('blueprint-data') is not the JSON text of an object` });
+    return kept ?? {};
   }
 
   private condition(condition: Condition | undefined): BlueprintCondition {
@@ -143,7 +151,7 @@ class Exporter {
   }
 
   /** The fields of an entity that depend on its kind. */
-  private settings(entity: Entity): Omit<BlueprintEntity, "entity_number" | "name" | "position" | "direction"> {
+  private settings(entity: Entity, kept: Readonly<Record<string, unknown>>): Omit<BlueprintEntity, "entity_number" | "name" | "position" | "direction"> {
     const behavior = (value: object): { control_behavior?: BlueprintEntity["control_behavior"] } => (Object.keys(value).length ? { control_behavior: value as BlueprintEntity["control_behavior"] } : {});
     switch (entity.kind) {
       case "constant": {
@@ -200,6 +208,8 @@ class Exporter {
       }
       case "pole":
         return {};
+      case "entity":
+        return writeGeneric(entity, kept, { signal: (id) => this.signal(id), condition: (condition) => this.condition(condition) });
       case "speaker": {
         const volumeSignal = this.optional(entity.volumeSignal);
         const icon = this.optional(entity.alertIcon);
@@ -229,12 +239,15 @@ class Exporter {
     const tile = entity.placement?.tile ?? { x: 0, y: 0 };
     // The game has the description on the four combinators only.
     const description = entity.description && isCombinator(entity) ? { player_description: entity.description } : {};
+    const kept = entity.kind === "entity" ? this.kept(entity) : {};
+    // A generic entity writes its direction with the fields it kept, where it kept one.
+    const direction = entity.kind !== "entity" && canRotate(entity) && facing !== "north" ? DIRECTION_NUMBERS[facing] : undefined;
     return {
       entity_number: number,
       name: prototypeOf(entity),
       position: { x: tile.x, y: tile.y },
-      ...(canRotate(entity) && facing !== "north" && { direction: DIRECTION_NUMBERS[facing] }),
-      ...this.settings(entity),
+      ...(direction !== undefined && { direction }),
+      ...this.settings(entity, kept),
       ...description,
     };
   }
@@ -279,11 +292,19 @@ function placementProblems(circuit: Circuit): ExportProblem[] {
   return problems;
 }
 
-/** Up to four icons: the items of the most frequent entities, as the game picks them for a new blueprint. Every entity of the editor has an item of its own name. */
+/**
+ * Up to four icons: the items of the most frequent entities, as the game picks them for a new blueprint. The item is the one that
+ * builds the entity (`placedBy` of the entity table); the few prototypes without one (chests of the game's editor) are shown as entities.
+ */
 function icons(entities: readonly Entity[]): Blueprint["icons"] {
-  const counts = new Map<string, number>();
-  for (const entity of entities) counts.set(prototypeOf(entity), (counts.get(prototypeOf(entity)) ?? 0) + 1);
-  return [...counts].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([name], index) => ({ signal: { name }, index: index + 1 }));
+  const counts = new Map<string, { signal: BlueprintSignal; count: number }>();
+  for (const entity of entities) {
+    const name = prototypeOf(entity);
+    const item = gamePrototype(entity).placedBy[0];
+    const entry = counts.get(name) ?? { signal: item === undefined ? { type: "entity" as const, name } : { name: item }, count: 0 };
+    counts.set(name, { ...entry, count: entry.count + 1 });
+  }
+  return [...counts.values()].sort((a, b) => b.count - a.count).slice(0, 4).map(({ signal }, index) => ({ signal, index: index + 1 }));
 }
 
 /**

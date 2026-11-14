@@ -284,11 +284,11 @@ describe("export: programmable speaker", () => {
 
 describe("export: wires", () => {
   const SIDES: readonly (readonly [EntityKind, TerminalSide])[] = ENTITY_KINDS.flatMap((kind) => TERMINALS[kind].map((side) => [kind, side] as const));
-  const entity = (kind: EntityKind, name: string): Entity => parse(`${kind} ${name} { }`).entities[0]!;
+  const entity = (kind: EntityKind, name: string): Entity => parse(`${kind} ${name} { ${kind === "entity" ? "prototype = steel-chest" : ""} }`).entities[0]!;
 
   it("has the connector ids of the game: 1 and 2 for an input or an only connection point, 3 and 4 for the output of a combinator with both", () => {
     const ids = SIDES.map(([kind, side]) => `${kind}.${side} ${connectorId({ kind }, { side }, "red")} ${connectorId({ kind }, { side }, "green")}`);
-    expect(ids).toEqual(["constant.out 1 2", "arithmetic.in 1 2", "arithmetic.out 3 4", "decider.in 1 2", "decider.out 3 4", "selector.in 1 2", "selector.out 3 4", "lamp.in 1 2", "pole.io 1 2", "speaker.in 1 2"]);
+    expect(ids).toEqual(["constant.out 1 2", "arithmetic.in 1 2", "arithmetic.out 3 4", "decider.in 1 2", "decider.out 3 4", "selector.in 1 2", "selector.out 3 4", "lamp.in 1 2", "pole.io 1 2", "speaker.in 1 2", "entity.io 1 2"]);
   });
 
   it("writes a wire between every two kinds of connection point, in both colors, the lower entity number first", () => {

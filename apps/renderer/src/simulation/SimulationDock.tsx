@@ -91,7 +91,7 @@ export function SimulationDock({ simulation, describeSignal, onRun, onPause, onS
         </div>
         {traces.length === 0 ? (
           <p className="muted-note">
-            {simulation.entityStatus.size === 0 ? "Nothing to trace yet. Add a component to start watching signals." : "Nothing to trace here: a pole only passes signals on. Select a combinator, a lamp or a speaker to watch it."}
+            {simulation.entityStatus.size === 0 ? "Nothing to trace yet. Add a component to start watching signals." : "Nothing to trace here: a pole only passes signals on, and the other entities of the game send nothing in the simulation. Select a combinator, a lamp or a speaker to watch it."}
           </p>
         ) : (
           <table className="traces">

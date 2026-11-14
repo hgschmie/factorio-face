@@ -1,6 +1,7 @@
 // Dispatches to the settings form of the entity's kind. All forms are controlled: they render `entity` and emit a
 // complete replacement through `onChange`. A kind with several game prototypes first says which one the entity is.
 import { prototypesOf, type Entity } from "@face/model";
+import { prototypeFacts, prototypeLabel } from "../entities/kindInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { ArithmeticForm } from "./ArithmeticForm.tsx";
 import { ConstantForm } from "./ConstantForm.tsx";
@@ -35,6 +36,9 @@ function KindForm({ entity, onChange }: EntitySettingsFormProps) {
       return null;
     case "speaker":
       return <SpeakerForm entity={entity} onChange={onChange} />;
+    case "entity":
+      // Generic entities: minimal until the entity package (selector, drawing, inspector). No form: a note says where the settings are.
+      return null;
   }
 }
 
@@ -45,6 +49,16 @@ const NOTES: Readonly<Partial<Record<Entity["kind"], string>>> = {
 
 export function EntitySettingsForm({ entity, resolveEntityIcon, onChange }: EntitySettingsFormProps) {
   const note = NOTES[entity.kind];
+  if (entity.kind === "entity") {
+    const facts = prototypeFacts(entity);
+    return (
+      <FormSection title="Type">
+        <p className="muted-note" data-generic-entity={entity.prototype}>
+          {prototypeLabel(entity)} ({entity.prototype}){facts && `: ${facts}`}. Its circuit settings are edited in the source for now: the properties of its declaration, as the language reference lists them for this entity.
+        </p>
+      </FormSection>
+    );
+  }
   return (
     <>
       {prototypesOf(entity.kind).length > 1 && (

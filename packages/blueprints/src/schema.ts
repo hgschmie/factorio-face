@@ -176,6 +176,9 @@ export interface SpeakerAlertParameters {
   readonly alert_message: string;
 }
 
+/** The control behaviour of a generic entity: the fields of its settings (`ENTITY_SETTINGS` of the model) and the ones it kept. */
+export type GenericControlBehavior = Readonly<Record<string, unknown>>;
+
 export interface BlueprintEntity {
   readonly entity_number: number;
   readonly name: string;
@@ -183,7 +186,7 @@ export interface BlueprintEntity {
   readonly direction?: number;
   /** Combinators only. */
   readonly player_description?: string;
-  readonly control_behavior?: ConstantControlBehavior | ArithmeticControlBehavior | DeciderControlBehavior | SelectorControlBehavior | LampControlBehavior | SpeakerControlBehavior;
+  readonly control_behavior?: ConstantControlBehavior | ArithmeticControlBehavior | DeciderControlBehavior | SelectorControlBehavior | LampControlBehavior | SpeakerControlBehavior | GenericControlBehavior;
   /** Lamp. */
   readonly always_on?: true;
   /** Lamp: 0 to 1 per channel. */
@@ -191,6 +194,8 @@ export interface BlueprintEntity {
   /** Speaker. */
   readonly parameters?: SpeakerParameters;
   readonly alert_parameters?: SpeakerAlertParameters;
+  /** A generic entity: whatever it kept of the blueprint it came from (`recipe`, `filters`, `quality`, ...). */
+  readonly [kept: string]: unknown;
 }
 
 /** Entity number and connector of one end, then of the other. */

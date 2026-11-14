@@ -1,10 +1,10 @@
 // Editor helpers: what the grammar expects at a caret position, in terms a completion source can use directly.
 
-import { SELECTOR_OPERATIONS, TERMINALS, TERMINAL_SIDES, type EntityKind, type SelectorOperation, type TerminalSide, type Wildcard } from "@face/model";
+import { prototypesOf, SELECTOR_OPERATIONS, TERMINALS, TERMINAL_SIDES, type EntityKind, type TerminalSide, type Wildcard } from "@face/model";
 import type { ParseResult } from "./analyze.ts";
 import type { CstEntity } from "./cst.ts";
 import { expectationsAfter } from "./parser.ts";
-import { enumValues, lookupProperty, propertyNames, SIGNAL_SLOTS, STATEMENT_KEYWORDS } from "./schema.ts";
+import { conditionRoles, enumValues, lookupProperty, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_KEYWORDS, type PropertyVariant } from "./schema.ts";
 import { decodeString, type Token } from "./tokens.ts";
 
 export interface TerminalCandidate {
@@ -51,12 +51,20 @@ function tokenBefore(tokens: readonly Token[], offset: number): Token | undefine
   return found && offset <= found.to ? found : undefined;
 }
 
-function operationOf(entity: CstEntity | undefined): SelectorOperation | undefined {
-  if (entity?.kind !== "selector") return undefined;
-  for (const statement of entity.body?.statements ?? []) {
-    if (statement.type === "property" && statement.name.text === "operation" && statement.value && (SELECTOR_OPERATIONS as readonly string[]).includes(statement.value.text)) {
-      return statement.value.text as SelectorOperation;
+/** What narrows the properties of a declaration: the operation of a selector, the prototype of a generic entity (undefined while it names none). */
+function variantOf(entity: CstEntity | undefined): PropertyVariant | undefined {
+  const statements = entity?.body?.statements ?? [];
+  if (entity?.kind === "entity") {
+    for (const statement of statements) {
+      if (statement.type !== "property" || statement.name.text !== PROTOTYPE_PROPERTY || !statement.value) continue;
+      const name = statement.value.kind === "string" ? decodeString(statement.value.text) : statement.value.text;
+      return (prototypesOf("entity") as readonly string[]).includes(name) ? name : undefined;
     }
+    return undefined;
+  }
+  if (entity?.kind !== "selector") return undefined;
+  for (const statement of statements) {
+    if (statement.type === "property" && statement.name.text === "operation" && statement.value && (SELECTOR_OPERATIONS as readonly string[]).includes(statement.value.text)) return statement.value.text;
   }
   return "select";
 }
@@ -83,7 +91,8 @@ export function completionContext(parse: ParseResult, offset: number): Completio
   const partial = token && PARTIAL_KINDS.has(token.kind) ? token : undefined;
   const from = partial ? partial.from : offset;
   const entity = parse.cst.circuit?.members.findLast((m): m is CstEntity => m.type === "entity" && m.from <= offset);
-  const operation = operationOf(entity);
+  const variant = variantOf(entity);
+  const variantFor = (kind: EntityKind): PropertyVariant | undefined => (kind === "selector" || kind === "entity" ? variant : undefined);
 
   const keywords = new Set<string>();
   const expected: Completion[] = [];
@@ -95,20 +104,25 @@ export function completionContext(parse: ParseResult, offset: number): Completio
       case "statement": {
         const { kind, section } = expectation;
         if (!section) for (const value of STATEMENT_KEYWORDS[kind]) keywords.add(value);
-        expected.push({ type: "property", kind, names: propertyNames(kind, kind === "selector" ? operation : undefined, section) });
+        // The further conditions of a generic entity start with their role: `logistic when ...`.
+        if (kind === "entity" && variant !== undefined) for (const role of conditionRoles(variant)) keywords.add(role);
+        // Until a generic entity says which prototype it is, that is what there is to say.
+        const names = kind === "entity" && variant === undefined ? ["description", PROTOTYPE_PROPERTY] : propertyNames(kind, variantFor(kind), section);
+        expected.push({ type: "property", kind, names });
         if (kind === "constant") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["constant.filter"] });
         else if (kind === "arithmetic") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["arithmetic.output"] });
         break;
       }
       case "value": {
-        const lookup = lookupProperty(expectation.kind, expectation.property, expectation.kind === "selector" ? operation : undefined, expectation.section);
+        const lookup = lookupProperty(expectation.kind, expectation.property, variantFor(expectation.kind), expectation.section);
         if (lookup.status !== "ok") break;
-        const values = enumValues(expectation.kind, expectation.property, expectation.kind === "selector" ? operation : undefined, expectation.section);
+        const values = enumValues(expectation.kind, expectation.property, variantFor(expectation.kind), expectation.section);
         if (values.length) expected.push({ type: "enum", property: expectation.property, values });
         for (const alternative of lookup.spec.values) {
           if (alternative.type === "signal") expected.push({ type: "signal", wildcards: alternative.wildcards });
           else if (alternative.type === "int") expected.push({ type: "literal", kind: "integer" });
           else if (alternative.type === "number" || alternative.type === "string" || alternative.type === "color" || alternative.type === "quality") expected.push({ type: "literal", kind: alternative.type });
+          else if (alternative.type === "name" && alternative.of === "prototype") expected.push({ type: "enum", property: expectation.property, values: prototypesOf("entity") });
           else if (alternative.type === "name") expected.push(alternative.of === "instrument" ? { type: "instrument" } : { type: "note", ...instrumentOf(entity) });
         }
         break;
@@ -121,7 +135,7 @@ export function completionContext(parse: ParseResult, offset: number): Completio
         break;
       case "side": {
         const target = [...parse.sourceMap.entities.values()].find((e) => e.name === expectation.entity);
-        // Only `in` and `out` are written behind a dot; the one point of a pole is its bare name.
+        // Only `in` and `out` are written behind a dot; the one point of a pole or a generic entity is its bare name.
         expected.push({ type: "side", entity: expectation.entity, sides: (target ? TERMINALS[target.kind] : TERMINAL_SIDES).filter((side) => side !== "io") });
         break;
       }

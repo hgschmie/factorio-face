@@ -18,6 +18,7 @@ export const DIAGNOSTIC_SEVERITY = {
   "contradictory-statement": "error",
   "invalid-statement": "error",
   "unknown-property": "error",
+  "missing-prototype": "error",
   "invalid-value": "error",
   "invalid-signal": "error",
   "duplicate-wire": "warning",
