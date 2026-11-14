@@ -18,6 +18,8 @@ declare global {
 
 export function useProjectSession(api: FaceApi | undefined): WorkbenchController {
   const [session] = useState(() => new ProjectSession({ api }));
+  // The window shows the empty project at once; the project that was open last replaces it when it has been read.
+  useEffect(() => void session.start(), [session]);
   useEffect(() => {
     window.faceSession = { getState: () => session.state, commands: session.commands };
     return () => {

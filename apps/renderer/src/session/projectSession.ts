@@ -26,10 +26,11 @@ import { SourceDocument } from "./document.ts";
 import { checkDraft, normalizeEntity } from "./drafts.ts";
 import { languageSupport, lintTransaction } from "./editorSupport.ts";
 import { createCatalogEnvironment } from "./environment.ts";
-import { isDirty, openProjectFile, savedProjectFile, starterProject, toProjectData, type ProjectFile, type ProjectSettings } from "./persistence.ts";
+import { emptyProject, isDirty, openProjectFile, savedProjectFile, toProjectData, type ProjectFile, type ProjectSettings } from "./persistence.ts";
 import { SimulationRunner, type Scheduler } from "./simulationRunner.ts";
 
 const NO_DESKTOP = "Projects can only be opened and saved in the desktop app.";
+const LAST_PROJECT_NOT_REOPENED = "The last project could not be reopened.";
 const PROJECT_NAME_LIMIT = 200;
 const NOT_A_FRAGMENT = "Nothing was pasted: the clipboard does not hold entities of a circuit.";
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
@@ -46,7 +47,7 @@ export interface SessionOptions {
   /** Editor behaviour and appearance added to the document state. Defaults to the workbench's editor chrome. */
   readonly editorExtensions?: Extension;
   readonly scheduler?: Scheduler;
-  /** The project to start with. Defaults to a new project with the example circuit. */
+  /** The project to start with. Defaults to an empty, unsaved project. */
   readonly project?: LoadedProject;
 }
 
@@ -67,6 +68,8 @@ export class ProjectSession {
   private file: ProjectFile;
   private settings: ProjectSettings;
   private epoch = 0;
+  /** Set once the start has asked for the last project; settles when that is on show or it is clear that the empty project stays. */
+  private started: Promise<void> | undefined;
 
   private selection: readonly EntityId[] = [];
   /** Selected wires as `wireKey`s. A key holds entity ids, so it survives renames and moves. */
@@ -97,7 +100,7 @@ export class ProjectSession {
   constructor(options: SessionOptions = {}) {
     this.api = options.api;
     this.catalog = options.catalog ?? loadStandardCatalog();
-    const { file, source, settings } = openProjectFile(options.project ?? starterProject());
+    const { file, source, settings } = openProjectFile(options.project ?? emptyProject());
     this.file = file;
     this.settings = settings;
     this.services = new CatalogService(this.catalog, settings.modules);
@@ -506,12 +509,10 @@ export class ProjectSession {
         if (isWireReach(wireReach) && wireReach !== this.settings.wireReach) this.applySettings({ ...this.settings, wireReach });
       }),
 
-      newProject: () => this.replaceProject(async (api) => {
-        const created = await api.newProject();
-        return created.ok ? { ok: true, value: starterProject(created.value.data.manifest) } : created;
-      }),
+      newProject: () => this.replaceProject((api) => api.newProject()),
       openProject: () => this.replaceProject((api) => api.openProject()),
       loadProject: (path) => this.replaceProject((api) => api.loadProject(path)),
+      openExample: (file) => this.replaceProject((api) => api.openExample(file)),
       save: () => this.writeProject(false),
       saveAs: () => this.writeProject(true),
     };
@@ -559,6 +560,26 @@ export class ProjectSession {
     });
   }
 
+  /**
+   * What a freshly started app does once: it opens the project that was open last in place of the empty one it began with, without a
+   * prompt and without an unsaved change. With no such project the empty one stays; so it does, with a message, when the project
+   * cannot be read any more. Later calls return the same promise.
+   */
+  start(): Promise<void> {
+    return (this.started ??= this.reopenLastProject());
+  }
+
+  private async reopenLastProject(): Promise<void> {
+    const api = this.api;
+    if (!api) return;
+    const file = this.file;
+    // A call that fails outright must not leave a rejected promise behind: every later project command waits for this one.
+    const last = await api.openLastProject().catch((error: unknown): IpcResult<null> => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+    if (!last.ok) return this.fail(`${LAST_PROJECT_NOT_REOPENED} ${last.error}`);
+    // What the user made of the empty project meanwhile is not thrown away.
+    if (last.value && this.file === file && !isDirty(file, this.document.text, this.settings)) this.load(last.value);
+  }
+
   private fail(message: string): void {
     this.change(() => this.show(message));
   }
@@ -598,6 +619,8 @@ export class ProjectSession {
   private async replaceProject(load: (api: FaceApi) => Promise<IpcResult<LoadedProject | null>>): Promise<void> {
     const api = this.api;
     if (!api) return this.fail(NO_DESKTOP);
+    // A project chosen while the start is still asking for the last one is opened after it, not replaced by it.
+    await this.started;
     if (!(await this.mayReplaceProject(api))) return;
     const project = this.unwrap(await load(api));
     if (project) this.load(project);

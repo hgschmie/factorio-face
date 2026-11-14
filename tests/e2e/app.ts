@@ -1,4 +1,5 @@
-// Launching and driving the built app. Each launch gets its own profile directory under .runtime/test-user-data.
+// Launching and driving the built app. Each launch gets its own profile directory under .runtime/test-user-data. A launch opens the
+// example that ships with the app unless the test asks for the window as the app starts it.
 import { _electron, test as base, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import type { ChildProcess } from "node:child_process";
@@ -17,6 +18,10 @@ export const NO_GAME_DIR = resolve(GAMES_DIR, "none");
 export const SCREENSHOT_DIR = resolve(ROOT, ".runtime/screenshots");
 export const MEASUREMENT_DIR = resolve(ROOT, ".runtime/measurements");
 export const APP_TITLE = "FActorio Circuit Editor";
+/** The example that ships with the app (examples/), by its project name: its entry in File > Open Example. */
+export const EXAMPLE_NAME = "Feedback example";
+/** The source of the project the app starts with and File > New Project gives. */
+export const EMPTY_SOURCE = 'circuit "Untitled circuit" {\n}\n';
 
 let launchCount = 0;
 /** The OS process behind each launched app. Playwright's own handle is gone once the app has closed. */
@@ -36,6 +41,12 @@ export interface LaunchOptions {
   readonly userData?: string;
   /** Overrides, among them FACE_GAME_DIR (the folder auto-detection looks at; by default one that does not exist) and FACE_ASSET_ROOT (the bundled icons). */
   readonly env?: Readonly<Record<string, string>>;
+  /**
+   * What the window shows when the launch returns. "example", the default: the example that ships with the app, opened the way a
+   * user opens it, through File > Open Example; most specs work on that circuit. "start": what the app shows by itself, which is
+   * an empty project and then, in a profile that has one, the project that was open last (the caller waits for it).
+   */
+  readonly open?: "example" | "start";
 }
 
 export interface RunningApp {
@@ -55,7 +66,20 @@ export async function launchApp(options: LaunchOptions = {}): Promise<RunningApp
   processes.set(app, app.process());
   const page = await app.firstWindow();
   await page.waitForSelector(".app-shell");
+  if ((options.open ?? "example") === "example") {
+    await openExample(app, page);
+    await page.locator("g.card").nth(3).waitFor();
+  }
   return { app, page, userData };
+}
+
+/** Opens the example through File > Open Example and waits for its circuit. An open project with unsaved changes makes the app ask first. */
+export async function openExample(app: ElectronApplication, page: Page): Promise<void> {
+  await clickMenu(app, "File", "Open Example", EXAMPLE_NAME);
+  await page.waitForFunction((name) => {
+    const state = window.faceSession?.getState();
+    return state?.project.name === name && state.project.path === null && state.circuit.entities.length === 4;
+  }, EXAMPLE_NAME);
 }
 
 /** Closes the app without getting stuck in the unsaved-changes prompt. Kills only the process this test started. */
@@ -359,6 +383,20 @@ export async function clickMenu(app: ElectronApplication, ...path: string[]): Pr
   }, path);
   await command.evaluate((waiting) => waiting.handled);
   await command.dispose();
+}
+
+/** The labels of the items of a submenu of the native application menu, for example `menuLabels(app, "File", "Open Recent")`; "-" for a separator. */
+export function menuLabels(app: ElectronApplication, ...path: string[]): Promise<string[]> {
+  return app.evaluate(({ Menu }, labels) => {
+    let items = Menu.getApplicationMenu()!.items;
+    for (const label of labels) items = items.find((item) => item.label === label)?.submenu?.items ?? [];
+    return items.map((item) => (item.type === "separator" ? "-" : item.label));
+  }, path);
+}
+
+/** True while the window is marked as having unsaved changes: what makes closing it ask first. */
+export function isDocumentEdited(app: ElectronApplication): Promise<boolean> {
+  return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isDocumentEdited());
 }
 
 /** Selects an entity by clicking its card. */

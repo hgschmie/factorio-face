@@ -1,5 +1,6 @@
 // The complete contract between the Electron main process and the renderer.
-// Main and preload import it at runtime; the renderer imports it type-only. Keep it free of Node and Electron imports.
+// Main and preload import it at runtime; the renderer imports its types, and constants only through the pure modules it shares with
+// the main process (emptyProject.ts). Keep it free of Node and Electron imports.
 
 export const APP_NAME = "FActorio Circuit Editor";
 export const APP_ID = "de.softwareforge.face";
@@ -40,6 +41,9 @@ export const LIMITS = {
   customSignalsPerGroup: 4096,
   identifierLength: 200,
   recentProjects: 10,
+  /** Example projects listed from the examples directory. */
+  examples: 64,
+  exampleFileNameLength: 255,
 } as const;
 
 // Project format v1 (ADR 0001, item 6): a zip archive (*.faceproj) with face.json and the *.face sources at its root; assets/ is reserved for custom icons.
@@ -175,12 +179,18 @@ export const SIMPLE_MENU_COMMANDS = [
 ] as const;
 export type SimpleMenuCommandId = (typeof SIMPLE_MENU_COMMANDS)[number];
 
-export type MenuCommand = { readonly id: SimpleMenuCommandId } | { readonly id: "file.openRecent"; readonly path: string };
+export type MenuCommand =
+  | { readonly id: SimpleMenuCommandId }
+  | { readonly id: "file.openRecent"; readonly path: string }
+  // `file`: the file name of an example, as the main process listed it.
+  | { readonly id: "file.openExample"; readonly file: string };
 
 export const CHANNELS = {
   newProject: "face:project:new",
   openProject: "face:project:open",
   loadProject: "face:project:load",
+  openLastProject: "face:project:open-last",
+  openExample: "face:project:open-example",
   saveProject: "face:project:save",
   saveProjectAs: "face:project:save-as",
   getRecentProjects: "face:recent:list",
@@ -207,6 +217,16 @@ export interface FaceApi {
   /** Shows the native file dialog. Resolves with null when the user cancels. */
   openProject(): Promise<IpcResult<LoadedProject | null>>;
   loadProject(path: string): Promise<IpcResult<LoadedProject>>;
+  /**
+   * The project that was opened or saved last (the top of the recent projects), read as `loadProject` reads it; null when there is none.
+   * An error when it cannot be read any more. Takes no arguments: the main process alone decides which project that is.
+   */
+  openLastProject(): Promise<IpcResult<LoadedProject | null>>;
+  /**
+   * An example that ships with the app, as an unsaved copy: `path` is null, so saving asks for a location and the shipped file is never
+   * written. `file` is a file name the main process listed in File > Open Example, never a path; any other name is refused.
+   */
+  openExample(file: string): Promise<IpcResult<LoadedProject>>;
   /** Replaces the project file atomically. Resolves with null when a location dialog was cancelled. */
   saveProject(request: SaveProjectRequest): Promise<IpcResult<SavedProject | null>>;
   saveProjectAs(data: ProjectData): Promise<IpcResult<SavedProject | null>>;

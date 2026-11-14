@@ -1,9 +1,9 @@
 // Recently opened projects, stored as JSON under userData.
 import { mkdir, readFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { LIMITS, type RecentProject } from "./ipc.ts";
-import { writeFileAtomic } from "./projectStore.ts";
-import { parseRecentProjects } from "./validation.ts";
+import { LIMITS, type LoadedProject, type RecentProject } from "./ipc.ts";
+import { readProject, writeFileAtomic } from "./projectStore.ts";
+import { parseProjectPath, parseRecentProjects } from "./validation.ts";
 
 export class RecentProjects {
   private entries: RecentProject[] | undefined;
@@ -37,4 +37,13 @@ export class RecentProjects {
     await mkdir(dirname(this.filePath), { recursive: true });
     await writeFileAtomic(this.filePath, JSON.stringify(this.entries ?? [], null, 2) + "\n");
   }
+}
+
+/**
+ * The project a freshly started app opens: the top of the list, which is the one opened or saved last. Null when the list is empty.
+ * Rejects when that project cannot be read; an older entry never stands in for it.
+ */
+export async function readLastProject(recentProjects: Pick<RecentProjects, "list">): Promise<LoadedProject | null> {
+  const last = (await recentProjects.list())[0];
+  return last ? readProject(parseProjectPath(last.path)) : null;
 }

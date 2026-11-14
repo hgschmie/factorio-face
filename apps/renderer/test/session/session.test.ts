@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { firstRangeAfter } from "../../src/editor/tokenHighlight.ts";
 import { Analysis } from "../../src/session/analysis.ts";
 import { highlightTokens } from "../../src/session/editorSupport.ts";
-import { STARTER_SOURCE } from "../../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, replaceText, type } from "./helpers.ts";
 
 describe("invalid source", () => {
@@ -119,7 +119,7 @@ describe("invalid source", () => {
 describe("version guard", () => {
   it("ignores an analysis result that answers an older request", () => {
     const analysis = new Analysis();
-    const first = analysis.request(STARTER_SOURCE, 1, undefined);
+    const first = analysis.request(EXAMPLE_SOURCE, 1, undefined);
     const second = analysis.request(IRREGULAR, 2, undefined);
     expect(analysis.accept(first)).toBe(false);
     expect(analysis.parse).toBeUndefined();
@@ -135,7 +135,7 @@ describe("version guard", () => {
 
   it("a stale result delivered to the session never replaces a newer draft", () => {
     const { session, notifications } = createSession(IRREGULAR);
-    const stale = analyze(STARTER_SOURCE, undefined, { version: 1 });
+    const stale = analyze(EXAMPLE_SOURCE, undefined, { version: 1 });
     type(session, 0, "// newer\n");
     const state = session.state;
     const count = notifications();
@@ -144,7 +144,7 @@ describe("version guard", () => {
     expect(session.state.circuit.name).toBe("Irregular");
     expect(notifications()).toBe(count);
     // Not even a result that happens to carry a future number is taken without having been requested.
-    expect(session.acceptAnalysis(analyze(STARTER_SOURCE, undefined, { version: 999 }))).toBe(false);
+    expect(session.acceptAnalysis(analyze(EXAMPLE_SOURCE, undefined, { version: 999 }))).toBe(false);
     expect(session.state.circuit.name).toBe("Irregular");
   });
 });

@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, readdir, readFile, rm, truncate, writeFile } from "node
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { LIMITS, PROJECT_FILE_EXTENSION, type ProjectData } from "../src/ipc.ts";
-import { createEmptyProject, readProject, writeFileAtomic, writeProject } from "../src/projectStore.ts";
-import { RecentProjects } from "../src/recentProjects.ts";
+import { createEmptyProject } from "../src/emptyProject.ts";
+import { readProject, writeFileAtomic, writeProject } from "../src/projectStore.ts";
+import { readLastProject, RecentProjects } from "../src/recentProjects.ts";
 import { parseProjectData, ValidationError } from "../src/validation.ts";
 
 // Scratch space inside the repository; never the system temp directory.
@@ -337,5 +338,41 @@ describe("recent projects", () => {
     const file = join(scratch, "corrupt-recent.json");
     await writeFile(file, "not json");
     expect(await new RecentProjects(file).list()).toEqual([]);
+  });
+});
+
+describe("the project a freshly started app opens", () => {
+  const recentWith = async (name: string, ...paths: string[]): Promise<RecentProjects> => {
+    const recent = new RecentProjects(join(scratch, `${name}-recent.json`));
+    // Added oldest first, so the first path given ends up on top.
+    for (const path of paths.reverse()) await recent.add(path, "Stored");
+    return recent;
+  };
+
+  it("is none when no project was ever opened or saved", async () => {
+    expect(await readLastProject(await recentWith("start-none"))).toBeNull();
+  });
+
+  it("is the top of the recent projects, read from disk", async () => {
+    const last = await projectFile("start-last");
+    const older = await projectFile("start-older");
+    await writeProject(last, project);
+    await writeProject(older, { ...project, manifest: { ...project.manifest, name: "Older" } });
+    const recent = await recentWith("start-last", last, older);
+    expect(await readLastProject(recent)).toEqual({ path: last, data: project });
+    // Reading decides nothing about the list: the caller records the project as opened.
+    expect((await recent.list()).map((entry) => entry.path)).toEqual([last, older]);
+  });
+
+  it("fails when the last project is gone or damaged, and an older one does not stand in for it", async () => {
+    const older = await projectFile("start-fallback");
+    await writeProject(older, project);
+    const deleted = await projectFile("start-deleted");
+    const damaged = await projectFile("start-damaged", strToU8("this is not a zip archive"));
+    await expect(readLastProject(await recentWith("start-deleted", deleted, older))).rejects.toThrow(`Project file not found: ${deleted}`);
+    await expect(readLastProject(await recentWith("start-damaged", damaged, older))).rejects.toThrow(/Not a face project file \(it is not a readable zip archive\)/);
+    // An entry of the dropped directory format, or any other path that does not name a project file, is not even looked at.
+    await expect(readLastProject(await recentWith("start-directory", scratch, older))).rejects.toThrow(/Not a face project file \(the name must end in .faceproj\)/);
+    for (const name of ["start-deleted", "start-damaged", "start-directory"]) expect(JSON.parse(await readFile(join(scratch, `${name}-recent.json`), "utf8"))).toHaveLength(2);
   });
 });

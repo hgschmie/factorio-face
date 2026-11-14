@@ -3,7 +3,7 @@
 // Edit menu items do: on macOS those are native and cannot be clicked from here) and real clicks in the context menu, whose Paste
 // goes through the main process like Edit > Paste.
 import type { ElectronApplication, Page } from "@playwright/test";
-import { canvas, card, cardGrabPoint, CARET, clickCenter, clickMenu, clientPointOf, committedPositions, entityNames, expect, selectEntity, sourceText, test, wires } from "./app.ts";
+import { canvas, card, cardGrabPoint, CARET, clickCenter, clientPointOf, committedPositions, entityNames, expect, openExample, selectEntity, sourceText, test, wires } from "./app.ts";
 import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 const SOURCE_AND_GATE = `constant source at (40, 80) {
@@ -285,8 +285,8 @@ test("pastes into another project with names that are free there, and ignores ot
   await page.keyboard.press("ControlOrMeta+c");
   await expect.poll(() => readClipboard(app)).toBe(SOURCE_AND_GATE);
 
-  // A new project holds the example circuit, which has a source and a gate of its own in the same places.
-  await clickMenu(app, "File", "New Project");
+  // The example circuit has a source and a gate of its own in the same places.
+  await openExample(app, page);
   await expect(page.locator("g.card")).toHaveCount(4);
   await expect(page.locator(".project-meta .path")).not.toContainText("Feedback example.faceproj");
   const before = await sourceText(page);

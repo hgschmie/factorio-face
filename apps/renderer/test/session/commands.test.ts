@@ -1,12 +1,12 @@
 // Graphical commands are small source patches in one transaction, and the editor history is the only undo stack.
 import { describe, expect, it } from "vitest";
-import { STARTER_SOURCE } from "../../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, type } from "./helpers.ts";
 
 describe("graphical commands as source patches", () => {
   it("starts with the example circuit, valid and without history", () => {
     const { session } = createSession();
-    expect(session.state.source).toBe(STARTER_SOURCE);
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
     expect(session.state.circuit.entities.map((entity) => entity.name)).toEqual(["source", "gate", "twice", "light"]);
     expect(session.state.circuit.wires).toHaveLength(4);
     expect(session.state).toMatchObject({ editable: true, canUndo: false, canRedo: false, diagnostics: [], selection: [] });

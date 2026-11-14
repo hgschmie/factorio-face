@@ -2,7 +2,7 @@
 import type { Point } from "@face/model";
 import { describe, expect, it } from "vitest";
 import type { ProjectSession } from "../../src/session/projectSession.ts";
-import { STARTER_SOURCE } from "../../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { nudgeDelta } from "../../src/shortcuts/shortcuts.ts";
 import { createSession, entityNamed, idOf, IRREGULAR, replaceText } from "./helpers.ts";
 
@@ -19,7 +19,7 @@ describe("nudging the selection", () => {
     session.commands.nudgeSelection(nudgeDelta("ArrowRight", false));
     expect(notifications()).toBe(before + 1);
     expect(positions(session, "source", "gate", "twice")).toEqual([{ x: 60, y: 80 }, { x: 320, y: 80 }, { x: 300, y: 240 }]);
-    expect(session.state.source).toBe(STARTER_SOURCE.replace("source at (40, 80)", "source at (60, 80)").replace("gate at (300, 80)", "gate at (320, 80)"));
+    expect(session.state.source).toBe(EXAMPLE_SOURCE.replace("source at (40, 80)", "source at (60, 80)").replace("gate at (300, 80)", "gate at (320, 80)"));
     expect(selected(session)).toEqual(["source", "gate"]);
     expect(session.state.circuit.wires).toHaveLength(4);
 
@@ -29,7 +29,7 @@ describe("nudging the selection", () => {
     session.commands.undo();
     expect(positions(session, "source", "gate")).toEqual([{ x: 60, y: 80 }, { x: 320, y: 80 }]);
     session.commands.undo();
-    expect(session.state.source).toBe(STARTER_SOURCE);
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
     expect(session.state.canUndo).toBe(false);
     expect(selected(session)).toEqual(["source", "gate"]);
   });
@@ -66,7 +66,7 @@ describe("nudging the selection", () => {
     const before = notifications();
     session.commands.nudgeSelection({ x: 0, y: 0 });
     expect(notifications()).toBe(before);
-    expect(session.state).toMatchObject({ source: STARTER_SOURCE, canUndo: false, error: null });
+    expect(session.state).toMatchObject({ source: EXAMPLE_SOURCE, canUndo: false, error: null });
 
     replaceText(session, "when virtual:signal-A < 10", "when virtual:signal-A <");
     expect(session.state.editable).toBe(false);
@@ -97,7 +97,7 @@ describe("duplicating the selection", () => {
     expect(session.state.source).toBe(pasted.state.source);
 
     session.commands.undo();
-    expect(session.state).toMatchObject({ source: STARTER_SOURCE, canUndo: false });
+    expect(session.state).toMatchObject({ source: EXAMPLE_SOURCE, canUndo: false });
     session.commands.redo();
     expect(names(session)).toHaveLength(6);
   });
@@ -112,7 +112,7 @@ describe("duplicating the selection", () => {
     expect(positions(session, "light2", "light3")).toEqual([{ x: 600, y: 120 }, { x: 640, y: 160 }]);
     session.commands.undo();
     session.commands.undo();
-    expect(session.state.source).toBe(STARTER_SOURCE);
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
   });
 
   it("does nothing without a selected entity and while the source has errors, and reports nothing", () => {
@@ -124,7 +124,7 @@ describe("duplicating the selection", () => {
     expect(session.state.wireSelection).toHaveLength(1);
     session.commands.duplicateSelection();
     expect(notifications()).toBe(before + 1);
-    expect(session.state).toMatchObject({ source: STARTER_SOURCE, canUndo: false, error: null });
+    expect(session.state).toMatchObject({ source: EXAMPLE_SOURCE, canUndo: false, error: null });
 
     select(session, "gate");
     replaceText(session, "when virtual:signal-A < 10", "when virtual:signal-A <");

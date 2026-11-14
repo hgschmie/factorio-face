@@ -1,4 +1,4 @@
-// Profile and asset locations. Development and test runs set FACE_USER_DATA so nothing is written outside the workspace.
+// Profile, asset and example locations. Development and test runs set FACE_USER_DATA so nothing is written outside the workspace.
 import { isAbsolute, join, normalize, resolve } from "node:path";
 
 export interface ProfilePaths {
@@ -41,4 +41,14 @@ export function resolveAssetRoot({ env, packaged, mainDirectory, resourcesPath }
     return normalize(override);
   }
   return packaged ? join(resourcesPath, "catalog") : resolve(mainDirectory, "../packages/catalog/generated");
+}
+
+/** Where the example projects are: FACE_EXAMPLES_DIR wins; otherwise `examples/` of the repository (development) or of the application's resources (packaged). */
+export function resolveExamplesDirectory({ env, packaged, mainDirectory, resourcesPath }: AssetRootOptions): string {
+  const override = env.FACE_EXAMPLES_DIR;
+  if (override) {
+    if (!isAbsolute(override)) throw new Error(`FACE_EXAMPLES_DIR must be an absolute path: ${override}`);
+    return normalize(override);
+  }
+  return packaged ? join(resourcesPath, "examples") : resolve(mainDirectory, "../examples");
 }

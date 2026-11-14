@@ -269,6 +269,8 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
           return void commands.openProject();
         case "file.openRecent":
           return void commands.loadProject(command.path);
+        case "file.openExample":
+          return void commands.openExample(command.file);
         case "file.save":
           return void save();
         case "file.saveAs":

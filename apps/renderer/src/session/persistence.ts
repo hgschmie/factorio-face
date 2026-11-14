@@ -1,11 +1,9 @@
 // The project as a file: what was loaded, what is saved, and whether the two differ. Pure; the IPC calls are in the session.
 import { DEFAULT_WIRE_REACH } from "@face/model";
+import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
 import type { CircuitFile, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
-import { STARTER_PROJECT_NAME, STARTER_SOURCE } from "./starter.ts";
 
 export const DEFAULT_FILE_NAME = "main.face";
-export const DEFAULT_GAME_VERSION = "2.1.24";
-export const DEFAULT_MODULES: readonly string[] = ["base", "space-age", "quality", "recycler", "elevated-rails"];
 
 /** The editable project settings. */
 export interface ProjectSettings {
@@ -30,13 +28,9 @@ export interface ProjectFile {
   readonly savedSettings: ProjectSettings;
 }
 
-function starterManifest(defaults?: ProjectManifest): ProjectManifest {
-  return { formatVersion: 1, gameVersion: DEFAULT_GAME_VERSION, modules: DEFAULT_MODULES, customSignalGroups: [], ...defaults, name: STARTER_PROJECT_NAME, circuits: [DEFAULT_FILE_NAME] };
-}
-
-/** A new, unsaved project with the example circuit. `defaults` is the manifest the desktop shell creates for new projects. */
-export function starterProject(defaults?: ProjectManifest): LoadedProject {
-  return { path: null, data: { manifest: starterManifest(defaults), files: [{ name: DEFAULT_FILE_NAME, source: STARTER_SOURCE }] } };
+/** What a session shows before a project is opened: the empty project File > New Project gives, not saved anywhere. */
+export function emptyProject(): LoadedProject {
+  return { path: null, data: createEmptyProject() };
 }
 
 export function openProjectFile(project: LoadedProject): { readonly file: ProjectFile; readonly source: string; readonly settings: ProjectSettings } {

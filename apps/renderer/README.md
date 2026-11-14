@@ -27,10 +27,9 @@ src/
     simulationView.ts  snapshots to dock traces and card statuses                    (pure)
     catalogService.ts  per module set: SignalResolver, signal info, picker tree, module list for the settings
     environment.ts     simulation environment from the catalog (order, stack sizes, rocket capacity, qualities)   (pure)
-    persistence.ts     project file mapping, dirty comparison, starter project      (pure)
+    persistence.ts     project file mapping, dirty comparison, the empty project a session begins with   (pure)
     completion.ts      completion candidates from the language's expectations and the catalog   (pure)
     editorSupport.ts   CodeMirror glue: token kinds, lint transaction, completion source
-    starter.ts         the example circuit of docs/dsl.md, the content of a new project
     useProjectSession.ts  React binding (useSyncExternalStore) and the `window.faceSession` probe
   workbench/
     controller.ts      the WorkbenchController seam (state, commands, shared view types)
@@ -103,7 +102,10 @@ test/                  vitest: pure view modules
 test/session/          vitest: the session, headless (commands, invalid source, simulation, catalog, persistence, drafts)
 ```
 
-End-to-end tests live in `tests/e2e/` and drive the built app with Playwright's Electron support.
+End-to-end tests live in `tests/e2e/` and drive the built app with Playwright's Electron support. The app starts with an empty project (or
+the last one of the profile), so `launchApp` opens the example through File > Open Example before it returns, which is the circuit most
+specs work on; `launchApp({ open: "start" })` leaves the window as the app started it. Unit tests that need the example as sample text
+take it from `test/fixtures/example.ts`, which reads the source the shipped project file is written from (`tools/examples`).
 
 ## The WorkbenchController seam
 
@@ -128,7 +130,7 @@ below).
 `toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `snapToTiles`, `clearTiles`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
-`loadProject`, `save`, `saveAs`).
+`loadProject`, `openExample`, `save`, `saveAs`).
 
 ## How the session works
 
@@ -266,7 +268,19 @@ simulation (`run`, `pause`,
   circuit (`CompiledCircuit.terminals`): the snapshot alone cannot tell an input without a wire from a wire that carries
   nothing. A status is cached per entity record of the snapshot and the map per entity table. The engine replaces a record
   exactly when what the entity reads, emits or lights changes, so a card gets a new status object, and renders, only then.
-- **Project files.** New project (the example circuit), open, save, save as and open recent go through `window.face`. Dirty means: the text
+- **Project files.** New project, open, save, save as, open recent and open example go through `window.face`. A new project is the
+  empty one the main process creates (`createEmptyProject` in `apps/desktop/src/emptyProject.ts`: one circuit, `circuit "Untitled circuit" {}`
+  on two lines, no entities); the session begins with the same project, which that module also gives the renderer, so the window never
+  waits for a file. An example (File > Open Example, `openExample(file)`) is a project file that ships with the app; it arrives without
+  a path, so it is an unsaved copy without unsaved changes, Save asks for a location, and it is not a recent project. Every one of
+  these asks first when the open project has unsaved changes.
+- **Start.** `useProjectSession` calls `session.start()` once: it asks the main process for the project that was open last
+  (`openLastProject()`, the top of Open Recent) and loads it in place of the empty project, without a prompt and without an unsaved
+  change. With no such project the empty one stays. When the project cannot be read any more the empty one stays as well and the toast
+  says "The last project could not be reopened." with the reason; its entry stays in Open Recent, as it does for a recent project that
+  fails to open by hand. What the user did to the empty project before the answer arrived is kept (the last project is then not
+  opened), and a project command given meanwhile runs after the start.
+- **Dirty** means: the text
   or the settings (name, module set, wire reach) differ from what was saved. The wire reach is written to `face.json` only when it is not
   the default (9), so a project that never changed it has no such field. Manifest fields this version does not edit (custom signal groups, unknown
   fields in `extras`, other circuit files) are written back as loaded.
@@ -861,4 +875,5 @@ npm run build                 # dist/renderer, dist/main.cjs, dist/preload.cjs  
 npm start                     # run the built app; profile in .runtime/user-data
 npx vitest run apps           # unit tests (session tests need no DOM)
 npm run test:e2e              # Playwright against the built app; output in .runtime/
+npm run examples              # write examples/*.faceproj from tools/examples/*.face (--check: fail when they differ)
 ```

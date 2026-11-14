@@ -3,7 +3,7 @@ import type { Point } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { CLIPBOARD_TEXT_LIMIT, clipboardText, PASTE_OFFSET, pasteShift, readClipboardText } from "../../src/session/clipboard.ts";
 import type { ProjectSession } from "../../src/session/projectSession.ts";
-import { STARTER_SOURCE } from "../../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, entityNamed, idOf, IRREGULAR, replaceText } from "./helpers.ts";
 
 const GROUP_TEXT = `constant source at (40, 80) {
@@ -38,7 +38,7 @@ describe("clipboard text", () => {
     const { session } = createSession();
     const fragment = readClipboardText(GROUP_TEXT)!;
     expect(clipboardText({ name: "", ...fragment }, fragment.entities.map((entity) => entity.id))).toBe(GROUP_TEXT);
-    expect(readClipboardText(STARTER_SOURCE)?.entities).toHaveLength(4);
+    expect(readClipboardText(EXAMPLE_SOURCE)?.entities).toHaveLength(4);
     for (const text of ["", "   \n", "// a comment", "some words", "{}", "lamp a {", "wire red a.out <-> b.in", `${GROUP_TEXT}wire red gate.out <-> light.in\n`, `${copy(session, "light")}}`]) {
       expect(readClipboardText(text), text).toBeUndefined();
     }
@@ -86,7 +86,7 @@ describe("paste", () => {
     expect(positions(session, "source2", "gate2")).toEqual([{ x: 80, y: 120 }, { x: 340, y: 120 }]);
     expect(session.state.circuit.wires).toHaveLength(6);
     expect(session.state.source).toBe(
-      STARTER_SOURCE.replace("    wire red source.out", "    constant source2 at (80, 120) {\n        virtual:signal-A = 1\n    }\n\n    decider gate2 at (340, 120) {\n        when virtual:signal-A < 10\n        output virtual:signal-A = input\n    }\n\n    wire red source.out").replace(
+      EXAMPLE_SOURCE.replace("    wire red source.out", "    constant source2 at (80, 120) {\n        virtual:signal-A = 1\n    }\n\n    decider gate2 at (340, 120) {\n        when virtual:signal-A < 10\n        output virtual:signal-A = input\n    }\n\n    wire red source.out").replace(
         "light.in\n",
         "light.in\n    wire red source2.out <-> gate2.in\n    wire green gate2.out <-> gate2.in\n",
       ),
@@ -94,7 +94,7 @@ describe("paste", () => {
     expect(session.state).toMatchObject({ editable: true, error: null, canUndo: true });
 
     session.commands.undo();
-    expect(session.state.source).toBe(STARTER_SOURCE);
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
     expect(session.state).toMatchObject({ canUndo: false, selection: [] });
     session.commands.redo();
     expect(names(session)).toEqual(["source", "gate", "twice", "light", "source2", "gate2"]);
@@ -116,7 +116,7 @@ describe("paste", () => {
     session.commands.undo();
     session.commands.undo();
     session.commands.undo();
-    expect(session.state.source).toBe(STARTER_SOURCE);
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
   });
 
   it("places the group with its corner at the given point", () => {
@@ -167,7 +167,7 @@ describe("paste", () => {
       session.commands.dismissError();
       session.commands.pasteEntities(text);
       expect(session.state.error, text).toMatch(/^Nothing was pasted/);
-      expect(session.state.source).toBe(STARTER_SOURCE);
+      expect(session.state.source).toBe(EXAMPLE_SOURCE);
       expect(session.state).toMatchObject({ canUndo: false, selection: [] });
     }
   });
@@ -202,7 +202,7 @@ describe("paste", () => {
 
 describe("paste and duplicate on the blueprint board", () => {
   /** `source` and `gate` stand on tiles; `twice` and `light` have none. */
-  const BOARD = STARTER_SOURCE.replace("constant source at (40, 80)", "constant source at (40, 80) tile (0.5, 0.5)")
+  const BOARD = EXAMPLE_SOURCE.replace("constant source at (40, 80)", "constant source at (40, 80) tile (0.5, 0.5)")
     .replace("decider gate at (300, 80)", "decider gate at (300, 80) tile (3, 0.5) facing west");
 
   it("gives copies without a tile at the edit position a paste without a corner gives them, whatever point comes with it", () => {
@@ -262,7 +262,7 @@ describe("cut", () => {
     session.commands.undo();
     expect(names(session)).toEqual(["twice", "light"]);
     session.commands.undo();
-    expect(session.state.source).toBe(STARTER_SOURCE);
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
     expect(session.state.canUndo).toBe(false);
   });
 

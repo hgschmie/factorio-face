@@ -608,11 +608,10 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
   const changed = { ...manifest, viewState: { zoom: 1.25, pinned: ["gate"] }, customSignalGroups };
   await writeProjectEntries(projectPath, { ...unpacked, "face.json": JSON.stringify(changed, null, 2) });
 
-  const second = await launchApp({ userData: first.userData });
+  // The relaunched app reopens the project by itself: it was the last one open.
+  const second = await launchApp({ userData: first.userData, open: "start" });
   try {
     const { app, page } = second;
-    await expect(page.getByTestId("project-name")).toHaveText("Feedback example");
-    await clickMenu(app, "File", "Open Recent", "Round trip");
     await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
     await expect(page.getByTestId("project-name")).toHaveText("Round trip");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");

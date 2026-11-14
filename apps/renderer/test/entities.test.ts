@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 import { formatSignal, parseSignalText, shortSignal } from "../src/entities/signalText.ts";
 import { entitySummary, truncate } from "../src/entities/summary.ts";
 import { entityNameError, parseInt32, parseSignalField } from "../src/inspector/validation.ts";
-import { STARTER_SOURCE } from "../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
 
 /** The example circuit of a new project, extended with a selector so that every kind is covered. */
 function exampleCircuit(): Circuit {
-  const result = analyze(STARTER_SOURCE.replace("    wire red source.out", "    selector pick at (560, 240) { operation = select  order = min  index = virtual:signal-I }\n\n    wire red source.out"));
+  const result = analyze(EXAMPLE_SOURCE.replace("    wire red source.out", "    selector pick at (560, 240) { operation = select  order = min  index = virtual:signal-I }\n\n    wire red source.out"));
   if (!result.circuit) throw new Error(JSON.stringify(result.diagnostics));
   return result.circuit;
 }

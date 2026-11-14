@@ -1,10 +1,10 @@
 import { wireKey, type Circuit, type Wire } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { STARTER_SOURCE } from "../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
 import { countLabel, entityNames, selectedItems, selectionStatus, wireEndsLabel } from "../src/workbench/selectionText.ts";
 import { createSession } from "./session/helpers.ts";
 
-const circuit: Circuit = createSession(STARTER_SOURCE).session.state.circuit;
+const circuit: Circuit = createSession(EXAMPLE_SOURCE).session.state.circuit;
 const [source, gate, twice, light] = circuit.entities.map((entity) => entity.id) as [string, string, string, string];
 const wire = (color: Wire["color"], from: string, to: string): Wire => circuit.wires.find((candidate) => candidate.color === color && candidate.a.entity === from && candidate.b.entity === to)!;
 const red = wire("red", source, gate);

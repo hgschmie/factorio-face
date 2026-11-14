@@ -1,18 +1,21 @@
 // Native application menu. Items that belong to the document forward a command to the renderer instead of acting in main.
 import type { MenuItemConstructorOptions } from "electron";
 import { menuAccelerator } from "./accelerators.ts";
+import type { ExampleProject } from "./examples.ts";
 import { APP_NAME, type MenuCommand, type RecentProject, type SimpleMenuCommandId } from "./ipc.ts";
 
 export interface MenuOptions {
   readonly platform: NodeJS.Platform;
   readonly developerTools: boolean;
   readonly recentProjects: readonly RecentProject[];
+  /** The example projects that ship with the app, in the order of the menu. */
+  readonly examples: readonly ExampleProject[];
   send(command: MenuCommand): void;
   clearRecentProjects(): void;
 }
 
 export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOptions[] {
-  const { platform, recentProjects, send } = options;
+  const { platform, recentProjects, examples, send } = options;
   const isMac = platform === "darwin";
   // The keys are in accelerators.ts, which the shortcut overview of the renderer reads as well.
   const command = (label: string, id: SimpleMenuCommandId): MenuItemConstructorOptions => ({ label, accelerator: menuAccelerator(id, isMac), click: () => send({ id }) });
@@ -25,6 +28,10 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
     recentProjects.length === 0
       ? [{ label: "No Recent Projects", enabled: false }]
       : [...recentProjects.map((project) => ({ label: `${project.name} (${project.path})`, click: () => send({ id: "file.openRecent", path: project.path }) })), separator, { label: "Clear Recent Projects", click: options.clearRecentProjects }];
+
+  // An example is named by its file, which the main process checks against its own list when the renderer asks for it.
+  const exampleItems: MenuItemConstructorOptions[] =
+    examples.length === 0 ? [{ label: "No Examples", enabled: false }] : examples.map((example) => ({ label: example.name, click: () => send({ id: "file.openExample", file: example.file }) }));
 
   const appMenu: MenuItemConstructorOptions[] = isMac
     ? [
@@ -58,6 +65,7 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         command("New Project", "file.new"),
         command("Open Project...", "file.open"),
         { label: "Open Recent", submenu: recentItems },
+        { label: "Open Example", submenu: exampleItems },
         separator,
         command("Save", "file.save"),
         command("Save As...", "file.saveAs"),

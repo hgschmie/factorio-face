@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 ENV := source scripts/env.sh &&
 
-.PHONY: install build typecheck test e2e run catalog probe-wire-reach clean
+.PHONY: install build typecheck test e2e run catalog examples probe-wire-reach clean
 
 install:
 	$(ENV) npm install && node node_modules/electron/install.js
@@ -24,6 +24,10 @@ run: build
 
 catalog:
 	$(ENV) npm run catalog
+
+# Writes examples/*.faceproj, the example projects that ship with the app, from the circuit sources in tools/examples.
+examples:
+	$(ENV) npm run examples
 
 # Records tests/fixtures/game/F-24-wire-reach.json from the installed game.
 probe-wire-reach:

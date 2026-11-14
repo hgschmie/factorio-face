@@ -7,7 +7,7 @@ import { TILE } from "../src/canvas/board.ts";
 import { cardRect, entitiesBounds, GRID, pinPlaces, pinPoint, rectsIntersect } from "../src/canvas/geometry.ts";
 import { blueprintLayout, editLayout, layoutFor, SELF_WIRE_SAG } from "../src/canvas/layout.ts";
 import { FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire } from "../src/canvas/wireRouting.ts";
-import { STARTER_SOURCE } from "../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
 
 function circuitOf(source: string): Circuit {
   const result = analyze(source);
@@ -37,7 +37,7 @@ function ends(circuit: Circuit, wire: Wire): [Entity, Entity] {
 }
 
 describe("edit layout", () => {
-  const circuit = circuitOf(STARTER_SOURCE.replace("gate at (300, 80)", "gate at (300, 80) facing south"));
+  const circuit = circuitOf(EXAMPLE_SOURCE.replace("gate at (300, 80)", "gate at (300, 80) facing south"));
 
   it("is the card geometry: rectangles, pins, bounds, the grid", () => {
     const layout = editLayout(circuit.entities);

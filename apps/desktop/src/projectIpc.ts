@@ -3,15 +3,18 @@
 import { dialog, type BrowserWindow, type FileFilter } from "electron";
 import { existsSync } from "node:fs";
 import { basename, join } from "node:path";
+import { createEmptyProject } from "./emptyProject.ts";
+import type { Examples } from "./examples.ts";
 import { CHANNELS, PROJECT_FILE_EXTENSION, UNSAVED_CHOICES, type LoadedProject, type ProjectData, type SavedProject, type UnsavedChoice } from "./ipc.ts";
 import type { IpcHandle } from "./ipcHandle.ts";
-import { createEmptyProject, readProject, writeProject } from "./projectStore.ts";
-import type { RecentProjects } from "./recentProjects.ts";
+import { readProject, writeProject } from "./projectStore.ts";
+import { readLastProject, type RecentProjects } from "./recentProjects.ts";
 import { parseProjectData, parseProjectPath, parseSaveProjectRequest, ValidationError, withProjectExtension } from "./validation.ts";
 
 export interface ProjectIpcContext {
   readonly window: BrowserWindow;
   readonly recentProjects: RecentProjects;
+  readonly examples: Examples;
   /** Folder the open and save dialogs start in; undefined leaves the choice to the operating system. */
   readonly projectsDirectory?: string;
   onRecentProjectsChanged(): void;
@@ -39,7 +42,7 @@ function suggestedFileName(projectName: string): string {
 }
 
 export function registerProjectIpc(handle: IpcHandle, context: ProjectIpcContext): void {
-  const { window, recentProjects, projectsDirectory } = context;
+  const { window, recentProjects, examples, projectsDirectory } = context;
 
   const remember = async (path: string, name: string): Promise<void> => {
     await recentProjects.add(path, name);
@@ -89,6 +92,21 @@ export function registerProjectIpc(handle: IpcHandle, context: ProjectIpcContext
   });
 
   handle(CHANNELS.loadProject, (path) => load(parseProjectPath(path)));
+
+  // What a freshly started window asks for: the last project, recorded as opened like one chosen by hand. One that cannot be read
+  // any more keeps its place in the list, as it does when it is chosen from File > Open Recent: its volume may only be missing for now.
+  handle(CHANNELS.openLastProject, async (): Promise<LoadedProject | null> => {
+    const project = await readLastProject(recentProjects);
+    if (project?.path) await remember(project.path, project.data.manifest.name);
+    return project;
+  });
+
+  // An example opens as a copy without a path: saving asks for a location, and it does not join the recent projects.
+  handle(CHANNELS.openExample, async (file): Promise<LoadedProject> => {
+    const project = await examples.open(file);
+    context.onProjectPathChanged(null);
+    return project;
+  });
 
   handle(CHANNELS.saveProject, (request) => {
     const { path, data } = parseSaveProjectRequest(request);

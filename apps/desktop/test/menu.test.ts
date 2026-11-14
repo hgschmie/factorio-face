@@ -7,7 +7,7 @@ import { buildMenuTemplate, type MenuOptions } from "../src/menu.ts";
 function build(options: Partial<MenuOptions> = {}): { readonly template: MenuItemConstructorOptions[]; readonly sent: MenuCommand[]; readonly cleared: () => number } {
   const sent: MenuCommand[] = [];
   let cleared = 0;
-  const template = buildMenuTemplate({ platform: "darwin", developerTools: false, recentProjects: [], send: (command) => void sent.push(command), clearRecentProjects: () => void cleared++, ...options });
+  const template = buildMenuTemplate({ platform: "darwin", developerTools: false, recentProjects: [], examples: [], send: (command) => void sent.push(command), clearRecentProjects: () => void cleared++, ...options });
   return { template, sent, cleared: () => cleared };
 }
 
@@ -26,7 +26,7 @@ describe("application menu", () => {
 
   it("has the required items in the File, Edit and Simulation menus", () => {
     const { template } = build({ platform: "darwin" });
-    expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "-", "Save", "Save As...", "-", "role:close"]);
+    expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "Open Example", "-", "Save", "Save As...", "-", "role:close"]);
     expect(names(menu(template, "Edit"))).toEqual(["Undo", "Redo", "-", "role:cut", "role:copy", "role:paste", "Delete", "Select All"]);
     expect(names(menu(template, "Simulation"))).toEqual(["Run / Pause", "Step", "Reset"]);
     // The system adds its search field to the menu with the help role.
@@ -42,7 +42,7 @@ describe("application menu", () => {
     expect(names(menu(darwin, "File"))).not.toContain("Settings...");
     for (const platform of ["linux", "win32"] as const) {
       const { template, sent } = build({ platform });
-      expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "-", "Save", "Save As...", "-", "Settings...", "-", "role:quit"]);
+      expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "Open Example", "-", "Save", "Save As...", "-", "Settings...", "-", "role:quit"]);
       const settings = menu(template, "File").find((item) => item.label === "Settings...")!;
       expect(settings.accelerator).toBe("CmdOrCtrl+,");
       click(settings);
@@ -72,7 +72,7 @@ describe("application menu", () => {
   });
 
   it.each(["darwin", "linux", "win32"] as const)("has no stray separators and no accelerator twice on %s", (platform) => {
-    const { template } = build({ platform, developerTools: true, recentProjects: [{ name: "Demo", path: "/projects/demo.faceproj", openedAt: OPENED }] });
+    const { template } = build({ platform, developerTools: true, recentProjects: [{ name: "Demo", path: "/projects/demo.faceproj", openedAt: OPENED }], examples: [{ file: "demo.faceproj", name: "Demo" }] });
     for (const item of flatten(template)) {
       const entries = names(itemsOf(item));
       if (entries.length === 0) continue;
@@ -132,5 +132,15 @@ describe("application menu", () => {
     expect(sent).toEqual([{ id: "file.openRecent", path: "/projects/other.faceproj" }]);
     click(recent[3]!);
     expect(cleared()).toBe(1);
+  });
+
+  it("lists the examples by project name and names the chosen one by its file", () => {
+    expect(menu(menu(build().template, "File"), "Open Example")).toEqual([{ label: "No Examples", enabled: false }]);
+    const { template, sent } = build({ examples: [{ file: "adder.faceproj", name: "Adder" }, { file: "Feedback example.faceproj", name: "Feedback example" }] });
+    const examples = menu(menu(template, "File"), "Open Example");
+    expect(names(examples)).toEqual(["Adder", "Feedback example"]);
+    expect(examples.map((item) => item.accelerator)).toEqual([undefined, undefined]);
+    click(examples[1]!);
+    expect(sent).toEqual([{ id: "file.openExample", file: "Feedback example.faceproj" }]);
   });
 });

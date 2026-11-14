@@ -6,6 +6,7 @@ import {
   parseArchiveEntryName,
   parseBoolean,
   parseCircuitFileName,
+  parseExampleFileName,
   parseGameDirectory,
   parseManifest,
   parseManifestFile,
@@ -56,6 +57,42 @@ describe("project paths", () => {
     expect(withProjectExtension("/projects/demo.faceproj")).toBe("/projects/demo.faceproj");
     expect(withProjectExtension("/projects/demo.FaceProj")).toBe("/projects/demo.FaceProj");
     expect(parseProjectPath(withProjectExtension("/projects/demo"))).toBe("/projects/demo.faceproj");
+  });
+});
+
+describe("example file names", () => {
+  it("accepts plain names of project files", () => {
+    for (const name of ["Feedback example.faceproj", "a.faceproj", "Zähler (2).faceproj", "v1.2.faceproj", "DEMO.FACEPROJ"]) expect(parseExampleFileName(name)).toBe(name);
+  });
+
+  it.each([
+    ["sub/a.faceproj"],
+    ["/examples/a.faceproj"],
+    ["../a.faceproj"],
+    ["..\\a.faceproj"],
+    ["sub\\a.faceproj"],
+    ["C:a.faceproj"],
+    ["a.faceproj:stream"],
+    ["a..faceproj"],
+    [".."],
+    ["."],
+    [".faceproj"],
+    [".hidden.faceproj"],
+    ["a.faceproj\0"],
+    ["a\nb.faceproj"],
+    ["a.faceproj/"],
+    ["a"],
+    ["a.zip"],
+    ["a.faceproj.txt"],
+    [""],
+    ["a".repeat(LIMITS.exampleFileNameLength) + ".faceproj"],
+    [42],
+    [null],
+    [undefined],
+    [["a.faceproj"]],
+    [{ file: "a.faceproj" }],
+  ])("rejects %j", (value) => {
+    expect(() => parseExampleFileName(value)).toThrow(ValidationError);
   });
 });
 

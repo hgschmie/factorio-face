@@ -60,7 +60,7 @@ describe("shortcut table", () => {
     const flatten = (items: readonly Electron.MenuItemConstructorOptions[]): Electron.MenuItemConstructorOptions[] => items.flatMap((item) => [item, ...flatten(Array.isArray(item.submenu) ? item.submenu : [])]);
     for (const [platform, mac] of [["darwin", true], ["linux", false], ["win32", false]] as const) {
       const sent: string[] = [];
-      const items = flatten(buildMenuTemplate({ platform, developerTools: false, recentProjects: [], send: (command) => void sent.push(command.id), clearRecentProjects: () => undefined }));
+      const items = flatten(buildMenuTemplate({ platform, developerTools: false, recentProjects: [], examples: [], send: (command) => void sent.push(command.id), clearRecentProjects: () => undefined }));
       const registered = new Map<string, string | undefined>();
       for (const item of items) {
         if (!item.click) continue;

@@ -4,18 +4,8 @@ import { strToU8, unzipSync, zipSync, type UnzipFileInfo, type Unzipped } from "
 import { randomBytes } from "node:crypto";
 import { open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { DEFAULT_CIRCUIT_FILE, LIMITS, MANIFEST_FILE_NAME, PROJECT_FILE_EXTENSION, PROJECT_FORMAT_VERSION, type LoadedProject, type ProjectData } from "./ipc.ts";
+import { LIMITS, MANIFEST_FILE_NAME, PROJECT_FILE_EXTENSION, type LoadedProject, type ProjectData } from "./ipc.ts";
 import { manifestFileContent, parseArchiveEntryName, parseCircuitFileName, parseManifestFile, ValidationError } from "./validation.ts";
-
-export const DEFAULT_GAME_VERSION = "2.1.24";
-export const DEFAULT_MODULES = ["base", "space-age", "quality", "recycler", "elevated-rails"] as const;
-
-export function createEmptyProject(name = "Untitled circuit"): ProjectData {
-  return {
-    manifest: { formatVersion: PROJECT_FORMAT_VERSION, name, gameVersion: DEFAULT_GAME_VERSION, modules: [...DEFAULT_MODULES], customSignalGroups: [], circuits: [DEFAULT_CIRCUIT_FILE] },
-    files: [{ name: DEFAULT_CIRCUIT_FILE, source: `circuit ${JSON.stringify(name)} {\n}\n` }],
-  };
-}
 
 /** Writes to a temporary file in the same directory, flushes it and renames it over the target, so readers never see a partial file. */
 export async function writeFileAtomic(path: string, content: string | Uint8Array): Promise<void> {

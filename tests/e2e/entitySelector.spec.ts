@@ -120,13 +120,14 @@ test("which groups are open is remembered across a restart, for every project", 
     expect(await openGroups(first.page)).toEqual({ "Lights and sound": false, "Power poles": true });
     await closeApp(first.app);
 
-    second = await launchApp({ userData: first.userData });
+    // The restarted app shows what it starts with (the project that was open last); the groups do not depend on it.
+    second = await launchApp({ userData: first.userData, open: "start" });
     expect(await openGroups(second.page)).toEqual({ "Lights and sound": false, "Power poles": true });
     expect(await shownEntries(second.page)).toEqual([...COMBINATORS, ...POLES]);
     // And back: what is stored follows every change.
     await header(second.page, "Power poles").click();
     await closeApp(second.app);
-    second = await launchApp({ userData: first.userData });
+    second = await launchApp({ userData: first.userData, open: "start" });
     expect(await openGroups(second.page)).toEqual({ "Lights and sound": false, "Power poles": false });
   } finally {
     await closeApp(first.app);
@@ -417,11 +418,12 @@ test("the list of the circuit's entities closes like a group, leaves its room to
     await expect(listHeader(page)).toHaveAttribute("aria-expanded", "false");
     await closeApp(first.app);
 
-    second = await launchApp({ userData: first.userData });
+    // The restarted app reopens the five-kinds project, which was open last.
+    second = await launchApp({ userData: first.userData, open: "start" });
     await expect(listHeader(second.page)).toHaveAttribute("aria-expanded", "false");
     await expect(list(second.page)).toBeHidden();
     await listHeader(second.page).click();
-    await expect(list(second.page).getByRole("button")).not.toHaveCount(0);
+    await expect(list(second.page).getByRole("button")).toHaveCount(5);
   } finally {
     await closeApp(first.app);
     if (second) await closeApp(second.app);

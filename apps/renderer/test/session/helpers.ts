@@ -1,8 +1,10 @@
 import type { Entity, EntityId } from "@face/model";
+import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
 import type { AppSettingsState, FaceApi, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
 import { ProjectSession, type SessionOptions } from "../../src/session/projectSession.ts";
 import type { Scheduler } from "../../src/session/simulationRunner.ts";
+import { EXAMPLE_PROJECT_NAME, EXAMPLE_SOURCE } from "../fixtures/example.ts";
 
 /** A scheduler whose timers only fire when the test says so. */
 export class ManualScheduler implements Scheduler {
@@ -25,6 +27,14 @@ export function project(source: string, manifest: Partial<ProjectManifest> = {},
   return { path, data: { manifest: { ...MANIFEST, ...manifest }, files: [{ name: DEFAULT_FILE_NAME, source }] } };
 }
 
+/** The example that ships with the app, as the app opens it: an unsaved copy. */
+export function exampleProject(): LoadedProject {
+  return project(EXAMPLE_SOURCE, { name: EXAMPLE_PROJECT_NAME });
+}
+
+/** The source of the empty project the app starts with and File > New Project gives. */
+export const EMPTY_SOURCE = 'circuit "Untitled circuit" {\n}\n';
+
 export interface TestSession {
   readonly session: ProjectSession;
   readonly scheduler: ManualScheduler;
@@ -32,9 +42,10 @@ export interface TestSession {
   readonly notifications: () => number;
 }
 
+/** A session on `source`; without one, on the example project, which most tests work with. */
 export function createSession(source?: string, options: SessionOptions = {}): TestSession {
   const scheduler = new ManualScheduler();
-  const session = new ProjectSession({ scheduler, editorExtensions: [], ...(source === undefined ? {} : { project: project(source) }), ...options });
+  const session = new ProjectSession({ scheduler, editorExtensions: [], project: source === undefined ? exampleProject() : project(source), ...options });
   let count = 0;
   session.subscribe(() => count++);
   return { session, scheduler, notifications: () => count };
@@ -69,7 +80,11 @@ export interface FakeDesktop {
   readonly api: FaceApi;
   /** Projects "on disk", by path. */
   readonly disk: Map<string, ProjectData>;
+  /** The example projects of the application, by file name. */
+  readonly examples: Map<string, ProjectData>;
   readonly dirtyReports: boolean[];
+  /** Path of the project at the top of the recent projects; null when there is none. */
+  lastProject: string | null;
   savePath: string | null;
   unsavedChoice: "save" | "discard" | "cancel";
   confirmations: number;
@@ -82,18 +97,25 @@ export function fakeDesktop(): FakeDesktop {
   const ok = <T>(value: T): Promise<IpcResult<T>> => Promise.resolve({ ok: true, value: structuredClone(value) });
   const desktop: FakeDesktop = {
     disk: new Map(),
+    examples: new Map(),
     dirtyReports: [],
+    lastProject: null,
     savePath: "/projects/saved",
     unsavedChoice: "discard",
     confirmations: 0,
     api: {
       platform: "test",
       catalogAssetUrl: "face-asset://catalog/",
-      newProject: () => ok({ path: null, data: { manifest: { ...MANIFEST, name: "Untitled circuit" }, files: [{ name: DEFAULT_FILE_NAME, source: 'circuit "Untitled circuit" {\n}\n' }] } }),
+      newProject: () => ok({ path: null, data: createEmptyProject() }),
       openProject: () => ok(null),
       loadProject: (path) => {
         const data = desktop.disk.get(path);
         return data ? ok({ path, data }) : Promise.resolve({ ok: false, error: `Not a face project (no face.json): ${path}` });
+      },
+      openLastProject: () => (desktop.lastProject === null ? ok(null) : desktop.api.loadProject(desktop.lastProject)),
+      openExample: (file) => {
+        const data = desktop.examples.get(file);
+        return data ? ok({ path: null, data }) : Promise.resolve({ ok: false, error: `Not an example of this application: ${file}` });
       },
       saveProject: (request) => {
         const path = request.path ?? desktop.savePath;

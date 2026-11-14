@@ -1,7 +1,7 @@
 // Rotating entities: the `facing` clause changes (and the `tile` of a 2x1 entity that has one), a selection turns as one undo step.
 import { facingOf } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { STARTER_SOURCE } from "../../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, replaceText } from "./helpers.ts";
 
 describe("rotating entities", () => {
@@ -142,7 +142,7 @@ describe("rotating entities", () => {
   });
 
   it("keeps a running simulation: the direction is no part of what the circuit computes", () => {
-    const { session } = createSession(STARTER_SOURCE);
+    const { session } = createSession(EXAMPLE_SOURCE);
     for (let i = 0; i < 5; i++) session.commands.step();
     const { tick } = session.state.simulation;
     expect(tick).toBe(5);

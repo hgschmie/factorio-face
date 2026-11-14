@@ -4,7 +4,7 @@ import { DIRECTIONS, facingOf, isTileCenter, occupiedTiles, TERMINALS, tileHalve
 import { describe, expect, it } from "vitest";
 import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, BOARD_PIN, boardPinHeading, boardPinOffset, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE } from "../src/canvas/board.ts";
 import { CARD, GRID, PIN_SPACING } from "../src/canvas/geometry.ts";
-import { STARTER_SOURCE } from "../src/session/starter.ts";
+import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
 import { gridSource } from "../../../tests/e2e/fixtures.ts";
 
 function entitiesOf(source: string): readonly Entity[] {
@@ -29,7 +29,7 @@ const at = (x: number, y: number): Point => ({ x, y });
 describe("derivedTiles", () => {
   it("scales the corner of the card down to a tile, half a card width per tile in both directions", () => {
     expect(EDIT_UNITS_PER_TILE).toBe(CARD.width / 2);
-    const entities = entitiesOf(STARTER_SOURCE);
+    const entities = entitiesOf(EXAMPLE_SOURCE);
     // source (40, 80), gate (300, 80), twice (300, 240), light (560, 80): three tiles between the columns, two between the rows.
     expect(tilesByName(entities)).toEqual({ source: [at(0, 1)], gate: [at(3, 1), at(4, 1)], twice: [at(3, 3), at(4, 3)], light: [at(6, 1)] });
     expect([...derivedTiles(entities).values()]).toEqual([at(0.5, 1.5), at(4, 1.5), at(4, 3.5), at(6.5, 1.5)]);

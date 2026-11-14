@@ -1,4 +1,4 @@
-// Project persistence and the unsaved-changes handshake, starting from the example circuit of a new project.
+// Project persistence and the unsaved-changes handshake, starting from the example circuit as File > Open Example opens it: an unsaved copy.
 import type { ElectronApplication, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
@@ -12,6 +12,7 @@ import {
   entityNames,
   exitCodeOf,
   expect,
+  isDocumentEdited,
   launchApp,
   newProjectPath,
   PROJECT_FILE_EXTENSION,
@@ -31,10 +32,6 @@ async function deleteEntity(page: Page, name: string): Promise<void> {
 
 function requestClose(app: ElectronApplication): Promise<void> {
   return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.close());
-}
-
-function isDocumentEdited(app: ElectronApplication): Promise<boolean> {
-  return app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.isDocumentEdited());
 }
 
 test("saves a project file atomically and reopens it in a new session", async () => {
@@ -85,10 +82,15 @@ test("saves a project file atomically and reopens it in a new session", async ()
     await closeApp(first.app);
   }
 
-  // A new session with the same profile finds the project under File > Open Recent and loads it from disk.
-  const second = await launchApp({ userData: first.userData });
+  // A new session with the same profile starts with that project (start.spec.ts). From another project, here a new one, it is
+  // found under File > Open Recent and loaded from disk.
+  const second = await launchApp({ userData: first.userData, open: "start" });
   try {
     const { app, page } = second;
+    await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
+    await clickMenu(app, "File", "New Project");
+    await expect(page.locator(".project-meta .path")).toHaveText("Not saved yet");
+    await expect(page.locator("g.card")).toHaveCount(0);
     const recent = await page.evaluate(() => window.face!.getRecentProjects());
     expect(recent).toMatchObject({ ok: true, value: [{ path: projectPath, name: "Feedback example" }] });
     expect(JSON.parse(await readFile(resolve(second.userData, "recent-projects.json"), "utf8"))).toHaveLength(1);
@@ -133,12 +135,12 @@ test("opens a project through File > Open and refuses directories and files that
   await clickMenu(app, "File", "Save");
   await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
 
-  // New project: the example circuit again, unsaved, editable, with an empty history.
+  // New project: an empty circuit, unsaved, editable, with an empty history.
   await clickMenu(app, "File", "New Project");
   await expect(page.locator(".project-meta .path")).toHaveText("Not saved yet");
-  await expect(page.getByTestId("project-name")).toHaveText("Feedback example");
+  await expect(page.getByTestId("project-name")).toHaveText("Untitled circuit");
   await expect(page.getByTestId("save-state")).toHaveText("No changes");
-  await expect(page.locator("g.card")).toHaveCount(4);
+  await expect(page.locator("g.card")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
 
   await stubDialogs(app, { openPath: projectPath });

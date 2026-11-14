@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test --config tests/e2e/playwright.config.ts",
     "catalog": "node tools/catalog/generate.mjs",
+    "examples": "node tools/examples/generate.ts",
     "probe-wire-reach": "node tools/game-probe/wire-reach.mjs"
   },
   "dependencies": {

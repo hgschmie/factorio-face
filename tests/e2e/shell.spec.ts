@@ -2,7 +2,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { APP_TITLE, canvas, closeApp, expect, launchApp, PROJECTS_DIR, ROOT, SCREENSHOT_DIR, test } from "./app.ts";
+import { APP_TITLE, canvas, clickMenu, closeApp, EMPTY_SOURCE, expect, launchApp, menuLabels, PROJECTS_DIR, ROOT, SCREENSHOT_DIR, sourceText, test, writeProject, writeProjectEntries } from "./app.ts";
 
 const PIXEL_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64");
 
@@ -109,7 +109,7 @@ test("runs the renderer sandboxed, isolated and without remote or dynamic code",
   expect(inPage.nodeGlobals).toEqual(["undefined", "undefined", "undefined"]);
   expect(inPage.api).toEqual([
     "catalogAssetUrl", "chooseGameFolder", "clearRecentProjects", "confirmUnsavedChanges", "getAppSettings", "getRecentProjects", "loadProject", "newProject",
-    "onAppSettingsChanged", "onMenuCommand", "onSaveBeforeClose", "openProject", "paste", "platform", "resetGameFolder", "saveProject", "saveProjectAs", "setDirty",
+    "onAppSettingsChanged", "onMenuCommand", "onSaveBeforeClose", "openExample", "openLastProject", "openProject", "paste", "platform", "resetGameFolder", "saveProject", "saveProjectAs", "setDirty",
   ]);
   expect(inPage.eval).toBe("EvalError");
   expect(inPage.functionConstructor).toBe("EvalError");
@@ -157,6 +157,67 @@ test("rejects malformed IPC arguments in the main process", async ({ page }) => 
   expect(results.otherFileSave).toEqual({ ok: false, error: "Not a face project file (the name must end in .faceproj): /nonexistent-face-test/notes.txt" });
   expect(results.missingFolderSave).toEqual({ ok: false, error: "The folder for the project file does not exist: /nonexistent-face-test" });
   expect(existsSync("/nonexistent-face-test")).toBe(false);
+});
+
+test("the page can open the examples the main process listed and no other file through the example call", async () => {
+  const manifest = (name: string): string => JSON.stringify({ formatVersion: 1, name, gameVersion: "2.1.24", modules: ["base"], customSignalGroups: [], circuits: ["main.face"] });
+  const project = (name: string): Record<string, string> => ({ "face.json": manifest(name), "main.face": `circuit ${JSON.stringify(name)} {\n}\n` });
+  const base = resolve(PROJECTS_DIR, `examples-${process.pid}`);
+  const examples = resolve(base, "examples");
+  await mkdir(resolve(examples, "sub"), { recursive: true });
+  await mkdir(resolve(base, "outside"));
+  // The file name is not the project name: the menu shows the latter, the call names the former.
+  await writeProjectEntries(resolve(examples, "listed.faceproj"), project("Listed example"));
+  await writeProjectEntries(resolve(examples, "sub/inner.faceproj"), project("Inner"));
+  await writeProjectEntries(resolve(base, "outside/secret.faceproj"), project("Secret"));
+  await symlink(resolve(base, "outside/secret.faceproj"), resolve(examples, "link.faceproj"));
+  const elsewhere = await writeProject({ name: "Elsewhere", source: 'circuit "Elsewhere" {\n}\n' });
+
+  const { app, page, userData } = await launchApp({ env: { FACE_EXAMPLES_DIR: examples }, open: "start" });
+  try {
+    expect(await menuLabels(app, "File", "Open Example")).toEqual(["Listed example"]);
+    // A project file that appears in the directory later was not listed.
+    await writeProjectEntries(resolve(examples, "late.faceproj"), project("Late"));
+
+    const results = await page.evaluate(
+      async ([absolute, other]) => {
+        const face = window.face!;
+        return {
+          absolute: await face.openExample(absolute!),
+          otherProject: await face.openExample(other!),
+          traversal: await face.openExample("../outside/secret.faceproj"),
+          backslashes: await face.openExample("..\\outside\\secret.faceproj"),
+          subdirectory: await face.openExample("sub/inner.faceproj"),
+          link: await face.openExample("link.faceproj"),
+          late: await face.openExample("late.faceproj"),
+          projectName: await face.openExample("Listed example"),
+          otherFile: await face.openExample("/etc/hosts"),
+          number: await face.openExample(42 as unknown as string),
+          object: await face.openExample({ file: "listed.faceproj" } as unknown as string),
+          nothing: await (face.openExample as () => ReturnType<typeof face.openExample>)(),
+        };
+      },
+      [resolve(examples, "listed.faceproj"), elsewhere],
+    );
+    for (const [name, result] of Object.entries(results)) expect(result.ok, name).toBe(false);
+    expect(results.absolute).toEqual({ ok: false, error: "Example name must be a plain file name" });
+    expect(results.traversal).toEqual({ ok: false, error: "Example name must be a plain file name" });
+    expect(results.link).toEqual({ ok: false, error: "Not an example of this application: link.faceproj" });
+    expect(results.late).toEqual({ ok: false, error: "Not an example of this application: late.faceproj" });
+    expect(results.projectName).toEqual({ ok: false, error: "Not an example project (the name must end in .faceproj)" });
+    // Nothing of that reached the window.
+    expect(await sourceText(page)).toBe(EMPTY_SOURCE);
+
+    // The listed one is answered without a path, and the menu item opens it as an unsaved project that is no recent one.
+    expect(await page.evaluate(() => window.face!.openExample("listed.faceproj"))).toMatchObject({ ok: true, value: { path: null, data: { manifest: { name: "Listed example" }, files: [{ name: "main.face" }] } } });
+    await clickMenu(app, "File", "Open Example", "Listed example");
+    await expect(page.getByTestId("project-name")).toHaveText("Listed example");
+    await expect(page.locator(".project-meta .path")).toHaveText("Not saved yet");
+    expect(await page.evaluate(() => window.face!.getRecentProjects())).toEqual({ ok: true, value: [] });
+    expect(existsSync(resolve(userData, "recent-projects.json"))).toBe(false);
+  } finally {
+    await closeApp(app);
+  }
 });
 
 test("serves icons through face-asset:// from the allow-listed root only", async () => {

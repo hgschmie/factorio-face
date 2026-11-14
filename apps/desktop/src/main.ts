@@ -5,12 +5,13 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { APP_SETTINGS_FILE_NAME, AppSettingsStore, gameDirectoryFromEnv } from "./appSettings.ts";
 import { registerAppSettingsIpc } from "./appSettingsIpc.ts";
+import { Examples } from "./examples.ts";
 import { GameIcons } from "./gameIcons/gameIcons.ts";
 import { GameSettings } from "./gameSettings.ts";
 import { APP_ID, APP_NAME, CHANNELS, type MenuCommand } from "./ipc.ts";
 import { createIpcHandle } from "./ipcHandle.ts";
 import { buildMenuTemplate } from "./menu.ts";
-import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot } from "./paths.ts";
+import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot, resolveExamplesDirectory } from "./paths.ts";
 import { askUnsavedChanges, registerProjectIpc } from "./projectIpc.ts";
 import { handleSchemes, registerSchemes, RENDERER_URL } from "./protocols.ts";
 import { RecentProjects } from "./recentProjects.ts";
@@ -111,13 +112,15 @@ async function start(): Promise<void> {
       if (!window.isDestroyed()) window.webContents.send(CHANNELS.appSettingsChanged, state);
     },
   });
-  handleSchemes(join(__dirname, "renderer"), resolveAssetRoot({ env: process.env, packaged: app.isPackaged, mainDirectory: __dirname, resourcesPath: process.resourcesPath }), {
+  const locations = { env: process.env, packaged: app.isPackaged, mainDirectory: __dirname, resourcesPath: process.resourcesPath };
+  handleSchemes(join(__dirname, "renderer"), resolveAssetRoot(locations), {
     ready: () => gameSettings.ready(),
     covers: (id) => gameIcons.covers(id),
     icon: (id) => gameIcons.icon(id),
   });
 
   const recentProjects = new RecentProjects(join(app.getPath("userData"), "recent-projects.json"));
+  const examples = new Examples(resolveExamplesDirectory(locations), (file, error) => console.warn(`[face] example ${file}: ${error instanceof Error ? error.message : String(error)}`));
   const sendCommand = (command: MenuCommand): void => {
     if (!window.isDestroyed()) window.webContents.send(CHANNELS.menuCommand, command);
   };
@@ -127,6 +130,7 @@ async function start(): Promise<void> {
       platform: process.platform,
       developerTools: !app.isPackaged,
       recentProjects: await recentProjects.list(),
+      examples: await examples.list(),
       send: sendCommand,
       clearRecentProjects: () => void recentProjects.clear().then(installMenu),
     });
@@ -139,6 +143,7 @@ async function start(): Promise<void> {
   registerProjectIpc(handle, {
     window,
     recentProjects,
+    examples,
     projectsDirectory: projectsDirectoryFromEnv(process.env),
     onRecentProjectsChanged: () => void installMenu(),
     onProjectPathChanged: (path) => {

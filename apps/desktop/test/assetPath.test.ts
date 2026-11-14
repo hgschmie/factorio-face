@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BUNDLE_CONTENT_TYPES, iconIdOf, IMAGE_CONTENT_TYPES, isInsideDirectory, resolveServedUrl, servedSegments, type ServedRoot } from "../src/assetPath.ts";
-import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot } from "../src/paths.ts";
+import { profilePathsFromEnv, projectsDirectoryFromEnv, resolveAssetRoot, resolveExamplesDirectory } from "../src/paths.ts";
 
 const ROOT = "/repo/packages/catalog/generated";
 const CATALOG: ServedRoot = { scheme: "face-asset", host: "catalog", directory: ROOT, contentTypes: IMAGE_CONTENT_TYPES };
@@ -132,5 +132,14 @@ describe("profile and asset locations", () => {
     expect(resolveAssetRoot({ ...base, env: {}, packaged: false })).toBe("/repo/packages/catalog/generated");
     expect(resolveAssetRoot({ ...base, env: {}, packaged: true })).toBe("/Applications/face.app/Contents/Resources/catalog");
     expect(() => resolveAssetRoot({ ...base, env: { FACE_ASSET_ROOT: "icons" }, packaged: false })).toThrow(/absolute/);
+  });
+
+  it("picks the examples directory from the environment, the repository or the bundle", () => {
+    const base = { mainDirectory: "/repo/dist", resourcesPath: "/Applications/face.app/Contents/Resources" };
+    expect(resolveExamplesDirectory({ ...base, env: { FACE_EXAMPLES_DIR: "/elsewhere/examples/" }, packaged: true })).toBe("/elsewhere/examples/");
+    expect(resolveExamplesDirectory({ ...base, env: {}, packaged: false })).toBe("/repo/examples");
+    expect(resolveExamplesDirectory({ ...base, env: { FACE_EXAMPLES_DIR: "" }, packaged: false })).toBe("/repo/examples");
+    expect(resolveExamplesDirectory({ ...base, env: {}, packaged: true })).toBe("/Applications/face.app/Contents/Resources/examples");
+    expect(() => resolveExamplesDirectory({ ...base, env: { FACE_EXAMPLES_DIR: "examples" }, packaged: false })).toThrow(/absolute/);
   });
 });

@@ -429,6 +429,8 @@ export interface WorkbenchCommands {
   newProject(): Promise<void>;
   openProject(): Promise<void>;
   loadProject(path: string): Promise<void>;
+  /** Opens an example that ships with the app as an unsaved copy. `file` is its file name as the application menu names it. */
+  openExample(file: string): Promise<void>;
   /** Resolves true when the project is on disk afterwards, false when saving failed or was cancelled. */
   save(): Promise<boolean>;
   saveAs(): Promise<boolean>;

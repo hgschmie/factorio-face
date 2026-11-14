@@ -77,6 +77,17 @@ export function withProjectExtension(path: string): string {
   return hasProjectExtension(path) ? path : path + PROJECT_FILE_EXTENSION;
 }
 
+/**
+ * The file name of an example project: a plain project file name, never a path. No separator of any platform, no drive or stream
+ * colon, no `..`, no hidden file. Whether such an example exists is for the list of examples to say (examples.ts).
+ */
+export function parseExampleFileName(value: unknown): string {
+  const name = parseString(value, "Example name", LIMITS.exampleFileNameLength);
+  if (/[\\/:]/.test(name) || name.includes("..") || name.startsWith(".")) fail("Example name must be a plain file name");
+  if (!hasProjectExtension(name)) fail(`Not an example project (the name must end in ${PROJECT_FILE_EXTENSION})`);
+  return name;
+}
+
 const CIRCUIT_FILE_NAME = /^[A-Za-z0-9_][A-Za-z0-9 ._-]*$/;
 
 /** A plain `*.face` file name: project format v1 keeps circuit files at the root of the project file. */
