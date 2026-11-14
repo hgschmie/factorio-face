@@ -645,7 +645,9 @@ test("the wire tools connect pins on the board with a straight line, and take a 
   await expect(wires(page)).toHaveCount(6);
   expect(await sourceText(page)).toContain("wire red source.out <-> check.in");
   const added = await wireKeyOf(page, "red", "source.out", "check.in");
-  await expect(wire(page, added).locator("path.wire-core")).toHaveAttribute("d", /^M (68 30 L 30 308|30 308 L 68 30)$/);
+  // From pin to pin. The straight line would pass 2.7 units beside the green pin of the constant, so the wire runs 7.3 units
+  // beside it, parallel to it and 10 units clear of that pin, and steps over to its own pins at both ends.
+  await expect(wire(page, added).locator("path.wire-core")).toHaveAttribute("d", "M 68 30 L 68 30 Q 60.78 29.01 59.79 36.24 L 23.76 299.79 Q 22.78 307.01 30 308 L 30 308");
   await expect(page.locator("path.wire-preview")).toHaveCount(0);
   // The tool stays for the next wire; the same two pins again take the wire away.
   await expect(tool(page, "Red wire")).toHaveAttribute("aria-pressed", "true");

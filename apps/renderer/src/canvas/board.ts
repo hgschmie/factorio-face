@@ -17,11 +17,14 @@ export const TILE = 80;
  */
 export const EDIT_UNITS_PER_TILE = CARD.width / 2;
 
+/** Connection pins on a footprint: distance of their center from the end of the tile, and their radius. */
+export const BOARD_PIN = { inset: 12, radius: 5 } as const;
+
 /**
- * Connection pins on a footprint: distance of their center from the end of the tile, their radius, and how far the green pin
- * of a point without a direction sits below the red one.
+ * Closest the line of a wire comes to the center of the pin of the other color at one of its ends: half a pin spacing, which
+ * keeps the casing of the wire off the pin and puts a red and a green wire in line with their pins a pin spacing apart.
  */
-export const BOARD_PIN = { inset: 12, radius: 5, drop: 10 } as const;
+export const WIRE_PIN_CLEARANCE = PIN_SPACING / 2;
 
 export interface BoardPlacement {
   /** The top-left tile of the footprint. */
@@ -265,27 +268,15 @@ export function editPositionOf(origin: Point): Point {
 }
 
 /**
- * The end of the footprint that carries the pins of a terminal, as the direction from its middle: where the entity faces for
- * an output, the other way for an input. A connection point without a direction (`io`: a pole, which does not turn either) is at
- * the top, where the wires hang on a pole in the game.
- */
-export function boardPinHeading(side: TerminalSide, facing: Direction): Direction {
-  return side === "io" ? "north" : pinHeading(side, facing);
-}
-
-/**
  * Center of a connection pin relative to the top-left corner of the footprint, in canvas units. The input pins are on the
  * input half and the output pins on the output half (`tileHalves`), each at the outer end of it; red is on the left seen along
  * the facing, as on the cards (facing east: red above green). An entity without halves has its pins at the end of the whole
  * footprint its one terminal points to: a lamp and a speaker on the left. The one point of an entity without input and output
- * (`io`) sits in the middle of the top end, on one tile as on 2x2: red left of green and green a little lower, so that the two
- * wires between poles in a row, as between poles in a column, run beside each other and not on one line.
+ * (`io`: a pole, which does not turn either) sits in the middle of the top end (`pinHeading`), where the wires hang on a pole in
+ * the game, on one tile as on 2x2: red left of green at one height, as on the cards.
  */
 export function boardPinOffset(entity: EntityShape, facing: Direction, side: TerminalSide, color: WireColor): Point {
-  if (side === "io") {
-    const middle = (tileSize(entity, facing).width * TILE) / 2;
-    return color === "red" ? { x: middle - PIN_SPACING / 2, y: BOARD_PIN.inset } : { x: middle + PIN_SPACING / 2, y: BOARD_PIN.inset + BOARD_PIN.drop };
-  }
+  if (side === "io") return { x: (tileSize(entity, facing).width * TILE) / 2 + (color === "red" ? -1 : 1) * (PIN_SPACING / 2), y: BOARD_PIN.inset };
   const halves = tileHalves(entity, facing, tileCenter(entity, facing, { x: 0, y: 0 }));
   const half = side === "out" ? halves.output : halves.input;
   const heading = DIRECTION_VECTOR[pinHeading(side, facing)];
@@ -296,4 +287,38 @@ export function boardPinOffset(entity: EntityShape, facing: Direction, side: Ter
   const across = (color === "red" ? 1 : -1) * (PIN_SPACING / 2);
   // The left of (x, y) is (y, -x) where y grows downwards.
   return { x: middle.x + heading.x * reach + forward.y * across, y: middle.y + heading.y * reach - forward.x * across };
+}
+
+/**
+ * The line of a wire between the pins `from` and `to` of two entities on the board: straight, unless the pin of the other
+ * color at one of its ends (`others`) lies in its way, closer than `WIRE_PIN_CLEARANCE` to the straight line. That is so
+ * where the two pins of a terminal are in line with the wire: poles in a row, combinators in a column. The wire would run
+ * through that pin, and a red and a green wire between the same two entities would lie on one line. It then runs parallel
+ * to the straight line, as near to it as clears those pins, and steps over to its own pins at both ends. Exactly in line
+ * either side is as near: red takes the upper one (the left one of a vertical line) and green the other, so the two
+ * colors run a pin spacing apart, red in the free strip between the bodies of two rows of tiles. The result does not depend
+ * on the order of the ends, and a wire of one color is where it would be with a wire of the other color beside it.
+ */
+export function boardWireLine(color: WireColor, from: Point, to: Point, others: readonly Point[]): Point[] {
+  const length = Math.hypot(to.x - from.x, to.y - from.y);
+  if (length === 0) return [from, to];
+  const along = { x: (to.x - from.x) / length, y: (to.y - from.y) / length };
+  // The side that is up on the board (left for a vertical line), whichever end the line starts from; `|| 0` keeps negative zeros out of the line.
+  const flip = along.x > 0 || (along.x === 0 && along.y < 0) ? 1 : -1;
+  const side = { x: flip * along.y || 0, y: -flip * along.x || 0 };
+  // How far beside the straight line each pin in the way lies, towards `side`. Whole pins are whole numbers apart, so a pin in line gives 0 exactly.
+  const blocking = others.flatMap((pin) => {
+    const [dx, dy] = [pin.x - from.x, pin.y - from.y];
+    const ahead = dx * along.x + dy * along.y;
+    const beside = dx * side.x + dy * side.y;
+    return ahead > 0 && ahead < length && Math.abs(beside) < WIRE_PIN_CLEARANCE ? [beside] : [];
+  });
+  if (blocking.length === 0) return [from, to];
+  const preferred = color === "red" ? 1 : -1;
+  const shift = blocking
+    .flatMap((beside) => [beside - WIRE_PIN_CLEARANCE, beside + WIRE_PIN_CLEARANCE])
+    .filter((candidate) => blocking.every((beside) => Math.abs(candidate - beside) > WIRE_PIN_CLEARANCE - 1e-6))
+    .reduce((best, candidate) => (Math.abs(candidate) < Math.abs(best) || (Math.abs(candidate) === Math.abs(best) && candidate * preferred > 0) ? candidate : best));
+  const beside = (point: Point): Point => ({ x: point.x + side.x * shift, y: point.y + side.y * shift });
+  return [from, beside(from), beside(to), to];
 }

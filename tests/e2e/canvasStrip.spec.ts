@@ -180,3 +180,39 @@ test("the strip wraps where the canvas is narrow: Split mode and the smallest wi
   await expect(placeAll(page)).toHaveCount(0);
   await expect(card(page, "gate")).toBeVisible();
 });
+
+test("the project bar is as high as the strip above the canvas, with its name and actions inside it, at the default and the smallest window size", async ({ page, app }) => {
+  const measure = () =>
+    page.evaluate(() => {
+      const box = (selector: string) => document.querySelector(selector)!.getBoundingClientRect();
+      const [bar, title, stripBox] = [box(".projectbar"), box(".titlebar"), box(".canvas-strip")];
+      const parts = [...document.querySelectorAll(".project-symbol, .projectbar h1, .project-actions button")].map((element) => element.getBoundingClientRect());
+      return {
+        bar: bar.height,
+        strip: stripBox.height,
+        title: title.height,
+        // The least room between a part of the bar and its upper or lower edge.
+        room: Math.min(...parts.map((part) => Math.min(part.top - bar.top, bar.bottom - part.bottom))),
+        tallest: Math.max(...parts.map((part) => part.height)),
+        cutOff: parts.filter((part) => part.left < bar.left || part.right > bar.right).length,
+      };
+    });
+  const check = async (where: string, titleHeight: number): Promise<void> => {
+    const layout = await measure();
+    // One row of controls in the strip: both bars are 51 units high. The title bar keeps its height.
+    expect(layout, where).toMatchObject({ bar: 51, strip: 51, title: titleHeight, cutOff: 0 });
+    expect(layout.room, where).toBeGreaterThanOrEqual(8);
+    expect(layout.tallest, where).toBeLessThanOrEqual(32);
+    for (const name of ["Undo", "Redo", "Fit", "Settings", "Save"]) await expect(page.locator(".project-actions").getByRole("button", { name, exact: true }), where).toBeInViewport({ ratio: 1 });
+    await expect(page.getByTestId("project-name"), where).toBeInViewport({ ratio: 1 });
+  };
+  await check("default", 66);
+  // The settings open below the lower bar, inside the window.
+  await page.getByRole("button", { name: "Settings" }).click();
+  const [settings, bar] = [(await page.getByRole("dialog", { name: "Project settings" }).boundingBox())!, (await page.locator(".projectbar").boundingBox())!];
+  expect(settings.y).toBeGreaterThanOrEqual(bar.y + bar.height - 8);
+  expect(settings.y).toBeLessThanOrEqual(bar.y + bar.height + 8);
+  await page.getByRole("button", { name: "Close project settings" }).click();
+  await shrinkToMinimum(app, page);
+  await check("minimum", 62);
+});

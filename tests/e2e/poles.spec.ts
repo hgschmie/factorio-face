@@ -1,6 +1,6 @@
 // Electric poles and the programmable speaker on the canvases: from the source and built with the pointer. They appear on the
-// edit canvas and on the blueprint board with their wires, signals pass through the poles, a pole's one connection point is on
-// both edges of its card, and the wire reach is that of the game per entity (a small pole 7.5 tiles, a big one 32, every other
+// edit canvas and on the blueprint board with their wires, signals pass through the poles, a pole's one connection point is one
+// pair of pins at the top of its card and of its footprint, and the wire reach is that of the game per entity (a small pole 7.5 tiles, a big one 32, every other
 // entity the reach of the project). The palette is in entitySelector.spec.ts, the speaker's form in speaker.spec.ts.
 import type { Page } from "@playwright/test";
 import { canvas, card, clickCenter, clientPointOf, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires } from "./app.ts";
@@ -65,14 +65,14 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   await expect(page.locator("g.wire")).toHaveCount(6);
 
   // On the board every entity covers the tiles of its prototype: a big pole two by two. A pole has no direction: its pins
-  // are in the middle of the top end of its footprint, red left of green and green a little lower.
+  // are in the middle of the top end of its footprint, red left of green at one height.
   for (const name of NAMES) await expect(card(page, name)).toBeVisible();
   expect((await footprint(page, "p1")).size).toEqual([1, 1]);
   expect(await footprint(page, "big1")).toMatchObject({ tile: [0, 8], size: [2, 2] });
   expect(await footprint(page, "big2")).toMatchObject({ tile: [20, 8], size: [2, 2] });
   expect(await footprint(page, "alarm")).toMatchObject({ tile: [14, 2], size: [1, 1] });
-  expect(await pinOffsets(page, "big1")).toEqual({ "io red": [70, 12], "io green": [90, 22] });
-  expect(await pinOffsets(page, "p1")).toEqual({ "io red": [30, 12], "io green": [50, 22] });
+  expect(await pinOffsets(page, "big1")).toEqual({ "io red": [70, 12], "io green": [90, 12] });
+  expect(await pinOffsets(page, "p1")).toEqual({ "io red": [30, 12], "io green": [50, 12] });
   expect(await pinOffsets(page, "alarm")).toEqual({ "in red": [12, 30], "in green": [12, 50] });
   for (const name of ["p1", "big1"]) {
     await expect(card(page, name).locator(".board-arrow, .board-divider")).toHaveCount(0);
@@ -110,6 +110,11 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   // Two big poles span more than the 9 tiles of the project: their own reach is 32.
   await expect(wire(page, between)).not.toHaveAttribute("data-too-long");
   expect(await title(page, between).textContent()).toBe("green: big1 <-> big2 (18 tiles apart)");
+  // Between poles in a row a wire runs beside the line of the pins, clear of the pin of the other color: red 10 units above
+  // it, green 10 below, each stepping over to its own pins. A wire with no such pin in its way is straight.
+  await expect(wire(page, relay).locator("path.wire-core")).toHaveAttribute("d", "M 350 12 L 350 12 Q 350 2 360 2 L 820 2 Q 830 2 830 12 L 830 12");
+  await expect(wire(page, between).locator("path.wire-core")).toHaveAttribute("d", "M 90 652 L 90 652 Q 90 662 100 662 L 1680 662 Q 1690 662 1690 652 L 1690 652");
+  await expect(wire(page, near).locator("path.wire-core")).toHaveAttribute("d", "M 68 30 L 350 12");
 
   // The inspector of a wire says which reach applied.
   const distance = inspector(page).locator(".wire-distance");
@@ -138,8 +143,10 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   await expect(page.locator("g.card")).toHaveCount(NAMES.length);
   await expect(page.locator("g.wire")).toHaveCount(6);
   await expect(page.locator("g.wire[data-too-long]")).toHaveCount(0);
-  // The one connection point of a pole is on both edges of its card, red and green on each.
-  await expect(card(page, "big1").locator("g.pin")).toHaveCount(4);
+  // The one connection point of a pole is one pair of pins on the top edge of its card, red left of green.
+  await expect(card(page, "big1").locator("g.pin")).toHaveCount(2);
+  for (const color of ["red", "green"] as const) await expect(pin(page, "big1", "io", color)).toHaveAttribute("data-edge", "top");
+  expect(await pinOffsets(page, "big1")).toEqual({ "io red": [80, 0], "io green": [100, 0] });
   await expect(card(page, "light")).toHaveAttribute("data-status", "lit");
   await expect(card(page, "alarm")).toHaveAttribute("data-status", "playing alarms siren");
   // The cards: which pole it is in the heading, its reach and tiles below the name; the speaker with what it plays and when.
@@ -199,20 +206,23 @@ test("a chain constant -> pole -> pole -> lamp built with the palette and the wi
   await expect(page.locator("g.card")).toHaveCount(4);
   await expect(card(page, "lamp1")).toHaveAttribute("data-status", "off");
 
-  // The wire tool: a pole offers its one connection point on both edges.
+  // The wire tool: a pole offers its one connection point as one pair of pins at the top of its card.
   await page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Red wire" }).click();
   await expect(hint).toHaveText("Click a red pin of an entity to start a red wire.");
-  for (const edge of ["left", "right"] as const) await expect(pin(page, "pole1", "io", "red", edge).locator("title")).toHaveText("Red connection");
-  // Into the pole on its left edge.
+  await expect(card(page, "pole1").locator("g.pin")).toHaveCount(2);
+  await expect(pin(page, "pole1", "io", "red").locator("title")).toHaveText("Red connection");
   await clickCenter(page, pin(page, "constant1", "out", "red"));
   await expect(pin(page, "constant1", "out", "red")).toHaveClass(/pending/);
-  await clickCenter(page, pin(page, "pole1", "io", "red", "left"));
+  await clickCenter(page, pin(page, "pole1", "io", "red"));
   await expect(wires(page)).toHaveCount(1);
-  // On from its right edge. While the wire is pending both pins of the point light up: they are one and the same point.
-  await clickCenter(page, pin(page, "pole1", "io", "red", "right"));
-  await expect(card(page, "pole1").locator("g.pin.pending")).toHaveCount(2);
-  await clickCenter(page, pin(page, "pole2", "io", "red", "left"));
-  await clickCenter(page, pin(page, "pole2", "io", "red", "right"));
+  // On from the same pin: it is pending while the wire is, and the rubber band starts in its center.
+  await clickCenter(page, pin(page, "pole1", "io", "red"));
+  await expect(card(page, "pole1").locator("g.pin.pending")).toHaveCount(1);
+  const beside = await clientPointOf(page, { x: 500, y: 100 });
+  await page.mouse.move(beside.x, beside.y);
+  await expect(page.locator(".wire-preview.red")).toHaveAttribute("d", /^M 340 200 L /);
+  await clickCenter(page, pin(page, "pole2", "io", "red"));
+  await clickCenter(page, pin(page, "pole2", "io", "red"));
   await clickCenter(page, pin(page, "lamp1", "in", "red"));
   await expect(wires(page)).toHaveCount(3);
   expect(await sourceText(page)).toContain("    wire red constant1.out <-> pole1\n    wire red pole1 <-> pole2\n    wire red pole2 <-> lamp1.in\n");
@@ -224,28 +234,32 @@ test("a chain constant -> pole -> pole -> lamp built with the palette and the wi
     await expect(card(page, name)).toHaveAttribute("data-in-green", "no wire");
   }
 
-  // The chain runs from left to right in straight lines: out of a right edge, into the left edge of the next card.
+  // The chain runs above the cards, 30 units over their top edges, and comes down into each pole from above: up between
+  // the constant and the first pole, across from pole to pole, and down in front of the lamp. No line passes around a card.
   const paths = await page.locator("g.wire path.wire-core").evaluateAll((cores) => cores.map((core) => core.getAttribute("d")));
-  expect(paths).toEqual(["M 184 260 L 260 260", "M 444 260 L 520 260", "M 704 260 L 780 260"]);
+  expect(paths).toEqual([
+    "M 184 260 L 198 260 Q 212 260 212 246 L 212 184 Q 212 170 226 170 L 326 170 Q 340 170 340 184 L 340 200",
+    "M 340 200 L 340 184 Q 340 170 354 170 L 586 170 Q 600 170 600 184 L 600 200",
+    "M 600 200 L 600 184 Q 600 170 614 170 L 756 170 Q 770 170 770 184 L 770 250 Q 770 260 780 260 L 780 260",
+  ]);
 
-  // A wire may be started from either edge: which one is clicked does not decide where it attaches. Green, from the far
-  // edges of both poles, still takes the short way between them.
+  // Green between the same two poles, started at the second one: the inner line, 10 units over the cards.
   await page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Green wire" }).click();
-  await clickCenter(page, pin(page, "pole2", "io", "green", "right"));
-  await clickCenter(page, pin(page, "pole1", "io", "green", "left"));
+  await clickCenter(page, pin(page, "pole2", "io", "green"));
+  await clickCenter(page, pin(page, "pole1", "io", "green"));
   await expect(wires(page)).toHaveCount(4);
   expect(await sourceText(page)).toContain("    wire green pole2 <-> pole1\n");
-  expect(await wire(page, await wireKeyOf(page, "green", "pole1", "pole2")).locator("path.wire-core").getAttribute("d")).toBe("M 444 280 L 520 280");
-  // The same two pins again take the wire away, as between any two terminals; a click on the two edges of one pole connects nothing.
-  await clickCenter(page, pin(page, "pole1", "io", "green", "right"));
-  await clickCenter(page, pin(page, "pole2", "io", "green", "left"));
+  expect(await wire(page, await wireKeyOf(page, "green", "pole1", "pole2")).locator("path.wire-core").getAttribute("d")).toBe("M 360 200 L 360 200 Q 360 190 370 190 L 610 190 Q 620 190 620 200 L 620 200");
+  // The same two pins again take the wire away, as between any two terminals; a second click on the pin a wire was started at connects nothing.
+  await clickCenter(page, pin(page, "pole1", "io", "green"));
+  await clickCenter(page, pin(page, "pole2", "io", "green"));
   await expect(wires(page)).toHaveCount(3);
-  await clickCenter(page, pin(page, "pole1", "io", "green", "left"));
-  await clickCenter(page, pin(page, "pole1", "io", "green", "right"));
+  await clickCenter(page, pin(page, "pole1", "io", "green"));
+  await clickCenter(page, pin(page, "pole1", "io", "green"));
   await expect(wires(page)).toHaveCount(3);
   await expect(card(page, "pole1").locator("g.pin.pending")).toHaveCount(0);
 
-  // Moved below the first pole, the second one is wired on the side the two share, without a line around a card.
+  // Moved below the first pole, the second one is wired from its top past the right side of the upper card and down into the point of that one.
   await page.keyboard.press("q");
   await page.evaluate(() => {
     const session = window.faceSession!;
@@ -253,8 +267,7 @@ test("a chain constant -> pole -> pole -> lamp built with the palette and the wi
     session.commands.moveEntities([{ id: pole.id, position: { x: 260, y: 400 } }]);
   });
   const down = await wire(page, await wireKeyOf(page, "red", "pole1", "pole2")).locator("path.wire-core").getAttribute("d");
-  expect(down).toMatch(/^M 260 260 L /);
-  expect(down).toMatch(/ L 260 460$/);
+  expect(down).toBe("M 340 400 L 340 384 Q 340 370 354 370 L 440 370 Q 454 370 454 356 L 454 184 Q 454 170 440 170 L 354 170 Q 340 170 340 184 L 340 200");
   await expect(card(page, "lamp1")).toHaveAttribute("data-status", "lit");
 
   // The same on the board, with real pointer input on the pins at the top of the poles.
@@ -451,7 +464,7 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   await expect(pressed()).toHaveText(/^Big electric pole/);
   expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [2, 2] });
   expect(await sourceText(page)).toContain("    pole p at (300, 80) tile (8, 8) {\n        prototype = big-electric-pole\n    }\n");
-  expect(await pinOffsets(page, "p")).toEqual({ "io red": [70, 12], "io green": [90, 22] });
+  expect(await pinOffsets(page, "p")).toEqual({ "io red": [70, 12], "io green": [90, 12] });
   await expect(inspector(page).locator(".inspector-footer")).toHaveText("Tile X 8 Y 8");
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
   await expect(card(page, "light")).toHaveAttribute("data-status", "lit");

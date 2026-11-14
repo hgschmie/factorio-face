@@ -2,7 +2,7 @@
 import { analyze } from "@face/language";
 import { DIRECTIONS, facingOf, isTileCenter, occupiedTiles, TERMINALS, tileHalves, tileCenter, tileOrigin, tileSize, WIRE_COLORS, type Entity, type Point } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, BOARD_PIN, boardPinHeading, boardPinOffset, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE } from "../src/canvas/board.ts";
+import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, BOARD_PIN, boardPinOffset, boardWireLine, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE, WIRE_PIN_CLEARANCE } from "../src/canvas/board.ts";
 import { CARD, GRID, PIN_SPACING } from "../src/canvas/geometry.ts";
 import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
 import { gridSource } from "../../../tests/e2e/fixtures.ts";
@@ -305,22 +305,20 @@ describe("pins on a footprint", () => {
 
   it("puts the pins of a speaker where a lamp has them and the one point of a pole in the middle of the top end, also on 2x2 tiles", () => {
     expect(boardPinOffset({ kind: "speaker" }, "east", "in", "red")).toEqual(at(12, 30));
-    // A pole has no direction: its point is at the top, red left of green and green a little lower, whatever facing it is asked with.
+    // A pole has no direction: its point is at the top, red left of green at one height, whatever facing it is asked with.
     for (const facing of DIRECTIONS) {
       expect(boardPinOffset({ kind: "pole" }, facing, "io", "red")).toEqual(at(30, 12));
-      expect(boardPinOffset({ kind: "pole" }, facing, "io", "green")).toEqual(at(50, 22));
-      expect(boardPinHeading("io", facing)).toBe("north");
+      expect(boardPinOffset({ kind: "pole" }, facing, "io", "green")).toEqual(at(50, 12));
     }
     for (const prototype of ["big-electric-pole", "substation"] as const) {
       expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "red")).toEqual(at(70, 12));
-      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "green")).toEqual(at(90, 22));
+      expect(boardPinOffset({ kind: "pole", prototype }, "east", "io", "green")).toEqual(at(90, 12));
     }
-    // Red and green between two poles never share a line: in a row they are 10 units apart, in a column 20.
+    // Side by side around the middle of the top end, one pin spacing apart and one inset below it, as the pins of an output at the top are.
     const [red, green] = WIRE_COLORS.map((color) => boardPinOffset({ kind: "pole" }, "east", "io", color));
-    expect([green!.x - red!.x, green!.y - red!.y]).toEqual([PIN_SPACING, BOARD_PIN.drop]);
-    // An input and an output keep the end their entity's facing gives them.
-    expect(boardPinHeading("out", "south")).toBe("south");
-    expect(boardPinHeading("in", "south")).toBe("north");
+    expect([green!.x - red!.x, green!.y - red!.y]).toEqual([PIN_SPACING, 0]);
+    expect((red!.x + green!.x) / 2).toBe(TILE / 2);
+    expect([red, green]).toEqual(WIRE_COLORS.map((color) => boardPinOffset({ kind: "constant" }, "north", "out", color)));
   });
 
   it("arranges poles and speakers on the board with the tiles their prototype covers", () => {
@@ -340,6 +338,74 @@ describe("pins on a footprint", () => {
     expect(canStandAt(circuit.entities, { kind: "pole", prototype: "big-electric-pole" }, at(4, 0))).toBe(true);
     expect(blockedTurn(circuit.entities, new Map([[circuit.entities[0]!.id, "south"]]))).toBeUndefined();
     expect(footprintOriginAt({ x: 160, y: 160 }, { kind: "pole", prototype: "substation" })).toEqual(at(1, 1));
+  });
+});
+
+describe("the line of a wire on the board", () => {
+  /** The pins of a pole on one tile whose top-left tile is (x, y), by color. */
+  const pole = (x: number, y: number): Record<"red" | "green", Point> => ({ red: at(x * TILE + 30, y * TILE + 12), green: at(x * TILE + 50, y * TILE + 12) });
+  const line = (color: "red" | "green", a: Record<"red" | "green", Point>, b: Record<"red" | "green", Point>): Point[] => {
+    const other = color === "red" ? "green" : "red";
+    return boardWireLine(color, a[color], b[color], [a[other], b[other]]);
+  };
+  /** Distance from `point` to the segment between `from` and `to`. */
+  const distanceTo = (point: Point, from: Point, to: Point): number => {
+    const [dx, dy] = [to.x - from.x, to.y - from.y];
+    const t = Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / (dx * dx + dy * dy || 1)));
+    return Math.hypot(point.x - from.x - t * dx, point.y - from.y - t * dy);
+  };
+  const clearance = (points: readonly Point[], pin: Point): number => Math.min(...points.slice(1).map((point, index) => distanceTo(pin, points[index]!, point)));
+
+  it("is straight where the pin of the other color is not in its way", () => {
+    const [a, below, diagonal] = [pole(0, 0), pole(0, 3), pole(3, 3)];
+    for (const color of WIRE_COLORS) {
+      // In a column the two colors are a pin spacing apart, on a diagonal of 45 degrees 14 units: neither comes near the pin of the other.
+      expect(line(color, a, below)).toEqual([a[color], below[color]]);
+      expect(line(color, a, diagonal)).toEqual([a[color], diagonal[color]]);
+    }
+    expect(boardWireLine("red", at(12, 30), at(148, 30), [at(12, 50), at(148, 50)])).toEqual([at(12, 30), at(148, 30)]);
+  });
+
+  it("runs red above and green below the pins of poles in a row, each stepping over to its own pins", () => {
+    const [a, b] = [pole(0, 0), pole(3, 0)];
+    expect(line("red", a, b)).toEqual([at(30, 12), at(30, 2), at(270, 2), at(270, 12)]);
+    expect(line("green", a, b)).toEqual([at(50, 12), at(50, 22), at(290, 22), at(290, 12)]);
+    // The red wire passes the green pin of the left pole, the green wire the red pin of the right one.
+    expect(clearance(line("red", a, b), a.green)).toBe(WIRE_PIN_CLEARANCE);
+    expect(clearance(line("green", a, b), b.red)).toBe(WIRE_PIN_CLEARANCE);
+    expect(WIRE_PIN_CLEARANCE).toBe(PIN_SPACING / 2);
+  });
+
+  it("does not depend on the order of the ends", () => {
+    const a = pole(0, 0);
+    for (const [x, y] of [[3, 0], [-3, 0], [0, 3], [0, -3], [5, 1], [5, -1], [-5, 1], [-5, -1], [2, 2], [1, 6]] as const) {
+      // Up to rounding: the path of a wire has two decimals.
+      const rounded = (points: readonly Point[]): Point[] => points.map((point) => at(Math.round(point.x * 1000) / 1000, Math.round(point.y * 1000) / 1000));
+      for (const color of WIRE_COLORS) expect(rounded(line(color, pole(x, y), a)), `${color} ${x},${y}`).toEqual(rounded(line(color, a, pole(x, y)).toReversed()));
+    }
+  });
+
+  it("keeps the two colors of poles on a shallow diagonal off each other's pins and at least as far apart, without crossing", () => {
+    const a = pole(0, 0);
+    for (const [x, y] of [[5, 1], [5, -1], [-5, 1], [-5, -1], [9, 1], [3, 1], [-3, -1], [2, 1]] as const) {
+      const b = pole(x, y);
+      const [red, green] = [line("red", a, b), line("green", a, b)];
+      for (const pin of [a.green, b.green]) expect(clearance(red, pin), `red ${x},${y}`).toBeGreaterThanOrEqual(WIRE_PIN_CLEARANCE - 1e-9);
+      for (const pin of [a.red, b.red]) expect(clearance(green, pin), `green ${x},${y}`).toBeGreaterThanOrEqual(WIRE_PIN_CLEARANCE - 1e-9);
+      // The long runs are parallels on the same side of each other at both ends.
+      const run = (points: readonly Point[]): [Point, Point] => (points.length === 2 ? [points[0]!, points[1]!] : [points[1]!, points[2]!]);
+      const [[r1, r2], [g1, g2]] = [run(red), run(green)];
+      const side = (point: Point): number => Math.sign((r2.x - r1.x) * (point.y - r1.y) - (r2.y - r1.y) * (point.x - r1.x));
+      expect(side(g1), `${x},${y}`).toBe(side(g2));
+      expect(distanceTo(g1, r1, r2), `${x},${y}`).toBeGreaterThanOrEqual(WIRE_PIN_CLEARANCE - 1e-9);
+    }
+  });
+
+  it("steps aside in a column of combinators as in a row of poles: red to the left, green to the right", () => {
+    // The inputs of two deciders facing east, one tile row below the other: red (12, 30) and green (12, 50) on both.
+    const [upper, lower] = [{ red: at(12, 30), green: at(12, 50) }, { red: at(12, 190), green: at(12, 210) }];
+    expect(line("red", upper, lower)).toEqual([at(12, 30), at(2, 30), at(2, 190), at(12, 190)]);
+    expect(line("green", upper, lower)).toEqual([at(12, 50), at(22, 50), at(22, 210), at(12, 210)]);
   });
 });
 

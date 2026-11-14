@@ -463,8 +463,8 @@ test("each new entry places its entity on the edit canvas, with its prototype in
     await expect(page.getByRole("complementary", { name: "Inspector" }).locator("h2")).toHaveText(item.kind === "speaker" ? "Speaker" : item.title, { ignoreCase: true });
   }
   expect((await entityNames(page)).slice(-5)).toEqual(["speaker1", "pole1", "pole2", "pole3", "pole4"]);
-  // A pole has its one connection point on both edges of its card, a speaker an input on the left.
-  expect(await card(page, "pole3").locator("g.pin").evaluateAll((pins) => pins.map((pin) => `${pin.getAttribute("data-terminal")} ${pin.getAttribute("data-wire-color")} ${pin.getAttribute("data-edge")}`))).toEqual(["io red left", "io green left", "io red right", "io green right"]);
+  // A pole has its one connection point on the top edge of its card, one pin of each color; a speaker an input on the left.
+  expect(await card(page, "pole3").locator("g.pin").evaluateAll((pins) => pins.map((pin) => `${pin.getAttribute("data-terminal")} ${pin.getAttribute("data-wire-color")} ${pin.getAttribute("data-edge")}`))).toEqual(["io red top", "io green top"]);
   expect(await card(page, "speaker1").locator("g.pin").evaluateAll((pins) => pins.map((pin) => `${pin.getAttribute("data-terminal")} ${pin.getAttribute("data-edge")}`))).toEqual(["in left", "in left"]);
   // The entity list names all of them; one undo step per entity.
   await expect(palette(page).locator(".entity-list button")).toHaveCount(10);
@@ -587,9 +587,10 @@ test("with every section open the selector fits the window it starts with; in th
     expect(layout.combinatorsInside, size).toBe(true);
     expect(layout.firstRow, size).toBe(1);
     // At the size the window starts with the sections show all of themselves (to a fraction of a pixel, which the two whole
-    // numbers round apart). In the smallest window they show at least a heading and a row and scroll for the rest.
+    // numbers round apart). In the smallest window they show at least a heading and a row and scroll for the rest, which
+    // is little since the project bar became lower.
     if (size === "default") expect(layout.groups.content - layout.groups.height, size).toBeLessThanOrEqual(1);
-    else expect(layout.groups.content, size).toBeGreaterThan(layout.groups.height + 20);
+    else expect(layout.groups.content, size).toBeGreaterThan(layout.groups.height + 5);
     expect(layout.groups.height, size).toBeGreaterThanOrEqual(56);
     expect(layout.list.height, size).toBeGreaterThanOrEqual(40);
 

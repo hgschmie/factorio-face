@@ -179,9 +179,9 @@ describe("canvases", () => {
     const board = blueprintLayout(entities);
     expect(arrangeBoard(entities).get(byName("big").id)).toMatchObject({ origin: { x: 8, y: 0 }, size: { width: 2, height: 2 }, conflict: false });
     expect(board.rect(byName("big"))).toEqual({ x: 640, y: 0, width: 160, height: 160 });
-    // The pins of a pole are in the middle of the top end of its footprint, red left of green.
+    // The pins of a pole are in the middle of the top end of its footprint, red left of green at one height.
     expect(board.pin(byName("big"), "io", "red")).toEqual({ x: 710, y: 12 });
-    expect(board.pin(byName("big"), "io", "green")).toEqual({ x: 730, y: 22 });
+    expect(board.pin(byName("big"), "io", "green")).toEqual({ x: 730, y: 12 });
     expect(board.pin(byName("p1"), "io", "red")).toEqual({ x: 350, y: 12 });
     expect(board.wireSpan(byName("p1"), byName("big"), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 3, tooLong: false });
     expect(board.wireSpan(byName("big"), byName("light"), 9)).toEqual({ reach: 9, of: "project", distance: 2, tooLong: false });

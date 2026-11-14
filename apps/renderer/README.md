@@ -54,18 +54,18 @@ src/
     hover.ts           when a popup that follows the pointer appears, moves on and goes (`HoverIntent`), what the bubble of the
                        board asks for   (pure apart from the timers)
     EntityCard.tsx     one memoized card (what the entity is, description marker, icon, name, summary, live status rows, a red and a green
-                       pin per place of its terminals, on the edges the entity's facing gives them); `CardFace` is the card without pins
+                       pin per terminal, on the edges the entity's facing gives them); `CardFace` is the card without pins
                        and place, `Pin` one pin
     BlueprintEntity.tsx  one memoized entity on the board: footprint, icon, name, arrows, pins, compact live state
     EntityBubble.tsx   the bubble of the entity under the pointer on the board: `CardFace` and the description as an HTML overlay
     bubble.ts          where the bubble goes (`placeBubble`)   (pure)
     statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text, the compact output of the board   (pure)
     ContextMenu.tsx    keyboard-navigable popup menu
-    geometry.ts        card and pin geometry (`pinPlaces`, `pinPoint`, `pinEdge`, `pinHeading`), rectangles  (pure)
+    geometry.ts        card and pin geometry (`pinPoint`, `pinEdge`, `pinHeading`), rectangles  (pure)
     viewport.ts        camera transforms, zoom, fit, culling rectangle (pure)
     drag.ts            snap, drag threshold, group drag, placement     (pure)
-    wireRouting.ts     wire routes for every combination of pin edges, the edge a connection point without a direction is wired at
-                       (`wirePlaces`), SVG path data   (pure)
+    wireRouting.ts     wire routes for every combination of pin edges (a connection point without a direction is wired as an
+                       output on the top edge), SVG path data   (pure)
   editor/
     SourceEditor.tsx   CodeMirror view over an `EditorBinding`; owns no state
     extensions.ts      editor chrome: gutters, selection, indentation, keys, theme
@@ -218,7 +218,9 @@ simulation (`run`, `pause`,
   key ("to place a decider facing south (R turns it)"); on the edit canvas that is the only sign of it before the click, on
   the board the outline has the footprint of the prototype and turns as well.
 - **Messages.** `state.error` is one message, shown in the toast (`.toast`, `role="alert"`) with a Dismiss button; a newer one
-  replaces it. The session sets it through `show(message, refusal?)` and keeps two sorts apart. A message about a refused edit
+  replaces it. While a canvas is shown the toast is a child of `.canvas-area`: in the middle of the canvas, 62 units above
+  its lower edge, which is above the hint line and the zoom controls, and in Split mode beside the source pane, not over
+  its problems list. In Source mode it stands over the bottom of the window's body, as it always did. The session sets it through `show(message, refusal?)` and keeps two sorts apart. A message about a refused edit
   (a name that is taken, a wire that cannot be, a `tile` off the grid, "Nothing was pasted", a turn or a flip refused on the board)
   describes the document it was refused on, so it goes away with the next change of the document, whatever makes it: a command
   that works, undo, redo, typing in the source. Commands that change nothing (a blocked move, a tool, a menu, the display mode)
@@ -493,11 +495,10 @@ pins on the top or the bottom end.
 - Pins (`boardPinOffset`): inside the footprint, 12 units from the outer end of their tile, 20 apart; input pins on the input
   half, output pins on the output half (a constant has its output where it faces, a lamp and a speaker their input on the
   west end). Red is on the left seen along the facing, as on the cards. The one connection point of an entity without input
-  and output (`io`: a pole) has no direction and sits in the middle of the top end of the footprint (`boardPinHeading`),
-  where the wires hang on a pole in the game, on one tile as on 2x2: red at (middle - 10, 12), green at (middle + 10, 22).
-  Green is 10 units lower so that the two wires between poles in a row do not lie on one line (between poles in a column
-  they are 20 apart). They are the same `g.pin` elements with `data-terminal`, `data-wire-color` and `data-edge` (`top`
-  for a pole).
+  and output (`io`: a pole) has no direction and sits in the middle of the top end of the footprint (`pinHeading`),
+  where the wires hang on a pole in the game, on one tile as on 2x2: red at (middle - 10, 12), green at (middle + 10, 12),
+  side by side at one height as on the cards. They are the same `g.pin` elements with `data-terminal`, `data-wire-color`
+  and `data-edge` (`top` for a pole).
 - An entity without halves and without a direction (a pole) has neither arrows nor a notch. On 2x2 tiles its content is in
   the middle of the four: the icon at 48 units, the name below it (18 characters). A lamp that is lit and a speaker that
   plays show it the same way: the indicator, the glow over the body and the class `active`.
@@ -508,7 +509,17 @@ pins on the top or the bottom end.
   in conflict says so in a tooltip (`<title>`); the others have none, like the cards.
 - Wires are drawn above the entities, as in the game, with the same `g.wire` markup, classes and click target as the routed
   ones: a straight line between the two pins, and for a wire from the output of an entity to its own input an arc that passes
-  32 units beside the line (`SELF_WIRE_SAG`), just outside the long edge on the side of its color. Because wires are on top, a
+  32 units beside the line (`SELF_WIRE_SAG`), just outside the long edge on the side of its color. A wire steps aside where
+  the pin of the other color at one of its ends lies in its way, closer than 10 units (`WIRE_PIN_CLEARANCE`, half a pin
+  spacing) to the straight line (`boardWireLine`). That is so where the two pins of a terminal are in line with the wire:
+  poles in a row, combinators in a column. Straight, the wire would run through that pin, and a red and a green wire
+  between the same two entities would lie on one line. It runs parallel to the straight line instead, as near to it as
+  clears those pins, and joins its own pins with a rounded step at both ends (`routePath`). Exactly in line both sides
+  are as near: red takes the upper one (the left one of a vertical line), green the other, so between poles in a row red
+  runs at y = 2 of their tiles, in the free strip above the bodies, and green at y = 22, a pin spacing apart. Poles in a
+  column and on a diagonal of 30 degrees and more keep straight wires, which their pins hold 20 to 10 units apart; on a
+  flatter diagonal each wire moves by what is missing. The line depends on the pins only, not on the order of the ends
+  and not on whether the other color is wired. Because wires are on top, a
   click where a wire crosses an entity selects the wire; with a tool other than select, wires take no pointer events on the
   board, so they never cover a pin.
 
@@ -577,7 +588,10 @@ none.
 
 `workbench/CanvasStrip.tsx` is a row of its own between the project bar and the canvas (`header.canvas-strip`, the first
 child of `.graph-pane`; the canvas is in `.canvas-area` below it). Nothing of it lies over the canvas, where only the hint
-line and the zoom controls (`.canvas-footer`), the bubble, the context menu and the notice about an invalid source remain.
+line and the zoom controls (`.canvas-footer`), the bubble, the context menu, the toast and the notice about an invalid
+source remain. With its controls on one line the strip is 51 units high, and so is the project bar above the workbench
+(`.projectbar`, `--projectbar-height`) at every window size: the project symbol and the buttons in it are 30 units high
+and the name is set in 15px. The title bar keeps 62 units (66 in a window at least 900 high).
 
 - `.canvas-heading`: the title "Circuit workspace" and under it the counts (`.counts`: "4 entities", "4 connections").
 - The canvas tools (`.tool-row`, a group named "Canvas tools"): select, red wire and green wire, which were in the sidebar
@@ -645,13 +659,11 @@ line and the zoom controls (`.canvas-footer`), the bubble, the context menu and 
   `data-row="red|green|out|lamp|speaker"` and the classes `red`, `green`, `out`, `lamp`, `speaker`, `playing` and `unwired`; inside them `.row-marker`, one `<image>` (with a catalog icon)
   and one `text.row-value` per signal, `text.row-more` (`+N`), `text.row-none` (the dash, a lamp that is off) and
   `rect.row-swatch`. Rows are memoized by their signal list, which the engine keeps while a network or an output is unchanged.
-- Grid 20 units; cards are 184 x 128. Every terminal (`TERMINALS`: `in`, `out`, `io`) has one connection pin per wire color at
-  each place it is drawn at (`pinPlaces`): an input and an output at their one place, the one connection point of an entity
-  that has neither (`io`: a pole, and most entities of the game) at both, where an input would be and where an output would
-  be. The two pairs of pins are one and the same point (`data-terminal="io"`, told apart by `data-edge` only): a wire may be
-  started and ended at either, both light up while a wire is pending, and where the wire attaches is decided by the route
-  (below). Which edge
-  of the card carries them follows from the direction the entity faces (`facing`, the direction its output points to; east when the
+- Grid 20 units; cards are 184 x 128. Every terminal (`TERMINALS`: `in`, `out`, `io`) has one connection pin per wire color.
+  The one connection point of an entity that has neither input nor output (`io`: a pole, and most entities of the game)
+  is one pair of pins in the middle of the top edge, red at (80, 0) and green at (100, 0), whatever the entity faces: the
+  place it has on the blueprint board, and the place of the output of an entity facing north. Which edge
+  of the card carries an input and an output follows from the direction the entity faces (`facing`, the direction its output points to; east when the
   source does not say). The pins turn with the entity as one rigid figure, clockwise from east over south and west to north; offsets
   from the top-left corner of the card:
 
@@ -664,11 +676,10 @@ line and the zoom controls (`.canvas-footer`), the bubble, the context menu and 
 
   All pins are on grid lines, 20 units apart; those on the top and bottom edge sit around the middle of the card (92). A constant
   and a lamp have the pins of their one terminal; a lamp and a speaker do not rotate, so their input pins are always on the left
-  edge, and a pole has its point on the left and on the right edge. `pinPoint(position, place, color, facing)` in `geometry.ts` is
-  the only place that knows the positions (`pinEdge` and `pinHeading` name the edge and the direction a wire leaves in; a place
-  is `in` or `out`); a wire of a color starts and ends in the center of the pin of that color. The rubber band of a pending
-  wire starts there too; from a point with two places it starts at the one nearer to the pointer
-  (`CanvasLayout.pin(entity, side, color, toward)`).
+  edge, and a pole has its point on the top edge. `pinPoint(position, side, color, facing)` in `geometry.ts` is
+  the only place that knows the positions (`pinEdge` and `pinHeading` name the edge and the direction a wire leaves in: up for
+  `io`); a wire of a color starts and ends in the center of the pin of that color. The rubber band of a pending
+  wire starts there too (`CanvasLayout.pin(entity, side, color)`).
 - Pins in the DOM: `g.pin` inside the card with `data-terminal="in|out|io"`, `data-wire-color="red|green"`, `data-edge="left|right|top|
   bottom"` and a `<title>` such as "Red input", "Green output" or "Red connection"; the card (`g.card`) carries `data-facing`. Pins are drawn in the wire color tokens.
   A wire tool sets `wire-red` / `wire-green` on `.canvas`: only the pins of that color are targets (highlight, click, pending state,
@@ -692,13 +703,15 @@ line and the zoom controls (`.canvas-footer`), the bubble, the context menu and 
   There are no curves. A wire leaves and enters a pin at a right angle to its edge. Red and green between the same two terminals
   run as parallels one pin spacing (20) apart and never touch, except in a narrow gap and at the one crossing described below.
   `routeWire(color, a, b, sameEntity)` takes the position, the side and the facing of both ends; the route does not depend on
-  their order. An end that is a connection point without a direction (`io`) is first given one of its two places
-  (`wirePlaces`): the one that is nearer to the other end, measured along the wire, which is the place with the shortest line
-  (the red line is measured for both colors, so they attach at the same edge; of two lines of one length the one on the left
-  edges is taken). From there it is routed as the input or the output that sits at that place, by the rules below, so nothing
-  in them knows a pole. A chain source -> pole -> pole -> lamp so runs from left to right in straight lines (out of a right
-  edge, into the next left edge); a pole straight above or below another entity is wired on the side the two share instead
-  of around a card; and a pole to the left of an output is reached at its right edge. The rules below are written for two entities facing east. Two entities that face the same other way, and the
+  their order. An end that is a connection point without a direction (`io`) is routed as what sits at its place, the output
+  of an entity facing north (`directed`), by the rules below, so nothing in them knows a pole: its wires arrive from above.
+  Two poles are two such outputs (the rule for two outputs, turned): up, across 10 (green) and 30 (red) units above the
+  higher card, and down, with the one crossing of the colors next to one of the poles. A chain source -> pole -> pole ->
+  lamp so runs along one line 30 units above the cards: up between the constant and the first pole, across from pole to
+  pole, and down in front of the lamp; the wires of one color share the piece into the pin of a pole. A pole below another
+  is wired from its top past the side of the upper card (the right side, or the left one when it stands further left) and
+  down into the point of that one. Between an output and a pole the colors cross once, between a pole and an input they
+  are parallels. The rules below are written for two entities facing east. Two entities that face the same other way, and the
   feedback wire of one entity, get the same rules in a frame turned with them (the whole figure turns: a column of entities
   facing south is wired with straight vertical lines, the loop of a feedback wire passes the side of the card on which the red
   pins sit).

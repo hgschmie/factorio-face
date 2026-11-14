@@ -27,25 +27,10 @@ export function arrowPath(x: number, y: number, forward: Point, scale = 1): stri
   return `M ${x + forward.x * tip} ${y + forward.y * tip} L ${base.x + forward.y * half} ${base.y - forward.x * half} L ${base.x - forward.y * half} ${base.y + forward.x * half} Z`;
 }
 
-/**
- * A place for the pins of a terminal on a card: where an input sits or where an output sits (the opposite edge). An input and
- * an output have their one place. The one connection point of an entity that has no input and no output (`io`: a pole, and
- * most entities of the game) is drawn at both, as one and the same point: a wire attaches where it is nearer to its other end
- * (`routeWire`), so a chain runs through such cards from left to right.
- */
-export type PinPlace = "in" | "out";
-
-const PIN_PLACES: Readonly<Record<TerminalSide, readonly PinPlace[]>> = { in: ["in"], out: ["out"], io: ["in", "out"] };
-
-/** The places at which the pins of a terminal are drawn on a card. */
-export function pinPlaces(side: TerminalSide): readonly PinPlace[] {
-  return PIN_PLACES[side];
-}
-
 export type CardEdge = "left" | "right" | "top" | "bottom";
 
 /** The edge of a card or a footprint that lies in a direction from its middle. */
-export const EDGE_TOWARDS: Readonly<Record<Direction, CardEdge>> = { east: "right", south: "bottom", west: "left", north: "top" };
+const EDGE_TOWARDS: Readonly<Record<Direction, CardEdge>> = { east: "right", south: "bottom", west: "left", north: "top" };
 const OTHER_COLOR: Readonly<Record<WireColor, WireColor>> = { red: "green", green: "red" };
 
 export interface Rect {
@@ -59,29 +44,39 @@ export function cardRect(position: Point): Rect {
   return { x: position.x, y: position.y, width: CARD.width, height: CARD.height };
 }
 
-/** The direction in which a wire leaves the pins at a place: an output points where its entity faces, an input the other way. */
-export function pinHeading(place: PinPlace, facing: Direction = DEFAULT_FACING): Direction {
-  return place === "out" ? facing : opposite(facing);
+/** Where the one connection point of an entity without input and output (`io`) lies from the middle of its card, whatever the entity faces: at the top, as on the blueprint board. */
+const IO_HEADING: Direction = "north";
+
+/**
+ * The direction in which a wire leaves the pins of a terminal: an output points where its entity faces, an input the other
+ * way, and a connection point without a direction (`io`: a pole, and most entities of the game) up.
+ */
+export function pinHeading(side: TerminalSide, facing: Direction = DEFAULT_FACING): Direction {
+  if (side === "io") return IO_HEADING;
+  return side === "out" ? facing : opposite(facing);
 }
 
-/** The edge of the card that carries the pins at a place. */
-export function pinEdge(place: PinPlace, facing: Direction = DEFAULT_FACING): CardEdge {
-  return EDGE_TOWARDS[pinHeading(place, facing)];
+/** The edge of the card that carries the pins of a terminal. */
+export function pinEdge(side: TerminalSide, facing: Direction = DEFAULT_FACING): CardEdge {
+  return EDGE_TOWARDS[pinHeading(side, facing)];
 }
 
 /** The edges of the card that carry pins, for an entity with these terminals. */
 export function pinEdges(sides: readonly TerminalSide[], facing: Direction = DEFAULT_FACING): CardEdge[] {
-  return sides.flatMap((side) => pinPlaces(side).map((place) => pinEdge(place, facing)));
+  return sides.map((side) => pinEdge(side, facing));
 }
 
 /**
- * Center of the connection pin for one wire color at one place; a wire of that color starts and ends exactly here.
+ * Center of the connection pin for one wire color on one terminal; a wire of that color starts and ends exactly here.
  * An entity facing east has its inputs on the left edge and its outputs on the right, red above green. The pins turn with the
  * entity as one rigid figure, clockwise from east to south, west and north: facing south the outputs are on the bottom edge with
  * red right of green, facing west on the left edge with red below green, facing north on the top edge with red left of green.
+ * A connection point without a direction (`io`) does not turn: it sits in the middle of the top edge, red left of green, which
+ * is where an entity facing north has its output.
  */
-export function pinPoint(position: Point, place: PinPlace, color: WireColor, facing: Direction = DEFAULT_FACING): Point {
-  const far = place === "out";
+export function pinPoint(position: Point, side: TerminalSide, color: WireColor, facing: Direction = DEFAULT_FACING): Point {
+  if (side === "io") return pinPoint(position, "out", color, IO_HEADING);
+  const far = side === "out";
   switch (facing) {
     case "east":
       return { x: position.x + (far ? CARD.width : 0), y: position.y + CARD.pinY[color] };

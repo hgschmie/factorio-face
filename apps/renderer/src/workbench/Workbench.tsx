@@ -338,6 +338,15 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
   const unplacedCount = useMemo(() => (capabilities.tiles ? circuit.entities.filter((entity) => !entity.placement?.tile).length : 0), [capabilities.tiles, circuit.entities]);
   const selectionText = selectionStatus(circuit, selectedItems(circuit, selection, wireSelection));
   const showCanvas = mode !== "source";
+  // A message of the controller: over the canvas, above its hint line, while there is one; over the bottom of the source otherwise.
+  const toast = state.error && (
+    <div className="toast" role="alert">
+      <span>{state.error}</span>
+      <button type="button" aria-label="Dismiss message" onClick={commands.dismissError}>
+        <Icon name="close" size={16} />
+      </button>
+    </div>
+  );
 
   return (
     <InstrumentsContext value={state.catalog.speakerInstruments}>
@@ -435,6 +444,7 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
                     onCut={menuCut}
                     onPaste={api && menuPaste}
                   />
+                  {toast}
                   {!editable && (
                     <div className="invalid-banner" role="status">
                       <span>The canvas cannot be edited until the source is valid. It shows the last valid circuit.</span>
@@ -511,14 +521,7 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
       {appSettingsOpen && appSettings && <AppSettings settings={appSettings} close={closeAppSettings} />}
 
-      {state.error && (
-        <div className="toast" role="alert">
-          <span>{state.error}</span>
-          <button type="button" aria-label="Dismiss message" onClick={commands.dismissError}>
-            <Icon name="close" size={16} />
-          </button>
-        </div>
-      )}
+      {!showCanvas && toast}
     </div>
     </InstrumentsContext>
   );

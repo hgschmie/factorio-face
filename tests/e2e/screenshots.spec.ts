@@ -1,8 +1,8 @@
 // Reference screenshots of the workbench for visual review, written to .runtime/screenshots/.
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { card, cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, showDisplay, shrinkToMinimum, test } from "./app.ts";
-import { hoverOnBoard, selectOnBoard } from "./board.ts";
+import { boardGrabPoint, card, cardGrabPoint, clickCenter, clientPointOf, expect, pin, ROOT, SCREENSHOT_DIR, selectEntity, showDisplay, shrinkToMinimum, test } from "./app.ts";
+import { BOARD, hoverOnBoard, openBoard, pinOffsets, selectOnBoard, setSource } from "./board.ts";
 import { openRelay } from "./fixtures.ts";
 
 test("captures the workbench in its main states", async ({ page }) => {
@@ -209,4 +209,249 @@ test("captures the strip, the status line, the tiles with their popups, the enti
   await page.getByRole("button", { name: "Split", exact: true }).click();
   await settle();
   await page.screenshot({ path: resolve(shots, "window-minimum-split.png") });
+});
+
+const POLE_CHAIN = `circuit "Pole chain" {
+    constant source at (40, 80) {
+        virtual:signal-A = 1
+    }
+
+    pole p1 at (300, 80) {
+    }
+
+    pole p2 at (560, 80) {
+        prototype = medium-electric-pole
+    }
+
+    lamp light at (820, 80) {
+        when virtual:signal-A > 0
+    }
+
+    constant feed at (40, 320) {
+        virtual:signal-B = 2
+    }
+
+    pole relay at (300, 320) {
+    }
+
+    decider gate at (560, 320) {
+        when virtual:signal-B > 1
+        output virtual:signal-C = 1
+    }
+
+    wire red source.out <-> p1
+    wire red p1 <-> p2
+    wire green p1 <-> p2
+    wire red p2 <-> light.in
+    wire red feed.out <-> relay
+    wire green feed.out <-> relay
+    wire red relay <-> gate.in
+    wire green relay <-> gate.in
+}
+`;
+
+const POLE_COLUMN = `circuit "Pole column" {
+    constant feed at (40, 280) {
+        virtual:signal-A = 1
+    }
+
+    pole top at (300, 80) {
+    }
+
+    pole middle at (300, 280) {
+    }
+
+    pole bottom at (300, 480) {
+        prototype = big-electric-pole
+    }
+
+    pole aside at (560, 280) {
+    }
+
+    lamp light at (560, 480) {
+        when virtual:signal-A > 0
+    }
+
+    wire red top <-> middle
+    wire green top <-> middle
+    wire red middle <-> bottom
+    wire red feed.out <-> middle
+    wire red bottom <-> light.in
+    wire green middle <-> aside
+}
+`;
+
+/** Poles in a row, in a column and on diagonals, a big pole and a substation, with a red and a green wire between each pair. */
+const POLE_BOARD = `circuit "Pole board" {
+    pole a at (0, 0) tile (0.5, 0.5) {
+    }
+
+    pole b at (0, 0) tile (3.5, 0.5) {
+    }
+
+    pole c at (0, 0) tile (0.5, 3.5) {
+    }
+
+    pole d at (0, 0) tile (3.5, 3.5) {
+    }
+
+    pole e at (0, 0) tile (5.5, 4.5) {
+    }
+
+    pole big at (0, 0) tile (7, 1) {
+        prototype = big-electric-pole
+    }
+
+    pole station at (0, 0) tile (11, 1) {
+        prototype = substation
+    }
+
+    pole under at (0, 0) tile (11, 4) {
+        prototype = big-electric-pole
+    }
+
+    constant source at (0, 0) tile (-1.5, 1.5) {
+        virtual:signal-A = 1
+    }
+
+    lamp light at (0, 0) tile (12.5, 3.5) {
+        when virtual:signal-A > 0
+    }
+
+${[["a", "b"], ["a", "c"], ["a", "d"], ["d", "e"], ["b", "big"], ["big", "station"], ["station", "under"]].flatMap(([from, to]) => ["red", "green"].map((color) => `    wire ${color} ${from} <-> ${to}`)).join("\n")}
+    wire red source.out <-> a
+    wire green source.out <-> a
+    wire red under <-> light.in
+    wire green under <-> light.in
+}
+`;
+
+const POLE_BOARD_CLOSE = `circuit "Pole board close up" {
+    pole a at (0, 0) tile (1.5, 0.5) {
+    }
+
+    pole b at (0, 0) tile (3.5, 0.5) {
+    }
+
+    pole c at (0, 0) tile (1.5, 2.5) {
+    }
+
+    pole d at (0, 0) tile (3.5, 2.5) {
+    }
+
+    constant source at (0, 0) tile (0.5, 0.5) {
+        virtual:signal-A = 1
+    }
+
+    lamp light at (0, 0) tile (4.5, 2.5) {
+        when virtual:signal-A > 0
+    }
+
+${[["a", "b"], ["a", "c"], ["a", "d"], ["c", "d"]].flatMap(([from, to]) => ["red", "green"].map((color) => `    wire ${color} ${from} <-> ${to}`)).join("\n")}
+    wire red source.out <-> a
+    wire green source.out <-> a
+    wire red d <-> light.in
+    wire green d <-> light.in
+}
+`;
+
+test("captures the one connection point of a pole on both canvases, the wires between poles and the lower project bar", async ({ page, app }) => {
+  const shots = resolve(SCREENSHOT_DIR, "pole-pins");
+  const settle = () => page.waitForTimeout(250);
+  const fit = () => page.getByRole("button", { name: "Fit circuit" }).click();
+  const wirePaths = () => page.locator("g.wire").evaluateAll((groups) => Object.fromEntries(groups.map((group) => [group.querySelector("title")!.textContent!.replace(/ \(.*/, ""), group.querySelector("path.wire-core")!.getAttribute("d")!])));
+
+  // The whole window with the example: the project bar is as high as the strip above the canvas.
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "window-default.png") });
+
+  // The edit canvas: a chain through two poles and a pole between two cards in a row. One pair of pins at the top of each pole.
+  await setSource(page, POLE_CHAIN);
+  await fit();
+  for (const name of ["p1", "p2", "relay"]) expect(await pinOffsets(page, name), name).toEqual({ "io red": [80, 0], "io green": [100, 0] });
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "edit-pole-chain.png") });
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "edit-pole-chain-canvas.png") });
+  // A pending wire from the point of a pole starts in its pin.
+  await page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Green wire" }).click();
+  await clickCenter(page, pin(page, "p2", "io", "green"));
+  const lower = await clientPointOf(page, { x: 800, y: 300 });
+  await page.mouse.move(lower.x, lower.y, { steps: 3 });
+  await expect(page.locator(".wire-preview.green")).toHaveAttribute("d", /^M 660 80 L /);
+  await settle();
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "edit-pole-pending-wire.png") });
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("q");
+
+  // Poles above and below each other, and a selected pole.
+  await setSource(page, POLE_COLUMN);
+  await fit();
+  await selectEntity(page, "middle");
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "edit-pole-column-canvas.png") });
+  await page.keyboard.press("Escape");
+
+  // The board: the pins of a pole side by side at one height, and a red and a green wire between the same two poles both on show.
+  await openBoard(page, POLE_BOARD);
+  expect(await pinOffsets(page, "a")).toEqual({ "io red": [30, 12], "io green": [50, 12] });
+  expect(await pinOffsets(page, "big")).toEqual({ "io red": [70, 12], "io green": [90, 12] });
+  expect(await pinOffsets(page, "station")).toEqual({ "io red": [70, 12], "io green": [90, 12] });
+  const paths = await wirePaths();
+  // In a row: red 10 units above the pins, green 10 below. In a column and on a diagonal: straight, the pins keep them apart.
+  expect(paths["red: b <-> a"]).toBe("M 270 12 L 270 12 Q 270 2 260 2 L 40 2 Q 30 2 30 12 L 30 12");
+  expect(paths["green: b <-> a"]).toBe("M 290 12 L 290 12 Q 290 22 280 22 L 60 22 Q 50 22 50 12 L 50 12");
+  expect(paths["red: c <-> a"]).toBe("M 30 252 L 30 12");
+  expect(paths["green: c <-> a"]).toBe("M 50 252 L 50 12");
+  expect(paths["red: d <-> a"]).toBe("M 270 252 L 30 12");
+  expect(paths["green: d <-> a"]).toBe("M 290 252 L 50 12");
+  // A big pole and a substation have their pins in the middle of two tiles, in a row with those of a pole on one tile.
+  expect(paths["red: big <-> station"]).toBe("M 550 12 L 550 12 Q 550 2 560 2 L 860 2 Q 870 2 870 12 L 870 12");
+  expect(paths["green: station <-> under"]).toBe("M 890 12 L 890 252");
+  expect(new Set(Object.values(paths)).size).toBe(Object.keys(paths).length);
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "board-poles.png") });
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "board-poles-canvas.png") });
+  // Close up: a row, a column and a diagonal of small poles, and a constant and a lamp wired to them.
+  await openBoard(page, POLE_BOARD_CLOSE);
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.locator(".canvas").screenshot({ path: resolve(shots, "board-poles-close-up.png") });
+
+  // A refused action: its message stands over the canvas, above the hint line and the zoom controls, also in Split mode.
+  await openBoard(page, BOARD);
+  await selectOnBoard(page, "source");
+  const pick = await boardGrabPoint(page, "pick");
+  await page.keyboard.down("Shift");
+  await page.mouse.click(pick.x, pick.y);
+  await page.keyboard.up("Shift");
+  await page.keyboard.press("h");
+  const toast = page.locator(".toast");
+  await expect(toast).toHaveText("Not flipped: source would stand on a tile of gate.");
+  const clear = async (where: string): Promise<void> => {
+    const box = async (selector: string) => (await page.locator(selector).boundingBox())!;
+    const [message, hint, zoom, area] = [await box(".toast"), await box(".canvas-hint"), await box(".zoom-controls"), await box(".canvas-area")];
+    expect(message.y + message.height, where).toBeLessThanOrEqual(Math.min(hint.y, zoom.y));
+    expect(message.x, where).toBeGreaterThanOrEqual(area.x);
+    expect(message.x + message.width, where).toBeLessThanOrEqual(area.x + area.width);
+  };
+  await clear("circuit");
+  await settle();
+  await page.screenshot({ path: resolve(shots, "refused-action-circuit.png") });
+  await page.getByRole("button", { name: "Split", exact: true }).click();
+  await expect(page.locator(".source-pane")).toBeVisible();
+  await clear("split");
+  await settle();
+  await page.screenshot({ path: resolve(shots, "refused-action-split.png") });
+  await toast.getByRole("button", { name: "Dismiss message" }).click();
+  await page.getByRole("button", { name: "Circuit", exact: true }).click();
+
+  // The smallest window.
+  await shrinkToMinimum(app, page);
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "window-minimum.png") });
 });

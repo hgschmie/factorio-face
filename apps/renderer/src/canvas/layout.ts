@@ -3,8 +3,8 @@
 // `entity.position`, routed wires) and the blueprint board (footprints on tiles, straight wires). Pure.
 import { facingOf, wireSpan, type Entity, type EntityId, type Point, type TerminalSide, type Wire, type WireColor, type WireSpan } from "@face/model";
 import type { DisplayMode } from "../workbench/controller.ts";
-import { arrangeBoard, boardPinOffset, TILE, withOrigin, type BoardPlacement } from "./board.ts";
-import { boundsOfPoints, cardRect, DIRECTION_VECTOR, entitiesBounds, GRID, pinPlaces, pinPoint, type Rect } from "./geometry.ts";
+import { arrangeBoard, boardPinOffset, boardWireLine, TILE, withOrigin, type BoardPlacement } from "./board.ts";
+import { boundsOfPoints, cardRect, DIRECTION_VECTOR, entitiesBounds, GRID, pinPoint, type Rect } from "./geometry.ts";
 import { FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire } from "./wireRouting.ts";
 
 export interface WireRoute {
@@ -23,11 +23,8 @@ export interface CanvasLayout {
   readonly detailZoom: number;
   /** The rectangle an entity takes: what a marquee has to touch and what is culled. Its corner is the position a drag moves. */
   rect(entity: Entity): Rect;
-  /**
-   * Center of the connection pin of one wire color on one terminal: where wires of that color end. A connection point that is
-   * drawn at two places of a card (`pinPlaces`) has two; this is the one nearer to `toward`, the first without it.
-   */
-  pin(entity: Entity, side: TerminalSide, color: WireColor, toward?: Point): Point;
+  /** Center of the connection pin of one wire color on one terminal: where wires of that color end. */
+  pin(entity: Entity, side: TerminalSide, color: WireColor): Point;
   /** The line of a wire between two entities of the circuit (the same one for a feedback wire). */
   route(wire: Wire, a: Entity, b: Entity): WireRoute;
   /** The rectangle around all entities, without `fitMargin`; undefined for an empty circuit. */
@@ -65,7 +62,7 @@ const BLUEPRINT_DETAIL_ZOOM = 0.5;
  */
 export const SELF_WIRE_SAG = 32;
 
-/** The edit canvas: cards of one size at `entity.position`, pins on the edges the facing gives them, wires routed around the cards. */
+/** The edit canvas: cards of one size at `entity.position`, pins on the edges the facing gives them (a connection point without a direction on the top edge), wires routed around the cards. */
 export function editLayout(entities: readonly Entity[], preview?: PreviewPositions): EditLayout {
   const positionOf = (entity: Entity): Point => preview?.get(entity.id) ?? entity.position;
   return {
@@ -75,11 +72,7 @@ export function editLayout(entities: readonly Entity[], preview?: PreviewPositio
     fitMargin: FEEDBACK_CLEARANCE.green,
     detailZoom: EDIT_DETAIL_ZOOM,
     rect: (entity) => cardRect(positionOf(entity)),
-    pin: (entity, side, color, toward) => {
-      const pins = pinPlaces(side).map((place) => pinPoint(positionOf(entity), place, color, facingOf(entity)));
-      const distance = (pin: Point): number => (toward ? Math.hypot(pin.x - toward.x, pin.y - toward.y) : 0);
-      return pins.reduce((nearest, pin) => (distance(pin) < distance(nearest) ? pin : nearest));
-    },
+    pin: (entity, side, color) => pinPoint(positionOf(entity), side, color, facingOf(entity)),
     route: (wire, a, b) => {
       const route = routeWire(wire.color, { position: positionOf(a), side: wire.a.side, facing: facingOf(a) }, { position: positionOf(b), side: wire.b.side, facing: facingOf(b) }, a.id === b.id);
       return { path: routePath(route), bounds: routeBounds(route) };
@@ -90,8 +83,9 @@ export function editLayout(entities: readonly Entity[], preview?: PreviewPositio
 
 /**
  * The blueprint board: every entity on the tiles `arrangeBoard` gives it, pins inside the footprint, wires as straight lines
- * from pin to pin. A wire from the output of an entity to its own input is an arc over the long edge on the side of its color, so
- * that it does not run through the middle of the entity. A preview position is rounded to whole tiles.
+ * from pin to pin that step aside from the pin of the other color where it is in their way (`boardWireLine`). A wire from the
+ * output of an entity to its own input is an arc over the long edge on the side of its color, so that it does not run through
+ * the middle of the entity. A preview position is rounded to whole tiles.
  */
 export function blueprintLayout(entities: readonly Entity[], preview?: PreviewPositions): BlueprintLayout {
   const moved = preview && new Map([...preview].map(([id, position]) => [id, { x: Math.round(position.x / TILE) || 0, y: Math.round(position.y / TILE) || 0 }]));
@@ -120,7 +114,11 @@ export function blueprintLayout(entities: readonly Entity[], preview?: PreviewPo
     route: (wire, a, b) => {
       const from = pin(a, wire.a.side, wire.color);
       const to = pin(b, wire.b.side, wire.color);
-      if (a.id !== b.id) return { path: `M ${from.x} ${from.y} L ${to.x} ${to.y}`, bounds: boundsOfPoints([from, to]) };
+      if (a.id !== b.id) {
+        const other = wire.color === "red" ? "green" : "red";
+        const line = boardWireLine(wire.color, from, to, [pin(a, wire.a.side, other), pin(b, wire.b.side, other)]);
+        return { path: routePath(line), bounds: boundsOfPoints(line) };
+      }
       // Both pins are on the same side of the middle line: red on the left seen along the facing, green on the right. A
       // quadratic curve comes half the way to its control point, hence twice the sag.
       const forward = DIRECTION_VECTOR[placement(a).facing];

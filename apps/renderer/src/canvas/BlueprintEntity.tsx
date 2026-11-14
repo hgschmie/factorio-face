@@ -6,9 +6,9 @@ import { memo } from "react";
 import { truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import type { EntityStatus } from "../workbench/controller.ts";
-import { BOARD_PIN, boardPinHeading, boardPinOffset, TILE } from "./board.ts";
+import { BOARD_PIN, boardPinOffset, TILE } from "./board.ts";
 import { Pin } from "./EntityCard.tsx";
-import { arrowPath, DIRECTION_VECTOR, EDGE_TOWARDS } from "./geometry.ts";
+import { arrowPath, DIRECTION_VECTOR, pinEdge, pinHeading } from "./geometry.ts";
 import { compactOutput, inputText } from "./statusRows.ts";
 
 export interface BlueprintEntityProps {
@@ -60,7 +60,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
   const square = !long && size.width > 1 && size.height > 1;
   const middle = (half: TileBox) => ({ x: (half.x + half.width / 2) * TILE, y: (half.y + half.height / 2) * TILE });
   // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end.
-  const pinsTowards = long || square ? { x: 0, y: 0 } : DIRECTION_VECTOR[boardPinHeading(TERMINALS[entity.kind][0]!, facing)];
+  const pinsTowards = long || square ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
   const center = { x: width / 2, y: height / 2 - pinsTowards.y * PIN_ROOM };
   const icon = outline ? ICON.outline : long ? ICON.long : square ? ICON.square : ICON.single;
   const iconTop = outline ? height / 2 - icon / 2 : center.y + (long ? -27 : square ? SQUARE.iconTop : -19);
@@ -120,7 +120,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       )}
       {TERMINALS[entity.kind].flatMap((side) =>
         WIRE_COLORS.map((color) => (
-          <Pin key={`${side}-${color}`} side={side} color={color} {...boardPinOffset(entity, facing, side, color)} radius={BOARD_PIN.radius} edge={EDGE_TOWARDS[boardPinHeading(side, facing)]} pending={pendingSide === side && pendingColor === color} />
+          <Pin key={`${side}-${color}`} side={side} color={color} {...boardPinOffset(entity, facing, side, color)} radius={BOARD_PIN.radius} edge={pinEdge(side, facing)} pending={pendingSide === side && pendingColor === color} />
         )),
       )}
     </g>

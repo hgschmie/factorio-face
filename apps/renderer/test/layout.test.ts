@@ -4,7 +4,7 @@ import { analyze } from "@face/language";
 import { facingOf, TERMINALS, WIRE_COLORS, type Circuit, type Entity, type Wire } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { TILE } from "../src/canvas/board.ts";
-import { cardRect, entitiesBounds, GRID, pinPlaces, pinPoint, rectsIntersect } from "../src/canvas/geometry.ts";
+import { cardRect, entitiesBounds, GRID, pinPoint, rectsIntersect } from "../src/canvas/geometry.ts";
 import { blueprintLayout, editLayout, layoutFor, SELF_WIRE_SAG } from "../src/canvas/layout.ts";
 import { FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire } from "../src/canvas/wireRouting.ts";
 import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
@@ -44,7 +44,7 @@ describe("edit layout", () => {
     expect(layout).toMatchObject({ mode: "edit", step: GRID, fitMargin: FEEDBACK_CLEARANCE.green });
     for (const entity of circuit.entities) {
       expect(layout.rect(entity)).toEqual(cardRect(entity.position));
-      for (const side of TERMINALS[entity.kind]) for (const color of WIRE_COLORS) expect(layout.pin(entity, side, color)).toEqual(pinPoint(entity.position, pinPlaces(side)[0]!, color, facingOf(entity)));
+      for (const side of TERMINALS[entity.kind]) for (const color of WIRE_COLORS) expect(layout.pin(entity, side, color)).toEqual(pinPoint(entity.position, side, color, facingOf(entity)));
     }
     expect(layout.bounds()).toEqual(entitiesBounds(circuit.entities));
     expect(editLayout([]).bounds()).toBeUndefined();
@@ -110,6 +110,34 @@ describe("blueprint layout", () => {
     const route = layout.route(wire, a, b);
     expect(route.path).toBe(`M ${from.x} ${from.y} L ${to.x} ${to.y}`);
     expect(route.bounds).toEqual({ x: Math.min(from.x, to.x), y: Math.min(from.y, to.y), width: Math.abs(from.x - to.x), height: Math.abs(from.y - to.y) });
+  });
+
+  it("keeps a red and a green wire between two poles apart: beside the pins in a row, straight in a column and on a diagonal", () => {
+    const poles = circuitOf(`circuit "Poles" {
+    pole a at (0, 0) tile (0.5, 0.5) { }
+    pole b at (0, 0) tile (3.5, 0.5) { }
+    pole c at (0, 0) tile (0.5, 3.5) { }
+    pole d at (0, 0) tile (4, 4) { prototype = big-electric-pole }
+    wire red a <-> b
+    wire green a <-> b
+    wire red a <-> c
+    wire green a <-> c
+    wire red a <-> d
+    wire green a <-> d
+}`);
+    const board = blueprintLayout(poles.entities);
+    const routes = poles.wires.map((wire) => board.route(wire, ...ends(poles, wire)));
+    expect(routes.map((route) => route.path)).toEqual([
+      // In a row the pins are at one height: red passes above the green pin of the left pole, green below the red pin of the right one.
+      "M 30 12 L 30 12 Q 30 2 40 2 L 260 2 Q 270 2 270 12 L 270 12",
+      "M 50 12 L 50 12 Q 50 22 60 22 L 280 22 Q 290 22 290 12 L 290 12",
+      "M 30 12 L 30 252",
+      "M 50 12 L 50 252",
+      "M 30 12 L 310 252",
+      "M 50 12 L 330 252",
+    ]);
+    expect(routes[0]!.bounds).toEqual({ x: 30, y: 2, width: 240, height: 10 });
+    expect(routes[1]!.bounds).toEqual({ x: 50, y: 12, width: 240, height: 10 });
   });
 
   it("bends the wire from an output to the input of the same entity around it, each color on its own side", () => {

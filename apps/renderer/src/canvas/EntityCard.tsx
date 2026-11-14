@@ -9,7 +9,7 @@ import { Icon } from "../icons/Icon.tsx";
 import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { EntityStatus, StatusSignal } from "../workbench/controller.ts";
-import { CARD, PIN_RADIUS, PIN_SPACING, pinEdge, pinEdges, pinPlaces, pinPoint, type CardEdge } from "./geometry.ts";
+import { CARD, PIN_RADIUS, PIN_SPACING, pinEdge, pinEdges, pinPoint, type CardEdge } from "./geometry.ts";
 import { inputText, layoutRow, rowPlacement, STATE_ROW_CHARS, STATUS_ROWS } from "./statusRows.ts";
 
 export interface EntityCardProps {
@@ -137,8 +137,7 @@ export interface PinProps {
 
 /**
  * One connection pin: the place where wires of its color attach. The canvas finds it by `data-terminal` and `data-wire-color`
- * inside the group of its entity. The hit areas of the two pins of a terminal touch but do not overlap. A connection point
- * that is drawn on two edges of a card has a pin on each; they are one terminal, told apart by `data-edge` only.
+ * inside the group of its entity. The hit areas of the two pins of a terminal touch but do not overlap.
  */
 export function Pin({ side, color, x, y, radius = PIN_RADIUS, edge, pending }: PinProps) {
   return (
@@ -251,11 +250,9 @@ export const EntityCard = memo(function EntityCard({ entity, x, y, selected, out
       data-in-green={status?.input && inputText(status.input.green)}
     >
       <CardFace entity={entity} outline={outline} shadow={shadow} pinEdges={pinEdges(terminals, facing)} status={status} describeSignal={describeSignal} resolveIcon={resolveIcon} />
-      {/* On the edge of the card that the entity's facing gives the terminal; a connection point without a direction is on two. */}
+      {/* On the edge of the card that the entity's facing gives the terminal; a connection point without a direction is on the top edge. */}
       {terminals.flatMap((side) =>
-        pinPlaces(side).flatMap((place) =>
-          WIRE_COLORS.map((color) => <Pin key={`${place}-${color}`} side={side} color={color} {...pinPoint(ORIGIN, place, color, facing)} edge={pinEdge(place, facing)} pending={pendingSide === side && pendingColor === color} />),
-        ),
+        WIRE_COLORS.map((color) => <Pin key={`${side}-${color}`} side={side} color={color} {...pinPoint(ORIGIN, side, color, facing)} edge={pinEdge(side, facing)} pending={pendingSide === side && pendingColor === color} />),
       )}
     </g>
   );

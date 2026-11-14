@@ -1,6 +1,6 @@
 import { DIRECTIONS, type Direction, type Point, type WireColor } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { CARD, cardRect, DIRECTION_VECTOR, GRID, PIN_SPACING, pinHeading, pinPoint, type PinPlace, type Rect } from "../src/canvas/geometry.ts";
+import { CARD, cardRect, DIRECTION_VECTOR, GRID, PIN_SPACING, pinHeading, pinPoint, type Rect } from "../src/canvas/geometry.ts";
 import { CORNER_RADIUS, cornerRadii, FEEDBACK_CLEARANCE, routeBounds, routePath, routeWire, type WireEnd, type WireRoute } from "../src/canvas/wireRouting.ts";
 
 const A: Point = { x: 40, y: 80 };
@@ -55,10 +55,11 @@ function crossings(a: WireRoute, b: WireRoute): Point[] {
   return result;
 }
 
-/** An end at an input or an output: these tests are about the edges, not about a point that has two of them. */
-type PlacedEnd = WireEnd & { readonly side: PinPlace };
+/** An end at an input or an output: these tests are about the edges an entity's facing gives them. */
+type DirectedSide = "in" | "out";
+type PlacedEnd = WireEnd & { readonly side: DirectedSide };
 
-function end(position: Point, side: PinPlace, facing: Direction): PlacedEnd {
+function end(position: Point, side: DirectedSide, facing: Direction): PlacedEnd {
   return { position, side, facing };
 }
 
@@ -315,7 +316,7 @@ describe("routes of rotated entities, by example", () => {
 });
 
 describe("routes between two entities facing east", () => {
-  const pinned: { name: string; color: WireColor; a: PinPlace; target: Point; b: PinPlace; sameEntity: boolean; route: number[][] }[] = [
+  const pinned: { name: string; color: WireColor; a: DirectedSide; target: Point; b: DirectedSide; sameEntity: boolean; route: number[][] }[] = [
     { name: "forward", color: "red", a: "out", target: { x: 300, y: 260 }, b: "in", sameEntity: false, route: [[224, 140], [272, 140], [272, 320], [300, 320]] },
     { name: "forward", color: "green", a: "out", target: { x: 300, y: 260 }, b: "in", sameEntity: false, route: [[224, 160], [252, 160], [252, 340], [300, 340]] },
     { name: "narrow", color: "red", a: "out", target: { x: 240, y: -100 }, b: "in", sameEntity: false, route: [[224, 140], [227, 140], [227, -40], [240, -40]] },

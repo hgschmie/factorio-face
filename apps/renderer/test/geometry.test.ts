@@ -1,6 +1,6 @@
 import { DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, TERMINALS, WIRE_COLORS, type Direction } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { arrowPath, CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPlaces, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
+import { arrowPath, CARD, DIRECTION_VECTOR, GRID, PIN_RADIUS, PIN_SPACING, pinEdge, pinHeading, pinPoint, type CardEdge } from "../src/canvas/geometry.ts";
 import { CLOCKWISE, opposite, rotated } from "../src/entities/facing.ts";
 
 /** The places pins are drawn at: where an input sits and where an output sits. */
@@ -84,7 +84,7 @@ describe("connection pins of rotated entities", () => {
       expect(pinHeading("out", facing)).toBe(facing);
       expect(pinHeading("in", facing)).toBe(opposite(facing));
       for (const kind of ENTITY_KINDS) {
-        for (const side of TERMINALS[kind].flatMap(pinPlaces)) {
+        for (const side of TERMINALS[kind]) {
           for (const color of WIRE_COLORS) {
             const pin = pinPoint(position, side, color, facing);
             const onEdge = { left: pin.x === position.x, right: pin.x === position.x + CARD.width, top: pin.y === position.y, bottom: pin.y === position.y + CARD.height };

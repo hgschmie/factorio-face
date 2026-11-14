@@ -58,7 +58,7 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
       <div className="projectbar">
         <div className="project-title">
           <span className="project-symbol">
-            <Icon name="bolt" size={20} />
+            <Icon name="bolt" size={16} />
           </span>
           <h1 data-testid="project-name">{project.name}</h1>
         </div>

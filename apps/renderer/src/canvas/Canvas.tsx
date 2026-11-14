@@ -654,7 +654,7 @@ export function Canvas(props: CanvasProps) {
         )}
         {/* Which way the new entity will face; one that does not turn (a lamp, a pole) has no direction. */}
         {ghost?.arrow && <path className={`board-ghost-arrow${ghost.free ? "" : " blocked"}`} d={ghost.arrow} />}
-        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={layout.pin(pendingEntity, pendingWire.side, tool.color, pointerWorld)} to={pointerWorld} />}
+        {tool.type === "wire" && pendingWire && pendingEntity && pointerWorld && <PendingWire color={tool.color} from={layout.pin(pendingEntity, pendingWire.side, tool.color)} to={pointerWorld} />}
         {marquee && <rect className="marquee" x={marquee.x} y={marquee.y} width={marquee.width} height={marquee.height} />}
       </svg>
 
