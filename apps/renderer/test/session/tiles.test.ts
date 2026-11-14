@@ -125,8 +125,8 @@ describe("setTiles", () => {
     const typed = session.state.source;
     session.commands.setTiles([{ id: idOf(session, "gate"), tile: at(3, 5.5) }]);
     session.commands.nudgeTiles(at(1, 0));
-    session.commands.snapToTiles();
-    session.commands.clearTiles([idOf(session, "gate")]);
+    session.commands.placeHere();
+    session.commands.unplace([idOf(session, "gate")]);
     session.commands.placeEntityOnTile("lamp", at(9.5, 9.5));
     expect(session.state).toMatchObject({ source: typed, error: null });
   });
@@ -166,18 +166,18 @@ describe("nudgeTiles", () => {
   });
 });
 
-describe("snapToTiles and clearTiles", () => {
+describe("placeHere and unplace", () => {
   it("gives every entity without a tile the one of the place it is shown at, as one step", () => {
     const { session, tiles, positions, notifications } = board();
     const before = positions();
-    session.commands.snapToTiles();
+    session.commands.placeHere();
     expect(tiles()).toEqual({ source: at(0.5, 0.5), gate: at(3, 0.5), twice: at(4, 3.5), light: at(6.5, 1.5) });
     expect(session.state.source).toBe(BOARD.replace("twice at (300, 240)", "twice at (300, 240) tile (4, 3.5)").replace("light at (560, 80)", "light at (560, 80) tile (6.5, 1.5)"));
     expect(positions()).toEqual(before);
     expect(session.state.diagnostics).toEqual([]);
     // Nothing left to snap: no step.
     const count = notifications();
-    session.commands.snapToTiles();
+    session.commands.placeHere();
     expect(notifications()).toBe(count);
     session.commands.undo();
     expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
@@ -185,10 +185,10 @@ describe("snapToTiles and clearTiles", () => {
 
   it("snaps a subset and leaves the others, those with a tile included", () => {
     const { session, tiles } = board();
-    session.commands.snapToTiles([idOf(session, "light"), idOf(session, "gate"), "nope"]);
+    session.commands.placeHere([idOf(session, "light"), idOf(session, "gate"), "nope"]);
     expect(tiles()).toEqual({ source: at(0.5, 0.5), gate: at(3, 0.5), twice: undefined, light: at(6.5, 1.5) });
-    session.commands.snapToTiles([idOf(session, "gate")]);
-    session.commands.snapToTiles([]);
+    session.commands.placeHere([idOf(session, "gate")]);
+    session.commands.placeHere([]);
     expect(tiles().twice).toBeUndefined();
     session.commands.undo();
     expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
@@ -197,27 +197,27 @@ describe("snapToTiles and clearTiles", () => {
   it("snaps entities that are shown away from their own place to where they are shown", () => {
     // Both lamps want tile (0, 1); the second one is shown above it, on (0, 0).
     const { session, tiles } = board('circuit "c" {\n    lamp a at (0, 92) { }\n    lamp b at (0, 92) { }\n}\n');
-    session.commands.snapToTiles([idOf(session, "b")]);
+    session.commands.placeHere([idOf(session, "b")]);
     expect(tiles()).toEqual({ a: undefined, b: at(0.5, 0.5) });
-    session.commands.snapToTiles();
+    session.commands.placeHere();
     expect(tiles()).toEqual({ a: at(0.5, 1.5), b: at(0.5, 0.5) });
     expect(session.state.diagnostics).toEqual([]);
   });
 
   it("takes entities off the grid: the clause goes, the rest of the line stays", () => {
     const { session, tiles, notifications } = board();
-    session.commands.clearTiles([idOf(session, "gate"), idOf(session, "twice"), "nope"]);
+    session.commands.unplace([idOf(session, "gate"), idOf(session, "twice"), "nope"]);
     expect(session.state.source).toBe(BOARD.replace(" tile (3, 0.5)", ""));
     expect(tiles()).toEqual({ source: at(0.5, 0.5), gate: undefined, twice: undefined, light: undefined });
     const count = notifications();
-    session.commands.clearTiles([idOf(session, "twice")]);
-    session.commands.clearTiles([]);
+    session.commands.unplace([idOf(session, "twice")]);
+    session.commands.unplace([]);
     expect(notifications()).toBe(count);
     session.commands.undo();
     expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
     // A facing stays where it is.
     session.commands.rotateEntities([idOf(session, "gate")], "clockwise");
-    session.commands.clearTiles([idOf(session, "gate")]);
+    session.commands.unplace([idOf(session, "gate")]);
     expect(session.state.source).toContain("decider gate at (300, 80) facing south {");
   });
 });
@@ -311,7 +311,7 @@ describe("rotating on the board", () => {
     session.commands.faceEntities(ids, "west");
     expect(session.state.error).toBeNull();
     expect(session.state.circuit.entities.map(facingOf)).toEqual(["west", "west", "east", "east"]);
-    session.commands.clearTiles([idOf(session, "light")]);
+    session.commands.unplace([idOf(session, "light")]);
     session.commands.rotateEntities(ids, "clockwise");
     expect(entityNamed(session, "gate").placement).toEqual({ tile: at(2.5, 1), direction: "north" });
     expect(session.state.error).toBeNull();

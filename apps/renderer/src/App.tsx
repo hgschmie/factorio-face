@@ -8,7 +8,7 @@ import type { SignalDescriber, SignalPickerRenderer } from "./inspector/SignalFi
 import { SignalPicker } from "./picker/SignalPicker.tsx";
 import { useAppSettings } from "./settings/useAppSettings.ts";
 import { useProjectSession } from "./session/useProjectSession.ts";
-import type { WireIconResolver } from "./workbench/Palette.tsx";
+import type { WireIconResolver } from "./workbench/CanvasStrip.tsx";
 import { Workbench } from "./workbench/Workbench.tsx";
 
 const STATUS_WARNINGS = { known: undefined, unknown: "Not a signal of Factorio's catalog", disabled: "Belongs to a signal group that is switched off" } as const;

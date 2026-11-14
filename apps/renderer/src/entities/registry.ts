@@ -67,6 +67,15 @@ export function paletteGroupOf(entity: EntityShape): PaletteGroup | undefined {
 }
 
 /**
+ * "Entities in use": the entries of the entities a circuit contains, one per game prototype, in the order of the palette (so
+ * an entry keeps its place whatever the order of the circuit). The pinned entries are left out: they are always on show.
+ */
+export function entriesInUse(entities: readonly EntityShape[]): readonly PaletteEntry[] {
+  const used = new Set(entities.map(prototypeOf));
+  return PALETTE_GROUPS.filter((group) => !group.pinned).flatMap((group) => group.entries.filter((entry) => used.has(entry.prototype)));
+}
+
+/**
  * The kinds the digit keys place, `1` for the first. A decision of the user: the four combinators and the lamp, as before the
  * palette had groups. Entities added later get no key.
  */

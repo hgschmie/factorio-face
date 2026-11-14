@@ -4,7 +4,7 @@
 // entity the reach of the project). The palette is in entitySelector.spec.ts, the speaker's form in speaker.spec.ts.
 import type { Page } from "@playwright/test";
 import { canvas, card, clickCenter, clientPointOf, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires } from "./app.ts";
-import { bubble, committedTiles, dragOnBoard, footprint, inspector, openBoard, openBoardProject, pinOffsets, selectOnBoard, setSource } from "./board.ts";
+import { bubble, committedTiles, dragOnBoard, footprint, hoverOnBoard, inspector, openBoard, openBoardProject, pinOffsets, selectOnBoard, setSource } from "./board.ts";
 
 /**
  * source -> p1 -> p2 -> light and the speaker, all within reach. `far` is a small pole 8.5 tiles from p1: too far for a small
@@ -313,12 +313,12 @@ test("a 2x2 pole on the board: selection, bubble, drag onto free and onto taken 
   await expect(card(page, "light")).toHaveAttribute("data-status", "lit");
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
 
-  // Selected, it has the outline of a selected entity around all four tiles and its card in the bubble beside it.
+  // Selected, it has the outline of a selected entity around all four tiles; under the pointer, its card in the bubble beside it.
   await selectOnBoard(page, "big");
   const body = await card(page, "big").locator(".card-body").evaluate((rect) => ({ width: Number(rect.getAttribute("width")), height: Number(rect.getAttribute("height")), stroke: getComputedStyle(rect).stroke }));
   expect([body.width, body.height]).toEqual([152, 152]);
   expect(body.stroke).toBe(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim().replace(/^#(..)(..)(..)$/, (_, r: string, g: string, b: string) => `rgb(${parseInt(r, 16)}, ${parseInt(g, 16)}, ${parseInt(b, 16)})`)));
-  await expect(bubble(page)).toHaveAttribute("data-entity-name", "big");
+  await hoverOnBoard(page, "big");
   await expect(bubble(page).locator(".card-kind")).toHaveText("BIG ELECTRIC POLE");
   await expect(bubble(page).locator(".card-summary")).toHaveText("reach 32 · 2x2");
   await expect(bubble(page).locator('.card-row[data-row="red"] .row-value')).toHaveText("1");
@@ -424,6 +424,7 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   expect(await title(page, far).textContent()).toBe("red: source.out <-> p (8.5 tiles apart)");
   expect(await diagnostics(page)).toEqual([]);
   expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [1, 1] });
+  await hoverOnBoard(page, "p");
   await expect(bubble(page).locator(".card-kind")).toHaveText("MEDIUM ELECTRIC POLE");
 
   // A big pole would cover the tile of the lamp beside it: refused and reported, like a refused turn. Nothing changed.

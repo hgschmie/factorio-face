@@ -54,20 +54,30 @@ export function writeOpenGroups(store: KeyValueStore | undefined, open: OpenGrou
 }
 
 export const CIRCUIT_LIST_KEY = "face.palette.circuitListOpen";
+export const IN_USE_KEY = "face.palette.inUseOpen";
 
-/** Whether the list of the circuit's entities under the groups is open. It starts open; anything but a stored "false" reads as open. */
-export function readCircuitListOpen(store: KeyValueStore | undefined): boolean {
+/** Whether a section with a key of its own is open. It starts open; anything but a stored "false" reads as open. */
+export function readSectionOpen(store: KeyValueStore | undefined, key: string): boolean {
   try {
-    return store?.getItem(CIRCUIT_LIST_KEY) !== "false";
+    return store?.getItem(key) !== "false";
   } catch {
     return true;
   }
 }
 
-export function writeCircuitListOpen(store: KeyValueStore | undefined, open: boolean): void {
+export function writeSectionOpen(store: KeyValueStore | undefined, key: string, open: boolean): void {
   try {
-    store?.setItem(CIRCUIT_LIST_KEY, String(open));
+    store?.setItem(key, String(open));
   } catch {
     // Nothing to do about it.
   }
+}
+
+/** Whether the list of the circuit's entities under the groups is open. */
+export function readCircuitListOpen(store: KeyValueStore | undefined): boolean {
+  return readSectionOpen(store, CIRCUIT_LIST_KEY);
+}
+
+export function writeCircuitListOpen(store: KeyValueStore | undefined, open: boolean): void {
+  writeSectionOpen(store, CIRCUIT_LIST_KEY, open);
 }

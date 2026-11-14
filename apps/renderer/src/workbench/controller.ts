@@ -6,7 +6,7 @@ import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup, SpeakerInstrumentInfo } from "@face/catalog";
 import { canRotate, DEFAULT_FACING, prototypeOf, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
-import { rotated, type RotationTurn } from "../entities/facing.ts";
+import { flipped, rotated, type FlipAxis, type RotationTurn } from "../entities/facing.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
 export type WorkbenchMode = (typeof WORKBENCH_MODES)[number];
@@ -28,7 +28,7 @@ export interface DisplayCapabilities {
   readonly wire: boolean;
   /** Paste and duplicate. */
   readonly paste: boolean;
-  /** The rotation keys and the rotation items of the context menu. */
+  /** The rotation and flip keys and their items of the context menu. */
   readonly rotate: boolean;
   /**
    * Positions are tiles: moves and new entities write `tile` instead of `at`, a turn has to find its tiles free, and the
@@ -76,6 +76,11 @@ export function placeFacing(tool: Tool): Direction {
 /** A place tool a quarter turn on. Undefined for a tool that places nothing or something that cannot rotate (a lamp). */
 export function turnedTool(tool: Tool, turn: RotationTurn): Tool | undefined {
   return tool.type === "place" && canRotate(tool) ? { ...tool, facing: rotated(placeFacing(tool), turn) } : undefined;
+}
+
+/** A place tool mirrored: what it places faces the flipped way. Undefined for a tool that places nothing or something that cannot rotate. */
+export function flippedTool(tool: Tool, axis: FlipAxis): Tool | undefined {
+  return tool.type === "place" && canRotate(tool) ? { ...tool, facing: flipped(placeFacing(tool), axis) } : undefined;
 }
 
 export type DiagnosticSeverity = "error" | "warning" | "info";
@@ -347,6 +352,14 @@ export interface WorkbenchCommands {
   /** Makes the entities face `direction`, as one step, under the same rules. An entity that faces it already is left alone. */
   faceEntities(ids: readonly EntityId[], direction: Direction): void;
   /**
+   * Mirrors the entities as a group, as the game flips a blueprint, as one step: they swap sides within the bounds of all of them
+   * (`horizontal`: left and right, `vertical`: top and bottom) and each one that can turn faces the mirrored way (`flipped`).
+   * On the edit canvas the cards are mirrored (`flipCards`). On the blueprint board the footprints of the entities with a `tile`
+   * are (`flipTiles`); one without a `tile` is only turned. There a flip that would put one of them on a tile of an entity that
+   * is not flipped with it changes nothing and is reported, like such a turn.
+   */
+  flipEntities(ids: readonly EntityId[], axis: FlipAxis): void;
+  /**
    * Replaces the configuration of the entity with `next.id`. Name and position changes go through their own commands.
    * A configuration the language cannot express yet is kept as `WorkbenchState.draft` and written once it becomes valid.
    * Another prototype may cover other tiles: an entity with a `tile` keeps the top-left tile of its footprint, and the `tile` is
@@ -386,10 +399,10 @@ export interface WorkbenchCommands {
   setTiles(tiles: readonly EntityTile[]): void;
   /** Moves the selected entities by `delta` whole tiles from where the board shows them, under the rule of `setTiles`. Those without a `tile` get one by it. */
   nudgeTiles(delta: Point): void;
-  /** Snap: gives each of the entities that has no `tile` the one of the place the board shows it at (`derivedTiles`). Without `ids`, all entities of the circuit. */
-  snapToTiles(ids?: readonly EntityId[]): void;
-  /** Takes the entities off the grid: removes their `tile`, so they stand at a derived place again. */
-  clearTiles(ids: readonly EntityId[]): void;
+  /** "Place here" and "Place all": gives each of the entities that has no `tile` the one of the place the board shows it at (`derivedTiles`). Without `ids`, all entities of the circuit. */
+  placeHere(ids?: readonly EntityId[]): void;
+  /** "Unplace": removes the `tile` of the entities, so they stand at a derived place again. */
+  unplace(ids: readonly EntityId[]): void;
   /**
    * Adds an entity of `kind` (of `prototype`, the first of the kind when omitted) that faces `facing` (east when omitted) with
    * its center at `tile`. Its edit position is the one the tile is derived from, moved on until it is not exactly that of

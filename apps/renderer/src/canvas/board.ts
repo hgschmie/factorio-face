@@ -38,7 +38,7 @@ export interface BoardPlacement {
   readonly blocked: boolean;
 }
 
-/** A turn that is refused: `entity` would come to stand on a tile of `obstacle`. */
+/** A turn or a flip that is refused: `entity` would come to stand on a tile of `obstacle`. */
 export interface BlockedTurn {
   readonly entity: EntityId;
   readonly obstacle: EntityId;
@@ -161,6 +161,31 @@ export function blockedMoves(entities: readonly Entity[], origins: ReadonlyMap<E
     if (origin && !isFree(origin, tileSize(entity, facingOf(entity)), taken)) blocked.add(entity.id);
   }
   return blocked;
+}
+
+/**
+ * The first of the entities in `origins` (the top-left tiles they would get) that would cover a tile of an entity that has a
+ * `tile` and is not among them, with that entity. It is how a refused mirror image of a group names what is in its way.
+ */
+export function firstObstacle(entities: readonly Entity[], origins: ReadonlyMap<EntityId, Point>): BlockedTurn | undefined {
+  const standing = new Map<string, EntityId>();
+  for (const entity of entities) {
+    const tile = entity.placement?.tile;
+    if (!tile || origins.has(entity.id)) continue;
+    for (const covered of occupiedTiles(entity, facingOf(entity), tile)) standing.set(tileKey(covered.x, covered.y), entity.id);
+  }
+  for (const entity of entities) {
+    const origin = origins.get(entity.id);
+    if (!origin) continue;
+    const size = tileSize(entity, facingOf(entity));
+    for (let dy = 0; dy < size.height; dy++) {
+      for (let dx = 0; dx < size.width; dx++) {
+        const obstacle = standing.get(tileKey(origin.x + dx, origin.y + dy));
+        if (obstacle !== undefined) return { entity: entity.id, obstacle };
+      }
+    }
+  }
+  return undefined;
 }
 
 /**

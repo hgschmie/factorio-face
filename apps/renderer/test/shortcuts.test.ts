@@ -100,6 +100,8 @@ describe("shortcut labels", () => {
     expect(labels("tool.wireGreen")).toEqual(["⌥G", "Alt+G"]);
     expect(labels("edit.rotate")).toEqual(["R", "R"]);
     expect(labels("edit.rotateBack")).toEqual(["⇧R", "Shift+R"]);
+    expect(labels("edit.flipHorizontal")).toEqual(["H", "H"]);
+    expect(labels("edit.flipVertical")).toEqual(["V", "V"]);
     expect(labels("edit.delete")).toEqual(["⌫", "Del"]);
     expect(labels("edit.duplicate")).toEqual(["⌘D", "Ctrl+D"]);
     expect(labels("edit.cut")).toEqual(["⌘X", "Ctrl+X"]);
@@ -163,9 +165,14 @@ describe("key matching", () => {
     expect(idFor(stroke("0"), mac)).toBeUndefined();
     expect(idFor(stroke("1", { [mod]: true }), mac)).toBeUndefined();
     expect(idFor(stroke("!", { shift: true, code: "Digit1" }), mac)).toBeUndefined();
+    // H and V flip, as in the game: the plain keys only. Cmd/Ctrl+V stays the paste of the browser, Cmd+H the system's.
+    expect(idFor(stroke("h"), mac)).toBe("edit.flipHorizontal");
+    expect(idFor(stroke("H"), mac)).toBe("edit.flipHorizontal");
+    expect(idFor(stroke("v"), mac)).toBe("edit.flipVertical");
+    for (const key of ["h", "v"]) for (const held of [{ [mod]: true }, { [otherMod]: true }, { alt: true }, { shift: true }]) expect(idFor(stroke(key, held), mac), `${key} ${JSON.stringify(held)}`).toBeUndefined();
     // Keys of the browser and of the menu are left alone.
     for (const key of ["x", "c", "v", "a", "z", "s"]) expect(idFor(stroke(key, { [mod]: true }), mac), key).toBeUndefined();
-    for (const key of ["x", "c", "v", "a", "z", "s", "g", "e", "w"]) expect(idFor(stroke(key), mac), key).toBeUndefined();
+    for (const key of ["x", "c", "a", "z", "s", "g", "e", "w"]) expect(idFor(stroke(key), mac), key).toBeUndefined();
   });
 
   it("takes the wire tools from the physical key, whatever Option makes of the character", () => {

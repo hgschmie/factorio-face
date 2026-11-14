@@ -1,63 +1,295 @@
-// The entity selector of the sidebar: the four combinators always on show, every other entity in a group that opens and
-// closes, the groups remembered on this machine, and every entry placing its entity on the edit canvas and on the board.
+// The entity selector of the sidebar: every entity a square tile, four in a row, with a popup that says what it is; the four
+// combinators always on show, "Entities in use" following the circuit, every other entity in a group that opens and closes,
+// the sections remembered on this machine, and every entry placing its entity on the edit canvas and on the board.
 import type { ElectronApplication, Page } from "@playwright/test";
-import { canvas, card, clientPointOf, closeApp, entityNames, entityPosition, expect, launchApp, showDisplay, sourceText, test } from "./app.ts";
-import { footprint, openBoard, tilePoint, TILE } from "./board.ts";
+import { canvas, card, clientPointOf, closeApp, EMPTY_SOURCE, entityNames, entityPosition, expect, launchApp, showDisplay, shrinkToMinimum, sourceText, test } from "./app.ts";
+import { footprint, openBoard, setSource, tilePoint, TILE } from "./board.ts";
 import { FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 const palette = (page: Page) => page.getByRole("complementary", { name: "Components" });
 const header = (page: Page, name: string) => palette(page).locator(".palette-group-header", { hasText: name });
 const group = (page: Page, name: string) => palette(page).getByRole("group", { name, exact: true });
+/** The entry of the palette for a prototype: its tile among the combinators or in its group. */
 const entry = (page: Page, prototype: string) => palette(page).locator(`.palette-item[data-prototype="${prototype}"]`);
+/** The tile of a prototype in "Entities in use". */
+const inUse = (page: Page, prototype: string) => palette(page).locator(`.palette-tile.in-use[data-prototype="${prototype}"]`);
+const popup = (page: Page) => page.locator(".tile-popup");
 const hint = (page: Page) => page.locator(".canvas-hint");
 const toast = (page: Page) => page.getByRole("alert");
 const activeTool = (page: Page) => page.evaluate(() => window.faceSession!.getState().tool);
 const selectTool = (page: Page) => page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name: "Select and move" });
 
-/** Which groups are open, by name, as their headers say it. */
+/** Which sections are open, by name, as their headers say it. */
 async function openGroups(page: Page): Promise<Record<string, boolean>> {
   return Object.fromEntries(await palette(page).locator(".palette-group-header").evaluateAll((headers) => headers.map((element) => [element.querySelector(".palette-group-name")!.textContent, element.getAttribute("aria-expanded") === "true"])));
 }
 
-/** What the palette offers right now, top to bottom, by prototype. */
+/** What the palette offers right now, top to bottom, by prototype: its entries, without the tiles of "Entities in use". */
 async function shownEntries(page: Page): Promise<string[]> {
   return palette(page).locator(".palette-item").evaluateAll((items) => items.map((item) => item.getAttribute("data-prototype") ?? ""));
 }
+
+/** The prototypes of the tiles in "Entities in use", in their order. */
+async function entitiesInUse(page: Page): Promise<string[]> {
+  return palette(page).locator(".palette-tile.in-use").evaluateAll((items) => items.map((item) => item.getAttribute("data-prototype") ?? ""));
+}
+
+/** The open state of the sections: the two groups as given, "Entities in use" open unless said otherwise. */
+const sections = (lights: boolean, poles: boolean, used = true) => ({ "Entities in use": used, "Lights and sound": lights, "Power poles": poles });
 
 const COMBINATORS = ["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"];
 const LIGHTS = ["small-lamp", "programmable-speaker"];
 const POLES = ["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"];
 
-test("the combinators are always on show and the other entities are in groups with a name, a count and their entries", async ({ page }) => {
+test("every entity is a square tile, four in a row: the combinators first, the other entities in sections with a name and a count", async ({ page }) => {
   await expect(palette(page).locator(".count-badge")).toHaveText("10");
-  expect(await openGroups(page)).toEqual({ "Lights and sound": true, "Power poles": false });
+  expect(await openGroups(page)).toEqual(sections(true, false));
   expect(await shownEntries(page)).toEqual([...COMBINATORS, ...LIGHTS]);
   await expect(header(page, "Lights and sound").locator(".palette-group-count")).toHaveText("2");
   await expect(header(page, "Power poles").locator(".palette-group-count")).toHaveText("4");
 
-  // The combinators are rows of their own with name, description and key; they belong to no group that could be closed.
+  // The combinators are the first row; they belong to no section that could be closed. The sections follow: the entities in use, then the groups.
   const pinned = palette(page).locator(".palette-items .palette-item");
   await expect(pinned).toHaveCount(4);
-  await expect(pinned.locator("strong")).toHaveText(["Constant", "Arithmetic", "Decider", "Selector"]);
-  await expect(pinned.locator("kbd.key-hint")).toHaveText(["1", "2", "3", "4"]);
   await expect(palette(page).locator(".palette-items .palette-group-header")).toHaveCount(0);
-  await expect(palette(page).locator(".palette-group-header")).toHaveCount(2);
-
-  // An entry of a group is one line: icon and the name of the game. The lamp keeps its key; nothing else has one.
-  await expect(group(page, "Lights and sound").locator(".palette-item strong")).toHaveText(["Lamp", "Programmable speaker"]);
-  await expect(group(page, "Lights and sound").locator("kbd.key-hint")).toHaveText(["5"]);
-  await expect(entry(page, "small-lamp")).toHaveAttribute("title", "Place: Lamp (5)");
-  await expect(entry(page, "programmable-speaker")).toHaveAttribute("title", "Place: Programmable speaker");
-  await expect(entry(page, "programmable-speaker").locator(".entity-icon")).toBeVisible();
-
-  // A pole says what the choice decides: the tiles it covers and its wire reach, on the entry and in its tooltip.
+  await expect(palette(page).locator(".palette-group-header .palette-group-name")).toHaveText(["Entities in use", "Lights and sound", "Power poles"]);
+  await expect(palette(page).getByRole("group", { name: "Canvas tools" })).toHaveCount(0);
   await header(page, "Power poles").click();
   expect(await shownEntries(page)).toEqual([...COMBINATORS, ...LIGHTS, ...POLES]);
-  await expect(group(page, "Power poles").locator(".palette-item strong")).toHaveText(["Small electric pole", "Medium electric pole", "Big electric pole", "Substation"]);
-  await expect(group(page, "Power poles").locator(".palette-item small")).toHaveText(["1 tile, wire reach 7.5", "1 tile, wire reach 9", "2 x 2 tiles, wire reach 32", "2 x 2 tiles, wire reach 18"]);
-  await expect(entry(page, "big-electric-pole")).toHaveAttribute("title", "Place: Big electric pole (2 x 2 tiles, wire reach 32)");
-  await expect(group(page, "Power poles").locator("kbd")).toHaveCount(0);
+
+  // A tile is its icon and nothing else: the game's name is its accessible name, and it has no tooltip of its own (the popup says the rest).
+  const tiles = palette(page).locator(".palette-tile");
+  await expect(tiles).toHaveCount(11);
+  for (const tile of await tiles.all()) {
+    await expect(tile.locator(".entity-icon")).toBeVisible();
+    await expect(tile).toHaveText("");
+    await expect(tile).not.toHaveAttribute("title");
+    await expect(tile).toHaveAttribute("aria-pressed", "false");
+  }
+  expect(await palette(page).locator(".palette-item").evaluateAll((items) => items.map((item) => item.getAttribute("aria-label")))).toEqual([
+    "Constant combinator", "Arithmetic combinator", "Decider combinator", "Selector combinator", "Lamp", "Programmable speaker", "Small electric pole", "Medium electric pole", "Big electric pole", "Substation",
+  ]);
+  await expect(palette(page).getByRole("button", { name: "Decider combinator" })).toHaveCount(1);
   for (const prototype of POLES) await expect(entry(page, prototype)).toHaveAttribute("data-kind", "pole");
+
+  // Four in a row, square, the same size everywhere, in the same four columns from the first row down.
+  const boxes = async (scope: string): Promise<{ x: number; y: number; width: number; height: number }[]> =>
+    palette(page).locator(`${scope} .palette-tile`).evaluateAll((items) => items.map((item) => {
+      const { x, y, width, height } = item.getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  const first = await boxes(".palette-items");
+  expect(first).toHaveLength(4);
+  const columns = first.map((box) => box.x);
+  expect(new Set(first.map((box) => box.y)).size).toBe(1);
+  expect([...columns].sort((a, b) => a - b)).toEqual(columns);
+  for (const [scope, count] of [['[data-group="in-use"]', 1], ['[data-group="lights-and-sound"]', 2], ['[data-group="power-poles"]', 4]] as const) {
+    const row = await boxes(scope);
+    expect(row, scope).toHaveLength(count);
+    expect(new Set(row.map((box) => box.y)).size, scope).toBe(1);
+    row.forEach((box, index) => {
+      expect(Math.abs(box.x - columns[index]!), scope).toBeLessThan(0.5);
+      expect(Math.abs(box.width - first[0]!.width), scope).toBeLessThan(0.5);
+      expect(Math.abs(box.width - box.height), scope).toBeLessThan(0.5);
+    });
+  }
+  expect(first[0]!.width).toBeGreaterThan(40);
+  expect(first[0]!.width).toBeLessThan(52);
+  // The row fills the sidebar: as far from its right edge as from its left.
+  const side = (await palette(page).boundingBox())!;
+  expect(Math.abs(first[0]!.x - side.x - (side.x + side.width - first[3]!.x - first[3]!.width))).toBeLessThan(2);
+});
+
+test("a tile says what it is in a popup on hover and on keyboard focus, beside the sidebar and off every tile", async ({ page }) => {
+  await expect(popup(page)).toHaveCount(0);
+  // Hover, after a moment: the name, what it is for and its key, said so that it is no count.
+  await entry(page, "decider-combinator").hover();
+  await expect(popup(page)).toHaveCount(0);
+  await expect(popup(page)).toHaveAttribute("data-prototype", "decider-combinator");
+  await expect(popup(page)).toHaveRole("tooltip");
+  await expect(popup(page).locator(".tile-popup-name")).toHaveText("Decider combinator");
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Compare and decide", "Key 3"]);
+  await expect(popup(page).locator(".tile-popup-key kbd")).toHaveText("3");
+  await expect(popup(page).locator(".bubble-pointer")).toBeVisible();
+  // It describes the tile to assistive technology, which already has the name.
+  await expect(entry(page, "decider-combinator")).toHaveAccessibleName("Decider combinator");
+  await expect(entry(page, "decider-combinator")).toHaveAccessibleDescription("Compare and decide Key 3");
+  await expect(entry(page, "constant-combinator")).toHaveAccessibleDescription("");
+
+  // Beside the sidebar at the height of its tile: it covers neither its own tile nor any other, and takes no pointer.
+  const beside = async (prototype: string, tile = entry(page, prototype)): Promise<void> => {
+    await expect(popup(page)).toHaveAttribute("data-prototype", prototype);
+    const [box, side, own] = [(await popup(page).boundingBox())!, (await palette(page).boundingBox())!, (await tile.boundingBox())!];
+    expect(box.x).toBeGreaterThanOrEqual(side.x + side.width);
+    expect(box.y).toBeLessThan(own.y + own.height);
+    expect(box.y + box.height).toBeGreaterThan(own.y);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
+  };
+  await beside("decider-combinator");
+  expect(await popup(page).evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("none");
+  // In the look of the board's bubble: the card colors, not a native tooltip.
+  expect(await popup(page).locator(".tile-popup-body").evaluate((element) => getComputedStyle(element).backgroundColor)).toBe(await page.evaluate(() => {
+    const probe = document.body.appendChild(document.createElement("div"));
+    probe.style.background = "var(--card-bottom)";
+    const color = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return color;
+  }));
+
+  // The next tile takes the popup over at once. A lamp has the key 5; a speaker has none.
+  await entry(page, "small-lamp").hover();
+  await beside("small-lamp");
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["See a condition light up", "Key 5"]);
+  await entry(page, "programmable-speaker").hover();
+  await beside("programmable-speaker");
+  await expect(popup(page).locator(".tile-popup-name")).toHaveText("Programmable speaker");
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Sound an alert on a condition"]);
+  await expect(popup(page).locator("kbd")).toHaveCount(0);
+  // The tile of the lamp in "Entities in use" has the same popup, at its own place.
+  await inUse(page, "small-lamp").hover();
+  await beside("small-lamp", inUse(page, "small-lamp"));
+  await expect(inUse(page, "small-lamp")).toHaveAccessibleDescription("See a condition light up Key 5");
+  await expect(entry(page, "small-lamp")).toHaveAccessibleDescription("");
+
+  // A pole says what the choice decides: the tiles it covers and its wire reach.
+  await header(page, "Power poles").hover();
+  await expect(popup(page)).toHaveCount(0);
+  await header(page, "Power poles").click();
+  await entry(page, "big-electric-pole").hover();
+  await beside("big-electric-pole");
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Relay signals over a distance", "2 x 2 tiles, wire reach 32"]);
+  await entry(page, "small-electric-pole").hover();
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Relay signals over a distance", "1 tile, wire reach 7.5"]);
+  // Away from the tiles it goes.
+  await canvas(page).hover();
+  await expect(popup(page)).toHaveCount(0);
+
+  // Keyboard focus shows it without a wait, and takes it along from tile to tile.
+  await header(page, "Power poles").focus();
+  await page.keyboard.press("Tab");
+  await expect(entry(page, "small-electric-pole")).toBeFocused();
+  await beside("small-electric-pole");
+  await page.keyboard.press("Tab");
+  await expect(entry(page, "medium-electric-pole")).toBeFocused();
+  await beside("medium-electric-pole");
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Relay signals over a distance", "1 tile, wire reach 9"]);
+  // Space arms the tile, as before; the popup stays while the focus does.
+  await page.keyboard.press("Space");
+  await expect(entry(page, "medium-electric-pole")).toHaveAttribute("aria-pressed", "true");
+  await beside("medium-electric-pole");
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Shift+Tab");
+  await expect(header(page, "Power poles")).toBeFocused();
+  await expect(popup(page)).toHaveCount(0);
+  await page.keyboard.press("q");
+
+  // A tile that was clicked keeps the focus, but its popup leaves with the pointer.
+  await entry(page, "selector-combinator").click();
+  await beside("selector-combinator");
+  await canvas(page).hover();
+  await expect(entry(page, "selector-combinator")).toBeFocused();
+  await expect(popup(page)).toHaveCount(0);
+  await page.keyboard.press("q");
+
+  // While the source has errors the tiles are off, and still say what they are.
+  await setSource(page, (await sourceText(page)).replace("< 10", "<"));
+  await expect(entry(page, "arithmetic-combinator")).toBeDisabled();
+  await entry(page, "arithmetic-combinator").hover({ force: true });
+  await beside("arithmetic-combinator");
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Transform your signals", "Key 2"]);
+});
+
+test('"Entities in use" has a tile for each kind of entity the circuit contains, apart from the combinators, and follows the circuit', async ({ page }) => {
+  const used = header(page, "Entities in use");
+  const sectionBox = async () => (await palette(page).locator('.palette-group[data-group="in-use"]').boundingBox())!;
+  // The example has a lamp. The section sits between the combinators and the groups.
+  expect(await entitiesInUse(page)).toEqual(["small-lamp"]);
+  await expect(used.locator(".palette-group-count")).toHaveText("1");
+  const filled = await sectionBox();
+  expect(filled.y).toBeGreaterThan((await entry(page, "constant-combinator").boundingBox())!.y);
+  expect(filled.y + filled.height).toBeLessThanOrEqual((await header(page, "Lights and sound").boundingBox())!.y);
+
+  // An empty circuit, and one of combinators only: a line in place of the row, as high as the row, so nothing below moves.
+  await setSource(page, EMPTY_SOURCE);
+  await expect(palette(page).locator(".palette-tile.in-use")).toHaveCount(0);
+  await expect(used.locator(".palette-group-count")).toHaveText("0");
+  await expect(palette(page).getByRole("group", { name: "Entities in use" })).toHaveText("None besides the combinators.");
+  expect(await sectionBox()).toEqual(filled);
+  await page.keyboard.press("3");
+  await canvas(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(card(page, "decider1")).toHaveCount(1);
+  expect(await entitiesInUse(page)).toEqual([]);
+  await expect(palette(page).getByRole("group", { name: "Entities in use" })).toHaveText("None besides the combinators.");
+
+  // The first lamp: its tile appears, and the layout does not jump.
+  const lights = (await header(page, "Lights and sound").boundingBox())!;
+  await page.keyboard.press("5");
+  await page.keyboard.press("Enter");
+  await expect(card(page, "lamp1")).toHaveCount(1);
+  expect(await entitiesInUse(page)).toEqual(["small-lamp"]);
+  await expect(used.locator(".palette-group-count")).toHaveText("1");
+  expect(await sectionBox()).toEqual(filled);
+  expect(await header(page, "Lights and sound").boundingBox()).toEqual(lights);
+
+  // More kinds, placed in another order than the palette has them: the tiles are in the order of the palette, one per kind.
+  await header(page, "Power poles").click();
+  const place = async (prototype: string, name: string): Promise<void> => {
+    await entry(page, prototype).click();
+    await canvas(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(card(page, name)).toHaveCount(1);
+  };
+  await place("substation", "pole1");
+  await place("programmable-speaker", "speaker1");
+  await place("substation", "pole2");
+  await place("small-electric-pole", "pole3");
+  expect(await entitiesInUse(page)).toEqual(["small-lamp", "programmable-speaker", "small-electric-pole", "substation"]);
+  await expect(used.locator(".palette-group-count")).toHaveText("4");
+  expect(await shownEntries(page)).toEqual([...COMBINATORS, ...LIGHTS, ...POLES]);
+
+  // A tile in use arms the tool like the entry in its group, and both show it; it places the same entity.
+  await inUse(page, "substation").click();
+  expect(await activeTool(page)).toEqual({ type: "place", kind: "pole", prototype: "substation" });
+  await expect(inUse(page, "substation")).toHaveAttribute("aria-pressed", "true");
+  await expect(entry(page, "substation")).toHaveAttribute("aria-pressed", "true");
+  await expect(palette(page).locator('.palette-tile[aria-pressed="true"]')).toHaveCount(2);
+  await expect(hint(page)).toHaveText("Click the canvas (or press Enter on it) to place a substation. Esc cancels.");
+  await canvas(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(card(page, "pole4")).toHaveAttribute("data-kind", "pole");
+  expect(await sourceText(page)).toMatch(/pole pole4 at \(-?\d+, -?\d+\) \{\n {8}prototype = substation/);
+  await expect(palette(page).locator('.palette-tile[aria-pressed="true"]')).toHaveCount(0);
+  // Clicking it again while it is armed returns to the select tool; the key of the lamp lights both of its tiles.
+  await inUse(page, "substation").click();
+  await inUse(page, "substation").click();
+  expect(await activeTool(page)).toEqual({ type: "select" });
+  await page.keyboard.press("5");
+  await expect(inUse(page, "small-lamp")).toHaveAttribute("aria-pressed", "true");
+  await expect(entry(page, "small-lamp")).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("q");
+
+  // The last entity of a kind goes: so does its tile. Undo brings both back.
+  await page.evaluate(() => {
+    const { getState, commands } = window.faceSession!;
+    commands.deleteEntities(getState().circuit.entities.filter((entity) => entity.name === "speaker1" || entity.name === "pole3").map((entity) => entity.id));
+  });
+  expect(await entitiesInUse(page)).toEqual(["small-lamp", "substation"]);
+  await page.getByRole("button", { name: "Undo" }).click();
+  expect(await entitiesInUse(page)).toEqual(["small-lamp", "programmable-speaker", "small-electric-pole", "substation"]);
+  // Typing in the source counts like any edit, and so does a prototype changed there.
+  await setSource(page, (await sourceText(page)).replace("prototype = substation", "prototype = big-electric-pole"));
+  expect(await entitiesInUse(page)).toEqual(["small-lamp", "programmable-speaker", "small-electric-pole", "big-electric-pole", "substation"]);
+
+  // The section closes like a group; its heading and its count stay.
+  await used.click();
+  await expect(used).toHaveAttribute("aria-expanded", "false");
+  await expect(palette(page).locator(".palette-tile.in-use")).toHaveCount(0);
+  await expect(used.locator(".palette-group-count")).toHaveText("5");
+  await used.focus();
+  await page.keyboard.press("Enter");
+  expect(await entitiesInUse(page)).toHaveLength(5);
 });
 
 test("a group opens and closes with the pointer and with the keyboard, and says so to assistive technology", async ({ page }) => {
@@ -95,40 +327,44 @@ test("a group opens and closes with the pointer and with the keyboard, and says 
   const lights = header(page, "Lights and sound");
   await lights.focus();
   await page.keyboard.press("Space");
-  expect(await openGroups(page)).toEqual({ "Lights and sound": false, "Power poles": false });
+  expect(await openGroups(page)).toEqual(sections(false, false));
   expect(await shownEntries(page)).toEqual(COMBINATORS);
   // No key of the circuit was triggered on the way, and nothing was placed.
   expect(await activeTool(page)).toEqual({ type: "select" });
 });
 
-test("which groups are open is remembered across a restart, for every project", async () => {
+test("which sections are open is remembered across a restart, for every project", async () => {
   const first = await launchApp();
   let second: { app: ElectronApplication; page: Page } | undefined;
   try {
-    expect(await openGroups(first.page)).toEqual({ "Lights and sound": true, "Power poles": false });
+    expect(await openGroups(first.page)).toEqual(sections(true, false));
     await header(first.page, "Lights and sound").click();
     await header(first.page, "Power poles").click();
-    expect(await openGroups(first.page)).toEqual({ "Lights and sound": false, "Power poles": true });
+    expect(await openGroups(first.page)).toEqual(sections(false, true));
     // The state is not part of a project: another project shows the same groups, and it is not an unsaved change.
     await openFiveKinds(first.page);
-    expect(await openGroups(first.page)).toEqual({ "Lights and sound": false, "Power poles": true });
+    expect(await openGroups(first.page)).toEqual(sections(false, true));
     await expect(first.page.locator(".project-meta")).toContainText("All changes saved");
     // Source mode takes the palette away; it comes back as it was.
     await first.page.getByRole("button", { name: "Source", exact: true }).click();
     await expect(palette(first.page)).toHaveCount(0);
     await first.page.getByRole("button", { name: "Circuit", exact: true }).click();
-    expect(await openGroups(first.page)).toEqual({ "Lights and sound": false, "Power poles": true });
+    expect(await openGroups(first.page)).toEqual(sections(false, true));
     await closeApp(first.app);
 
     // The restarted app shows what it starts with (the project that was open last); the groups do not depend on it.
     second = await launchApp({ userData: first.userData, open: "start" });
-    expect(await openGroups(second.page)).toEqual({ "Lights and sound": false, "Power poles": true });
+    expect(await openGroups(second.page)).toEqual(sections(false, true));
     expect(await shownEntries(second.page)).toEqual([...COMBINATORS, ...POLES]);
-    // And back: what is stored follows every change.
+    // And back: what is stored follows every change. "Entities in use" is remembered like the groups.
     await header(second.page, "Power poles").click();
+    await header(second.page, "Entities in use").click();
     await closeApp(second.app);
     second = await launchApp({ userData: first.userData, open: "start" });
-    expect(await openGroups(second.page)).toEqual({ "Lights and sound": false, "Power poles": false });
+    expect(await openGroups(second.page)).toEqual(sections(false, false, false));
+    await expect(palette(second.page).locator(".palette-tile.in-use")).toHaveCount(0);
+    await header(second.page, "Entities in use").click();
+    expect(await entitiesInUse(second.page)).toEqual(["small-lamp"]);
   } finally {
     await closeApp(first.app);
     if (second) await closeApp(second.app);
@@ -140,7 +376,7 @@ test("the palette works when the stored state is unreadable or storage refuses",
   await page.evaluate(() => localStorage.setItem("face.palette.openGroups", "{not json"));
   await page.reload();
   await page.waitForSelector(".app-shell");
-  expect(await openGroups(page)).toEqual({ "Lights and sound": true, "Power poles": false });
+  expect(await openGroups(page)).toEqual(sections(true, false));
   // A store that throws on every access: the groups still open and close, for as long as the window lives.
   await page.evaluate(() => {
     const refuse = (): never => {
@@ -151,7 +387,8 @@ test("the palette works when the stored state is unreadable or storage refuses",
   });
   await header(page, "Power poles").click();
   await header(page, "Lights and sound").click();
-  expect(await openGroups(page)).toEqual({ "Lights and sound": false, "Power poles": true });
+  await header(page, "Entities in use").click();
+  expect(await openGroups(page)).toEqual(sections(false, true, false));
   await entry(page, "substation").click();
   await expect(entry(page, "substation")).toHaveAttribute("aria-pressed", "true");
   await expect(toast(page)).toHaveCount(0);
@@ -166,6 +403,8 @@ test("the key 5 opens the group of the lamp so that the armed entry is on show",
   await expect(entry(page, "small-lamp")).toHaveAttribute("aria-pressed", "true");
   await expect(entry(page, "small-lamp")).toBeInViewport({ ratio: 1 });
   await expect(palette(page).locator('.palette-item[aria-pressed="true"]')).toHaveCount(1);
+  // The example has a lamp, so its tile in "Entities in use" is lit as well.
+  await expect(palette(page).locator('.palette-tile[aria-pressed="true"]')).toHaveCount(2);
   await expect(hint(page)).toHaveText("Click the canvas (or press Enter on it) to place a lamp. Esc cancels.");
   // The poles were not asked for.
   await expect(header(page, "Power poles")).toHaveAttribute("aria-expanded", "false");
@@ -315,7 +554,7 @@ test("on the board the outline of a new entity has the footprint of its prototyp
   expect(await sourceText(page)).toBe(before);
 });
 
-test("with every group open the groups scroll in their own area and the entity list stays in reach, down to the smallest window", async ({ page, app }) => {
+test("with every section open the selector fits the window it starts with; in the smallest one the sections scroll in their own area and the entity list stays in reach", async ({ page, app }) => {
   await openFiveKinds(page);
   const measure = () =>
     page.evaluate(() => {
@@ -325,44 +564,38 @@ test("with every group open the groups scroll in their own area and the entity l
         window: [window.innerWidth, window.innerHeight],
         // Nothing of the panel is cut off or pushed out of it.
         overflow: panel.scrollHeight - panel.clientHeight,
+        sideways: Math.max(panel.scrollWidth - panel.clientWidth, groups.scrollWidth - groups.clientWidth),
         listInside: box(".entity-list").bottom <= box(".palette").bottom + 0.5 && box(".entity-list").top >= box(".palette-groups").bottom,
         combinatorsInside: [...document.querySelectorAll(".palette-items .palette-item")].every((item) => item.getBoundingClientRect().bottom <= box(".palette-groups").top),
         groups: { height: groups.clientHeight, content: groups.scrollHeight },
         list: { height: list.clientHeight, content: list.scrollHeight },
+        // Four tiles in the first row, whatever the width of the sidebar.
+        firstRow: new Set([...document.querySelectorAll(".palette-items .palette-item")].map((item) => item.getBoundingClientRect().top)).size,
       };
     });
 
-  // As the groups start, at the size the window starts with, the selector shows all of itself: nothing to scroll.
-  const start = await measure();
-  // (The area is as high as its content to a fraction of a pixel, which the two whole numbers round apart.)
-  expect(start.groups.content - start.groups.height).toBeLessThanOrEqual(1);
-  expect(start.overflow).toBe(0);
   await header(page, "Power poles").click();
   expect(await shownEntries(page)).toHaveLength(10);
+  expect(await entitiesInUse(page)).toEqual(["small-lamp"]);
 
   for (const size of ["default", "minimum"] as const) {
-    if (size === "minimum") {
-      await app.evaluate(({ BrowserWindow }) => {
-        const [window] = BrowserWindow.getAllWindows();
-        const [width = 0, height = 0] = window!.getMinimumSize();
-        window!.setSize(width, height);
-      });
-      await expect.poll(async () => (await measure()).window[0]).toBeLessThan(1200);
-    }
+    if (size === "minimum") await shrinkToMinimum(app, page);
     const layout = await measure();
     expect(layout.overflow, size).toBe(0);
+    expect(layout.sideways, size).toBe(0);
     expect(layout.listInside, size).toBe(true);
     expect(layout.combinatorsInside, size).toBe(true);
-    // The groups show at least a heading and an entry, the list at least one of its rows, and what does not fit scrolls.
+    expect(layout.firstRow, size).toBe(1);
+    // At the size the window starts with the sections show all of themselves (to a fraction of a pixel, which the two whole
+    // numbers round apart). In the smallest window they show at least a heading and a row and scroll for the rest.
+    if (size === "default") expect(layout.groups.content - layout.groups.height, size).toBeLessThanOrEqual(1);
+    else expect(layout.groups.content, size).toBeGreaterThan(layout.groups.height + 20);
     expect(layout.groups.height, size).toBeGreaterThanOrEqual(56);
     expect(layout.list.height, size).toBeGreaterThanOrEqual(40);
-    expect(layout.groups.content, size).toBeGreaterThan(layout.groups.height + 20);
 
-    // The four combinators are on show whatever the groups do, each with its name and its key.
+    // The four combinators are on show whatever the sections do.
     for (const prototype of COMBINATORS) await expect(entry(page, prototype)).toBeInViewport({ ratio: 1 });
-    await expect(palette(page).locator(".palette-items kbd.key-hint")).toHaveText(["1", "2", "3", "4"]);
-    for (const cap of await palette(page).locator(".palette-items kbd.key-hint").all()) await expect(cap).toBeVisible();
-    // The last entry of the last group is reached by scrolling the groups, and it works.
+    // The last entry of the last group is reached by scrolling the sections, and it works.
     await entry(page, "substation").scrollIntoViewIfNeeded();
     await expect(entry(page, "substation")).toBeInViewport({ ratio: 1 });
     await entry(page, "substation").click();
@@ -374,9 +607,29 @@ test("with every group open the groups scroll in their own area and the entity l
     await expect(last).toBeInViewport({ ratio: 1 });
     await last.click();
     await expect(card(page, "light")).toHaveClass(/selected/);
-    // The groups are still where they were scrolled to: the two areas scroll on their own.
+    // The sections are still where they were scrolled to: the two areas scroll on their own.
     await expect(entry(page, "substation")).toBeInViewport({ ratio: 1 });
   }
+  // The keyboard reaches a tile that is scrolled out of sight: it comes into view, and its popup is beside it.
+  await palette(page).locator(".palette-groups").evaluate((groups) => groups.scrollTo(0, 0));
+  await expect(entry(page, "substation")).not.toBeInViewport({ ratio: 1 });
+  await header(page, "Power poles").focus();
+  for (let step = 0; step < 4; step++) await page.keyboard.press("Tab");
+  await expect(entry(page, "substation")).toBeFocused();
+  await expect(entry(page, "substation")).toBeInViewport({ ratio: 1 });
+  await expect(popup(page)).toHaveAttribute("data-prototype", "substation");
+  const [popupBox, tileBox] = [(await popup(page).boundingBox())!, (await entry(page, "substation").boundingBox())!];
+  expect(popupBox.y).toBeLessThan(tileBox.y + tileBox.height);
+  expect(popupBox.y + popupBox.height).toBeGreaterThan(tileBox.y);
+  await canvas(page).focus();
+  await expect(popup(page)).toHaveCount(0);
+
+  // A tile armed by its key is in view wherever the sections were scrolled to.
+  await palette(page).locator(".palette-groups").evaluate((groups) => groups.scrollTo(0, groups.scrollHeight));
+  await page.keyboard.press("5");
+  await expect(entry(page, "small-lamp")).toHaveAttribute("aria-pressed", "true");
+  await expect(entry(page, "small-lamp")).toBeInViewport({ ratio: 1 });
+  await page.keyboard.press("q");
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await showDisplay(page, "blueprint");
   expect((await measure()).overflow).toBe(0);
@@ -391,6 +644,8 @@ test("the list of the circuit's entities closes like a group, leaves its room to
   try {
     const page = first.page;
     await openFiveKinds(page);
+    // In the smallest window, where the sections do not fit beside the list.
+    await shrinkToMinimum(first.app, page);
     await header(page, "Power poles").click();
     await expect(listHeader(page)).toHaveAttribute("aria-expanded", "true");
     await expect(listHeader(page)).toHaveText("In this circuit5");
@@ -407,7 +662,7 @@ test("the list of the circuit's entities closes like a group, leaves its room to
     expect(await page.evaluate(() => document.querySelector(".palette")!.scrollHeight - document.querySelector(".palette")!.clientHeight)).toBe(0);
     // It is a preference of this machine like the groups, not a change of the project, and the groups keep their own state.
     await expect(page.locator(".project-meta")).toContainText("All changes saved");
-    expect(await openGroups(page)).toEqual({ "Lights and sound": true, "Power poles": true });
+    expect(await openGroups(page)).toEqual(sections(true, true));
 
     // By keyboard, as a button.
     await listHeader(page).focus();

@@ -1,110 +1,100 @@
-// Left panel: canvas tools, the entity selector (the combinators as full rows, every other entity in a group that can be
-// closed), and the list of entities in the circuit. What the selector offers is data: `PALETTE_GROUPS` (entities/registry.ts).
-import { prototypeOf, type Entity, type EntityId, type WireColor } from "@face/model";
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import { KIND_INFO } from "../entities/kindInfo.ts";
-import { keyedKindOf, PALETTE_ENTRIES, PALETTE_GROUPS, paletteGroupOf, type PaletteEntry, type PaletteGroup } from "../entities/registry.ts";
+// Left panel: the entity selector and the list of entities in the circuit. Every entity is a square tile with its icon; what
+// it is, what it is for and its key come in a popup on hover and on focus. The combinators are the first row, "Entities in
+// use" has the other entities the circuit contains, and the groups below hold everything else. What the selector offers is
+// data: `PALETTE_GROUPS` (entities/registry.ts).
+import { prototypeOf, type Entity, type EntityId } from "@face/model";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { placeBubble, type BubblePlacement } from "../canvas/bubble.ts";
+import { HoverIntent } from "../canvas/hover.ts";
+import { entriesInUse, keyedKindOf, PALETTE_ENTRIES, PALETTE_GROUPS, paletteGroupOf, type PaletteEntry } from "../entities/registry.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
-import { shortcutLabel, withShortcut } from "../shortcuts/shortcuts.ts";
+import { shortcutLabel } from "../shortcuts/shortcuts.ts";
 import { sameTool, SELECT_TOOL, type Tool } from "./controller.ts";
-import { browserStore, readCircuitListOpen, readOpenGroups, writeCircuitListOpen, writeOpenGroups } from "./paletteGroups.ts";
-
-/** Returns the image URL of the game's icon for the wire tool of that color, or undefined to use the line pictogram. */
-export type WireIconResolver = (color: WireColor) => string | undefined;
+import { browserStore, IN_USE_KEY, readCircuitListOpen, readOpenGroups, readSectionOpen, writeCircuitListOpen, writeOpenGroups, writeSectionOpen } from "./paletteGroups.ts";
 
 export interface PaletteProps {
   readonly tool: Tool;
-  /** When false, the building blocks are disabled: the source has errors, or the display mode does not place entities. */
+  /** When false, the tiles are disabled: the source has errors, or the display mode does not place entities. */
   readonly canPlace: boolean;
-  /** The same for the two wire tools. */
-  readonly canWire: boolean;
   readonly entities: readonly Entity[];
   readonly selection: readonly EntityId[];
   readonly resolveEntityIcon?: EntityIconResolver;
-  readonly resolveWireIcon?: WireIconResolver;
   onToolChange(tool: Tool): void;
   onSelect(ids: readonly EntityId[]): void;
 }
 
-const RED_WIRE: Tool = { type: "wire", color: "red" };
-const GREEN_WIRE: Tool = { type: "wire", color: "green" };
 const PINNED = PALETTE_GROUPS.filter((group) => group.pinned).flatMap((group) => group.entries);
 const COLLAPSIBLE = PALETTE_GROUPS.filter((group) => !group.pinned);
+/** The section of the entities the circuit contains. It is no group of the registry: its entries follow the circuit. */
+const IN_USE = { id: "in-use", label: "Entities in use" } as const;
+const POPUP_WIDTH = 216;
 
-function WireIcon({ color, resolveIcon }: { readonly color: WireColor; readonly resolveIcon?: WireIconResolver }) {
-  const url = resolveIcon?.(color);
-  return url ? <img className="wire-icon" src={url} width={24} height={24} alt="" draggable={false} /> : <Icon name="wire" size={16} />;
+/** A tile on show: the same entry can be one in "Entities in use" and one in its group. */
+interface TileRef {
+  readonly entry: PaletteEntry;
+  /** The tile of "Entities in use": the entry of the palette is the one in its group. */
+  readonly inUse: boolean;
+  readonly element: HTMLElement;
 }
 
-interface EntryProps {
+interface TileProps {
   readonly entry: PaletteEntry;
   readonly tool: Tool;
   readonly disabled: boolean;
+  readonly inUse?: boolean;
+  /** The id of the popup's text while the popup of this tile is on show. */
+  readonly describedBy?: string;
   readonly resolveIcon?: EntityIconResolver;
   onToggle(tool: Tool): void;
+  /** The pointer is on the tile, or has left it (null). */
+  onHover(tile: TileRef | null): void;
+  /** The tile has the keyboard focus, or has lost it (null). */
+  onFocus(tile: TileRef | null): void;
 }
 
-/** The tooltip names what the button places and its key, if it has one: "Place: Decider (3)", "Place: Big electric pole (2 x 2 tiles, wire reach 32)". */
-function entryTitle(entry: PaletteEntry, what: string): string {
-  const keyed = keyedKindOf(entry);
-  return keyed ? withShortcut(`Place: ${what}`, `tool.place.${keyed}`) : `Place: ${what}`;
-}
-
-/** For the eye only: the tooltip already says the key, and a screen reader takes it from there. */
-function KeyHint({ entry }: { readonly entry: PaletteEntry }) {
-  const keyed = keyedKindOf(entry);
-  return keyed ? (
-    <kbd className="key-hint" aria-hidden="true">
-      {shortcutLabel(`tool.place.${keyed}`)}
-    </kbd>
-  ) : null;
-}
-
-/** One of the entities that are always on show: icon, the name of its kind, what it is for and its key. */
-function PinnedEntry({ entry, tool, disabled, resolveIcon, onToggle }: EntryProps) {
+/**
+ * One entity to place: a square with its icon. The name is its accessible name; everything else is in the popup, so there is
+ * no native tooltip that would say it twice.
+ */
+function Tile({ entry, tool, disabled, inUse = false, describedBy, resolveIcon, onToggle, onHover, onFocus }: TileProps) {
   const place: Tool = { type: "place", kind: entry.kind, prototype: entry.prototype };
-  const info = KIND_INFO[entry.kind];
   return (
-    <button type="button" className="palette-item" data-kind={entry.kind} data-prototype={entry.prototype} title={entryTitle(entry, info.label)} aria-pressed={sameTool(tool, place)} disabled={disabled} onClick={() => onToggle(place)}>
-      <EntityIcon entity={entry} size={34} resolveIcon={resolveIcon} />
-      <span className="palette-item-text">
-        <span className="palette-item-title">
-          <strong>{info.label}</strong>
-          <KeyHint entry={entry} />
-        </span>
-        <small>{info.description}</small>
-      </span>
-      <Icon name="plus" size={15} />
+    <button
+      type="button"
+      className={inUse ? "palette-tile in-use" : "palette-tile palette-item"}
+      data-kind={entry.kind}
+      data-prototype={entry.prototype}
+      aria-label={entry.label}
+      aria-describedby={describedBy}
+      aria-pressed={sameTool(tool, place)}
+      disabled={disabled}
+      onClick={() => onToggle(place)}
+      onPointerEnter={(event) => onHover({ entry, inUse, element: event.currentTarget })}
+      onPointerLeave={() => onHover(null)}
+      // Focus from the keyboard only: a tile that was clicked keeps the focus, and its popup would stay when the pointer leaves.
+      onFocus={(event) => event.currentTarget.matches(":focus-visible") && onFocus({ entry, inUse, element: event.currentTarget })}
+      onBlur={() => onFocus(null)}
+    >
+      <EntityIcon entity={entry} size={30} resolveIcon={resolveIcon} />
     </button>
   );
 }
 
-/** An entity inside a group: icon and the name of the game on one line, so that many fit; under it the tiles and the reach of an entity that has its own. */
-function GroupEntry({ entry, tool, disabled, resolveIcon, onToggle }: EntryProps) {
-  const place: Tool = { type: "place", kind: entry.kind, prototype: entry.prototype };
-  return (
-    <button type="button" className="palette-item compact" data-kind={entry.kind} data-prototype={entry.prototype} title={entryTitle(entry, entry.facts ? `${entry.label} (${entry.facts})` : entry.label)} aria-pressed={sameTool(tool, place)} disabled={disabled} onClick={() => onToggle(place)}>
-      <EntityIcon entity={entry} size={22} resolveIcon={resolveIcon} />
-      <span className="palette-item-text">
-        <strong>{entry.label}</strong>
-        {entry.facts && <small>{entry.facts}</small>}
-      </span>
-      <KeyHint entry={entry} />
-    </button>
-  );
-}
-
-interface GroupProps extends Omit<EntryProps, "entry"> {
-  readonly group: PaletteGroup;
+interface SectionProps {
+  readonly id: string;
+  readonly label: string;
+  readonly count: number;
   readonly open: boolean;
+  readonly children: ReactNode;
   onOpenChange(open: boolean): void;
 }
 
-function Group({ group, open, onOpenChange, ...entryProps }: GroupProps) {
+/** A heading that opens and closes the tiles under it. */
+function Section({ id, label, count, open, children, onOpenChange }: SectionProps) {
   const panelId = useId();
   const sectionRef = useRef<HTMLElement>(null);
-  // The groups scroll: a group that is opened shows as much of itself as there is room for, from its heading down.
+  // The sections scroll: one that is opened shows as much of itself as there is room for, from its heading down.
   const wasOpen = useRef(open);
   useLayoutEffect(() => {
     const section = sectionRef.current;
@@ -112,20 +102,65 @@ function Group({ group, open, onOpenChange, ...entryProps }: GroupProps) {
     wasOpen.current = open;
   }, [open]);
   return (
-    <section ref={sectionRef} className="palette-group" data-group={group.id} data-open={open}>
-      <button type="button" className="palette-group-header" aria-expanded={open} aria-controls={panelId} title={open ? `Hide ${group.label.toLowerCase()}` : `Show ${group.label.toLowerCase()}`} onClick={() => onOpenChange(!open)}>
+    <section ref={sectionRef} className="palette-group" data-group={id} data-open={open}>
+      <button type="button" className="palette-group-header" aria-expanded={open} aria-controls={panelId} title={open ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`} onClick={() => onOpenChange(!open)}>
         <Icon name="chevron" size={13} />
-        <span className="palette-group-name">{group.label}</span>
-        <span className="palette-group-count">{group.entries.length}</span>
+        <span className="palette-group-name">{label}</span>
+        <span className="palette-group-count">{count}</span>
       </button>
-      <div id={panelId} className="palette-group-entries" role="group" aria-label={group.label} hidden={!open}>
-        {open && group.entries.map((entry) => <GroupEntry key={entry.prototype} entry={entry} {...entryProps} />)}
+      <div id={panelId} className="palette-group-entries" role="group" aria-label={label} hidden={!open}>
+        {open && children}
       </div>
     </section>
   );
 }
 
-export function Palette({ tool, canPlace, canWire, entities, selection, resolveEntityIcon, resolveWireIcon, onToolChange, onSelect }: PaletteProps) {
+interface PopupState extends TileRef {
+  readonly placement: BubblePlacement;
+}
+
+/**
+ * Where the popup of a tile goes: beside the sidebar at the height of the tile, so that it covers no tile, its own included.
+ * None for a tile that is scrolled out of sight.
+ */
+function popupFor(tile: TileRef, panel: HTMLElement, height: number): PopupState | null {
+  const [box, side] = [tile.element.getBoundingClientRect(), panel.getBoundingClientRect()];
+  const scroller = tile.element.closest(".palette-groups")?.getBoundingClientRect();
+  if (scroller && (box.bottom <= scroller.top || box.top >= scroller.bottom)) return null;
+  // The anchor is the row of the tile as far as the sidebar reaches, so "beside it" is beside the sidebar.
+  const placement = placeBubble({ x: box.left, y: box.top, width: side.right - box.left, height: box.height }, { width: POPUP_WIDTH, height }, { width: window.innerWidth, height: window.innerHeight });
+  return placement ? { ...tile, placement } : null;
+}
+
+/** What a tile stands for, in the look of the board's bubble: name, purpose, the tiles and reach of a pole, the key. It takes no pointer events. */
+function TilePopup({ id, popup, onMeasure }: { readonly id: string; readonly popup: PopupState; onMeasure(height: number): void }) {
+  const { entry, placement } = popup;
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    onMeasure(ref.current?.offsetHeight ?? 0);
+  });
+  const keyed = keyedKindOf(entry);
+  const beside = placement.side === "right" || placement.side === "left";
+  return (
+    <div ref={ref} className={`tile-popup side-${placement.side}`} role="tooltip" style={{ left: placement.x, top: placement.y, width: POPUP_WIDTH }} data-prototype={entry.prototype} data-side={placement.side}>
+      <div className={`tile-popup-body kind-${entry.kind}`}>
+        <strong className="tile-popup-name">{entry.label}</strong>
+        <div id={id} className="tile-popup-text">
+          <p>{entry.description}</p>
+          {entry.facts && <p className="tile-popup-facts">{entry.facts}</p>}
+          {keyed && (
+            <p className="tile-popup-key">
+              Key <kbd className="key-hint">{shortcutLabel(`tool.place.${keyed}`)}</kbd>
+            </p>
+          )}
+        </div>
+      </div>
+      <span className="bubble-pointer" style={beside ? { top: placement.pointer } : { left: placement.pointer }} />
+    </div>
+  );
+}
+
+export function Palette({ tool, canPlace, entities, selection, resolveEntityIcon, onToolChange, onSelect }: PaletteProps) {
   // Clicking the active tool again returns to the select tool.
   const toggle = (next: Tool): void => onToolChange(sameTool(tool, next) ? SELECT_TOOL : next);
   const [openGroups, setOpenGroups] = useState(() => readOpenGroups(browserStore()));
@@ -134,6 +169,8 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
     setOpenGroups(next);
     writeOpenGroups(browserStore(), next);
   };
+  const [inUseOpen, setInUseOpen] = useState(() => readSectionOpen(browserStore(), IN_USE_KEY));
+  const inUse = useMemo(() => entriesInUse(entities), [entities]);
   // A tool whose entry is in a closed group (picked by its key, or armed while the palette was away in Source mode) must be on show: its group opens.
   const armed = tool.type === "place" ? prototypeOf(tool) : undefined;
   const armedGroup = tool.type === "place" ? paletteGroupOf(tool) : undefined;
@@ -147,7 +184,26 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
   useLayoutEffect(() => {
     if (armedShown) groupsRef.current?.querySelector('.palette-item[aria-pressed="true"]')?.scrollIntoView({ block: "nearest" });
   }, [armed, armedShown]);
-  const entryProps = { tool, disabled: !canPlace, resolveIcon: resolveEntityIcon, onToggle: toggle };
+
+  // The popup: for the tile the pointer rests on, otherwise for the tile that has the keyboard focus.
+  const panelRef = useRef<HTMLElement>(null);
+  const popupId = useId();
+  const [hovered, setHovered] = useState<TileRef | null>(null);
+  const [focused, setFocused] = useState<TileRef | null>(null);
+  const [popupHeight, setPopupHeight] = useState(0);
+  const hover = useMemo(() => new HoverIntent<TileRef>(setHovered), []);
+  useEffect(() => () => hover.reset(), [hover]);
+  // The sections scroll: the pointer is then over another tile or none, and the popup of the focused tile moves with its tile
+  // (the browser scrolls a tile into view when the keyboard reaches it).
+  const followScroll = (): void => {
+    hover.reset();
+    setFocused((tile) => tile && { ...tile });
+  };
+  const shown = hovered ?? focused;
+  const popup = shown?.element.isConnected && panelRef.current ? popupFor(shown, panelRef.current, popupHeight) : null;
+
+  const tileProps = { tool, disabled: !canPlace, resolveIcon: resolveEntityIcon, onToggle: toggle, onHover: (tile: TileRef | null) => hover.over(tile), onFocus: setFocused };
+  const describing = (entry: PaletteEntry, inUseTile: boolean): string | undefined => (popup && popup.entry === entry && popup.inUse === inUseTile ? popupId : undefined);
   // The list of the circuit's entities closes like a group, so the groups can have its room.
   const listId = useId();
   const [listOpen, setListOpen] = useState(() => readCircuitListOpen(browserStore()));
@@ -156,34 +212,46 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
     writeCircuitListOpen(browserStore(), !listOpen);
   };
   return (
-    <aside className="palette" aria-label="Components">
+    <aside ref={panelRef} className="palette" aria-label="Components">
       <div className="palette-heading">
         <span>COMPONENTS</span>
         <span className="count-badge">{String(PALETTE_ENTRIES.length).padStart(2, "0")}</span>
       </div>
 
-      <div className="section-label">Tools</div>
-      <div className="tool-row" role="group" aria-label="Canvas tools">
-        <button type="button" className="tool-button" aria-pressed={tool.type === "select"} aria-label="Select and move" title={withShortcut("Select and move", "tool.select")} onClick={() => onToolChange(SELECT_TOOL)}>
-          <Icon name="cursor" size={16} />
-        </button>
-        <button type="button" className="tool-button wire-red" aria-pressed={sameTool(tool, RED_WIRE)} aria-label="Red wire" title={withShortcut("Red wire", "tool.wireRed")} disabled={!canWire} onClick={() => toggle(RED_WIRE)}>
-          <WireIcon color="red" resolveIcon={resolveWireIcon} />
-        </button>
-        <button type="button" className="tool-button wire-green" aria-pressed={sameTool(tool, GREEN_WIRE)} aria-label="Green wire" title={withShortcut("Green wire", "tool.wireGreen")} disabled={!canWire} onClick={() => toggle(GREEN_WIRE)}>
-          <WireIcon color="green" resolveIcon={resolveWireIcon} />
-        </button>
-      </div>
-
-      <div className="section-label">Building blocks</div>
-      <div className="palette-items">
+      <div className="palette-items palette-tiles" role="group" aria-label="Combinators">
         {PINNED.map((entry) => (
-          <PinnedEntry key={entry.prototype} entry={entry} {...entryProps} />
+          <Tile key={entry.prototype} entry={entry} describedBy={describing(entry, false)} {...tileProps} />
         ))}
       </div>
-      <div ref={groupsRef} className="palette-groups">
+      <div ref={groupsRef} className="palette-groups" onScroll={followScroll}>
+        <Section
+          id={IN_USE.id}
+          label={IN_USE.label}
+          count={inUse.length}
+          open={inUseOpen}
+          onOpenChange={(open) => {
+            setInUseOpen(open);
+            writeSectionOpen(browserStore(), IN_USE_KEY, open);
+          }}
+        >
+          {inUse.length === 0 ? (
+            <p className="palette-empty">None besides the combinators.</p>
+          ) : (
+            <div className="palette-tiles">
+              {inUse.map((entry) => (
+                <Tile key={entry.prototype} entry={entry} inUse describedBy={describing(entry, true)} {...tileProps} />
+              ))}
+            </div>
+          )}
+        </Section>
         {COLLAPSIBLE.map((group) => (
-          <Group key={group.id} group={group} open={openGroups[group.id] === true} onOpenChange={(open) => setOpen(group.id, open)} {...entryProps} />
+          <Section key={group.id} id={group.id} label={group.label} count={group.entries.length} open={openGroups[group.id] === true} onOpenChange={(open) => setOpen(group.id, open)}>
+            <div className="palette-tiles">
+              {group.entries.map((entry) => (
+                <Tile key={entry.prototype} entry={entry} describedBy={describing(entry, false)} {...tileProps} />
+              ))}
+            </div>
+          </Section>
         ))}
       </div>
 
@@ -202,6 +270,8 @@ export function Palette({ tool, canPlace, canWire, entities, selection, resolveE
             </button>
           ))}
       </div>
+
+      {popup && <TilePopup id={popupId} popup={popup} onMeasure={setPopupHeight} />}
     </aside>
   );
 }

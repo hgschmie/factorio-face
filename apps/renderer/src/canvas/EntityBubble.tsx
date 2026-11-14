@@ -1,4 +1,4 @@
-// The bubble of the blueprint board: the full card of the one selected entity and its description, next to its footprint.
+// The bubble of the blueprint board: the full card of the entity under the pointer and its description, next to its footprint.
 // An HTML overlay of constant screen size, so it stays readable at any zoom; it takes no pointer events.
 import type { Entity } from "@face/model";
 import { useLayoutEffect, useRef, useState } from "react";

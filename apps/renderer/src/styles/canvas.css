@@ -1,4 +1,4 @@
-/* Circuit canvas: SVG scene plus HTML overlays (heading, hint, zoom controls, context menu). */
+/* Circuit canvas: the strip above it, the SVG scene and its HTML overlays (hint, zoom controls, bubble, context menu). */
 .canvas {
   position: relative;
   width: 100%;
@@ -452,74 +452,32 @@
   pointer-events: none;
 }
 
-/* Overlays */
+/* The strip above the canvas: title and counts, the canvas tools, the display switch and "Place all". One row; it wraps where
+   the canvas is narrow. */
+.canvas-strip {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  min-height: 51px;
+  padding: 8px 16px 8px 20px;
+  border-bottom: 1px solid var(--border-edge);
+  background: var(--surface-projectbar);
+}
+
 .canvas-heading {
-  position: absolute;
-  top: 21px;
-  left: 24px;
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  pointer-events: none;
-}
-
-.canvas-title {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Edit | Blueprint. The heading lets the pointer through to the canvas; the switch takes it. */
-.display-switch {
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 1px solid var(--border-edge);
-  border-radius: var(--radius-md);
-  background: var(--surface-well);
-  pointer-events: auto;
-}
-
-.display-switch button {
-  padding: 3px 9px;
-  border-radius: 3px;
-  font-size: var(--text-sm);
-  color: var(--text-label);
-}
-
-.display-switch button[aria-pressed="true"] {
-  color: var(--ink);
-  background: var(--accent-fill);
-}
-
-/* Gives every entity without a tile one; shown on the board while there are such entities. */
-.snap-all {
   gap: 6px;
-  padding: 3px 5px 3px 8px;
-  border: 1px solid var(--border-edge);
-  border-radius: var(--radius-md);
-  font-size: var(--text-sm);
-  color: var(--text-label);
-  background: var(--surface-well);
-  pointer-events: auto;
-}
-
-.snap-all:hover:not(:disabled) {
-  color: var(--text-strong);
-  border-color: var(--accent);
-}
-
-.snap-all .count-badge {
-  padding: 1px 5px;
-  color: var(--ink);
-  border-color: transparent;
-  background: var(--accent-fill);
+  margin-right: 4px;
 }
 
 .canvas-heading .counts {
   display: flex;
   align-items: center;
   font-size: var(--text-sm);
+  white-space: nowrap;
   color: var(--text-dim);
 }
 
@@ -528,6 +486,120 @@
   background: var(--text-faint);
 }
 
+.tool-row {
+  display: grid;
+  grid-template-columns: repeat(3, 34px);
+  gap: 4px;
+}
+
+.tool-button {
+  gap: 5px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 3px;
+  border-color: var(--border);
+  font-size: var(--text-md);
+  color: var(--text-soft);
+  background: var(--surface-raised);
+}
+
+.tool-button .wire-icon {
+  flex-shrink: 0;
+}
+
+.tool-button:disabled .wire-icon {
+  opacity: 0.45;
+}
+
+.tool-button[aria-pressed="true"] {
+  border-color: var(--accent-fill);
+  color: var(--ink);
+  background: var(--accent-fill);
+}
+
+.tool-button[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--accent-bright);
+}
+
+.tool-button.wire-red {
+  color: var(--wire-red-ui);
+}
+
+.tool-button.wire-green {
+  color: var(--wire-green-ui);
+}
+
+.tool-button.wire-red[aria-pressed="true"] {
+  border-color: var(--wire-red-border);
+  background: var(--wire-red-surface);
+}
+
+.tool-button.wire-green[aria-pressed="true"] {
+  border-color: var(--wire-green-border);
+  background: var(--wire-green-surface);
+}
+
+.tool-button.wire-red[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--wire-red-surface);
+}
+
+.tool-button.wire-green[aria-pressed="true"]:hover:not(:disabled) {
+  background: var(--wire-green-surface);
+}
+
+/* The display switch and "Place all" stay together when the strip wraps. */
+.canvas-strip-view {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Edit | Blueprint */
+.display-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-edge);
+  border-radius: var(--radius-md);
+  background: var(--surface-well);
+}
+
+.display-switch button {
+  padding: 5px 11px;
+  border-radius: 3px;
+  font-size: var(--text-md);
+  color: var(--text-label);
+}
+
+.display-switch button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--accent-fill);
+}
+
+/* Places every entity without a tile; shown on the board while there are such entities. */
+.place-all {
+  gap: 6px;
+  padding: 5px 6px 5px 9px;
+  border: 1px solid var(--border-edge);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  color: var(--text-label);
+  background: var(--surface-well);
+}
+
+.place-all:hover:not(:disabled) {
+  color: var(--text-strong);
+  border-color: var(--accent);
+}
+
+.place-all .count-badge {
+  padding: 1px 5px;
+  color: var(--ink);
+  border-color: transparent;
+  background: var(--accent-fill);
+}
+
+/* Overlays */
 .canvas-footer {
   position: absolute;
   right: 17px;
@@ -598,7 +670,7 @@
   color: var(--text-strong);
 }
 
-/* The bubble of the blueprint board: the card of the selected entity and its description. Screen pixels, whatever the zoom. */
+/* The bubble of the blueprint board: the card of the entity under the pointer and its description. Screen pixels, whatever the zoom. */
 .entity-bubble {
   position: absolute;
   z-index: 3;
@@ -626,7 +698,8 @@
   background: var(--card-bottom);
 }
 
-/* A small square turned onto its corner, half behind the bubble, on the edge that faces the entity. */
+/* A small square turned onto its corner, half behind the bubble, on the edge that faces the entity. The popup of a tile of the
+   entity selector has the same one. */
 .bubble-pointer {
   position: absolute;
   z-index: -1;
@@ -637,19 +710,19 @@
   transform: translate(-50%, -50%) rotate(45deg);
 }
 
-.entity-bubble.side-right .bubble-pointer {
+.side-right > .bubble-pointer {
   left: 0;
 }
 
-.entity-bubble.side-left .bubble-pointer {
+.side-left > .bubble-pointer {
   left: 100%;
 }
 
-.entity-bubble.side-below .bubble-pointer {
+.side-below > .bubble-pointer {
   top: 0;
 }
 
-.entity-bubble.side-above .bubble-pointer {
+.side-above > .bubble-pointer {
   top: 100%;
 }
 

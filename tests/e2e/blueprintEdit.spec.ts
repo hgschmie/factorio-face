@@ -2,7 +2,7 @@
 // entities (turned with R before the click), wiring, and repairing a conflict. Nothing of it touches the edit positions (`at`).
 import type { Page } from "@playwright/test";
 import { boardGrabPoint, canvas, canvasView, card, clickCenter, committedPositions, entityNames, expect, pin, showDisplay, sourceText, test, wire, wireKeyOf, wires } from "./app.ts";
-import { BOARD, bubble, committedTiles, dragOnBoard, footprint, inspector, menu, openBoardProject as openBoard, selectOnBoard, TILE, tilePoint, tool } from "./board.ts";
+import { BOARD, bubble, committedTiles, dragOnBoard, footprint, hoverOnBoard, inspector, menu, openBoardProject as openBoard, placeAll, selectOnBoard, TILE, tilePoint, tool } from "./board.ts";
 
 /** The board with two entities that have no tile: `pick` is shown on (5, 3) and (6, 3), `light` on (8, 1). */
 const LOOSE = BOARD.replace("selector pick at (560, 260) tile (3, 2.5) facing west", "selector pick at (500, 300)").replace("lamp light at (560, 80) tile (7.5, 0.5)", "lamp light at (700, 80)");
@@ -10,7 +10,6 @@ const LOOSE = BOARD.replace("selector pick at (560, 260) tile (3, 2.5) facing we
 const undo = (page: Page) => page.getByRole("button", { name: "Undo" });
 const redo = (page: Page) => page.getByRole("button", { name: "Redo" });
 const toast = (page: Page) => page.locator(".toast");
-const snapAll = (page: Page) => page.getByRole("button", { name: /^Snap all/ });
 const tileOf = async (page: Page, name: string) => (await footprint(page, name)).tile;
 
 async function shiftClick(page: Page, name: string): Promise<void> {
@@ -32,7 +31,7 @@ test("a drag moves an entity by whole tiles: the preview snaps, the drop writes 
   const positions = await committedPositions(page);
   const feed = await wireKeyOf(page, "red", "source.out", "gate.in");
   await selectOnBoard(page, "gate");
-  await expect(bubble(page)).toHaveCount(1);
+  await hoverOnBoard(page, "gate");
   const grab = await boardGrabPoint(page, "gate");
   const tile = TILE * (await canvasView(page)).zoom;
 
@@ -60,7 +59,8 @@ test("a drag moves an entity by whole tiles: the preview snaps, the drop writes 
   expect(await footprint(page, "gate")).toEqual({ tile: [3, 1], size: [2, 1], facing: "east", placed: "true" });
   await expect(card(page, "gate")).toHaveClass(/selected/);
   await expect(card(page, "gate")).not.toHaveClass(/moving/);
-  await expect(bubble(page)).toHaveAttribute("data-entity-name", "gate");
+  // The bubble comes back when the pointer moves on the entity again, not with the drop.
+  await expect(bubble(page)).toHaveCount(0);
   expect(await committedPositions(page)).toEqual(positions);
 
   await undo(page).click();
@@ -249,7 +249,7 @@ test("a turn onto a tile of another entity is refused for the whole selection, w
   await expect.poll(() => footprint(page, "gate")).toEqual({ tile: [2, 0], size: [2, 1], facing: "west", placed: "true" });
   await expect(toast(page)).toHaveCount(0);
   await openMenuOn(page, "light");
-  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Release from tile grid" }));
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Unplace" }));
   await expect(card(page, "light")).toHaveAttribute("data-placed", "false");
   await selectOnBoard(page, "gate");
   await page.keyboard.press("r");
@@ -308,11 +308,11 @@ test("the message about a refused turn goes with the next turn or move that work
   await expect(toast(page)).toHaveCount(0);
 });
 
-test("entities without a tile are snapped with the button, the menu or a drag, released again, and never in the way", async ({ page }) => {
+test("entities without a tile are placed with the button, the menu or a drag, unplaced again, and never in the way", async ({ page }) => {
   await openBoard(page, LOOSE);
   const positions = await committedPositions(page);
-  await expect(snapAll(page)).toHaveText("Snap all2");
-  await expect(snapAll(page)).toHaveAttribute("title", "Give the 2 entities without a tile the tile of the place they are shown at");
+  await expect(placeAll(page)).toHaveText("Place all2");
+  await expect(placeAll(page)).toHaveAttribute("title", "Place the 2 entities without a tile on the tiles they are shown at");
   expect(await tileOf(page, "pick")).toEqual([5, 3]);
   expect(await tileOf(page, "light")).toEqual([8, 1]);
   await expect(page.locator(".canvas-hint")).toContainText("Dashed ones have no tile yet");
@@ -323,51 +323,51 @@ test("entities without a tile are snapped with the button, the menu or a drag, r
   await selectOnBoard(page, "gate");
   await expect(inspector(page).locator(".inspector-footer")).toHaveText("Tile X 3 Y 0.5");
 
-  // The menu of an entity without a tile snaps it; then it can be released again.
+  // The menu of an entity without a tile places it where it is shown; then it can be unplaced again.
   await openMenuOn(page, "pick");
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Snap to tile grid/, /Delete/]);
-  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Snap to tile grid" }));
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Flip horizontal/, /Flip vertical/, /^Place here$/, /Delete/]);
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Place here" }));
   const snapped = LOOSE.replace("selector pick at (500, 300)", "selector pick at (500, 300) tile (6, 3.5)");
   await expect.poll(() => sourceText(page)).toBe(snapped);
   expect(await footprint(page, "pick")).toEqual({ tile: [5, 3], size: [2, 1], facing: "east", placed: "true" });
   await expect(card(page, "pick")).not.toHaveClass(/unplaced/);
-  await expect(snapAll(page)).toHaveText("Snap all1");
-  await expect(snapAll(page)).toHaveAttribute("title", "Give the entity without a tile the tile of the place it is shown at");
+  await expect(placeAll(page)).toHaveText("Place all1");
+  await expect(placeAll(page)).toHaveAttribute("title", "Place the entity without a tile on the tile it is shown at");
   await expect(inspector(page).locator(".inspector-footer")).toHaveText("Tile X 6 Y 3.5");
   await openMenuOn(page, "pick");
-  await expect(menu(page).getByRole("menuitem", { name: /tile grid/ })).toHaveText(["Release from tile grid"]);
-  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Release from tile grid" }));
+  await expect(menu(page).getByRole("menuitem", { name: /^(Place|Unplace)/ })).toHaveText(["Unplace"]);
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Unplace" }));
   await expect.poll(() => sourceText(page)).toBe(LOOSE);
   await expect(card(page, "pick")).toHaveClass(/unplaced/);
-  await expect(snapAll(page)).toHaveText("Snap all2");
+  await expect(placeAll(page)).toHaveText("Place all2");
 
   // A selection of both sorts: each item says how many it takes.
   await selectOnBoard(page, "gate");
   await shiftClick(page, "pick");
   await shiftClick(page, "light");
   await openMenuOn(page, "pick");
-  await expect(menu(page).getByRole("menuitem", { name: /tile grid/ })).toHaveText(["Snap 2 to tile grid", "Release 1 from tile grid"]);
-  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Release 1 from tile grid" }));
+  await expect(menu(page).getByRole("menuitem", { name: /^(Place|Unplace)/ })).toHaveText(["Place 2 here", "Unplace 1"]);
+  await clickCenter(page, menu(page).getByRole("menuitem", { name: "Unplace 1" }));
   await expect.poll(() => committedTiles(page)).toMatchObject({ gate: null, pick: null, light: null });
-  await expect(snapAll(page)).toHaveText("Snap all3");
+  await expect(placeAll(page)).toHaveText("Place all3");
   await openMenuOn(page, "pick");
-  await expect(menu(page).getByRole("menuitem", { name: /tile grid/ })).toHaveText(["Snap to tile grid"]);
+  await expect(menu(page).getByRole("menuitem", { name: /^(Place|Unplace)/ })).toHaveText(["Place here"]);
   await page.keyboard.press("Escape");
   for (let step = 0; step < 3; step++) await undo(page).click();
   expect(await sourceText(page)).toBe(LOOSE);
   await expect(undo(page)).toBeDisabled();
 
   // The button takes all of them, as one step, and goes away with nothing left to do.
-  await snapAll(page).click();
+  await placeAll(page).click();
   const all = snapped.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 1.5)");
   await expect.poll(() => sourceText(page)).toBe(all);
-  await expect(snapAll(page)).toHaveCount(0);
+  await expect(placeAll(page)).toHaveCount(0);
   await expect(page.locator("g.card.unplaced")).toHaveCount(0);
   await expect(page.locator(".canvas-hint")).not.toContainText("Dashed");
   await undo(page).click();
   expect(await sourceText(page)).toBe(LOOSE);
   await expect(undo(page)).toBeDisabled();
-  await expect(snapAll(page)).toHaveText("Snap all2");
+  await expect(placeAll(page)).toHaveText("Place all2");
 
   // A drag gives an entity without a tile one.
   await selectOnBoard(page, "light");
@@ -378,7 +378,47 @@ test("entities without a tile are snapped with the button, the menu or a drag, r
   });
   await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 2.5)"));
   await expect(card(page, "light")).not.toHaveClass(/unplaced/);
-  await expect(snapAll(page)).toHaveText("Snap all1");
+  await expect(placeAll(page)).toHaveText("Place all1");
+
+  // A drag that ends on the tiles the entity is shown at places it there: out and back, or just a little way within its tile.
+  await undo(page).click();
+  expect(await sourceText(page)).toBe(LOOSE);
+  const grab = await boardGrabPoint(page, "pick");
+  const tile = TILE * (await canvasView(page)).zoom;
+  await page.mouse.move(grab.x, grab.y);
+  await page.mouse.down();
+  await page.mouse.move(grab.x + 1.2 * tile, grab.y + tile, { steps: 4 });
+  await expect.poll(() => tileOf(page, "pick")).toEqual([6, 4]);
+  await page.mouse.move(grab.x + 0.1 * tile, grab.y, { steps: 4 });
+  await expect.poll(() => tileOf(page, "pick")).toEqual([5, 3]);
+  await page.mouse.up();
+  await expect.poll(() => sourceText(page)).toBe(snapped);
+  expect(await footprint(page, "pick")).toEqual({ tile: [5, 3], size: [2, 1], facing: "east", placed: "true" });
+  await undo(page).click();
+  expect(await sourceText(page)).toBe(LOOSE);
+  const lamp = await boardGrabPoint(page, "light");
+  await page.mouse.move(lamp.x, lamp.y);
+  await page.mouse.down();
+  await page.mouse.move(lamp.x + 0.2 * tile, lamp.y - 0.2 * tile, { steps: 4 });
+  await page.mouse.up();
+  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 1.5)"));
+  await expect(card(page, "light")).not.toHaveClass(/unplaced/);
+  // A plain click only selects, and a drag of an entity that has its tile back onto it is still nothing.
+  await selectOnBoard(page, "pick");
+  await expect(card(page, "pick")).toHaveClass(/unplaced/);
+  const placedLamp = await sourceText(page);
+  await page.mouse.move(lamp.x, lamp.y);
+  await page.mouse.down();
+  await page.mouse.move(lamp.x + 0.2 * tile, lamp.y - 0.2 * tile, { steps: 4 });
+  await page.mouse.up();
+  await expect(card(page, "light")).toHaveClass(/selected/);
+  expect(await sourceText(page)).toBe(placedLamp);
+  await expect(undo(page)).toBeEnabled();
+  await undo(page).click();
+  expect(await sourceText(page)).toBe(LOOSE);
+  await expect(undo(page)).toBeDisabled();
+  await dragOnBoard(page, "light", { x: 0, y: 1 });
+  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 2.5)"));
 
   // An entity without a tile is no obstacle: the gate is dropped where the selector is shown, and that one gives way.
   await dragOnBoard(page, "gate", { x: 3, y: 3 }, async () => {
@@ -391,9 +431,9 @@ test("entities without a tile are snapped with the button, the menu or a drag, r
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
   expect(await committedPositions(page)).toEqual(positions);
 
-  // On the edit canvas there is nothing to snap.
+  // On the edit canvas there is nothing to place.
   await showDisplay(page, "edit");
-  await expect(snapAll(page)).toHaveCount(0);
+  await expect(placeAll(page)).toHaveCount(0);
   await expect(inspector(page).locator(".inspector-footer")).toHaveText("X 300 Y 80");
 });
 

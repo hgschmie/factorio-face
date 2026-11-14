@@ -1,4 +1,5 @@
-// Where the bubble of the selected entity goes on the blueprint board, in screen pixels of the canvas. Pure.
+// Where a bubble goes next to what it describes: the one of the entity under the pointer on the blueprint board (in screen
+// pixels of the canvas) and the popup of a tile of the entity selector (in pixels of the window). Pure.
 import { rectsIntersect, type Rect } from "./geometry.ts";
 import type { Size } from "./viewport.ts";
 

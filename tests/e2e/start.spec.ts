@@ -51,7 +51,7 @@ async function expectEmptyProject(app: ElectronApplication, page: Page): Promise
   await expect(saveState(page)).toHaveText("No changes");
   await expect(page.locator("g.card")).toHaveCount(0);
   await expect(page.locator(".canvas-empty")).toBeVisible();
-  await expect(page.locator(".canvas .counts")).toHaveText("0 entities0 connections");
+  await expect(page.locator(".canvas-heading .counts")).toHaveText("0 entities0 connections");
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
   expect(await sourceText(page)).toBe(EMPTY_SOURCE);
   expect(await isDocumentEdited(app)).toBe(false);
@@ -103,7 +103,7 @@ test("File > New Project gives an empty circuit that is not an unsaved change, a
   expect(await dialogCalls(app)).toMatchObject({ message: 0, save: 0 });
   await expect(page.locator(".inspector-empty")).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.locator(".statusbar")).not.toContainText("error");
+  await expect(page.locator(".statusbar .status-source")).toHaveText("No errors");
 
   // The source is a circuit without entities.
   await clickMenu(app, "View", "Source");

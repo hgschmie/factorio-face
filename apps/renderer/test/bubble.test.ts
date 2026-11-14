@@ -1,4 +1,4 @@
-// Where the bubble of the selected entity goes on the blueprint board.
+// Where the bubble of an entity goes on the blueprint board.
 import { describe, expect, it } from "vitest";
 import { BUBBLE_GAP, BUBBLE_MARGIN, placeBubble } from "../src/canvas/bubble.ts";
 

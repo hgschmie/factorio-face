@@ -35,22 +35,29 @@ src/
     controller.ts      the WorkbenchController seam (state, commands, shared view types)
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
     selectionText.ts   the selection in words: status bar text, counts, wire labels   (pure)
-    TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, save state, undo, redo, fit, settings, save)
-    Palette.tsx        tools (select, red wire, green wire), the entity selector (`PALETTE_GROUPS`: the combinators as rows, the
-                       other entities in groups that open and close), entity list
-    paletteGroups.ts   which groups are open, remembered in the browser storage of the profile   (pure apart from `browserStore`)
+    statusText.ts      what the status line says about the source and about the project file, a path in the two parts it is
+                       shortened by   (pure)
+    TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, undo, redo, fit, settings, save)
+    CanvasStrip.tsx    the strip above the canvas: title and counts, the tools (select, red wire, green wire), the Edit | Blueprint
+                       switch, "Place all"
+    Palette.tsx        the entity selector (`PALETTE_GROUPS`: square tiles with a popup, the combinators as the first row,
+                       "Entities in use", the other entities in groups that open and close), entity list
+    paletteGroups.ts   which groups and sections are open, remembered in the browser storage of the profile   (pure apart from `browserStore`)
     SourcePane.tsx     file heading, SourceEditor, problems list (errors first, a click selects the range)
   canvas/
-    Canvas.tsx         SVG canvas: camera per display mode, gestures, pending wire, context menu, the Edit | Blueprint switch, the
-                       checkerboard and the bubble; emits callbacks only
+    Canvas.tsx         SVG canvas: camera per display mode, gestures, pending wire, context menu, the checkerboard, the bubble
+                       of the entity under the pointer, the hint line and the zoom controls; emits callbacks only
     Scene.tsx          memoized wires (with their click target) and entities in the layout of the display mode, culled to the visible area
     layout.ts          `CanvasLayout`: where an entity and its pins are in a display mode; `editLayout`, `blueprintLayout`   (pure)
     board.ts           the blueprint board: tile size, `derivedTiles`, `arrangeBoard`, the rules of editing on it, pins on a footprint   (pure)
+    flip.ts            mirroring a selection: the cards of the edit canvas, the footprints of the board, when a flip is refused   (pure)
+    hover.ts           when a popup that follows the pointer appears, moves on and goes (`HoverIntent`), what the bubble of the
+                       board asks for   (pure apart from the timers)
     EntityCard.tsx     one memoized card (what the entity is, description marker, icon, name, summary, live status rows, a red and a green
                        pin per place of its terminals, on the edges the entity's facing gives them); `CardFace` is the card without pins
                        and place, `Pin` one pin
     BlueprintEntity.tsx  one memoized entity on the board: footprint, icon, name, arrows, pins, compact live state
-    EntityBubble.tsx   the bubble of the selected entity on the board: `CardFace` and the description as an HTML overlay
+    EntityBubble.tsx   the bubble of the entity under the pointer on the board: `CardFace` and the description as an HTML overlay
     bubble.ts          where the bubble goes (`placeBubble`)   (pure)
     statusRows.ts      the status rows of a card: geometry, which signals fit, the rows as text, the compact output of the board   (pure)
     ContextMenu.tsx    keyboard-navigable popup menu
@@ -94,7 +101,7 @@ src/
     sparkline.ts       sparkline geometry                              (pure)
   entities/            kind labels and the names an entity goes by (`kindInfo.ts`), the registry of what the palette offers
                        (`registry.ts`), signal text forms (short names, lists, compact numbers), card summaries, the quarter turns
-                       of the direction an entity faces (`facing.ts`)  (pure)
+                       and the mirror images of the direction an entity faces (`facing.ts`)  (pure)
   icons/               interface glyphs, entity icons per prototype, catalog icon resolvers (with probes: the icons come from the
                        user's installation of the game or from bundled files, and neither may be there)
   styles/              tokens.css and one stylesheet per area
@@ -125,9 +132,9 @@ has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `dis
 `speakerInstruments`, `picker()`, `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
-`WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `updateEntity`,
+`WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `flipEntities`, `updateEntity`,
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
-`toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `snapToTiles`, `clearTiles`, `placeEntityOnTile`; see "Editing on the board"),
+`toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `placeHere`, `unplace`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
 `loadProject`, `openExample`, `save`, `saveAs`).
@@ -179,12 +186,28 @@ simulation (`run`, `pause`,
   source says, so its pins never move (a `facing` clause typed on a lamp gets the warning `unused-facing`). An entity with a
   `tile` gets its tile corrected in the same transaction: a 2x1 combinator keeps the top-left tile of its footprint, so a half turn
   keeps both tiles and swaps input and output (`rotateTile`).
+- **Flipping.** `flipEntities(ids, axis)` mirrors the entities as a group, as the game flips a blueprint: they swap sides
+  within the bounds of all of them (`horizontal`: left and right, `vertical`: top and bottom), and each one that can turn
+  faces the mirrored way (`flipped` in `entities/facing.ts`: a horizontal flip turns east into west and west into east, a
+  vertical one north into south and south into north; the other two directions stay). One entity so turns in place. Where the
+  entities go is `canvas/flip.ts`: on the edit canvas `flipCards` mirrors the `at` positions (all cards have one size, so the
+  bounds of their corners do) and leaves `tile` alone, which a flipped direction keeps valid; on the board `flipTiles`
+  mirrors the footprints of the entities that have a `tile`, as the board shows them, so every footprint stays on the grid,
+  and leaves `at` alone. An entity of the selection without a `tile` has no tiles to mirror: it is turned, gets no `tile`,
+  stays at its derived place and does not count for the bounds. The result goes to the language command `arrangeEntities`
+  (position, tile and direction of any number of entities): one transaction, one undo step, nothing for a flip that changes
+  nothing (a combinator facing north flipped horizontally). On the board a flip that would put an entity onto a tile of an
+  entity outside the selection is refused as a whole and reported like a refused turn (`blockedFlip`; "Not flipped: source
+  would stand on a tile of gate."); on the edit canvas it is never refused. `canFlip(entities, tiles)` says whether there is
+  anything to flip: one of the entities can turn, or at least two are mirrored (on the board: two with a `tile`). It is what
+  greys out the two menu items and stops the keys for a single lamp or pole. The simulation does not see a flip.
 - **Placing with a direction.** A place tool says what it places and holds its direction: `Tool` is
   `{ type: "place", kind, prototype?, facing? }`. It is an `EntityShape` of the model: the first prototype of the kind without
   `prototype` (the tools of the digit keys have none, the entries of the palette always name theirs), east without `facing`
   (`placeFacing(tool)`; always east for an entity that does not turn: a lamp, a speaker, a pole). `R` and `Shift+R` turn it
-  while the tool is active (`turnedTool(tool, turn)`, set with `setTool`), in both display modes, instead of turning the
-  selection; a tool for an entity that does not turn is left alone and the keys then do nothing. `sameTool` compares the kind
+  while the tool is active (`turnedTool(tool, turn)`, set with `setTool`), and `H` and `V` flip it (`flippedTool(tool, axis)`),
+  in both display modes, instead of acting on the selection; a tool for an entity that does not turn is left alone and the
+  keys then do nothing. `sameTool` compares the kind
   and the prototype and does not look at the direction (it is the same button of the palette), but `setTool` does: the tool
   picked again by its key, or after another tool, comes without `facing` and so faces east again. A click that places nothing
   (a taken tile) keeps the tool and its direction. `placeEntity(kind, position, facing?, prototype?)` and
@@ -196,10 +219,10 @@ simulation (`run`, `pause`,
   the board the outline has the footprint of the prototype and turns as well.
 - **Messages.** `state.error` is one message, shown in the toast (`.toast`, `role="alert"`) with a Dismiss button; a newer one
   replaces it. The session sets it through `show(message, refusal?)` and keeps two sorts apart. A message about a refused edit
-  (a name that is taken, a wire that cannot be, a `tile` off the grid, "Nothing was pasted", a turn refused on the board)
+  (a name that is taken, a wire that cannot be, a `tile` off the grid, "Nothing was pasted", a turn or a flip refused on the board)
   describes the document it was refused on, so it goes away with the next change of the document, whatever makes it: a command
   that works, undo, redo, typing in the source. Commands that change nothing (a blocked move, a tool, a menu, the display mode)
-  leave it. The message about a refused turn was about the selection, so it also goes when other entities, or none, are
+  leave it. The message about a refused turn or flip was about the selection, so it also goes when other entities, or none, are
   selected; the others stay through a selection, because the inspector writes a name when its field is left, and a click on
   another card would take the message about that name away before it was read. A message that is not about an edit (a project
   that could not be opened or saved) stays until it is dismissed or the next project is loaded.
@@ -330,7 +353,7 @@ The canvas shows the circuit in one of two display modes (`DisplayMode` in `work
 
 The mode is view state of the session like the workbench mode and the tool: `state.displayMode`, set with
 `commands.setDisplayMode(mode)`, not part of the document, not undoable, `edit` for every project that is opened and kept while
-it stays open. The segmented control `Edit | Blueprint` in the heading of the canvas (`.display-switch`, a group named "Display
+it stays open. The segmented control `Edit | Blueprint` in the strip above the canvas (`.display-switch`, a group named "Display
 mode" with `aria-pressed` buttons) and the key `B` switch it. The canvas container carries `data-display` and the class
 `display-edit` or `display-blueprint`.
 
@@ -342,11 +365,11 @@ mode" with `aria-pressed` buttons) and the key `B` switch it. The canvas contain
 | `place` | the building blocks of the palette | yes | yes |
 | `wire` | the wire tools | yes | yes |
 | `paste` | paste and duplicate | yes | yes |
-| `rotate` | `R`, `Shift+R` and the rotation items of the context menu | yes | yes |
+| `rotate` | `R`, `Shift+R`, `H`, `V` and the rotation and flip items of the context menu | yes | yes |
 | `tiles` | positions are tiles: a move and a new entity write `tile` instead of `at`, a turn has to find its tiles free, and the controls that give and take a tile are shown | no | yes |
 
-`Canvas` (the drag and its commit, the place tool, the menu items, the "Snap all" button, the hint), `Workbench` (the keys, the
-paste event, the footer of the inspector) and `Palette` (`canPlace`, `canWire`) read it, and the session refuses a tool the mode
+`Canvas` (the drag and its commit, the place tool, the menu items, the hint), `Workbench` (the keys, the paste event, the
+strip with its wire tools and "Place all", the footer of the inspector) and `Palette` (`canPlace`) read it, and the session refuses a tool the mode
 does not offer (`toolAllowed`), falls back to the select tool when a mode change takes the tool away, and applies the rule for
 turns where `tiles` is set. Everything that does not depend on a position works in both modes: selecting (click,
 Shift-click, marquee, wires), pan, zoom, Fit, copy, cut, delete, Select all and the whole inspector. While the source has
@@ -408,30 +431,37 @@ stands at a derived place, gives way to the others and is never in the way. `at`
 | --- | --- | --- |
 | Moving | `blockedMoves(entities, origins)` | A move (a drag, the arrow keys) gives every moved entity the tile of its new place, also one that had none. It is blocked as a whole when one of them would cover a tile of an entity that has a `tile` and is not moved. A blocked move changes nothing. The moved entities are not in each other's way: a group moves as it is. |
 | Turning | `blockedTurn(entities, facings)` | A turned entity keeps its top-left tile (`rotateTile`). The turn is blocked for the whole selection when one of them would newly cover a tile on which another entity with a `tile` stands after the turn. Tiles an entity covers already do not count (a half turn is always possible, and an entity in a conflict can be turned out of it). Blueprint mode only: on the edit canvas a turn is never refused, the analysis warns (`tile-overlap`). |
-| Snapping | `derivedTiles(entities)` | An entity without a `tile` gets the one of the place it is shown at. These places keep clear of all tiles that are taken and of each other, so a snap of any subset cannot be blocked. |
-| Releasing | | The `tile` clause is removed; the entity stands at a derived place again. |
+| Flipping | `flipTiles(entities, axis)`, `blockedFlip(entities, flips)` | The entities with a `tile` swap sides within the bounds of their footprints and every one that can turn faces the mirrored way ("Flipping" above). The flip is blocked for the whole selection when one of them would cover a tile of an entity that has a `tile` and is not flipped with it (`firstObstacle`). Blueprint mode only: on the edit canvas the cards are mirrored and nothing is refused. |
+| Placing where shown | `derivedTiles(entities)` | An entity without a `tile` gets the one of the place it is shown at ("Place here", "Place all", a drag that ends where it began). These places keep clear of all tiles that are taken and of each other, so placing any subset cannot be blocked. |
+| Unplacing | | The `tile` clause is removed; the entity stands at a derived place again. |
 | Another prototype | `blockedReshape(entities, changed)` | The inspector's choice of which pole an entity is may change the tiles it covers. The entity keeps the top-left tile of its footprint and its `tile` is corrected in the same step (a small pole on `tile (7.5, 7.5)` becomes a big one on `tile (8, 8)`). The change is blocked when the entity would newly cover a tile of another entity with a `tile`. Blueprint mode only, like the turn rule: on the edit canvas the change is made and the analysis warns (`tile-overlap`). |
 | A new entity | `footprintOriginAt(point, shape, facing)`, `canStandAt(entities, shape, origin, facing)`, `freeOriginNear(entities, shape, wanted, facing)`, `editPositionOf(origin)` | It faces the way the place tool was turned (east at first) and its footprint, turned with it, has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
 
 - Session commands (`WorkbenchCommands`), each one undo step: `setTiles(tiles: { id, tile }[])` with the centers as the `tile`
   clause holds them (blocked: nothing happens; a center off the grid: refused by the language and reported), `nudgeTiles(delta)`
-  for the selection in whole tiles from where the board shows it, `snapToTiles(ids?)` (all entities without `ids`),
-  `clearTiles(ids)`, `placeEntityOnTile(kind, tile, facing?, prototype?)`. `rotateEntities` and `faceEntities` apply the turn rule
-  while the display mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light."
+  for the selection in whole tiles from where the board shows it, `placeHere(ids?)` (all entities without `ids`),
+  `unplace(ids)`, `placeEntityOnTile(kind, tile, facing?, prototype?)`. `rotateEntities` and `faceEntities` apply the turn rule
+  while the display mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light.";
+  `flipEntities` applies the flip rule: "Not flipped: source would stand on a tile of gate."
   `updateEntity` does the same for another prototype: "Not changed: p would stand on a tile of light." Both messages go
   with the next change of the document or of the selected entities ("Messages" above).
 - Dragging: the gesture of the edit canvas with a step of one tile. The preview is arranged with `arrangeBoard(entities, moved)`;
   entities of the drag are drawn last (`g.card.moving`), one on a taken tile is `blocked` (`data-blocked`, red body and outline)
   and the entity under it gets the conflict outline. The canvas has the class `dragging`, and the bubble is hidden. A drop that
-  ends on the tiles it started from writes nothing; a blocked drop is refused by `setTiles`, so the entities go back. Dragging
+  ends on the tiles it started from moves nothing, but it places the dragged entities that have no `tile` on the tiles they
+  are shown at: an entity with the dashed outline is dragged a little way, or out and back, and stands where it was shown
+  (one undo step; for entities that all have their tile such a drop writes nothing). A plain click, which stays within the
+  drag threshold of 3 pixels, only selects. A blocked drop is refused by `setTiles`, so the entities go back. Dragging
   is how a conflict of the source is repaired: a tile off the grid comes onto it, and of two entities on one tile the upper one
   is dragged off.
 - Arrow keys: one tile, five with Shift (`nudgeTiles`); a blocked step does nothing.
 - Rotating: `R`, `Shift+R`, the two menu items and the Facing control, as on the edit canvas, under the turn rule.
-- Snapping: the button "Snap all" with the number of entities without a tile in the heading of the canvas (`button.snap-all`,
-  only while there are some); in the context menu of a selection "Snap to tile grid" for its entities without a tile and
-  "Release from tile grid" for those with one (`Snap 2 to tile grid` when the item does not take the whole selection). They
-  have no shortcut. The hint line says that dashed entities have no tile.
+- Flipping: `H`, `V` and the two menu items, under the flip rule.
+- Placing where shown: the button "Place all" with the number of entities without a tile in the strip above the canvas
+  (`button.place-all`, only while there are some); in the context menu of a selection "Place here" for its entities without
+  a tile and "Unplace" for those with one (`Place 2 here`, `Unplace 1` when the item does not take the whole selection).
+  They have no shortcut. A drag that ends where it began places as well (above). The hint line says that dashed entities
+  have no tile. (The commands were called "Snap all", "Snap to tile grid" and "Release from tile grid" until 2026-11-13.)
 - Placing: with a place tool the footprint of the new entity follows the pointer (`rect.board-ghost` with `data-tile-x`,
   `data-tile-y`, `data-facing` and `data-prototype`, class `blocked` and the cursor `not-allowed` over a taken tile, where a
   click does nothing and the tool stays). The footprint is the one of the tool's prototype: two by two tiles for a big pole
@@ -444,8 +474,8 @@ stands at a derived place, gives way to the others and is never in the way. `at`
   The copies have no `tile` (a fragment drops it): they appear as entities that are not placed (dashed, at their derived
   place), are the selection, and are one undo step. Their edit position is the one of a paste without a corner (where they
   were copied from, moved on by (40, 40) until free), also when the pointer is over the board or the menu was opened on it:
-  a point of the board is not an edit position. From there they are dragged or snapped like any entity without a tile; the
-  hint line and "Snap all" say so.
+  a point of the board is not an edit position. From there they are dragged or placed like any entity without a tile; the
+  hint line and "Place all" say so.
 - Wiring: the wire tools work as on the edit canvas (click a pin, click a second pin of the color; the pending wire is a
   straight dashed line to the pointer).
 - The inspector's footer shows `Tile X .. Y ..` (the center, as in the source) or "Not placed on a tile" on the board
@@ -511,8 +541,8 @@ the document: not undoable, and a change makes the project dirty.
   selected wire nor a red wire, and a selected wire that is too long has both. The `<title>` of a wire with a distance ends in
   `(4 tiles apart)` or `(12.4 tiles apart, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
   follow the drag: a wire that would become too long at the previewed place is flagged before the drop, one that would become
-  fine is not. An entity without a tile that is dragged out and back to where it stood shows its wires measured although the
-  drop writes nothing. The edit canvas shows every wire as before, without a distance.
+  fine is not. An entity without a tile shows its wires measured while it is dragged, also over the tiles it stood on, where
+  the drop then places it. The edit canvas shows every wire as before, without a distance.
 - The inspector: a selected wire between two different entities that both have a tile shows `section.wire-distance` (in both
   display modes): how far apart the entities are, "Reach 9" ("Reach unlimited" for 0; the reach that applied, also a pole's own),
   a sentence that says whose reach that is and why (`wireReachNote` in `selectionText.ts`: "The wire reach of a small electric
@@ -521,14 +551,65 @@ the document: not undoable, and a change makes the project dirty.
   electric pole reaches 32.") and, when it is too long, `data-too-long` and a notice (`role="status"`). The ends of a wire are
   named `output`, `input` and, for the point of a pole, `connection`.
 
-**The bubble.** While exactly one entity (and no wire) is selected on the board, `EntityBubble` shows its full card next to it:
-`CardFace`, the same component the card of the edit canvas draws (kind, description marker, icon, name, summary, the three
-status rows), and below it the description text when there is one. It is an HTML overlay of constant screen size (184 px wide,
-the size of a card at 100 %), so it is as readable zoomed far out as close up; it does not scale with the board. `placeBubble`
-puts it on the first side with room (right, left, below, above), otherwise on the side with the most room, keeps it inside the
-canvas and aims its pointer at the middle of the entity; it is not shown while the entity is out of sight. The bubble takes no
-pointer events (`pointer-events: none`), so everything under it stays reachable, and it has no pins and no entity attributes:
-it is `div.entity-bubble` with `data-entity-name` and `data-side`.
+**The bubble.** On the board the entity under the pointer shows its full card next to it in `EntityBubble`: `CardFace`, the
+same component the card of the edit canvas draws (kind, description marker, icon, name, summary, the three status rows), and
+below it the description text when there is one. It belongs to the pointer, not to the selection: selecting an entity shows
+none.
+
+- When it shows is `HoverIntent` (`canvas/hover.ts`), the same rule the popups of the entity selector follow: it appears once
+  the pointer has rested on an entity for 250 ms (`HOVER_DELAY_MS`), so crossing entities shows nothing; while one is on show
+  the next entity gets its bubble at once; it goes 120 ms after the pointer has left (`HOVER_LINGER_MS`), which is what keeps
+  it from flickering across the gap between two entities, and an entity entered in that time takes it over without a gap.
+- Which entity is under the pointer is geometry (`entityAt`: the footprint that holds the pointer, the one drawn last where
+  two share tiles), not the DOM target: a wire or a pin on top of the entity does not take the bubble away.
+- It is not shown (`bubbleAllowed`) on the edit canvas, with a wire or a place tool (it would cover pins and target tiles),
+  while a press is held (a drag of entities, a marquee, a pan; a press hides it at once and it returns only when the pointer
+  moves again after the release) and while the context menu is open. It also goes when the pointer leaves the canvas, and
+  when the entity leaves the pointer (a zoom, a pan with the wheel, a move by the arrow keys): the canvas checks at every
+  render that the pointer is still inside the footprint.
+- It is an HTML overlay of constant screen size (184 px wide, the size of a card at 100 %), so it is as readable zoomed far
+  out as close up; it does not scale with the board. `placeBubble` puts it on the first side with room (right, left, below,
+  above), otherwise on the side with the most room, keeps it inside the canvas and aims its pointer at the middle of the
+  entity. The bubble takes no pointer events (`pointer-events: none`), so everything under it stays reachable, and it has no
+  pins and no entity attributes: it is `div.entity-bubble` with `data-entity-name` and `data-side`.
+
+## The strip above the canvas
+
+`workbench/CanvasStrip.tsx` is a row of its own between the project bar and the canvas (`header.canvas-strip`, the first
+child of `.graph-pane`; the canvas is in `.canvas-area` below it). Nothing of it lies over the canvas, where only the hint
+line and the zoom controls (`.canvas-footer`), the bubble, the context menu and the notice about an invalid source remain.
+
+- `.canvas-heading`: the title "Circuit workspace" and under it the counts (`.counts`: "4 entities", "4 connections").
+- The canvas tools (`.tool-row`, a group named "Canvas tools"): select, red wire and green wire, which were in the sidebar
+  until 2026-11-13. Keys, tooltips with the key, `aria-pressed` and the disabled state of the wire tools (`canWire`) are as
+  they were; a wire tool that is clicked again returns to the select tool.
+- `.canvas-strip-view`: the `Edit | Blueprint` switch and, on the board while entities have no tile, "Place all" with their
+  number (`button.place-all`, disabled while the source has errors).
+- The strip is one line at the window the app starts with. It is a wrapping flex row: where the canvas is narrow (Split
+  mode, the smallest window in Split mode) the switch and "Place all" go to a second line and stay together; in the
+  smallest window in Circuit mode it is still one line. `tests/e2e/canvasStrip.spec.ts` checks the three widths.
+
+## The status line
+
+`footer.statusbar`, three parts:
+
+- `.status-lead`: the state of the source (`.status-source` with `data-level` and a tooltip that says what the light
+  means; the text and the level come from `statusLead(errors, editable)` in `workbench/statusText.ts`) and the warnings
+  chip (`.status-warnings`, which opens the source).
+
+  | Light | Text | When |
+  | --- | --- | --- |
+  | green (`ok`) | No errors | the source has no errors and the canvas can edit |
+  | red (`error`) | N errors in source, canvas is read-only | the source has errors; the canvas shows the last valid circuit |
+  | amber (`checking`) | Checking the source | no error is known but the analysis has not caught up with the text (`editable` is false). The analysis is synchronous today, so this state is not seen; it is there for an analysis in a worker. |
+
+- `.status-middle`: the selection in words (`.status-selection`) and the grid of the display mode.
+- `.project-meta`: the path of the project file (`.path`, "Not saved yet" without one) and the save state
+  (`[data-testid="save-state"]`, `role="status"`: "Unsaved changes" with the class `unsaved`, "All changes saved", "No
+  changes" for a project without a file; `saveStateText`). Both were under the project name in the project bar until
+  2026-11-13; the bar keeps the name. A long path is shortened in the middle by the layout, not by cutting the text:
+  `splitPath` gives the folders (`.path-head`, which shrinks and ends in an ellipsis) and the last separator with the file
+  name (`.path-tail`, which stays). The element so always holds the whole path as its text, and the tooltip has it too.
 
 ## Canvas behaviour worth knowing
 
@@ -601,6 +682,11 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   from its own direction; the selection is not turned as a group. One rotation of a selection is one undo step. While the source
   has errors all three are off. A lamp, a speaker and a pole do not rotate (`canRotate`): their inspector has no Facing control, the keys skip them, and the two menu
   items are disabled while the selection holds nothing that can rotate.
+- Flipping: `H` mirrors the selection left to right and `V` top to bottom, as in the game; the context menu of a card has
+  "Flip horizontal" and "Flip vertical" with the keys, below the rotations. Unlike a rotation a flip acts on the selection
+  as a group ("Flipping" under "How the session works"). One flip is one undo step. The keys do nothing and the items are
+  disabled while there is nothing to flip (`canFlip`: a single lamp or pole) and while the source has errors; with a place
+  tool the keys flip what it is about to place.
 - Routes (`wireRouting.ts`): every wire is a line of horizontal and vertical segments from pin to pin, drawn with rounded corners
   (radius 14; a corner next to a shorter segment gets what fits: the whole first or last segment, half of one between two corners).
   There are no curves. A wire leaves and enters a pin at a right angle to its edge. Red and green between the same two terminals
@@ -680,8 +766,8 @@ it is `div.entity-bubble` with `data-entity-name` and `data-side`.
   top-left corner of the group on the grid point at which the menu was opened, not under the pointer: `Canvas` keeps that point
   with the open menu and passes it to `onPaste`, `Workbench` holds it for the one paste event that follows (any paste event
   clears it, and so does a call that fails), so a later Cmd/Ctrl+V goes to the pointer again. With entities selected the menu also
-  has the two rotations, between Paste and Delete, and on the blueprint board below them the items that snap to the tile grid
-  and release from it. The menu opens at the pointer and moves up and to the left as far as it has to, to stay inside the canvas
+  has the two rotations and the two flips, between Paste and Delete, and on the blueprint board below them "Place here" and
+  "Unplace". The menu opens at the pointer and moves up and to the left as far as it has to, to stay inside the canvas
   (`ContextMenu` measures itself, `within`).
 - Deletion: on the canvas through the context menu (right click) only; there is no toolbar on the selection. Also Delete / Backspace
   while focus is inside the canvas, Edit > Delete, and the Delete button at the top of the inspector. Keys never delete while a text
@@ -713,6 +799,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Place the block in the middle of the view (on the board: on the free tile nearest to it) | `↩` | `Enter` | canvas (focus on the canvas itself) |
 | Cancel: the pending wire, then the tool, then (in the canvas) the selection | `Esc` | `Esc` | circuit, canvas |
 | Rotate clockwise, counter-clockwise: the selection, or with a place tool the entity it is about to place | `R`, `⇧R` | `R`, `Shift+R` | circuit |
+| Flip horizontal, vertical: the selection as a group, or with a place tool the entity it is about to place | `H`, `V` | `H`, `V` | circuit |
 | Move the selection one grid step, five grid steps (on the board: tiles) | arrows, `⇧` arrows | arrows, `Shift` arrows | circuit |
 | Duplicate the selection | `⌘D` | `Ctrl+D` | circuit |
 | Delete the selection | `⌫` or Delete | `Del` or Backspace | canvas |
@@ -747,14 +834,17 @@ when two rows share a key on a platform or when one key event matches two rows.
   blueprint board `nudgeTiles` with one tile and five, unless the
   focused control uses the arrows itself (`usesArrowKeys` in `platform.ts`: text, selects, sliders, radio groups, lists, tabs,
   menus); without a selection they keep their default. `Cmd/Ctrl+D` calls `duplicateSelection`. `R` and `Shift+R` turn the
-  selection, or, while a place tool is active, what that tool is about to place (`turnedTool`; nothing for a lamp, a speaker or a pole). `B` switches
+  selection, or, while a place tool is active, what that tool is about to place (`turnedTool`; nothing for a lamp, a speaker or a pole).
+  `H` and `V` flip the selection (`flipEntities`, where `canFlip` says there is something to flip) or the place tool
+  (`flippedTool`); they are the plain keys only, so `Cmd/Ctrl+V` stays the paste and `Cmd+H` the system's. `B` switches
   the display mode; what a mode does not offer (`DISPLAY_CAPABILITIES`) does nothing. While the source has errors the
-  keys that edit (rotation, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
+  keys that edit (rotation, flipping, arrows, duplicate, delete) and the tools that edit (wires, building blocks, like their disabled
   buttons) do nothing; `Q`, Escape and `?` work.
-- **Discoverability.** The three tool buttons and the five entries with a key name it in the tooltip (`title`); those entries
-  also show it as a key cap next to their name (`kbd.key-hint`). The cap is `aria-hidden` and the buttons carry no
-  `aria-keyshortcuts`: the tooltip is the accessible description of the button, so a screen reader hears the key once, also
-  VoiceOver, which does not announce `aria-keyshortcuts`. Context menu items show their keys as before.
+- **Discoverability.** The three tool buttons name their key in the tooltip (`title`). The five tiles of the entity selector
+  with a key name it in their popup, as "Key 3", so that the digit is not read as a count. The buttons carry no
+  `aria-keyshortcuts`: the tooltip, or the popup while it is on show (`aria-describedby`), is the accessible description of
+  the button, so a screen reader hears the key once, also VoiceOver, which does not announce `aria-keyshortcuts`. Context
+  menu items show their keys as before.
 - **Overview.** `ShortcutOverview` lists the table in its groups (Tools, Editing, View, Simulation, File) with the key names of
   the platform, one key cap per key. It opens with `?` and with Help > Keyboard Shortcuts (menu command `help.shortcuts`). It is
   a modal dialog (`role="dialog"`, `aria-modal`, labelled by its heading): the focus goes to its Close button, Tab stays inside,
@@ -820,30 +910,53 @@ language and the simulation, a `KIND_INFO` row, a summary line and, if it has se
 connection point (`TERMINALS`: `io`) gets its pins, its wiring and its place on the board from the general code.
 `test/registry.test.ts` fails when a prototype of the model is in no group or in two.
 
-- The pinned group (the combinators) is always on show, above the others, without a heading and not collapsible: full rows
-  with icon, the name of the kind, what it is for and the key (`.palette-items .palette-item`). In a window lower than 900
-  pixels the rows give up their second line and the spacing tightens, so that the rest of the sidebar stays in reach.
-- Every other group has a heading that is a button (`button.palette-group-header` with `aria-expanded` and `aria-controls`,
-  the name and the number of entries) and, while open, its entries in a panel (`role="group"`, named like the group; hidden
-  and empty while closed, so nothing of it is in the tab order). An entry is compact (`.palette-item.compact`): icon, the
-  game's name and, for an entity with a reach of its own, its tiles and reach under it ("2 x 2 tiles, wire reach 32";
-  `prototypeFacts`), which the tooltip repeats: "Place: Big electric pole (2 x 2 tiles, wire reach 32)". Every entry carries
-  `data-kind` and `data-prototype`; the lamp keeps its key cap.
+- **Tiles.** Every entry is a square tile with nothing but its icon (`button.palette-tile`, 30 pixel icon), four in a row
+  at the width of the sidebar (a grid of four columns, about 48 pixels each at 240 pixels of sidebar and 41 at 212). The
+  game's name is its accessible name (`aria-label`: "Decider combinator"); it has no `title`, because everything else is in
+  the popup. Every tile carries `data-kind` and `data-prototype`. The entry of the palette, one per prototype, also has the
+  class `palette-item`; the tiles of "Entities in use" have `in-use` instead, so `.palette-item[data-prototype=...]` names
+  one element.
+- **The popup** (`div.tile-popup`, `role="tooltip"`, `data-prototype`, `data-side`) says what a tile stands for, in the
+  look of the board's bubble (card colors, the kind's accent on its left edge, the same pointer): the game's name, what the
+  kind is for (`KIND_INFO[kind].description`), for an entity with a reach of its own its tiles and reach ("2 x 2 tiles, wire
+  reach 32"; `prototypeFacts`), and the key of the five entries that have one, written "Key 3" so that it is not read as a
+  count. It shows for the tile the pointer rests on, by the rule of the board's bubble (`HoverIntent`: after 250 ms, at once
+  from tile to tile, gone 120 ms after the pointer left), and without a wait for the tile that has the keyboard focus
+  (`:focus-visible` only: a tile that was clicked keeps the focus, and its popup leaves with the pointer). A disabled tile
+  shows it too. It is fixed to the window beside the sidebar at the height of its tile (`placeBubble` with the row of the
+  tile up to the edge of the sidebar as the anchor), so it covers no tile, its own included; it takes no pointer events.
+  When the sections are scrolled the popup of the pointer goes, and the popup of the focused tile moves with its tile (the
+  browser scrolls a tile into view when the keyboard reaches it) and goes when that is scrolled out of sight. While it is on show the tile names its text as `aria-describedby`.
+- **The combinators** (the pinned group) are the first row, always on show, without a heading (`.palette-items`, a group
+  named "Combinators").
+- **Entities in use** (`section.palette-group[data-group="in-use"]`, below the combinators, above the groups): one tile for
+  each game prototype the circuit on show contains, without the pinned entries, in the order of the palette (`entriesInUse`
+  in `registry.ts`), so a tile keeps its place whatever is placed next. The section is always there; with none it has the
+  line "None besides the combinators." (`.palette-empty`) as high as a row of tiles, so nothing moves when the first lamp
+  is placed. Its heading shows the number of tiles and closes it like a group; that is remembered under
+  `face.palette.inUseOpen`. An entity in it also stays in its group. Both tiles arm the same tool (`sameTool`), and both
+  are pressed while it is armed.
+- **The groups.** Every other group has a heading that is a button (`button.palette-group-header` with `aria-expanded` and
+  `aria-controls`, the name and the number of entries) and, while open, its tiles in a panel (`role="group"`, named like
+  the group; hidden and empty while closed, so nothing of it is in the tab order).
 - The count badge of the panel is the number of entries (`PALETTE_ENTRIES`).
 - Which groups are open is a preference of the person at this machine (`workbench/paletteGroups.ts`): stored as JSON under
   `face.palette.openGroups` in `localStorage`, which belongs to the profile of the app (userData), so it is the same for every
-  project and survives a restart. The renderer keeps no other per-viewer state, and the main process offers none over IPC.
+  project and survives a restart. The list of the circuit (`face.palette.circuitListOpen`) and "Entities in use" have a key
+  of their own (`readSectionOpen`; open unless a "false" is stored). The main process offers no per-viewer state over IPC.
   Every access is guarded: without storage, with storage that throws and with a value that is not what was written, the groups
   start as the registry says ("Lights and sound" open, "Power poles" closed) and work for as long as the window lives. Only
   known group ids with a boolean are taken from the store, so a group added later starts as it is defined.
-- A place tool whose entry is in a closed group opens that group (the lamp by `5`), and the armed entry is scrolled into
-  view. A group closed by hand while its tool is armed stays closed. A group that is opened is scrolled so that as much of
-  it as fits shows, from its heading down.
-- Layout: tools, the pinned rows, then two areas that share what is left and scroll on their own: the groups
-  (`.palette-groups`, up to two thirds, never more than they need) and the entity list (`.entity-list`, the rest, at least
-  48 pixels). At the default window (1510 x 960) the groups as they start fit without scrolling; with every group open they
-  scroll. At the smallest window (1120 x 760) the groups area shows a heading and two entries and the list its first rows;
-  `tests/e2e/entitySelector.spec.ts` checks both sizes (nothing is cut off, every entry and every entity can be reached).
+- A place tool whose entry is in a closed group opens that group (the lamp by `5`), and the armed entry (the tile in its
+  group) is scrolled into view. A group closed by hand while its tool is armed stays closed. A section that is opened is
+  scrolled so that as much of it as fits shows, from its heading down.
+- Layout: the heading, the row of the combinators, then two areas that share what is left and scroll on their own: the
+  sections (`.palette-groups`: "Entities in use" and the groups; up to two thirds, never more than they need; it reaches the
+  edge of the sidebar, where its scrollbar has room beside the tiles, so its columns are those of the first row) and the
+  entity list (`.entity-list`, the rest, at least 48 pixels). At the default window (1510 x 960) the sections fit without
+  scrolling, also with every group open. At the smallest window (1120 x 760) with every group open they scroll and the list
+  shows its first rows; `tests/e2e/entitySelector.spec.ts` checks both sizes (nothing is cut off, every entry and every
+  entity can be reached).
 
 ## Poles and speakers
 

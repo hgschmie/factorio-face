@@ -1,8 +1,8 @@
 // Reference screenshots of the workbench for visual review, written to .runtime/screenshots/.
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { card, cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, showDisplay, test } from "./app.ts";
-import { selectOnBoard } from "./board.ts";
+import { card, cardGrabPoint, expect, ROOT, SCREENSHOT_DIR, selectEntity, showDisplay, shrinkToMinimum, test } from "./app.ts";
+import { hoverOnBoard, selectOnBoard } from "./board.ts";
 import { openRelay } from "./fixtures.ts";
 
 test("captures the workbench in its main states", async ({ page }) => {
@@ -89,14 +89,14 @@ test("captures the entity selector, poles and the speaker", async ({ page, app }
 
   // The sidebar: every group closed, then every group open.
   await group("Lights and sound").click();
-  await expect(page.locator(".palette-item.compact")).toHaveCount(0);
+  await expect(page.locator(".palette-item")).toHaveCount(4);
   // The chevrons turn.
   await page.mouse.move(10, 10);
   await page.waitForTimeout(200);
   await page.screenshot({ path: resolve(shots, "sidebar-groups-closed.png") });
   await group("Lights and sound").click();
   await group("Power poles").click();
-  await expect(page.locator(".palette-item.compact")).toHaveCount(6);
+  await expect(page.locator(".palette-item")).toHaveCount(10);
   await page.mouse.move(10, 10);
   await page.waitForTimeout(200);
   await page.screenshot({ path: resolve(shots, "sidebar-groups-open.png") });
@@ -115,7 +115,7 @@ test("captures the entity selector, poles and the speaker", async ({ page, app }
   await inspector.getByRole("checkbox", { name: "Show alert" }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: resolve(shots, "inspector-speaker-lower.png") });
 
-  // The board: a small, a medium and a big pole and a substation with their wires, and the bubble of a selected pole.
+  // The board: a small, a medium and a big pole and a substation with their wires, and the bubble of the pole under the pointer.
   await page.keyboard.press("Escape");
   await showDisplay(page, "blueprint");
   await page.getByRole("button", { name: "Fit circuit" }).click();
@@ -124,6 +124,7 @@ test("captures the entity selector, poles and the speaker", async ({ page, app }
   await page.screenshot({ path: resolve(shots, "board-poles.png") });
   await page.locator(".canvas").screenshot({ path: resolve(shots, "board-poles-canvas.png") });
   await selectOnBoard(page, "station");
+  await hoverOnBoard(page, "station");
   await page.screenshot({ path: resolve(shots, "board-substation-selected.png") });
 
   // A big pole in hand: its footprint of two by two tiles under the pointer.
@@ -150,4 +151,62 @@ test("captures the entity selector, poles and the speaker", async ({ page, app }
   await page.waitForTimeout(300);
   await page.screenshot({ path: resolve(shots, "sidebar-minimum-window.png") });
   await page.locator(".palette").screenshot({ path: resolve(shots, "sidebar-minimum-window-panel.png") });
+});
+
+test("captures the strip, the status line, the tiles with their popups, the entities in use and the hover popup of the board", async ({ page, app }) => {
+  const shots = resolve(SCREENSHOT_DIR, "ui-rework");
+  const palette = page.getByRole("complementary", { name: "Components" });
+  const tile = (prototype: string) => palette.locator(`.palette-item[data-prototype="${prototype}"]`);
+  const settle = () => page.waitForTimeout(250);
+
+  // The whole window, edit canvas: the strip above the canvas, the tiles, the status line.
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "window-edit.png") });
+
+  // The selector with a popup: a combinator with its key, and a pole with its tiles and reach.
+  await tile("decider-combinator").hover();
+  await expect(page.locator(".tile-popup")).toHaveAttribute("data-prototype", "decider-combinator");
+  await settle();
+  await page.screenshot({ path: resolve(shots, "selector-popup.png") });
+  await palette.locator(".palette-group-header", { hasText: "Power poles" }).click();
+  await tile("big-electric-pole").hover();
+  await expect(page.locator(".tile-popup")).toHaveAttribute("data-prototype", "big-electric-pole");
+  await settle();
+  await page.screenshot({ path: resolve(shots, "selector-popup-pole.png") });
+
+  // "Entities in use" filled: the relay circuit has a lamp, a speaker and all four poles.
+  await openRelay(page);
+  await page.getByRole("button", { name: "Fit circuit" }).click();
+  await expect(palette.locator(".palette-tile.in-use")).toHaveCount(6);
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "entities-in-use.png") });
+  await palette.screenshot({ path: resolve(shots, "entities-in-use-panel.png") });
+
+  // The whole window, blueprint board, with the popup of the entity under the pointer.
+  await showDisplay(page, "blueprint");
+  await page.getByRole("button", { name: "Fit circuit" }).click();
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "window-blueprint.png") });
+  await hoverOnBoard(page, "alarm");
+  await settle();
+  await page.screenshot({ path: resolve(shots, "board-hover-popup.png") });
+
+  // An error in the source: the status line and the banner.
+  await page.evaluate(() => window.faceSession!.commands.setSource(window.faceSession!.getState().source.replace("> 0", ">")));
+  await expect(page.locator(".status-source")).toHaveAttribute("data-level", "error");
+  await page.mouse.move(10, 10);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "status-error.png") });
+  await page.getByRole("button", { name: "Undo" }).click();
+
+  // The smallest window, Circuit and Split: the strip on one line and wrapped.
+  await shrinkToMinimum(app, page);
+  await settle();
+  await page.screenshot({ path: resolve(shots, "window-minimum.png") });
+  await page.getByRole("button", { name: "Split", exact: true }).click();
+  await settle();
+  await page.screenshot({ path: resolve(shots, "window-minimum-split.png") });
 });

@@ -1,12 +1,13 @@
 // The workbench shell. It lays out the panels, routes their callbacks to the controller's commands and connects the
 // native menu and the close handshake. It keeps only view state that no panel owns (the canvas view across remounts).
 import type { Point } from "@face/model";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
 import { Canvas, type CanvasHandle, type CanvasViews } from "../canvas/Canvas.tsx";
+import { canFlip } from "../canvas/flip.ts";
 import { ZOOM_STEP, type CanvasView } from "../canvas/viewport.ts";
 import type { SourceEditorHandle } from "../editor/SourceEditor.tsx";
-import type { RotationTurn } from "../entities/facing.ts";
+import type { FlipAxis, RotationTurn } from "../entities/facing.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
 import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspector/Inspector.tsx";
@@ -20,10 +21,12 @@ import type { AppSettingsController } from "../settings/useAppSettings.ts";
 import { ShortcutOverview } from "../shortcuts/ShortcutOverview.tsx";
 import { nudgeDelta, shortcutFor } from "../shortcuts/shortcuts.ts";
 import { SimulationDock } from "../simulation/SimulationDock.tsx";
-import { DISPLAY_CAPABILITIES, SELECT_TOOL, toolAllowed, turnedTool, type Diagnostic, type DisplayMode, type WorkbenchController } from "./controller.ts";
+import { CanvasStrip, type WireIconResolver } from "./CanvasStrip.tsx";
+import { DISPLAY_CAPABILITIES, flippedTool, SELECT_TOOL, toolAllowed, turnedTool, type Diagnostic, type DisplayMode, type WorkbenchController } from "./controller.ts";
+import { Palette } from "./Palette.tsx";
 import { selectedItems, selectionStatus } from "./selectionText.ts";
-import { Palette, type WireIconResolver } from "./Palette.tsx";
 import { SourcePane } from "./SourcePane.tsx";
+import { NOT_SAVED_YET, saveStateText, splitPath, statusLead } from "./statusText.ts";
 import { TopBar } from "./TopBar.tsx";
 
 export interface WorkbenchProps {
@@ -167,8 +170,8 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
     };
   }, [commands]);
 
-  // The keys of the shortcut table that do not need the focus in the canvas: tools, the display mode, rotation as in the game
-  // (R, Shift+R: the selection, or with a place tool what it is about to place), moving with the arrows, duplicating, the overview.
+  // The keys of the shortcut table that do not need the focus in the canvas: tools, the display mode, rotation and flipping as in
+  // the game (R, Shift+R, H, V: the selection, or with a place tool what it is about to place), moving with the arrows, duplicating, the overview.
   // What the display mode does not offer does nothing. They belong to the circuit wherever the focus is while the canvas is shown,
   // except where a key is text or moves through a list: a text control, the source editor, a dialog, a menu. Only the arrows repeat.
   useEffect(() => {
@@ -176,7 +179,7 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
       if (event.isComposing || event.defaultPrevented) return;
       const shortcut = shortcutFor(event);
       if (!shortcut || shortcut.scope === "canvas" || (event.repeat && !shortcut.repeats) || keyIsTaken(event.target)) return;
-      const { selection, editable, mode, tool, displayMode } = stateRef.current;
+      const { circuit, selection, editable, mode, tool, displayMode } = stateRef.current;
       if (shortcut.scope === "circuit" && mode === "source") return;
       const editing = editable && selection.length > 0;
       const offered = DISPLAY_CAPABILITIES[displayMode];
@@ -208,6 +211,20 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
           commands.rotateEntities(selection, turn);
           break;
         }
+        case "edit.flipHorizontal":
+        case "edit.flipVertical": {
+          const axis = shortcut.id === "edit.flipHorizontal" ? "horizontal" : "vertical";
+          if (tool.type === "place") {
+            // What is about to be placed is mirrored, as R turns it.
+            const mirrored = editable && offered.rotate ? flippedTool(tool, axis) : undefined;
+            if (!mirrored) return;
+            commands.setTool(mirrored);
+            break;
+          }
+          if (!editing || !offered.rotate || !canFlip(selectedItems(circuit, selection, []).entities, offered.tiles)) return;
+          commands.flipEntities(selection, axis);
+          break;
+        }
         case "edit.nudge":
         case "edit.nudgeFar":
           if (!editing || !offered.move || usesArrowKeys(event.target)) return;
@@ -230,6 +247,8 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [commands]);
   const rotateSelection = useCallback((turn: RotationTurn) => commands.rotateEntities(stateRef.current.selection, turn), [commands]);
+  const flipSelection = useCallback((axis: FlipAxis) => commands.flipEntities(stateRef.current.selection, axis), [commands]);
+  const placeAll = useCallback(() => commands.placeHere(), [commands]);
 
   // The context menu of the canvas starts the same events for a cut and a copy. A page cannot start a paste, so the main process
   // does it on its behalf. The paste event that follows takes the corner; it may arrive before or after the call returns. A
@@ -313,6 +332,10 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
 
   const errors = state.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warnings = state.diagnostics.length - errors;
+  const lead = statusLead(errors, editable);
+  const [pathHead, pathTail] = splitPath(project.path ?? NOT_SAVED_YET);
+  /** On the board: how many entities have no `tile`. */
+  const unplacedCount = useMemo(() => (capabilities.tiles ? circuit.entities.filter((entity) => !entity.placement?.tile).length : 0), [capabilities.tiles, circuit.entities]);
   const selectionText = selectionStatus(circuit, selectedItems(circuit, selection, wireSelection));
   const showCanvas = mode !== "source";
 
@@ -360,51 +383,67 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
       )}
 
       <div className={`workbench mode-${mode}`}>
-        {showCanvas && <Palette tool={tool} canPlace={editable && capabilities.place} canWire={editable && capabilities.wire} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} resolveWireIcon={resolveWireIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
+        {showCanvas && <Palette tool={tool} canPlace={editable && capabilities.place} entities={circuit.entities} selection={selection} resolveEntityIcon={resolveEntityIcon} onToolChange={commands.setTool} onSelect={commands.select} />}
 
         <main className="workspace">
           <div className="editor-area">
             {showCanvas && (
               <div className="graph-pane">
-                <Canvas
-                  key={project.epoch}
-                  ref={canvasRef}
-                  circuit={circuit}
-                  selection={selection}
-                  wireSelection={wireSelection}
+                <CanvasStrip
+                  entityCount={circuit.entities.length}
+                  wireCount={circuit.wires.length}
                   tool={tool}
+                  canWire={editable && capabilities.wire}
                   displayMode={displayMode}
-                  wireReach={project.wireReach}
+                  unplacedCount={unplacedCount}
                   editable={editable}
-                  entityStatus={simulation.entityStatus}
-                  resolveEntityIcon={resolveEntityIcon}
-                  describeSignal={describeSignal}
-                  initialViews={viewsRef.current}
-                  onViewChange={rememberView}
-                  onSelect={commands.select}
+                  resolveWireIcon={resolveWireIcon}
                   onToolChange={commands.setTool}
                   onDisplayModeChange={commands.setDisplayMode}
-                  onPlaceEntity={commands.placeEntity}
-                  onMoveEntities={commands.moveEntities}
-                  onPlaceEntityOnTile={commands.placeEntityOnTile}
-                  onSetTiles={commands.setTiles}
-                  onSnapToTiles={commands.snapToTiles}
-                  onClearTiles={commands.clearTiles}
-                  onToggleWire={commands.toggleWire}
-                  onDeleteSelection={commands.deleteSelection}
-                  onRotate={rotateSelection}
-                  onCopy={menuCopy}
-                  onCut={menuCut}
-                  onPaste={api && menuPaste}
+                  onPlaceAll={placeAll}
                 />
-                {!editable && (
-                  <div className="invalid-banner" role="status">
-                    <span>The canvas cannot be edited until the source is valid. It shows the last valid circuit.</span>
-                    <button type="button" onClick={() => commands.setMode("split")}>
-                      Show source <Icon name="arrow" size={14} />
-                    </button>
-                  </div>
-                )}
+                <div className="canvas-area">
+                  <Canvas
+                    key={project.epoch}
+                    ref={canvasRef}
+                    circuit={circuit}
+                    selection={selection}
+                    wireSelection={wireSelection}
+                    tool={tool}
+                    displayMode={displayMode}
+                    wireReach={project.wireReach}
+                    editable={editable}
+                    unplacedCount={unplacedCount}
+                    entityStatus={simulation.entityStatus}
+                    resolveEntityIcon={resolveEntityIcon}
+                    describeSignal={describeSignal}
+                    initialViews={viewsRef.current}
+                    onViewChange={rememberView}
+                    onSelect={commands.select}
+                    onToolChange={commands.setTool}
+                    onPlaceEntity={commands.placeEntity}
+                    onMoveEntities={commands.moveEntities}
+                    onPlaceEntityOnTile={commands.placeEntityOnTile}
+                    onSetTiles={commands.setTiles}
+                    onPlaceHere={commands.placeHere}
+                    onUnplace={commands.unplace}
+                    onToggleWire={commands.toggleWire}
+                    onDeleteSelection={commands.deleteSelection}
+                    onRotate={rotateSelection}
+                    onFlip={flipSelection}
+                    onCopy={menuCopy}
+                    onCut={menuCut}
+                    onPaste={api && menuPaste}
+                  />
+                  {!editable && (
+                    <div className="invalid-banner" role="status">
+                      <span>The canvas cannot be edited until the source is valid. It shows the last valid circuit.</span>
+                      <button type="button" onClick={() => commands.setMode("split")}>
+                        Show source <Icon name="arrow" size={14} />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
             {/* Text, history and selection belong to the session; the pane stays mounted only to keep its scroll position. */}
@@ -441,20 +480,32 @@ export function Workbench({ controller, api, appSettings, iconsMissing = false, 
 
       <footer className="statusbar">
         <span className="status-lead">
-          <span className={`status-dot${errors > 0 ? " error" : editable ? "" : " warning"}`} />
-          {errors > 0 ? `${errors} ${errors === 1 ? "error" : "errors"} in source` : editable ? "Circuit ready" : "Canvas read-only"}
+          <span className="status-source" data-level={lead.level} title={lead.title}>
+            <span className={`status-dot ${lead.level}`} />
+            {lead.text}
+          </span>
           {warnings > 0 && (
             <button type="button" className="status-warnings" title="Show the source and its problems" onClick={() => mode === "circuit" && commands.setMode("split")}>
               {warnings} {warnings === 1 ? "warning" : "warnings"}
             </button>
           )}
         </span>
-        <span>
+        <span className="status-middle">
           <span className="status-selection">{selectionText}</span>
           <span className="meta-dot" />
           {displayMode === "blueprint" ? "Tile grid" : "20 unit grid"}
         </span>
-        <span>FActorio Circuit Editor</span>
+        <span className="project-meta">
+          {/* Shortened in the middle: the folders give way, the file name stays. */}
+          <span className="path" title={project.path ?? undefined}>
+            {pathHead !== "" && <span className="path-head">{pathHead}</span>}
+            <span className="path-tail">{pathTail}</span>
+          </span>
+          <span className="meta-dot" />
+          <span className={`save-state${project.dirty ? " unsaved" : ""}`} data-testid="save-state" role="status">
+            {saveStateText(project)}
+          </span>
+        </span>
       </footer>
 
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}

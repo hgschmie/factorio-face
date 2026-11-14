@@ -56,6 +56,17 @@ export interface EntityTile {
   readonly tile: Point | undefined;
 }
 
+/** Where an entity is and where it faces after a group was rearranged (mirrored). A part that is absent stays as it is. */
+export interface EntityArrangement {
+  readonly id: EntityId;
+  /** The edit position (`at`). */
+  readonly position?: Point;
+  /** The center for the `tile` clause, on the grid for the entity in the direction it then faces. Without it a turned entity keeps its top-left tile, as with `faceEntities`. */
+  readonly tile?: Point;
+  /** Ignored for an entity that cannot rotate. */
+  readonly direction?: Direction;
+}
+
 /** Applies sorted, non-overlapping changes. */
 export function applyChanges(source: string, changes: readonly TextChange[]): string {
   let result = "";
@@ -346,19 +357,21 @@ export function addEntity(parse: ParseResult, kind: EntityKind, position: Point,
 }
 
 /** Patches the numbers inside `at (...)`, or inserts the clause when the entity has none. */
+function writePosition(edit: Edit, id: EntityId, target: Point): void {
+  const source = edit.entity(id);
+  const position = checkPosition(target);
+  const current = edit.model(id).position;
+  if (!source.at) {
+    if (position.x !== current.x || position.y !== current.y) edit.change(source.atInsert, source.atInsert, printAt(position));
+    return;
+  }
+  if (position.x !== current.x) edit.change(source.at.x.from, source.at.x.to, String(position.x));
+  if (position.y !== current.y) edit.change(source.at.y.from, source.at.y.to, String(position.y));
+}
+
 export function moveEntities(parse: ParseResult, moves: readonly EntityMove[]): TextChange[] {
   const edit = new Edit(parse);
-  for (const [id, target] of new Map(moves.map((m) => [m.id, m.position]))) {
-    const source = edit.entity(id);
-    const position = checkPosition(target);
-    const current = edit.model(id).position;
-    if (!source.at) {
-      if (position.x !== current.x || position.y !== current.y) edit.change(source.atInsert, source.atInsert, printAt(position));
-      continue;
-    }
-    if (position.x !== current.x) edit.change(source.at.x.from, source.at.x.to, String(position.x));
-    if (position.y !== current.y) edit.change(source.at.y.from, source.at.y.to, String(position.y));
-  }
+  for (const [id, target] of new Map(moves.map((m) => [m.id, m.position]))) writePosition(edit, id, target);
   return edit.finish();
 }
 
@@ -396,25 +409,49 @@ export function setTiles(parse: ParseResult, tiles: readonly EntityTile[]): Text
   return edit.finish();
 }
 
+function checkDirection(direction: Direction): void {
+  if (!DIRECTIONS.includes(direction)) throw new EditError("invalid-entity", `'${String(direction)}' is not a direction; use ${DIRECTIONS.join(", ")}`);
+}
+
+/** Patches the direction word of the `facing` clause, or inserts the clause behind `tile`, `at` or the name. */
+function writeFacing(edit: Edit, id: EntityId, direction: Direction): void {
+  const { node, atInsert } = edit.entity(id);
+  const word = node.facing?.direction;
+  const behind = Math.max(atInsert, node.at?.to ?? 0, node.tile?.to ?? 0);
+  if (word) edit.change(word.from, word.to, direction);
+  else edit.change(behind, behind, ` facing ${direction}`);
+}
+
 /**
  * Patches the direction word of the `facing` clause, or inserts the clause behind `tile`, `at` or the name when the entity has
  * none. An entity that faces the wanted direction already (east without a clause) is left alone, and so is one that cannot
  * rotate (a lamp); a clause is never removed. An entity with a `tile` gets the tile that `rotateTile` gives for the turn.
  */
 export function faceEntities(parse: ParseResult, facings: readonly EntityFacing[]): TextChange[] {
+  return arrangeEntities(parse, facings);
+}
+
+/**
+ * Writes where each entity is and where it faces as one change set: its edit position, its `tile` and its direction, each only
+ * where the arrangement says it and only where it differs. It is what mirroring a group needs, which moves and turns its
+ * entities at once. The direction follows the rules of `faceEntities`. A `tile` has to be on the game's grid for the entity in
+ * the direction it faces afterwards; an entity that is turned without one keeps its top-left tile (`rotateTile`).
+ */
+export function arrangeEntities(parse: ParseResult, arrangements: readonly EntityArrangement[]): TextChange[] {
   const edit = new Edit(parse);
-  for (const [id, direction] of new Map(facings.map((f) => [f.id, f.direction]))) {
-    const { node, atInsert } = edit.entity(id);
-    if (!DIRECTIONS.includes(direction)) throw new EditError("invalid-entity", `'${String(direction)}' is not a direction; use ${DIRECTIONS.join(", ")}`);
+  for (const { id, position, tile, direction } of new Map(arrangements.map((a) => [a.id, a])).values()) {
+    const { name } = edit.entity(id);
+    if (direction !== undefined) checkDirection(direction);
     const entity = edit.model(id);
     const facing = facingOf(entity);
-    if (!canRotate(entity) || facing === direction) continue;
-    const word = node.facing?.direction;
-    const behind = Math.max(atInsert, node.at?.to ?? 0, node.tile?.to ?? 0);
-    if (word) edit.change(word.from, word.to, direction);
-    else edit.change(behind, behind, ` facing ${direction}`);
-    const tile = entity.placement?.tile;
-    if (tile) writeTile(edit, id, rotateTile(entity, tile, facing, direction));
+    const turned = direction !== undefined && canRotate(entity) ? direction : facing;
+    if (tile && !isTileCenter(entity, turned, tile)) throw new EditError("invalid-position", `tile (${tile.x}, ${tile.y}) is not on the tile grid for '${name}'${turned === facing ? "" : ` facing ${turned}`}`);
+    const current = entity.placement?.tile;
+    const center = tile ?? (current && turned !== facing ? rotateTile(entity, current, facing, turned) : undefined);
+    // In the order of the clauses, for an entity that gets more than one of them at the same place.
+    if (position) writePosition(edit, id, position);
+    if (center) writeTile(edit, id, center);
+    if (turned !== facing) writeFacing(edit, id, turned);
   }
   return edit.finish();
 }
@@ -769,6 +806,7 @@ export type EditCommand =
   | { readonly type: "moveEntities"; readonly moves: readonly EntityMove[] }
   | { readonly type: "faceEntities"; readonly facings: readonly EntityFacing[] }
   | { readonly type: "setTiles"; readonly tiles: readonly EntityTile[] }
+  | { readonly type: "arrangeEntities"; readonly arrangements: readonly EntityArrangement[] }
   | { readonly type: "renameEntity"; readonly id: EntityId; readonly name: string }
   | { readonly type: "deleteEntities"; readonly ids: readonly EntityId[]; /** Connections to remove in the same edit, as `wireKey`s. */ readonly wires?: readonly string[] }
   | { readonly type: "addWire"; readonly color: WireColor; readonly a: TerminalRef; readonly b: TerminalRef }
@@ -795,6 +833,7 @@ export function executeCommand(parse: ParseResult, command: EditCommand): EditRe
       case "moveEntities": return { ok: true, changes: moveEntities(parse, command.moves) };
       case "faceEntities": return { ok: true, changes: faceEntities(parse, command.facings) };
       case "setTiles": return { ok: true, changes: setTiles(parse, command.tiles) };
+      case "arrangeEntities": return { ok: true, changes: arrangeEntities(parse, command.arrangements) };
       case "renameEntity": return { ok: true, changes: renameEntity(parse, command.id, command.name) };
       case "deleteEntities": return { ok: true, changes: deleteEntities(parse, command.ids, command.wires) };
       case "addWire": return { ok: true, changes: addWire(parse, command.color, command.a, command.b) };

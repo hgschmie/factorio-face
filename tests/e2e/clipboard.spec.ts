@@ -203,8 +203,8 @@ test("the context menu of a card cuts, copies and pastes, and shows the shortcut
   await page.getByRole("button", { name: "Zoom out" }).click();
   const gate = await cardGrabPoint(page, "gate");
   await page.mouse.click(gate.x, gate.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
-  await expect(menu(page).getByRole("menuitem").locator("kbd")).toHaveText([/^(⌘|Ctrl\+)X$/, /^(⌘|Ctrl\+)C$/, /^(⌘|Ctrl\+)V$/, /^R$/, /^(⇧|Shift\+)R$/, /⌫|Del/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Flip horizontal/, /Flip vertical/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem").locator("kbd")).toHaveText([/^(⌘|Ctrl\+)X$/, /^(⌘|Ctrl\+)C$/, /^(⌘|Ctrl\+)V$/, /^R$/, /^(⇧|Shift\+)R$/, /^H$/, /^V$/, /⌫|Del/]);
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Copy/ }));
   await expect.poll(() => readClipboard(app)).toBe(GATE);
   await expect(menu(page)).toHaveCount(0);

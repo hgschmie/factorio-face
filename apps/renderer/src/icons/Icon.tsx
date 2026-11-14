@@ -55,6 +55,8 @@ const GLYPHS = {
   chevron: <path d="m9 6 6 6-6 6" />,
   rotateRight: <path d="M20 11a8 8 0 1 0-2 7M20 4v7h-7" />,
   rotateLeft: <path d="M4 11a8 8 0 1 1 2 7M4 4v7h7" />,
+  flipHorizontal: <path d="M12 3v18M8 7l-5 5 5 5zM16 7l5 5-5 5z" />,
+  flipVertical: <path d="M3 12h18M7 8l5-5 5 5zM7 16l5 5 5-5z" />,
   settings: (
     <>
       <path d="M4 7h9m5 0h2M4 17h2m5 0h9" />

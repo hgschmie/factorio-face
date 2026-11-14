@@ -137,7 +137,7 @@ test("a lamp does not rotate: the keys, the menu and the inspector leave it alon
   await page.keyboard.press("Shift+KeyR");
   const light = await cardGrabPoint(page, "light");
   await page.mouse.click(light.x, light.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Flip horizontal/, /Flip vertical/, /Delete/]);
   for (const item of [/Rotate clockwise/, /Rotate counter-clockwise/]) await expect(menu(page).getByRole("menuitem", { name: item })).toBeDisabled();
   await expect(menu(page).getByRole("menuitem", { name: /Copy/ })).toBeEnabled();
   await page.keyboard.press("Escape");
@@ -250,7 +250,7 @@ test("a selection of several entities turns in place as one undo step, and redo 
 test("the context menu of a card rotates both ways and shows the keys", async ({ page }) => {
   const twice = await cardGrabPoint(page, "twice");
   await page.mouse.click(twice.x, twice.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Flip horizontal/, /Flip vertical/, /Delete/]);
   await expect(menu(page).getByRole("menuitem", { name: /Rotate clockwise/ }).locator("kbd")).toHaveText("R");
   await expect(menu(page).getByRole("menuitem", { name: /Rotate counter-clockwise/ }).locator("kbd")).toHaveText(/^(⇧|Shift\+)R$/);
   // The menu is inside the canvas, whole.

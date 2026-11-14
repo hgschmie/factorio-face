@@ -1,6 +1,6 @@
 // Launching and driving the built app. Each launch gets its own profile directory under .runtime/test-user-data. A launch opens the
 // example that ships with the app unless the test asks for the window as the app starts it.
-import { _electron, test as base, type ElectronApplication, type Locator, type Page } from "@playwright/test";
+import { _electron, expect, test as base, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import type { ChildProcess } from "node:child_process";
 import { mkdirSync } from "node:fs";
@@ -35,6 +35,8 @@ function hasExited(child: ChildProcess): boolean {
 export function exitCodeOf(app: ElectronApplication): number | null {
   return processes.get(app)?.exitCode ?? null;
 }
+
+export { expect };
 
 export interface LaunchOptions {
   /** Profile directory; defaults to a fresh one. Pass the same directory twice to test persistence across launches. */
@@ -98,6 +100,17 @@ export async function closeApp(app: ElectronApplication): Promise<void> {
   if (!hasExited(child)) await exited;
 }
 
+/** Makes the window as small as it gets (the minimum size the app sets) and waits until the page has that size. */
+export async function shrinkToMinimum(app: ElectronApplication, page: Page): Promise<void> {
+  const width = await app.evaluate(({ BrowserWindow }) => {
+    const [window] = BrowserWindow.getAllWindows();
+    const [width = 0, height = 0] = window!.getMinimumSize();
+    window!.setSize(width, height);
+    return width;
+  });
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(width);
+}
+
 /** `page` is the app's window (it replaces Playwright's browser page; no browser is ever launched). */
 export const test = base.extend<{ running: RunningApp; app: ElectronApplication }>({
   running: async ({}, use) => {
@@ -109,7 +122,7 @@ export const test = base.extend<{ running: RunningApp; app: ElectronApplication 
   page: async ({ running }, use) => use(running.page),
 });
 
-export { expect } from "@playwright/test";
+
 
 // Canvas helpers
 
@@ -144,7 +157,7 @@ export function pin(page: Page, name: string, side: "in" | "out" | "io", color: 
 
 export type DisplayMode = "edit" | "blueprint";
 
-/** The Edit | Blueprint switch in the heading of the canvas. */
+/** The Edit | Blueprint switch in the strip above the canvas. */
 export function displaySwitch(page: Page): Locator {
   return page.getByRole("group", { name: "Display mode" });
 }

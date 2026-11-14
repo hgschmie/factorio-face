@@ -149,7 +149,7 @@ describe("project lifecycle", () => {
     session.commands.select(["e1"]);
     session.commands.deleteSelection();
     session.commands.duplicateSelection();
-    session.commands.snapToTiles();
+    session.commands.placeHere();
     session.commands.step();
     expect(session.state).toMatchObject({ source: EMPTY_SOURCE, selection: [], canUndo: false, error: null });
     expect(session.state.simulation.tick).toBe(1);

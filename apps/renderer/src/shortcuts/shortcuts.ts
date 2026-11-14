@@ -92,6 +92,8 @@ export const SHORTCUTS = [
   menu("edit.selectAll", "Editing", "Select all"),
   key("edit.rotate", "Editing", "Rotate clockwise", "circuit", letter("R")),
   key("edit.rotateBack", "Editing", "Rotate counter-clockwise", "circuit", { shift: true, ...letter("R") }),
+  key("edit.flipHorizontal", "Editing", "Flip horizontal", "circuit", letter("H")),
+  key("edit.flipVertical", "Editing", "Flip vertical", "circuit", letter("V")),
   key("edit.nudge", "Editing", "Move the selection one grid step (one tile on the board)", "circuit", { key: ARROW_KEYS, name: "Arrow keys" }, { repeats: true }),
   key("edit.nudgeFar", "Editing", `Move the selection ${NUDGE_FAR_STEPS} grid steps (tiles on the board)`, "circuit", { shift: true, key: ARROW_KEYS, name: "Arrow keys" }, { repeats: true }),
 

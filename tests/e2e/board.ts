@@ -48,6 +48,7 @@ export const menu = (page: Page) => page.getByRole("menu", { name: "Canvas actio
 export const tool = (page: Page, name: string) => page.getByRole("group", { name: "Canvas tools" }).getByRole("button", { name });
 export const display = (page: Page, name: "Edit" | "Blueprint") => displaySwitch(page).getByRole("button", { name });
 export const bubble = (page: Page) => page.locator(".entity-bubble");
+export const placeAll = (page: Page) => page.getByRole("button", { name: /^Place all/ });
 export const zoom = async (page: Page) => Number(await page.locator(".canvas").getAttribute("data-zoom"));
 
 export async function setSource(page: Page, source: string): Promise<void> {
@@ -99,6 +100,13 @@ export async function selectOnBoard(page: Page, name: string): Promise<void> {
   const point = await boardGrabPoint(page, name);
   await page.mouse.click(point.x, point.y);
   await expect(card(page, name)).toHaveClass(/selected/);
+}
+
+/** Rests the pointer on an entity of the board, at a corner of its footprint, and waits for its bubble. */
+export async function hoverOnBoard(page: Page, name: string): Promise<void> {
+  const point = await boardGrabPoint(page, name);
+  await page.mouse.move(point.x, point.y, { steps: 2 });
+  await expect(bubble(page)).toHaveAttribute("data-entity-name", name);
 }
 
 /** A point of the board on which nothing stands: the middle of a tile, in window coordinates. */

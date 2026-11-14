@@ -1,8 +1,8 @@
 // The blueprint display mode: the tile board, entities on the tiles they take in the game, straight wires, the bubble of the
-// selected entity, paste and duplicate (copies without a tile), and a camera per mode. Editing on the board: blueprintEdit.spec.ts.
+// entity under the pointer, paste and duplicate (copies without a tile), and a camera per mode. Editing on the board: blueprintEdit.spec.ts.
 import type { Page } from "@playwright/test";
-import { boardGrabPoint, canvas, canvasView, card, clickCenter, entityNames, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires } from "./app.ts";
-import { BOARD, bubble, display, footprint, inspector, menu, openBoard, pinOffsets, selectOnBoard, setSource, TILE, tilePoint, zoom } from "./board.ts";
+import { boardGrabPoint, canvas, canvasView, card, cardGrabPoint, clickCenter, entityNames, expect, pin, selectEntity, showDisplay, sourceText, test, wire, wireKeyOf, wirePoint, wires } from "./app.ts";
+import { BOARD, bubble, display, footprint, hoverOnBoard, inspector, menu, openBoard, pinOffsets, placeAll, selectOnBoard, setSource, TILE, tilePoint, zoom } from "./board.ts";
 
 /** What the edit canvas shows: where the cards are, how the wires run and the camera. */
 async function editPicture(page: Page): Promise<unknown> {
@@ -287,19 +287,24 @@ test("click, Shift-click and the marquee select on the board, and the context me
   expect(await sourceText(page)).toBe(BOARD);
 });
 
-test("one selected entity shows its card and its description in a bubble that keeps its size at any zoom", async ({ page }) => {
+test("the entity under the pointer shows its card and its description in a bubble that keeps its size at any zoom", async ({ page }) => {
   await openBoard(page);
+  // The three status rows of the card are live.
+  await page.getByRole("button", { name: "Step" }).click({ clickCount: 3 });
   await expect(bubble(page)).toHaveCount(0);
+  // Selecting shows none: the bubble belongs to the pointer, and a press hides it.
   await selectOnBoard(page, "gate");
-  await expect(bubble(page)).toHaveAttribute("data-entity-name", "gate");
+  await expect(bubble(page)).toHaveCount(0);
+  await page.waitForTimeout(400);
+  await expect(bubble(page)).toHaveCount(0);
+
+  await hoverOnBoard(page, "gate");
   await expect(bubble(page).locator(".card-kind")).toHaveText("DECIDER");
   await expect(bubble(page).locator(".card-name")).toHaveText("gate");
   await expect(bubble(page).locator(".card-summary")).toHaveText("A < 10 → A");
   await expect(bubble(page).locator(".card-note")).toHaveCount(1);
   await expect(bubble(page).locator(".bubble-description")).toHaveText("Counts up to ten.\nThe green wire feeds the output back.");
   await expect(bubble(page).locator(".bubble-pointer")).toBeVisible();
-  // The three status rows of the card, live.
-  await page.getByRole("button", { name: "Step" }).click({ clickCount: 3 });
   await expect(bubble(page).locator("g.card-row")).toHaveCount(3);
   await expect(bubble(page).locator('g.card-row[data-row="out"] .row-value')).toHaveText(/\d/);
   // It is not a second card of the entity for the canvas, and it has no pins.
@@ -307,8 +312,8 @@ test("one selected entity shows its card and its description in a bubble that ke
   await expect(bubble(page).locator("[data-terminal], [data-entity-id]")).toHaveCount(0);
 
   // Next to the entity, inside the canvas, and the pointer goes through it to the board.
-  const inside = async (): Promise<{ width: number; height: number }> => {
-    const [box, view, entity] = [await bubble(page).boundingBox(), await canvasView(page), await card(page, "gate").locator(".card-body").boundingBox()];
+  const inside = async (name: string): Promise<{ width: number; height: number }> => {
+    const [box, view, entity] = [await bubble(page).boundingBox(), await canvasView(page), await card(page, name).locator(".card-body").boundingBox()];
     expect(box!.x).toBeGreaterThanOrEqual(view.box.x);
     expect(box!.y).toBeGreaterThanOrEqual(view.box.y);
     expect(box!.x + box!.width).toBeLessThanOrEqual(view.box.x + view.box.width);
@@ -317,38 +322,128 @@ test("one selected entity shows its card and its description in a bubble that ke
     expect(box!.x >= entity!.x + entity!.width || box!.x + box!.width <= entity!.x || box!.y >= entity!.y + entity!.height || box!.y + box!.height <= entity!.y).toBe(true);
     return { width: box!.width, height: box!.height };
   };
-  const size = await inside();
+  const size = await inside("gate");
   expect(size.width).toBe(184);
   const box = (await bubble(page).boundingBox())!;
   expect(await page.evaluate(([x, y]) => document.elementFromPoint(x!, y!)?.closest(".entity-bubble") === null, [box.x + box.width / 2, box.y + 40])).toBe(true);
   expect(await bubble(page).evaluate((element) => getComputedStyle(element).pointerEvents)).toBe("none");
 
-  // Far out the board is tiny; the bubble is as large as before and still next to its entity.
+  // It follows the pointer, whatever is selected: another entity gets its own at once, without a description.
+  await hoverOnBoard(page, "light");
+  await expect(card(page, "gate")).toHaveClass(/selected/);
+  await expect(bubble(page).locator(".bubble-description")).toHaveCount(0);
+  await expect(bubble(page).locator(".card-note")).toHaveCount(0);
+  await inside("light");
+  // Over the empty board it goes away, and it comes back for the next entity only after the pointer has rested there.
+  const empty = await tilePoint(page, 7, 3);
+  await page.mouse.move(empty.x, empty.y, { steps: 2 });
+  await expect(bubble(page)).toHaveCount(0);
+  const twice = await boardGrabPoint(page, "twice");
+  await page.mouse.move(twice.x, twice.y, { steps: 2 });
+  await expect(bubble(page)).toHaveCount(0);
+  await expect(bubble(page)).toHaveAttribute("data-entity-name", "twice");
+  // Crossing entities without resting on one shows nothing.
+  await page.mouse.move(empty.x, empty.y, { steps: 2 });
+  await expect(bubble(page)).toHaveCount(0);
+  for (const name of ["gate", "source", "light"]) {
+    const point = await boardGrabPoint(page, name);
+    await page.mouse.move(point.x, point.y, { steps: 2 });
+  }
+  await page.mouse.move(empty.x, empty.y, { steps: 2 });
+  await page.waitForTimeout(400);
+  await expect(bubble(page)).toHaveCount(0);
+
+  // Far out the board is tiny; the bubble is as large as it was close up and still next to its entity.
   for (let i = 0; i < 6; i++) await page.getByRole("button", { name: "Zoom out" }).click();
   expect(await zoom(page)).toBeLessThan(0.4);
-  expect(await inside()).toEqual(size);
+  await hoverOnBoard(page, "gate");
+  expect(await inside("gate")).toEqual(size);
   await expect(card(page, "gate").locator(".board-name")).toHaveCount(0);
   await page.getByRole("button", { name: "Fit circuit" }).click();
 
-  // Another entity: its bubble, without a description. Two entities, a wire, or the edit canvas: none.
-  await selectOnBoard(page, "light");
-  await expect(bubble(page)).toHaveAttribute("data-entity-name", "light");
-  await expect(bubble(page).locator(".bubble-description")).toHaveCount(0);
-  await expect(bubble(page).locator(".card-note")).toHaveCount(0);
+  // Leaving the canvas takes it away; several selected entities do not matter to it.
+  await hoverOnBoard(page, "light");
+  await page.mouse.move(5, 300, { steps: 2 });
+  await expect(bubble(page)).toHaveCount(0);
   const source = await boardGrabPoint(page, "source");
   await page.keyboard.down("Shift");
   await page.mouse.click(source.x, source.y);
   await page.keyboard.up("Shift");
   await expect(page.locator("g.card.selected")).toHaveCount(2);
+  await hoverOnBoard(page, "light");
+});
+
+test("the bubble of the board is hidden during a drag and a marquee, with an open menu, with a wire or a place tool and on the edit canvas", async ({ page }) => {
+  await openBoard(page);
+  const shown = (name: string) => expect(bubble(page)).toHaveAttribute("data-entity-name", name);
+  const hidden = async (): Promise<void> => {
+    await expect(bubble(page)).toHaveCount(0);
+    // Not just late: it stays away.
+    await page.waitForTimeout(400);
+    await expect(bubble(page)).toHaveCount(0);
+  };
+
+  // A press hides it at once; during the drag it stays away, also over another entity, and after the drop it needs the pointer to move.
+  await hoverOnBoard(page, "light");
+  await page.mouse.down();
   await expect(bubble(page)).toHaveCount(0);
-  // A plain click on one of the two narrows the selection to it.
-  await selectOnBoard(page, "light");
-  await expect(page.locator("g.card.selected")).toHaveCount(1);
-  await expect(bubble(page)).toHaveCount(1);
+  const over = await boardGrabPoint(page, "source");
+  await page.mouse.move(over.x, over.y, { steps: 6 });
+  await expect(page.locator(".canvas")).toHaveClass(/dragging/);
+  await hidden();
+  // The drop on a taken tile is refused, so nothing has changed.
+  await page.mouse.up();
+  await hidden();
+  expect(await sourceText(page)).toBe(BOARD);
+  await page.mouse.move(over.x + 3, over.y - 3, { steps: 2 });
+  await shown("source");
+
+  // A marquee and a pan: the same.
+  const empty = await tilePoint(page, 7, 3);
+  await page.mouse.move(empty.x, empty.y, { steps: 2 });
+  await page.keyboard.down("Shift");
+  await page.mouse.down();
+  await page.mouse.move(over.x, over.y, { steps: 6 });
+  await expect(page.locator("rect.marquee")).toHaveCount(1);
+  await hidden();
+  await page.mouse.up();
+  await page.keyboard.up("Shift");
+  await page.mouse.move(over.x + 3, over.y - 3, { steps: 2 });
+  await shown("source");
+
+  // The context menu of the entity under the pointer takes its place.
+  await page.mouse.click(over.x, over.y, { button: "right" });
+  await expect(menu(page)).toBeVisible();
+  await expect(bubble(page)).toHaveCount(0);
+  await page.mouse.move(over.x + 2, over.y - 2);
+  await hidden();
+  await page.keyboard.press("Escape");
+  await expect(menu(page)).toHaveCount(0);
+  await page.mouse.move(over.x + 4, over.y - 4);
+  await shown("source");
+
+  // With a wire tool it would cover the pins, with a place tool the tiles: none, and it returns with the select tool.
+  await page.keyboard.press("Alt+KeyR");
+  await expect(page.locator(".canvas")).toHaveClass(/tool-wire/);
+  await expect(bubble(page)).toHaveCount(0);
+  const gate = await boardGrabPoint(page, "gate");
+  await page.mouse.move(gate.x, gate.y, { steps: 2 });
+  await hidden();
+  await page.keyboard.press("3");
+  await expect(page.locator(".canvas")).toHaveClass(/tool-place/);
+  await page.mouse.move(over.x, over.y, { steps: 2 });
+  await hidden();
+  await page.keyboard.press("q");
+  await page.mouse.move(gate.x, gate.y, { steps: 2 });
+  await shown("gate");
+
+  // The edit canvas has the cards themselves.
   await page.keyboard.press("b");
   await expect(page.locator(".canvas")).toHaveAttribute("data-display", "edit");
-  await expect(card(page, "light")).toHaveClass(/selected/);
   await expect(bubble(page)).toHaveCount(0);
+  const cardPoint = await cardGrabPoint(page, "gate");
+  await page.mouse.move(cardPoint.x, cardPoint.y, { steps: 2 });
+  await hidden();
 });
 
 test("paste and duplicate on the board give copies without a tile, selected, as one undo step each", async ({ page }) => {
@@ -369,7 +464,7 @@ test("paste and duplicate on the board give copies without a tile, selected, as 
   const copy = "    selector pick2 at (600, 300) facing west {\n        operation = select\n        order = min\n        index = virtual:signal-I\n    }\n\n";
   expect(await sourceText(page)).toBe(BOARD.replace("    wire red source.out", `${copy}    wire red source.out`));
   expect(await footprint(page, "pick")).toMatchObject({ tile: [2, 2], placed: "true" });
-  await expect(page.getByRole("button", { name: /^Snap all/ })).toHaveText("Snap all1");
+  await expect(placeAll(page)).toHaveText("Place all1");
   await expect(page.locator(".canvas-hint")).toContainText("Dashed ones have no tile yet");
   await undo.click();
   expect(await sourceText(page)).toBe(BOARD);
@@ -377,7 +472,7 @@ test("paste and duplicate on the board give copies without a tile, selected, as 
   // The menu of an entity: all of it is on.
   const grab = await boardGrabPoint(page, "gate");
   await page.mouse.click(grab.x, grab.y, { button: "right" });
-  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Release from tile grid/, /Delete/]);
+  await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Flip horizontal/, /Flip vertical/, /^Unplace$/, /Delete/]);
   for (const item of await menu(page).getByRole("menuitem").all()) await expect(item).toBeEnabled();
   await clickCenter(page, menu(page).getByRole("menuitem", { name: /Copy/ }));
   await expect(menu(page)).toHaveCount(0);
@@ -400,7 +495,7 @@ test("paste and duplicate on the board give copies without a tile, selected, as 
   await expect(page.locator("g.card.selected")).toHaveCount(1);
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
   // A copy is made at home on the board like any entity without a tile.
-  await page.getByRole("button", { name: /^Snap all/ }).click();
+  await placeAll(page).click();
   await expect(page.locator("g.card.unplaced")).toHaveCount(0);
   for (let step = 0; step < 3; step++) await undo.click();
   expect(await sourceText(page)).toBe(BOARD);

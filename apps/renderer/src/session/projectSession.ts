@@ -12,6 +12,7 @@ import { executeCommand, type EditCommand, type EditResult, type ParseResult } f
 import { canRotate, DEFAULT_FACING, facingOf, isWireReach, prototypeOf, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
+import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import { rotated } from "../entities/facing.ts";
 import {
@@ -425,6 +426,15 @@ export class ProjectSession {
       moveEntities: changing((moves) => void this.perform({ type: "moveEntities", moves: moves.filter((move) => this.entity(move.id) !== undefined) })),
       rotateEntities: changing((ids, turn) => this.faceEntities(ids, (entity) => rotated(facingOf(entity), turn))),
       faceEntities: changing((ids, direction) => this.faceEntities(ids, () => direction)),
+      flipEntities: changing((ids, axis) => {
+        const flipped = this.entities(ids);
+        if (!this.editable || flipped.length === 0) return;
+        const tiles = DISPLAY_CAPABILITIES[this.displayMode].tiles;
+        const arrangements = tiles ? flipTiles(flipped, axis) : flipCards(flipped, axis);
+        const blocked = tiles ? blockedFlip(this.analysis.circuit.entities, arrangements) : undefined;
+        if (blocked) return this.show(`Not flipped: ${this.entity(blocked.entity)?.name} would stand on a tile of ${this.entity(blocked.obstacle)?.name}.`, "selection");
+        this.perform({ type: "arrangeEntities", arrangements });
+      }),
       updateEntity: changing((next, options) => this.updateEntity(next, options)),
       discardDraft: changing(() => void (this.draft = null)),
       renameEntity: changing((id, name) => void (this.entity(id) && this.perform({ type: "renameEntity", id, name }))),
@@ -457,13 +467,13 @@ export class ProjectSession {
           }),
         );
       }),
-      snapToTiles: changing((ids) => {
+      placeHere: changing((ids) => {
         // The derived places keep clear of every entity with a tile and of each other, so there is nothing to check.
         const derived = derivedTiles(this.analysis.circuit.entities);
         const tiles = [...new Set(ids ?? derived.keys())].flatMap((id) => (derived.has(id) ? [{ id, tile: derived.get(id)! }] : []));
         if (tiles.length > 0) this.perform({ type: "setTiles", tiles });
       }),
-      clearTiles: changing((ids) => {
+      unplace: changing((ids) => {
         const tiles = this.entities(ids).filter((entity) => entity.placement?.tile !== undefined).map((entity) => ({ id: entity.id, tile: undefined }));
         if (tiles.length > 0) this.perform({ type: "setTiles", tiles });
       }),

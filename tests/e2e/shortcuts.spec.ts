@@ -84,21 +84,28 @@ test("Q, Alt+R, Alt+G and the digits pick the tools, wherever the focus is outsi
   await expect.poll(() => sourceText(page)).toMatch(/lamp \w+ at \(40, 300\)/);
 });
 
-test("the tool buttons and the building blocks name their key in the tooltip, the blocks also next to their name", async ({ page }) => {
+test("the tool buttons name their key in the tooltip, the tiles of the entity selector in their popup", async ({ page }) => {
   await expect(toolButton(page, "Select and move")).toHaveAttribute("title", "Select and move (Q)");
   await expect(toolButton(page, "Red wire")).toHaveAttribute("title", MAC ? "Red wire (⌥R)" : "Red wire (Alt+R)");
   await expect(toolButton(page, "Green wire")).toHaveAttribute("title", MAC ? "Green wire (⌥G)" : "Green wire (Alt+G)");
-  // The four combinators and the lamp have a key; the entities that were added to the palette later have none.
-  expect(await page.locator(".palette-item:has(kbd.key-hint)").evaluateAll((items) => items.map((item) => item.getAttribute("title")))).toEqual(["Place: Constant (1)", "Place: Arithmetic (2)", "Place: Decider (3)", "Place: Selector (4)", "Place: Lamp (5)"]);
-  await expect(page.locator('.palette-item[data-kind="speaker"]')).toHaveAttribute("title", "Place: Programmable speaker");
-  await expect(page.locator('.palette-item[data-kind="speaker"] kbd')).toHaveCount(0);
-  await expect(page.locator(".palette-item kbd.key-hint")).toHaveText(["1", "2", "3", "4", "5"]);
-  for (const hint of await page.locator(".palette-item kbd.key-hint").all()) await expect(hint).toBeVisible();
+  // The four combinators and the lamp have a key; the entities that were added to the palette later have none. The popup says
+  // "Key", so that the digit is not read as a count, and a tile has no tooltip that would say it a second time.
+  const popup = page.locator(".tile-popup");
+  for (const [kind, key] of [["constant", "1"], ["arithmetic", "2"], ["decider", "3"], ["selector", "4"], ["lamp", "5"]] as const) {
+    await block(page, kind).hover();
+    await expect(popup).toHaveAttribute("data-prototype", (await block(page, kind).getAttribute("data-prototype"))!);
+    await expect(popup.locator(".tile-popup-key")).toHaveText(`Key ${key}`);
+    await expect(block(page, kind)).not.toHaveAttribute("title");
+  }
+  await block(page, "speaker").hover();
+  await expect(popup).toHaveAttribute("data-prototype", "programmable-speaker");
+  await expect(popup.locator(".tile-popup-key")).toHaveCount(0);
+  await expect(page.locator(".palette-tile kbd")).toHaveCount(0);
 
-  // A screen reader hears the key once: it is in the description (the tooltip), not in the name, and the hint is hidden from it.
-  await expect(page.locator('.palette-item kbd.key-hint[aria-hidden="true"]')).toHaveCount(5);
-  await expect(block(page, "constant")).toHaveAccessibleName("Constant Emit steady signals");
-  await expect(block(page, "constant")).toHaveAccessibleDescription("Place: Constant (1)");
+  // A screen reader hears the key once: it is in the description (the popup), not in the name.
+  await block(page, "constant").hover();
+  await expect(block(page, "constant")).toHaveAccessibleName("Constant combinator");
+  await expect(block(page, "constant")).toHaveAccessibleDescription("Emit steady signals Key 1");
   await expect(toolButton(page, "Red wire")).toHaveAccessibleName("Red wire");
   await expect(toolButton(page, "Red wire")).toHaveAccessibleDescription(MAC ? "Red wire (⌥R)" : "Red wire (Alt+R)");
   expect(await page.locator(".palette [aria-keyshortcuts]").count()).toBe(0);

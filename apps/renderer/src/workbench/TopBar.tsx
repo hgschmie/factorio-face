@@ -1,4 +1,4 @@
-// Title bar (brand, mode switch, room for a notice) and project bar (project name, save state, document actions).
+// Title bar (brand, mode switch, room for a notice) and project bar (project name, document actions). The file and its save state are in the status line.
 import type { ReactNode } from "react";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { withShortcut } from "../shortcuts/shortcuts.ts";
@@ -60,18 +60,7 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
           <span className="project-symbol">
             <Icon name="bolt" size={20} />
           </span>
-          <div style={{ minWidth: 0 }}>
-            <h1 data-testid="project-name">{project.name}</h1>
-            <div className="project-meta">
-              <span className="path" title={project.path ?? undefined}>
-                {project.path ?? "Not saved yet"}
-              </span>
-              <span className="meta-dot" />
-              <span className={`save-state${project.dirty ? " unsaved" : ""}`} data-testid="save-state" role="status">
-                {project.dirty ? "Unsaved changes" : project.path ? "All changes saved" : "No changes"}
-              </span>
-            </div>
-          </div>
+          <h1 data-testid="project-name">{project.name}</h1>
         </div>
         <div className="project-actions">
           <button type="button" className="icon-button" title={withShortcut("Undo", "edit.undo")} aria-label="Undo" disabled={!canUndo} onClick={onUndo}>

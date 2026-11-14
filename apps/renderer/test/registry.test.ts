@@ -2,9 +2,9 @@
 // prototype, and the open state of the groups that is remembered on this machine.
 import { PROTOTYPE_NAMES, PROTOTYPES } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { KEYED_KINDS, keyedKindOf, PALETTE_ENTRIES, PALETTE_GROUPS, paletteGroupOf, prototypeIconId } from "../src/entities/registry.ts";
+import { entriesInUse, KEYED_KINDS, keyedKindOf, PALETTE_ENTRIES, PALETTE_GROUPS, paletteGroupOf, prototypeIconId } from "../src/entities/registry.ts";
 import { placeFacing, sameTool, SELECT_TOOL, turnedTool, type PlaceTool } from "../src/workbench/controller.ts";
-import { CIRCUIT_LIST_KEY, defaultOpenGroups, OPEN_GROUPS_KEY, readCircuitListOpen, readOpenGroups, writeCircuitListOpen, writeOpenGroups, type KeyValueStore } from "../src/workbench/paletteGroups.ts";
+import { CIRCUIT_LIST_KEY, defaultOpenGroups, IN_USE_KEY, OPEN_GROUPS_KEY, readCircuitListOpen, readOpenGroups, readSectionOpen, writeCircuitListOpen, writeOpenGroups, writeSectionOpen, type KeyValueStore } from "../src/workbench/paletteGroups.ts";
 
 describe("palette registry", () => {
   it("keeps the combinators pinned and puts the other entities into groups, in this order", () => {
@@ -54,6 +54,30 @@ describe("palette registry", () => {
   it("keeps the digit keys to the four combinators and the lamp", () => {
     expect(KEYED_KINDS).toEqual(["constant", "arithmetic", "decider", "selector", "lamp"]);
     expect(PALETTE_ENTRIES.map((entry) => keyedKindOf(entry) ?? null)).toEqual(["constant", "arithmetic", "decider", "selector", "lamp", null, null, null, null, null]);
+  });
+});
+
+describe("entities in use", () => {
+  const prototypes = (entities: Parameters<typeof entriesInUse>[0]): string[] => entriesInUse(entities).map((entry) => entry.prototype);
+
+  it("has one entry per prototype the circuit contains, in the order of the palette, without the combinators", () => {
+    expect(prototypes([])).toEqual([]);
+    expect(prototypes([{ kind: "constant" }, { kind: "decider" }, { kind: "arithmetic" }, { kind: "selector" }])).toEqual([]);
+    expect(prototypes([{ kind: "lamp" }, { kind: "decider" }, { kind: "lamp" }])).toEqual(["small-lamp"]);
+    // The order is the palette's, whatever the order of the circuit; a pole without a prototype is the first of its kind.
+    expect(prototypes([{ kind: "pole", prototype: "substation" }, { kind: "speaker" }, { kind: "pole" }, { kind: "lamp" }, { kind: "pole", prototype: "substation" }])).toEqual(["small-lamp", "programmable-speaker", "small-electric-pole", "substation"]);
+    expect(prototypes([{ kind: "pole", prototype: "small-electric-pole" }, { kind: "pole" }])).toEqual(["small-electric-pole"]);
+  });
+
+  it("gives the entries of the palette themselves, so a tile in use is the same entry as the one in its group", () => {
+    const [lamp] = entriesInUse([{ kind: "lamp" }]);
+    expect(lamp).toBe(PALETTE_ENTRIES.find((entry) => entry.prototype === "small-lamp"));
+    expect(keyedKindOf(lamp!)).toBe("lamp");
+  });
+
+  it("can hold every entry that is not pinned, and no other", () => {
+    const all = PALETTE_ENTRIES.map(({ kind, prototype }) => ({ kind, prototype }));
+    expect(prototypes(all)).toEqual(PALETTE_GROUPS.filter((group) => !group.pinned).flatMap((group) => group.entries.map((entry) => entry.prototype)));
   });
 });
 
@@ -152,6 +176,22 @@ describe("the list of the circuit's entities", () => {
       store.setItem(CIRCUIT_LIST_KEY, garbage);
       expect(readCircuitListOpen(store), garbage).toBe(true);
     }
+  });
+
+  it("keeps the section of the entities in use under a key of its own, with the same rules", () => {
+    const store = memory();
+    expect(readSectionOpen(store, IN_USE_KEY)).toBe(true);
+    expect(readSectionOpen(undefined, IN_USE_KEY)).toBe(true);
+    expect(readSectionOpen(refusing, IN_USE_KEY)).toBe(true);
+    writeSectionOpen(store, IN_USE_KEY, false);
+    expect(store.values.get(IN_USE_KEY)).toBe("false");
+    expect(readSectionOpen(store, IN_USE_KEY)).toBe(false);
+    // The list of the circuit and the groups know nothing of it.
+    expect(readCircuitListOpen(store)).toBe(true);
+    expect(readOpenGroups(store)).toEqual({ "lights-and-sound": true, "power-poles": false });
+    expect(() => writeSectionOpen(refusing, IN_USE_KEY, false)).not.toThrow();
+    expect(() => writeSectionOpen(undefined, IN_USE_KEY, false)).not.toThrow();
+    expect(IN_USE_KEY).not.toBe(CIRCUIT_LIST_KEY);
   });
 
   it("reads back what was written, under its own key and apart from the groups", () => {
