@@ -1,6 +1,6 @@
 // The wire reach: a project setting (9 tiles unless the project says otherwise, 0 for unlimited). A wire between two entities with
 // a tile that are further apart is flagged in the problems list, on the blueprint board (live while entities are dragged) and in
-// the inspector; nothing is refused. The distance is the one between the footprints, as the game measures it.
+// the inspector; nothing is refused. The distance is the one between the selection boxes, as the game measures it; of the entities here those are their tiles.
 import type { Page } from "@playwright/test";
 import { card, clickMenu, closeApp, expect, launchApp, openProject, readProjectEntries, showDisplay, test, wire, wireKeyOf, wirePoint, writeProject } from "./app.ts";
 import { committedTiles, dragOnBoard, inspector, openBoardProject } from "./board.ts";

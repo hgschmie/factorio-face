@@ -19,13 +19,15 @@ function word(spec: SettingSpec): string {
 }
 
 function value(spec: SettingSpec): string {
-  const assumed = spec.assumed ? ", assumed" : "";
   switch (spec.type) {
-    case "boolean": return `${code("true")} or ${code("false")} (${code(String(spec.default))}${assumed})`;
-    case "enum": return `${list(spec.values.map((entry) => code(entry.word)))} (${code(spec.default)}${assumed})`;
+    case "boolean": return `${code("true")} or ${code("false")} (${code(String(spec.default))})`;
+    case "enum": return `${list(spec.values.map((entry) => code(entry.word)))} (${code(spec.default)})`;
     case "signal": return spec.prototypeDefault === undefined ? "signal (none)" : `signal (the prototype's ${code(`default_${spec.prototypeDefault}_signal`)})`;
     case "networks": return `${code("red")}, ${code("green")} or ${code("none")} (both)`;
-    case "condition": return "comparison (not in use)";
+    case "condition": {
+      const own = spec.gameDefault && code(`${spec.gameDefault.first!.name} ${spec.gameDefault.comparator} 0`);
+      return own ? `comparison (not in use; while the other one of its side is, the game has ${own} here)` : "comparison (not in use)";
+    }
   }
 }
 

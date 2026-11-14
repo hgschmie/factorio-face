@@ -30,16 +30,26 @@ describe("standard entity table", () => {
     expect(new Set(table.entities.map((entity) => entity.type)).size).toBe(48);
   });
 
-  it("has thirteen footprints, eighteen prototypes that are not square, and three whose tiles are not those of their collision box", () => {
+  it("has thirteen footprints, eighteen prototypes that are not square, and eighteen whose selection box is not their tiles", () => {
     const footprints = new Map<string, number>();
     for (const { width, height } of table.entities) footprints.set(`${width}x${height}`, (footprints.get(`${width}x${height}`) ?? 0) + 1);
     expect(Object.fromEntries(footprints)).toEqual({ "1x1": 41, "1x2": 8, "2x1": 4, "2x2": 10, "2x3": 2, "2x4": 1, "3x2": 2, "3x3": 17, "3x5": 1, "4x4": 3, "5x5": 6, "8x8": 2, "9x9": 1 });
     expect(table.entities.filter((entity) => entity.width !== entity.height)).toHaveLength(18);
-    expect(Object.fromEntries(table.entities.filter((entity) => entity.collisionBox).map((entity) => [entity.name, [entity.width, entity.height, entity.collisionBox]]))).toEqual({
-      "offshore-pump": [1, 1, [-0.6, -1.05, 0.6, 0.3]],
-      "railgun-turret": [3, 5, [-1.41, -1.9, 1.41, 2.1]],
-      "train-stop": [2, 2, [-0.5, -0.5, 0.5, 0.5]],
+    // In the game's 1/256 of a tile: 0.4 is 102/256.
+    const boxes = new Map<string, string[]>();
+    for (const { name, width, height, selectionBox } of table.entities) if (selectionBox) boxes.set(`${width}x${height} ${selectionBox.join(" ")}`, [...(boxes.get(`${width}x${height} ${selectionBox.join(" ")}`) ?? []), name]);
+    expect(Object.fromEntries(boxes)).toEqual({
+      "1x1 -0.3984375 -0.34765625 0.3984375 0.44921875": ["bulk-inserter", "burner-inserter", "fast-inserter", "inserter", "long-handed-inserter", "stack-inserter"],
+      "1x1 -0.5 -0.6484375 0.5 0.5": ["display-panel"],
+      "2x1 -0.8984375 -0.5 0.8984375 0.5": ["express-splitter", "fast-splitter", "splitter", "turbo-splitter"],
+      "1x1 -0.59765625 -1.48828125 0.59765625 0.48828125": ["offshore-pump"],
+      "1x1 -0.44921875 -0.6484375 0.44921875 0.6484375": ["rail-signal"],
+      "2x4 -0.8984375 -1.84765625 0.8984375 1.84765625": ["recycler"],
+      "1x1 -0.3984375 -0.3984375 0.3984375 0.3984375": ["small-electric-pole"],
+      "2x2 -0.796875 -1 0.796875 1": ["steel-furnace", "stone-furnace"],
+      "2x2 -0.8984375 -0.8984375 0.8984375 0.8984375": ["train-stop"],
     });
+    expect(table.entities.every(({ selectionBox }) => !selectionBox || selectionBox.every((edge) => Number.isInteger(edge * 256)))).toBe(true);
     expect(names(table.entities.filter((entity) => entity.offGrid))).toEqual(["land-mine"]);
   });
 
@@ -105,7 +115,7 @@ describe("the editor's prototypes", () => {
       "decider-combinator": { kind: "decider", label: "decider combinator", width: 1, height: 2, rotatable: true },
       "selector-combinator": { kind: "selector", label: "selector combinator", width: 1, height: 2, rotatable: true },
       "small-lamp": { kind: "lamp", label: "lamp", width: 1, height: 1, rotatable: false },
-      "small-electric-pole": { kind: "pole", label: "small electric pole", width: 1, height: 1, rotatable: false, wireReach: 7.5 },
+      "small-electric-pole": { kind: "pole", label: "small electric pole", width: 1, height: 1, rotatable: false, wireReach: 7.5, selectionBox: [-0.3984375, -0.3984375, 0.3984375, 0.3984375] },
       "medium-electric-pole": { kind: "pole", label: "medium electric pole", width: 1, height: 1, rotatable: false, wireReach: 9 },
       "big-electric-pole": { kind: "pole", label: "big electric pole", width: 2, height: 2, rotatable: false, wireReach: 32 },
       substation: { kind: "pole", label: "substation", width: 2, height: 2, rotatable: false, wireReach: 18 },
@@ -147,12 +157,12 @@ describe("another entity table", () => {
   it("is read with the defaults of its file and sorted by name", () => {
     const parsed = parseEntityTable({
       schema: 1, game: { version: "3.0.0" }, defaults: { width: 2, height: 2, directions: 4, wireReach: 5, modules: ["base", "mod"] },
-      entities: [{ name: "b", type: "thing", displayName: "B", height: 1, signals: { output: "item:iron-plate" }, placedBy: [], removedBy: ["other"] }, { name: "a", type: "thing", displayName: "A", wireReach: 9, hidden: true, offGrid: true, collisionBox: [-1, -1, 1, 1] }],
+      entities: [{ name: "b", type: "thing", displayName: "B", height: 1, signals: { output: "item:iron-plate" }, placedBy: [], removedBy: ["other"] }, { name: "a", type: "thing", displayName: "A", wireReach: 9, hidden: true, offGrid: true, selectionBox: [-0.5, -1, 1, 1] }],
     });
     expect(parsed.game).toEqual({ version: "3.0.0" });
     expect(parsed.runtimeChecked).toBe(false);
     expect(parsed.entities).toEqual([
-      { name: "a", type: "thing", displayName: "A", width: 2, height: 2, directions: 4, wireReach: 9, hidden: true, offGrid: true, collisionBox: [-1, -1, 1, 1], placedBy: ["a"], signals: {}, modules: ["base", "mod"] },
+      { name: "a", type: "thing", displayName: "A", width: 2, height: 2, directions: 4, wireReach: 9, hidden: true, offGrid: true, selectionBox: [-0.5, -1, 1, 1], placedBy: ["a"], signals: {}, modules: ["base", "mod"] },
       { name: "b", type: "thing", displayName: "B", width: 2, height: 1, directions: 4, wireReach: 5, hidden: false, offGrid: false, placedBy: [], signals: { output: { kind: "item", name: "iron-plate" } }, modules: ["base", "mod"], removedBy: ["other"] },
     ]);
     expect(parsed.byName.get("b")).toBe(parsed.entities[1]);
@@ -174,7 +184,8 @@ describe("another entity table", () => {
     expect(() => parseEntityTable(bad({ placedBy: [1] }))).toThrow("x: placedBy is [1]");
     expect(() => parseEntityTable(bad({ modules: "base" }))).toThrow('x: modules is "base"');
     expect(() => parseEntityTable(bad({ signals: { output: "signal-A" } }))).toThrow('x: signal output is "signal-A"');
-    expect(() => parseEntityTable(bad({ collisionBox: [0, 0, 1] }))).toThrow("x: collisionBox is [0,0,1]");
+    expect(() => parseEntityTable(bad({ selectionBox: [0, 0, 1] }))).toThrow("x: selectionBox is [0,0,1]");
+    expect(() => parseEntityTable(bad({ selectionBox: [0.5, -0.5, -0.5, 0.5] }))).toThrow("x: selectionBox is [0.5,-0.5,-0.5,0.5]");
     expect(() => parseEntityTable(tableWith((records) => [records[0]!, records[0]!]))).toThrow("a name occurs twice");
   });
 });

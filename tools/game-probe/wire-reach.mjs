@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Records fixture F-24 from the locally installed game: which placements of one entity a circuit wire from another reaches.
 // The cases are in wire-reach.lua: the combinators and the lamp in every direction, the four electric poles (each with its own
-// reach, also against each other), the programmable speaker, and from the other wired entities the odd footprints and reaches
-// (docs/factorio-audit.md 13). A case added there is in the fixture after the next run. The game runs with its five standard
+// reach, also against each other), the programmable speaker, and from the other wired entities the odd footprints, selection
+// boxes and reaches (docs/factorio-audit.md 5.4, 13). A case added there is in the fixture after the next run. The game runs with its five standard
 // modules, for the entities of Space Age among the cases, headless and sandboxed like the catalog dump
 // (tools/catalog/lib/dump.mjs); the scenario is wire-reach.lua.
 import fs from "node:fs";
@@ -11,7 +11,8 @@ import { STANDARD_MODULES, locateGame, modSetId, runScenario } from "../catalog/
 import { buildFixture, failedCases, serialiseFixture } from "./lib/fixture.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
-const PROBE_ROOT = path.join(ROOT, ".runtime", "game-probe");
+// A folder of its own: the blueprint probe keeps its game state next to it, and the two may run at the same time.
+const PROBE_ROOT = path.join(ROOT, ".runtime", "game-probe", "wire-reach");
 const FIXTURE = path.join(ROOT, "tests", "fixtures", "game", "F-24-wire-reach.json");
 const SCENARIO = "face-wire-reach";
 const OUTPUT = "face-wire-reach.json";
@@ -24,7 +25,7 @@ const USAGE = `Usage: node tools/game-probe/wire-reach.mjs [--check]
 
   --check   fail if ${path.relative(ROOT, FIXTURE)} differs from what the game says; write nothing
 
-Environment: FACTORIO_BIN, FACTORIO_DATA (as for tools/catalog/generate.mjs). All game state goes to .runtime/game-probe.`;
+Environment: FACTORIO_BIN, FACTORIO_DATA (as for tools/catalog/generate.mjs). All game state goes to .runtime/game-probe/wire-reach.`;
 
 function fail(message) {
   console.error(`wire-reach: ${message}`);

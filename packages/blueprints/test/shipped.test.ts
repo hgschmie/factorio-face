@@ -76,7 +76,7 @@ describe.skipIf(!present)("blueprint strings shipped with the game (local only: 
         prototype = substation
     }
 
-    entity display_panel1 at (280, 560) tile (9.5, -16.5) {
+    entity display_panel1 at (280, 560) tile (9.5, -16.5) facing north {
         prototype = display-panel
         blueprint-data = "{\\"control_behavior\\":{\\"parameters\\":[{\\"condition\\":{\\"first_signal\\":{\\"type\\":\\"virtual\\",\\"name\\":\\"signal-anything\\"},\\"constant\\":1,\\"comparator\\":\\"=\\"},\\"icon\\":{\\"type\\":\\"virtual\\",\\"name\\":\\"signal-anything\\"}}]},\\"icon\\":{\\"name\\":\\"repair-pack\\"}}"
     }

@@ -7,13 +7,15 @@
 // not limit, so a wire between two such ends is never too long and one to a pole has the pole's reach.
 //
 // The measure is the game's rule, verified against Factorio 2.1.24 by fixture F-24 (tests/fixtures/game/F-24-wire-reach.json,
-// recorded by tools/game-probe/wire-reach.mjs): the straight line between the nearest points of the two tile footprints, that is
-// per axis the gap between the footprints in tiles (0 where they overlap on that axis) and then the hypotenuse. A wire connects
-// when that distance is at most the reach. Neither the facing beyond the footprint, nor the connector, nor the collision box matter.
+// recorded by tools/game-probe/wire-reach.mjs). Between two electric poles it is the straight line from center to center.
+// For every other pair, a pole and something else included, it is the straight line between the nearest points of the two
+// selection boxes (`selectionBox`: the tiles an entity covers for most prototypes, a little less or more for some), that is per
+// axis the gap between the boxes in tiles (0 where they overlap on that axis) and then the hypotenuse. A wire connects when that
+// distance is at most the reach. A box turns with its entity; the connector that is wired and the collision box do not matter.
 
-import { facingOf, footprintBox, type PlacedShape, type TileBox } from "./footprint.ts";
+import { facingOf, selectionBox, type PlacedShape, type TileBox } from "./footprint.ts";
 import { STANDARD_WIRE_REACH } from "./entityTable.ts";
-import { prototypeData, prototypeOf, PROTOTYPES, withArticle, type EntityShape, type PrototypeName } from "./prototypes.ts";
+import { gamePrototype, prototypeData, prototypeOf, PROTOTYPES, withArticle, type EntityShape, type PrototypeName } from "./prototypes.ts";
 
 /** The reach of a project that does not set one: the game's. */
 export const DEFAULT_WIRE_REACH = STANDARD_WIRE_REACH;
@@ -33,21 +35,29 @@ export function clampWireReach(value: number): number {
   return Math.min(Math.max(value, WIRE_REACH_RANGE.min), WIRE_REACH_RANGE.max);
 }
 
-/** The distance between two footprints in tiles: 0 when they touch or overlap, the gap along one axis when they overlap on the other. */
-export function footprintDistance(a: TileBox, b: TileBox): number {
+/** The distance between two boxes in tiles: 0 when they touch or overlap, the gap along one axis when they overlap on the other. */
+export function boxDistance(a: TileBox, b: TileBox): number {
   // Along one axis: how far b starts behind the end of a, or a behind the end of b; 0 when the two spans meet.
   const gap = (aFrom: number, aSize: number, bFrom: number, bSize: number): number => Math.max(0, bFrom - (aFrom + aSize), aFrom - (bFrom + bSize));
   return Math.hypot(gap(a.x, a.width, b.x, b.width), gap(a.y, a.height, b.y, b.height));
 }
 
+/** What the distance of a wire is measured between: the centers of two electric poles, the selection boxes of every other pair. */
+export type WireMeasure = "centers" | "boxes";
+
+export function wireMeasure(a: EntityShape, b: EntityShape): WireMeasure {
+  return [a, b].every((end) => gamePrototype(end).type === "electric-pole") ? "centers" : "boxes";
+}
+
 /**
- * What a wire between two entities has to span, in tiles: the distance between their footprints. Undefined when one of them has
- * no `tile`: its place on the board is only derived. A wire from an entity to itself spans 0.
+ * What a wire between two entities has to span, in tiles (`wireMeasure`). Undefined when one of them has no `tile`: its place on
+ * the board is only derived. A wire from an entity to itself spans 0.
  */
 export function wireDistance(a: PlacedShape, b: PlacedShape): number | undefined {
   const from = a.placement?.tile;
   const to = b.placement?.tile;
-  return from && to ? footprintDistance(footprintBox(a, facingOf(a), from), footprintBox(b, facingOf(b), to)) : undefined;
+  if (!from || !to) return undefined;
+  return wireMeasure(a, b) === "centers" ? Math.hypot(to.x - from.x, to.y - from.y) : boxDistance(selectionBox(a, facingOf(a), from), selectionBox(b, facingOf(b), to));
 }
 
 /** How far a wire may span and whose limit that is. */
@@ -76,6 +86,7 @@ export function wireReachBetween(a: EntityShape, b: EntityShape, projectReach: n
 export interface WireSpan extends WireReach {
   /** `wireDistance`; undefined when an end has no `tile`. */
   readonly distance?: number;
+  readonly measure: WireMeasure;
   /** Further apart than the reach. Exactly the reach is fine, and so is everything without a distance or with an unlimited reach. */
   readonly tooLong: boolean;
 }
@@ -84,7 +95,7 @@ export interface WireSpan extends WireReach {
 export function wireSpan(a: PlacedShape, b: PlacedShape, projectReach: number): WireSpan {
   const limit = wireReachBetween(a, b, projectReach);
   const distance = wireDistance(a, b);
-  return { ...limit, ...(distance !== undefined && { distance }), tooLong: exceeds(distance, limit.reach) };
+  return { ...limit, ...(distance !== undefined && { distance }), measure: wireMeasure(a, b), tooLong: exceeds(distance, limit.reach) };
 }
 
 function exceeds(distance: number | undefined, reach: number): boolean {
@@ -105,6 +116,16 @@ export function formatWireDistance(distance: number, reach: number): string {
 /** The word behind a distance: "1 tile apart", "9 tiles apart", "1.0 tiles apart". */
 export function tileUnit(distance: number): string {
   return distance === 1 ? "tile" : "tiles";
+}
+
+/** A distance in a sentence, saying what it is where it is not the gap between the two entities: "9 tiles apart", "8 tiles apart from center to center". */
+export function describeWireDistance(distance: number, reach: number, measure: WireMeasure): string {
+  return `${formatWireDistance(distance, reach)} ${tileUnit(distance)} apart${measure === "centers" ? " from center to center" : ""}`;
+}
+
+/** The two ends of a wire in a sentence about their distance: "entities", and "poles" where two poles are measured from center to center. */
+export function wireEndsNoun(measure: WireMeasure): string {
+  return measure === "centers" ? "poles" : "entities";
 }
 
 /** A reach for display: the number, or "unlimited". */

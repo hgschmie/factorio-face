@@ -1,7 +1,7 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, entityNameBase, facingOf, tileCenter, type Circuit, type Entity, type EntityKind, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
 import { decodeBlueprintString, exportBlueprint, importBlueprint, type ImportReport } from "../src/index.ts";
@@ -36,15 +36,19 @@ function blueprintable(circuit: Circuit): Circuit {
  * What a circuit is after it went to a blueprint and back, as far as the trip changes it:
  * - the names are new, by the naming rule of the editor (what the entity is and a number, in the order of the entities), and so are the ids;
  * - the edit positions are derived from the tiles (not compared here);
+ * - a circuit with the hub of a space platform stands around its (first) hub, which is at (0, 0) as on every platform of the game;
  * - facing east is not said, and an entity that cannot turn faces nothing;
  * - an empty description is none, and the description of anything but a combinator is not in a blueprint;
  * - an entity that is built in two directions only faces north or east; kept blueprint data that holds nothing is none;
- * - a section group without a name is no group;
+ * - a section group without a name is no group, and one section without anything in it is no section, as in a combinator the game places;
  * - the first instrument and the first note of an instrument go without saying;
- * - the source signal of a quality transfer has no quality of its own.
+ * - the source signal of a quality transfer has no quality of its own;
+ * - a side of a splitter that has one of its two conditions has the game's own for the other.
  */
 function afterRoundTrip(circuit: Circuit, instruments: readonly SpeakerInstrument[]): Circuit {
   const counters = new Map<string, number>();
+  const hub = circuit.entities.find((entity) => entity.kind === "entity" && gamePrototype(entity).type === "space-platform-hub");
+  const origin = hub?.placement?.tile ?? { x: 0, y: 0 };
   const entities = circuit.entities.map((entity): Entity => {
     const called = entityNameBase(entity);
     const count = (counters.get(called) ?? 0) + 1;
@@ -54,14 +58,23 @@ function afterRoundTrip(circuit: Circuit, instruments: readonly SpeakerInstrumen
     const base = {
       ...rest,
       name: `${called}${count}`,
-      placement: { tile: placement!.tile!, ...(canRotate(entity) && facing !== "east" && { direction: facing }) },
+      placement: { tile: { x: placement!.tile!.x - origin.x, y: placement!.tile!.y - origin.y }, ...(canRotate(entity) && facing !== "east" && { direction: facing }) },
       ...(description && isCombinator(entity.kind) && { description }),
     } as Entity;
     if (base.kind === "entity") {
       const { blueprintData, ...generic } = base;
-      return { ...generic, ...(blueprintData !== undefined && blueprintData !== "{}" && { blueprintData }) };
+      const conditions = settingSpecsOf(base.prototype).filter((spec) => spec.type === "condition");
+      const inUse = (flag: string): boolean => conditions.some((spec) => spec.flag === flag && base.settings[spec.key] !== undefined);
+      const filled = conditions.filter((spec) => spec.gameDefault && base.settings[spec.key] === undefined && inUse(spec.flag)).map((spec) => [spec.key, spec.gameDefault!]);
+      const settings: EntitySettings = { ...base.settings, ...Object.fromEntries(filled) };
+      return { ...generic, settings, ...(blueprintData !== undefined && blueprintData !== "{}" && { blueprintData }) };
     }
-    if (base.kind === "constant") return { ...base, sections: base.sections.map(({ group, ...section }) => ({ ...(group && { group }), ...section })) };
+    if (base.kind === "constant") {
+      const sections = base.sections.map(({ group, ...section }) => ({ ...(group && { group }), ...section }));
+      const [only] = sections;
+      const untouched = sections.length === 1 && !only!.group && only!.active && only!.multiplier === 1 && only!.filters.length === 0;
+      return { ...base, sections: untouched ? [] : sections };
+    }
     if (base.kind === "speaker") {
       const { instrument, note, ...speaker } = base;
       const index = instrument === undefined ? 0 : instruments.findIndex((candidate) => candidate.name === instrument);
@@ -230,7 +243,7 @@ describe("round trip: blueprint to editor to blueprint", () => {
           control_behavior: { sections: { sections: [{ index: 1, filters: [{ index: 1, ...A, quality: "normal", comparator: "=", count: 1 }], group: "g" }, { index: 2, filters: [{ index: 1, name: "iron-plate", quality: "normal", comparator: "=", count: 5 }] }] } },
           player_description: "source",
         },
-        { entity_number: 2, name: "arithmetic-combinator", position: { x: 2.5, y: 1 }, direction: 8, control_behavior: { arithmetic_conditions: { first_signal: A, first_signal_networks: { red: true, green: false }, second_constant: 2, operation: "*", output_signal: B } } },
+        { entity_number: 2, name: "arithmetic-combinator", position: { x: 2.5, y: 1 }, direction: 8, control_behavior: { arithmetic_conditions: { first_signal: A, second_constant: 2, operation: "*", output_signal: B, first_signal_networks: { red: true, green: false } } } },
         {
           entity_number: 3,
           name: "decider-combinator",
@@ -238,8 +251,9 @@ describe("round trip: blueprint to editor to blueprint", () => {
           direction: 12,
           control_behavior: {
             decider_conditions: {
-              conditions: [{ first_signal: A, constant: 0, comparator: "≥" }, { first_signal: B, second_signal: IRON, comparator: "≠", compare_type: "and" }],
+              conditions: [{ first_signal: A, comparator: "≥" }, { first_signal: B, second_signal: IRON, comparator: "≠", compare_type: "and" }],
               outputs: [{ signal: A }, { signal: B, copy_count_from_input: false }],
+              else_outputs: [],
             },
           },
         },
@@ -251,12 +265,12 @@ describe("round trip: blueprint to editor to blueprint", () => {
           entity_number: 8,
           name: "programmable-speaker",
           position: { x: 12.5, y: 3.5 },
+          control_behavior: { circuit_condition: { first_signal: IRON, constant: 100, comparator: "<" }, circuit_parameters: { signal_value_is_pitch: false, stop_playing_sounds: false, instrument_id: 3, note_id: 6 } },
           parameters: { playback_volume: 0.8, playback_mode: "surface", allow_polyphony: true, volume_controlled_by_signal: false },
           alert_parameters: { show_alert: true, show_on_map: true, icon_signal_id: IRON, alert_message: "low" },
-          control_behavior: { circuit_condition: { first_signal: IRON, constant: 100, comparator: "<" }, circuit_parameters: { signal_value_is_pitch: false, stop_playing_sounds: false, instrument_id: 3, note_id: 6 } },
         },
       ],
-      wires: [[1, 1, 2, 1], [2, 4, 3, 2], [3, 1, 3, 3], [3, 3, 5, 1], [6, 2, 7, 2], [6, 1, 8, 1]],
+      wires: [[1, 1, 2, 1], [2, 4, 3, 2], [3, 1, 3, 3], [3, 3, 5, 1], [6, 1, 8, 1], [6, 2, 7, 2]],
       item: "blueprint",
       label: "Foreign",
       version: 562954249961472,
@@ -276,6 +290,8 @@ describe("round trip: blueprint to editor to blueprint", () => {
     });
     const result = exportBlueprint(circuit, { instruments: INSTRUMENTS });
     expect(result.ok && result.data).toEqual(canonical);
+    // Field for field in the order of the game.
+    expect(result.ok && JSON.stringify(result.data)).toBe(JSON.stringify(canonical));
     expect(result.ok && result.warnings).toEqual([]);
   });
 

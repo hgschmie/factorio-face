@@ -1,8 +1,8 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireReach, facingOf, findTileOverlaps, formatWireDistance, hasTerminal, isInt32, isPrototypeName, isTileCenter,
-  normalizedSettings, normalizeWire, PROTOTYPES, prototypeData, prototypesOf, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, tileUnit, wildcardOf, wildcardSignal, WILDCARDS, wireKey, wireSpan,
+  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, isInt32, isPrototypeName, isTileCenter,
+  normalizedSettings, normalizeWire, PROTOTYPES, prototypeData, prototypesOf, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
   withArticle,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
   type Entity, type EntityId, type EntityKind, type EntityOfKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeOfKind, type RgbColor,
@@ -1004,7 +1004,8 @@ function checkPlacement(nodes: readonly CstEntity[], entities: readonly Entity[]
 
 /**
  * A warning for every wire between two entities with a `tile` that are further apart than the wire may span (`wireSpan`: the
- * smaller reach of its two ends, a pole having its own and every other entity the project's), on its first declaration. Like the
+ * smaller reach of its two ends, a pole having its own and every other entity the project's; the distance is the one between
+ * the centers of two poles and between the selection boxes of every other pair), on its first declaration. Like the
  * placement warnings it is for a circuit only and does not touch the simulation.
  */
 function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readonly Entity[], projectReach: number, analyzer: Analyzer): void {
@@ -1014,8 +1015,8 @@ function checkWireReach(wires: ReadonlyMap<string, WireSource>, entities: readon
     const [from, to] = [byId.get(a.entity)!, byId.get(b.entity)!];
     const span = wireSpan(from, to, projectReach);
     if (!span.tooLong || span.distance === undefined) continue;
-    const apart = `${formatWireDistance(span.distance, span.reach)} ${tileUnit(span.distance)} apart`;
-    analyzer.report(range, "wire-too-long", `Wire from '${printTerminal(from.name, a.side)}' to '${printTerminal(to.name, b.side)}': the entities are ${apart}; ${describeWireReach(span)}`);
+    const apart = `the ${wireEndsNoun(span.measure)} are ${describeWireDistance(span.distance, span.reach, span.measure)}`;
+    analyzer.report(range, "wire-too-long", `Wire from '${printTerminal(from.name, a.side)}' to '${printTerminal(to.name, b.side)}': ${apart}; ${describeWireReach(span)}`);
   }
 }
 

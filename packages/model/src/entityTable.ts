@@ -30,8 +30,11 @@ export interface EntityPrototype {
   readonly hidden: boolean;
   /** Stands anywhere, not on the tile grid (the land mine). */
   readonly offGrid: boolean;
-  /** [left, top, right, bottom] around its center when it faces north. Only where the tile size is not the size of this box rounded up. */
-  readonly collisionBox?: readonly [number, number, number, number];
+  /**
+   * The game's selection box, which it measures the reach of a wire between: [left, top, right, bottom] in tiles around the
+   * center when the entity faces north, in the game's 1/256 of a tile. Only where it is not the tiles the entity covers.
+   */
+  readonly selectionBox?: BoxEdges;
   /** The items that build it, the first being the one robots use. None: only a script or the game's editor creates it. */
   readonly placedBy: readonly string[];
   /** The signals it uses unless told otherwise, by the game's field without `default_` and `_signal`: `output`, `empty_slots`, `red_output`. */
@@ -42,9 +45,12 @@ export interface EntityPrototype {
   readonly removedBy?: readonly string[];
 }
 
+/** [left, top, right, bottom]. */
+export type BoxEdges = readonly [number, number, number, number];
+
 export interface EntityTable {
   readonly game: { readonly version: string; readonly build?: number };
-  /** False while the directions are from the generator's provisional rules and not yet checked against a running game. */
+  /** False for a table built from dumps without the game's own word on directions, tile sizes, selection boxes and reaches (`circuit_entities` of the runtime dump). */
   readonly runtimeChecked: boolean;
   /** Sorted by name. */
   readonly entities: readonly EntityPrototype[];
@@ -90,8 +96,8 @@ export function parseEntityTable(data: unknown): EntityTable {
     const signals = field("signals") ?? {};
     if (!isObject(signals)) return fail(`${name}: signals is ${JSON.stringify(signals)}`);
     const signalOf = ([key, value]: [string, unknown]): [string, SignalId] => [key, (typeof value === "string" && parseSignalKey(value)) || fail(`${name}: signal ${key} is ${JSON.stringify(value)}`)];
-    const box = record.collisionBox;
-    if (box !== undefined && !(Array.isArray(box) && box.length === 4 && box.every(Number.isFinite))) return fail(`${name}: collisionBox is ${JSON.stringify(box)}`);
+    const box = record.selectionBox;
+    if (box !== undefined && !(Array.isArray(box) && box.length === 4 && box.every(Number.isFinite) && box[0] < box[2] && box[1] < box[3])) return fail(`${name}: selectionBox is ${JSON.stringify(box)}`);
     return {
       name,
       type: checked("type", (value): value is string => typeof value === "string" && value !== ""),
@@ -102,7 +108,7 @@ export function parseEntityTable(data: unknown): EntityTable {
       wireReach: checked("wireReach", (value): value is number => Number.isFinite(value) && (value as number) > 0),
       hidden: record.hidden === true,
       offGrid: record.offGrid === true,
-      ...(box !== undefined && { collisionBox: box as unknown as readonly [number, number, number, number] }),
+      ...(box !== undefined && { selectionBox: box as unknown as BoxEdges }),
       placedBy: record.placedBy === undefined ? [name] : checked("placedBy", isStrings),
       signals: Object.fromEntries(Object.entries(signals).map(signalOf)),
       modules: checked("modules", isStrings),

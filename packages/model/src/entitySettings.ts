@@ -1,7 +1,8 @@
 // The circuit settings of the generic entities (kind `entity`), as a table keyed by the game's prototype type. A row lists the
 // settings of that type; each setting is one of five field types with the field of the blueprint's `control_behavior` it is read
 // from and written to, its default and its label. The language, the simulation and the blueprint mapping all read this table:
-// a further prototype type is a row here. Where the fields are from: docs/factorio-audit.md 14.
+// a further prototype type is a row here. Where the fields are from: docs/factorio-audit.md 14. The numbers of the modes and the
+// defaults are what the game itself says (fixture F-01: `defines`, and `defaults`, the control behaviour of a new entity).
 
 import { BOTH_NETWORKS, COMPARATORS, type Condition, type EntitySettings, type NetworkSelection, type SettingValue } from "./circuit.ts";
 import type { EntityPrototype } from "./entityTable.ts";
@@ -14,8 +15,6 @@ interface SettingBase {
   readonly field: string;
   /** For a form, in the words of the game's GUI. */
   readonly label: string;
-  /** The default, or the numbers of the enum, are neither in the API reference nor in the game data: unverified until fixture F-01 is recorded. */
-  readonly assumed?: true;
 }
 
 export interface BooleanSetting extends SettingBase {
@@ -40,6 +39,16 @@ export interface ConditionSetting extends SettingBase {
   readonly flag: string;
   /** Read from the logistic network, which the simulation does not have: kept, never evaluated. */
   readonly logistic?: true;
+  /**
+   * The game's flag is on in a new entity (the open-gate flag of a wall, with a blank condition). The editor has a condition or
+   * none, so an entity without the condition says in a blueprint that the flag is off.
+   */
+  readonly flagOnByDefault?: true;
+  /**
+   * The condition the game has where a blueprint switches the flag on and names none (the sides of a splitter): it leaves this
+   * one out of a blueprint and takes it for a condition that is missing.
+   */
+  readonly gameDefault?: Condition;
 }
 
 export interface EnumValue {
@@ -72,7 +81,7 @@ export type SettingType = SettingSpec["type"];
 export interface SettingsRow {
   /** The concept of the API reference that describes the `control_behavior` of the type: "InserterBlueprintControlBehavior". */
   readonly behavior: string;
-  /** The API reference names no control behaviour for this type; it is the one of the type it derives from. */
+  /** The API reference names no control behaviour for this type; it is the one of the type it derives from, which the game confirms (fixture F-01). */
   readonly assumed?: true;
   /** In the order of the canonical source and of a form. */
   readonly settings: readonly SettingSpec[];
@@ -80,10 +89,14 @@ export interface SettingsRow {
   readonly kept?: readonly string[];
 }
 
-const bool = (key: string, field: string, label: string, fallback = false, assumed = false): BooleanSetting => ({ type: "boolean", key, field, label, default: fallback, ...(assumed && { assumed: true }) });
+const bool = (key: string, field: string, label: string, fallback = false): BooleanSetting => ({ type: "boolean", key, field, label, default: fallback });
 const signalOf = (key: string, field: string, label: string, prototypeDefault?: string): SignalSetting => ({ type: "signal", key, field, label, ...(prototypeDefault !== undefined && { prototypeDefault }) });
-const condition = (key: string, field: string, flag: string, label: string, logistic = false): ConditionSetting => ({ type: "condition", key, field, flag, label, ...(logistic && { logistic: true }) });
-const words = (...names: readonly string[]): EnumValue[] => names.map((word, value) => ({ word, value }));
+type ConditionExtras = Partial<Pick<ConditionSetting, "logistic" | "flagOnByDefault" | "gameDefault">>;
+const condition = (key: string, field: string, flag: string, label: string, more: ConditionExtras = {}): ConditionSetting => ({ type: "condition", key, field, flag, label, ...more });
+/** The words of a mode whose numbers in the game start at `first` and go up by one. */
+const words = (first: number, ...names: readonly string[]): EnumValue[] => names.map((word, index) => ({ word, value: first + index }));
+/** A side of a splitter as the game has it in a new one: the virtual signal below or above 0. */
+const side = (name: string, comparator: "<" | ">"): Condition => ({ first: { kind: "virtual", name }, comparator, second: { type: "constant", value: 0 } });
 
 /** The key of the condition that enables or disables the entity. */
 export const ENABLE_CONDITION = "when";
@@ -92,7 +105,7 @@ const CONDITION_SUFFIX = "-when";
 const NETWORKS: NetworksSetting = { type: "networks", key: "networks", field: "input_networks", label: "Read from" };
 const OUTPUT_NETWORKS: NetworksSetting = { type: "networks", key: "output-networks", field: "output_networks", label: "Send to" };
 const ENABLE = condition(ENABLE_CONDITION, "circuit_condition", "circuit_enabled", "Enable/disable");
-const LOGISTIC = condition("logistic-when", "logistic_condition", "connect_to_logistic_network", "Logistic network condition", true);
+const LOGISTIC = condition("logistic-when", "logistic_condition", "connect_to_logistic_network", "Logistic network condition", { logistic: true });
 /** `GenericOnOffBlueprintControlBehavior`, which most behaviours with an enable condition extend. */
 const ON_OFF: readonly SettingSpec[] = [ENABLE, LOGISTIC, NETWORKS];
 
@@ -103,6 +116,8 @@ const EMPTY_SLOTS_SIGNAL = signalOf("empty-slots-signal", "empty_slots_signal", 
 const SET_REQUESTS = bool("set-requests", "set_requests", "Set requests");
 const READ_FUEL = bool("read-fuel", "read_fuel", "Read fuel");
 const READ_AMMO = bool("read-ammo", "read_ammo", "Read ammunition");
+// An artillery turret reads its ammunition unless told otherwise; the other turrets do not.
+const READ_AMMO_ON = bool("read-ammo", "read_ammo", "Read ammunition", true);
 const READ_TEMPERATURE = bool("read-temperature", "read_temperature", "Read temperature");
 const SET_FILTERS = bool("set-filters", "circuit_set_filters", "Set filters");
 const SET_FILTER = bool("set-filter", "set_filter", "Set filter");
@@ -121,11 +136,11 @@ const TURRET: readonly SettingSpec[] = [
 ];
 const FLUID_BOX: readonly SettingSpec[] = [
   OUTPUT_NETWORKS,
-  { type: "enum", key: "read-contents", field: "circuit_mode_of_operation", label: "Read contents", values: words("none", "contents", "segment-contents"), default: "contents", assumed: true },
+  { type: "enum", key: "read-contents", field: "circuit_mode_of_operation", label: "Read contents", values: words(0, "none", "contents", "segment-contents"), default: "contents" },
   READ_TEMPERATURE, signalOf("temperature-signal", "temperature_signal", "Temperature signal", "fluid_temperature"),
 ];
 const RAIL_SIGNAL: readonly SettingSpec[] = [
-  condition("close-when", "circuit_condition", "circuit_close_signal", "Close signal"), NETWORKS, OUTPUT_NETWORKS, bool("read-signal", "circuit_read_signal", "Read signal", true, true),
+  condition("close-when", "circuit_condition", "circuit_close_signal", "Close signal"), NETWORKS, OUTPUT_NETWORKS, bool("read-signal", "circuit_read_signal", "Read signal", true),
   signalOf("red-signal", "red_output_signal", "Red signal", "red_output"), signalOf("orange-signal", "orange_output_signal", "Yellow signal", "orange_output"), signalOf("green-signal", "green_output_signal", "Green signal", "green_output"),
 ];
 
@@ -138,9 +153,9 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
     ...ON_OFF, condition("harvest-when", "harvesting_condition", "enable_harvesting_condition", "Harvest"), condition("plant-when", "planting_condition", "enable_planting_condition", "Plant"), OUTPUT_NETWORKS, READ_CONTENTS,
   ]),
   "ammo-turret": row("TurretBlueprintControlBehavior", TURRET),
-  "artillery-turret": row("ArtilleryTurretBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, { ...READ_AMMO, assumed: true }]),
+  "artillery-turret": row("ArtilleryTurretBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, READ_AMMO_ON]),
   "assembling-machine": row("AssemblingMachineBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, bool("set-recipe", "set_recipe", "Set recipe"), ...CRAFTING]),
-  "asteroid-collector": row("AsteroidCollectorBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, SET_FILTERS, bool("read-contents", "circuit_read_contents", "Read contents"), bool("include-hands", "include_hands", "Include hands")]),
+  "asteroid-collector": row("AsteroidCollectorBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, SET_FILTERS, bool("read-contents", "circuit_read_contents", "Read contents"), bool("include-hands", "include_hands", "Include hands", true)]),
   boiler: row("BoilerBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, READ_FUEL]),
   "cargo-landing-pad": row("CargoLandingPadBlueprintControlBehavior", [NETWORKS, OUTPUT_NETWORKS, READ_CONTENTS_ON, READ_EMPTY_SLOTS, EMPTY_SLOTS_SIGNAL, SET_REQUESTS]),
   container: row("ContainerBlueprintControlBehavior", CONTAINER),
@@ -153,12 +168,12 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   "infinity-pipe": row("SingleFluidBoxBlueprintControlBehavior", FLUID_BOX, { assumed: true }),
   inserter: row("InserterBlueprintControlBehavior", [
     ...ON_OFF, OUTPUT_NETWORKS, SET_FILTERS,
-    { type: "enum", key: "read-hand", field: "circuit_hand_read_mode", label: "Read hand contents", values: [{ word: "none" }, { word: "pulse", value: 0 }, { word: "hold", value: 1 }], default: "none", flag: { field: "circuit_read_hand_contents", off: "none" }, assumed: true },
+    { type: "enum", key: "read-hand", field: "circuit_hand_read_mode", label: "Read hand contents", values: [{ word: "none" }, { word: "pulse", value: 0 }, { word: "hold", value: 1 }], default: "none", flag: { field: "circuit_read_hand_contents", off: "none" } },
     bool("set-stack-size", "circuit_set_stack_size", "Set stack size"), signalOf("stack-size-signal", "stack_control_input_signal", "Stack size signal", "stack_control_input"),
   ]),
   lab: row("LabBlueprintControlBehavior", [
-    NETWORKS, OUTPUT_NETWORKS, bool("set-research", "set_research", "Set research", false, true), bool("read-contents", "read_contents", "Read contents", false, true), bool("read-fuel", "read_fuel", "Read fuel", false, true),
-    bool("read-research-cost", "read_research_cost", "Read research cost", false, true), bool("read-technology-level", "read_technology_level", "Read technology level", false, true),
+    NETWORKS, OUTPUT_NETWORKS, bool("set-research", "set_research", "Set research"), READ_CONTENTS, READ_FUEL,
+    bool("read-research-cost", "read_research_cost", "Read research cost"), bool("read-technology-level", "read_technology_level", "Read technology level"),
     signalOf("technology-level-signal", "technology_level_signal", "Technology level signal", "technology_level"),
   ], { kept: ["conditions"] }),
   "land-mine": row("LandMineBlueprintControlBehavior", ON_OFF),
@@ -167,7 +182,7 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   "logistic-container": row("LogisticContainerBlueprintControlBehavior", LOGISTIC_CONTAINER),
   "mining-drill": row("MiningDrillBlueprintControlBehavior", [
     ...ON_OFF, OUTPUT_NETWORKS,
-    { type: "enum", key: "read-resources", field: "circuit_resource_read_mode", label: "Read resources", values: [{ word: "none" }, { word: "this-miner", value: 0 }, { word: "entire-patch", value: 1 }], default: "this-miner", flag: { field: "circuit_read_resources", off: "none" }, assumed: true },
+    { type: "enum", key: "read-resources", field: "circuit_resource_read_mode", label: "Read resources", values: [{ word: "none" }, { word: "this-miner", value: 0 }, { word: "entire-patch", value: 1 }], default: "this-miner", flag: { field: "circuit_read_resources", off: "none" } },
   ]),
   "offshore-pump": row("GenericOnOffBlueprintControlBehavior", ON_OFF),
   pipe: row("SingleFluidBoxBlueprintControlBehavior", FLUID_BOX),
@@ -176,7 +191,8 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   "proxy-container": row("ProxyContainerBlueprintControlBehavior", CONTAINER),
   pump: row("PumpBlueprintControlBehavior", [...ON_OFF, SET_FILTER]),
   radar: row("RadarBlueprintControlBehavior", [
-    { type: "enum", key: "mode", field: "mode", label: "Mode", values: words("surface", "universe"), default: "surface", assumed: true },
+    // `defines.control_behavior.radar.mode` starts at 1.
+    { type: "enum", key: "mode", field: "mode", label: "Mode", values: words(1, "surface", "universe"), default: "surface" },
     signalOf("channel", "universe_channel", "Universe channel"),
   ]),
   "rail-chain-signal": row("RailSignalBaseBlueprintControlBehavior", [...RAIL_SIGNAL, signalOf("blue-signal", "blue_output_signal", "Blue signal", "blue_output")]),
@@ -184,8 +200,8 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   reactor: row("ReactorBlueprintControlBehavior", [OUTPUT_NETWORKS, READ_FUEL, READ_TEMPERATURE, signalOf("temperature-signal", "temperature_signal", "Temperature signal", "temperature")]),
   roboport: row("RoboportBlueprintControlBehavior", [
     OUTPUT_NETWORKS,
-    { type: "enum", key: "read-items", field: "read_items_mode", label: "Read items", values: words("none", "logistics", "missing-requests"), default: "logistics", booleans: ["none", "logistics"], assumed: true },
-    bool("read-robot-stats", "read_robot_stats", "Read robot statistics", false, true),
+    { type: "enum", key: "read-items", field: "read_items_mode", label: "Read items", values: words(0, "none", "logistics", "missing-requests"), default: "logistics", booleans: ["none", "logistics"] },
+    bool("read-robot-stats", "read_robot_stats", "Read robot statistics"),
     signalOf("available-logistic-signal", "available_logistic_output_signal", "Available logistic robots", "available_logistic_output"),
     signalOf("total-logistic-signal", "total_logistic_output_signal", "Total logistic robots", "total_logistic_output"),
     signalOf("available-construction-signal", "available_construction_output_signal", "Available construction robots", "available_construction_output"),
@@ -194,7 +210,7 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   ]),
   "rocket-silo": row("RocketSiloBlueprintControlBehavior", [
     OUTPUT_NETWORKS,
-    { type: "enum", key: "read-items", field: "read_items_mode", label: "Read items", values: words("none", "logistic-inventory", "orbital-requests"), default: "logistic-inventory", assumed: true },
+    { type: "enum", key: "read-items", field: "read_items_mode", label: "Read items", values: words(0, "none", "logistic-inventory", "orbital-requests"), default: "logistic-inventory" },
     bool("read-launched", "read_launched", "Read rocket launched"), signalOf("launched-signal", "launched_signal", "Rocket launched signal", "launched"),
   ]),
   "space-platform-hub": row("SpacePlatformHubBlueprintControlBehavior", [
@@ -204,8 +220,10 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
     bool("read-damage-taken", "read_damage_taken", "Read damage taken"), signalOf("damage-taken-signal", "damage_taken_signal", "Damage taken signal", "damage_taken"),
   ]),
   splitter: row("SplitterBlueprintControlBehavior", [
-    condition("input-left-when", "input_left_condition", "set_input_side", "Input priority left"), condition("input-right-when", "input_right_condition", "set_input_side", "Input priority right"),
-    condition("output-left-when", "output_left_condition", "set_output_side", "Output priority left"), condition("output-right-when", "output_right_condition", "set_output_side", "Output priority right"),
+    condition("input-left-when", "input_left_condition", "set_input_side", "Input priority left", { gameDefault: side("signal-I", "<") }),
+    condition("input-right-when", "input_right_condition", "set_input_side", "Input priority right", { gameDefault: side("signal-I", ">") }),
+    condition("output-left-when", "output_left_condition", "set_output_side", "Output priority left", { gameDefault: side("signal-O", "<") }),
+    condition("output-right-when", "output_right_condition", "set_output_side", "Output priority right", { gameDefault: side("signal-O", ">") }),
     NETWORKS, SET_FILTER,
   ]),
   "storage-tank": row("SingleFluidBoxBlueprintControlBehavior", FLUID_BOX),
@@ -220,11 +238,11 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
     ...ON_OFF, OUTPUT_NETWORKS,
     {
       type: "enum", key: "read-contents", field: "circuit_contents_read_mode", label: "Read belt contents", values: [{ word: "none" }, { word: "pulse", value: 0 }, { word: "hold", value: 1 }, { word: "entire-belt-hold", value: 2 }], default: "none",
-      flag: { field: "circuit_read_hand_contents", off: "none" }, assumed: true,
+      flag: { field: "circuit_read_hand_contents", off: "none" },
     },
   ]),
   wall: row("WallBlueprintControlBehavior", [
-    condition("open-gate-when", "circuit_condition", "circuit_open_gate", "Open gate"), NETWORKS, OUTPUT_NETWORKS, bool("read-sensor", "circuit_read_sensor", "Read gate sensor", false, true),
+    condition("open-gate-when", "circuit_condition", "circuit_open_gate", "Open gate", { flagOnByDefault: true }), NETWORKS, OUTPUT_NETWORKS, bool("read-sensor", "circuit_read_sensor", "Read gate sensor"),
     signalOf("output-signal", "output_signal", "Gate sensor signal", "output"),
   ]),
 };

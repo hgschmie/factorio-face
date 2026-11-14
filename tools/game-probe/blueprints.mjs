@@ -3,15 +3,16 @@
 // and setting, and what it makes of the blueprints this project exports (docs/factorio-audit.md 6.8, F-01, F-02 and F-23).
 // The cases are the sample circuits of packages/blueprints/test/samples.ts (lib/blueprintCases.ts turns them into what the
 // game is sent); the scenario is blueprints.lua. The game runs headless and sandboxed like the catalog dump
-// (tools/catalog/lib/dump.mjs), with all standard modules, because the samples use qualities and Space Age signals.
+// (tools/catalog/lib/dump.mjs), with all standard modules, because the samples use qualities and Space Age signals. Its state
+// is in a folder of its own, so that this probe and the wire reach probe can run at the same time.
 import fs from "node:fs";
 import path from "node:path";
 import { locateGame, modSetId, runScenario, STANDARD_MODULES } from "../catalog/lib/dump.mjs";
 import { buildFixture, fixtureErrors, serialiseFixture } from "./lib/blueprintFixture.mjs";
-import { composeScenario, loadCases } from "./lib/blueprintScenario.mjs";
+import { composeScenario, loadRequest } from "./lib/blueprintScenario.mjs";
 
 const ROOT = path.resolve(import.meta.dirname, "../..");
-const PROBE_ROOT = path.join(ROOT, ".runtime", "game-probe");
+const PROBE_ROOT = path.join(ROOT, ".runtime", "game-probe", "blueprints");
 const FIXTURE = path.join(ROOT, "tests", "fixtures", "game", "F-01-blueprints.json");
 const SCENARIO = "face-blueprints";
 const OUTPUT = "face-blueprints.json";
@@ -24,7 +25,7 @@ const USAGE = `Usage: node tools/game-probe/blueprints.mjs [--check]
 
   --check   fail if ${path.relative(ROOT, FIXTURE)} differs from what the game says; write nothing
 
-Environment: FACTORIO_BIN, FACTORIO_DATA (as for tools/catalog/generate.mjs). All game state goes to .runtime/game-probe.`;
+Environment: FACTORIO_BIN, FACTORIO_DATA (as for tools/catalog/generate.mjs). All game state goes to .runtime/game-probe/blueprints.`;
 
 function fail(message) {
   console.error(`blueprints: ${message}`);
@@ -51,9 +52,8 @@ async function main() {
 
   fs.mkdirSync(PROBE_ROOT, { recursive: true });
   const dumpRoot = fs.realpathSync(PROBE_ROOT);
-  const cases = await loadCases(dumpRoot);
   const source = path.join(dumpRoot, "face-blueprints-control.lua");
-  fs.writeFileSync(source, composeScenario(cases));
+  fs.writeFileSync(source, composeScenario(await loadRequest(dumpRoot)));
   const errorFile = path.join(dumpRoot, "sets", modSetId(STANDARD_MODULES), "script-output", ERROR_OUTPUT);
   fs.rmSync(errorFile, { force: true });
   let run;

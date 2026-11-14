@@ -27,7 +27,7 @@ describe("single-set build of a made-up dump", () => {
   writeFileSync(join(dataDir, "base", "locale", "en", "base.cfg"), "[programmable-speaker-instrument]\nkit=Drumkit\n");
 
   const signal = (name: string, type: string) => ({ name, type, order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
-  const wired = (name: string, more: object = {}) => ({ name, icon: `__base__/graphics/icons/${name}.png`, collision_box: [[-0.35, -0.35], [0.35, 0.35]], circuit_wire_max_distance: 9, ...more });
+  const wired = (name: string, more: object = {}) => ({ name, icon: `__base__/graphics/icons/${name}.png`, collision_box: [[-0.35, -0.35], [0.35, 0.35]], selection_box: [[-0.5, -0.5], [0.5, 0.5]], circuit_wire_max_distance: 9, ...more });
   const fact = (name: string, type: string, more: object = {}) => ({ name, type, supports_direction: false, tile_width: 1, tile_height: 1, flags: {}, circuit_wire_distance: { normal: 9 }, wire_distance: { normal: 0 }, optional: {}, default_signals: {}, ...more });
   const raw = {
     item: { plate: { icon: "__base__/graphics/icons/plate.png" }, gadget: { icon: "__some-mod__/graphics/gadget.png" }, lamp: { icon: "__base__/graphics/icons/lamp.png" } },

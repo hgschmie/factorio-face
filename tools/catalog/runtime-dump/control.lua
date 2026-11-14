@@ -2,7 +2,7 @@
 -- view of every signal-capable prototype (defaults resolved, item weights computed, signal GUI flags derived) to
 -- script-output/face-runtime-dump.json and ends the test on the first tick. For every prototype a wire connects to it also
 -- writes what the entity table (tools/catalog/lib/entities.mjs) derives from data.raw or cannot find there, so that the
--- generator can check the table against the game: `circuit_entities`.
+-- generator can check the table against the game: `circuit_entities`. What only an entity says, it builds one for.
 
 local function names(list)
   local out = {}
@@ -81,7 +81,41 @@ local function distances(get)
   return out
 end
 
-local function circuit_entity(proto)
+-- The recipes with a fluid among their ingredients or products, by name.
+local function fluid_recipes()
+  local out = {}
+  for name, recipe in pairs(prototypes.recipe) do
+    local fluid = false
+    for _, list in pairs({ recipe.ingredients, recipe.products }) do
+      for _, entry in pairs(list) do fluid = fluid or entry.type == "fluid" end
+    end
+    if fluid then out[#out + 1] = name end
+  end
+  table.sort(out)
+  return out
+end
+
+-- What only an entity says: whether it has a direction once it stands. `supports_direction` of the prototype is true for
+-- every crafting machine; the entity's only while its fluid boxes are in use, which for some takes a recipe with a fluid
+-- (`fluid_recipe`: the first one that gives it a direction), or when it is not square. Nil for a prototype that a script
+-- cannot build on an empty surface.
+local function built(surface, proto, recipes)
+  local entity = surface.create_entity({ name = proto.name, position = { 0, 0 }, force = "player" })
+  if not entity then return nil end
+  local out = { supports_direction = entity.supports_direction }
+  if not out.supports_direction and proto.type == "assembling-machine" then
+    for _, recipe in pairs(recipes) do
+      if pcall(entity.set_recipe, recipe) and entity.supports_direction then
+        out.fluid_recipe = recipe
+        break
+      end
+    end
+  end
+  entity.destroy()
+  return out
+end
+
+local function circuit_entity(proto, surface, recipes)
   local flags = {}
   for flag in pairs(proto.flags) do flags[#flags + 1] = flag end
   table.sort(flags)
@@ -93,12 +127,19 @@ local function circuit_entity(proto)
     local value = read(proto, field)
     if type(value) == "table" and value.name then signals[field] = { type = value.type or "item", name = value.name } end
   end
+  local ok, standing = pcall(built, surface, proto, recipes)
+  if not ok then
+    for _, entity in pairs(surface.find_entities()) do entity.destroy() end
+  end
+  local box = proto.selection_box
   return {
     name = proto.name,
     type = proto.type,
     supports_direction = proto.supports_direction,
+    built = ok and standing or nil,
     tile_width = proto.tile_width,
     tile_height = proto.tile_height,
+    selection_box = { box.left_top.x, box.left_top.y, box.right_bottom.x, box.right_bottom.y },
     flags = flags,
     circuit_wire_distance = distances(function(quality) return proto.get_max_circuit_wire_distance(quality) end),
     wire_distance = distances(function(quality) return proto.get_max_wire_distance(quality) end),
@@ -109,9 +150,13 @@ end
 
 -- Every entity prototype with a wire reach: circuit wires, or the copper wires of a pole and a power switch.
 local function circuit_entities()
+  local surface = game.create_surface("face-runtime-dump")
+  surface.request_to_generate_chunks({ 0, 0 }, 3)
+  surface.force_generate_chunk_requests()
+  local recipes = fluid_recipes()
   local list = {}
   for _, proto in pairs(prototypes.entity) do
-    if proto.get_max_circuit_wire_distance() > 0 or proto.get_max_wire_distance() > 0 then list[#list + 1] = circuit_entity(proto) end
+    if proto.get_max_circuit_wire_distance() > 0 or proto.get_max_wire_distance() > 0 then list[#list + 1] = circuit_entity(proto, surface, recipes) end
   end
   return list
 end

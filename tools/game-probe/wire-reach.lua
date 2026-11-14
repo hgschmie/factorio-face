@@ -1,8 +1,10 @@
 -- Scenario run headless by tools/game-probe/wire-reach.mjs via `factorio --test-scenario`. It asks the game for every placement
 -- of an entity B around an entity A whether a red circuit wire from A reaches B, and writes the answers to
 -- script-output/face-wire-reach.json. B's top-left tile goes from -RANGE to RANGE on both axes around the top-left tile of A;
--- a case with a longer reach has a range of its own. A case the game cannot set up (a prototype of a module that is not
--- enabled, an entity it does not leave where it was put) is written with its error instead of its rows.
+-- a case with a longer reach has a range of its own. With every entity goes what the game measures between: the selection box
+-- of its prototype, and the direction the entity has once it stands, which is not always the one asked for (a stone furnace
+-- has none). A case the game cannot set up (a prototype of a module that is not enabled, an entity it does not leave where
+-- it was put) is written with its error instead of its rows.
 
 local RANGE = 14
 -- For a reach beyond that: the 18 tiles of a substation, the 32 of a big pole, and the 30 of the agricultural tower, whose
@@ -13,7 +15,8 @@ local id = defines.wire_connector_id
 local COMBINATORS = { ["arithmetic-combinator"] = true, ["decider-combinator"] = true, ["selector-combinator"] = true }
 local FACING = { [d.north] = "north", [d.east] = "east", [d.south] = "south", [d.west] = "west" }
 
--- An entity to place: its tile footprint as it stands, and for a combinator its direction and the connector the wire goes to.
+-- An entity to place: its tile footprint as it stands, its selection box facing north as { left, top, right, bottom } around its
+-- center, and for a combinator its direction and the connector the wire goes to.
 local function spec(name, direction, side)
   local proto = prototypes.entity[name]
   if not proto then error("no prototype " .. name .. " with the enabled modules") end
@@ -21,8 +24,10 @@ local function spec(name, direction, side)
   -- A pole has one reach for every kind of wire; so has whatever else has no reach for circuit wires alone (the power switch, if the game says so).
   local circuit = proto.get_max_circuit_wire_distance()
   local reach = (proto.type == "electric-pole" or circuit == 0) and proto.get_max_wire_distance() or circuit
+  local box = proto.selection_box
   return {
-    name = name, direction = direction, side = side, reach = reach,
+    name = name, type = proto.type, direction = direction, side = side, reach = reach,
+    box = { box.left_top.x, box.left_top.y, box.right_bottom.x, box.right_bottom.y },
     width = upright and proto.tile_width or proto.tile_height, height = upright and proto.tile_height or proto.tile_width,
   }
 end
@@ -55,18 +60,27 @@ local function place_first(surface, what)
   return entity, tx, ty
 end
 
+-- `facing` is the direction the entity has in the game; `asked` the one the scenario asked for, where the game did not give it.
 local function describe(what)
-  return { name = what.name, width = what.width, height = what.height, facing = what.direction and FACING[what.direction] or nil, connector = what.side, reach = what.reach }
+  local facing = FACING[what.stands]
+  if not facing then error(string.format("%s faces %s", what.name, tostring(what.stands))) end
+  return {
+    name = what.name, type = what.type, width = what.width, height = what.height,
+    facing = (what.direction or what.stands ~= d.north) and facing or nil, asked = what.direction and what.direction ~= what.stands and FACING[what.direction] or nil,
+    connector = what.side, reach = what.reach, selectionBox = what.box,
+  }
 end
 
 local function grid(surface, a, b, range)
   local first, ax, ay = place_first(surface, a)
+  a.stands = first.direction
   local from = connector(first, a.side)
   local rows = {}
   for ty = -range, range do
     local row = {}
     for tx = -range, range do
       local second = place(surface, b, ax + tx, ay + ty)
+      b.stands = second.direction
       local to = connector(second, b.side)
       local reaches = from.can_wire_reach(to)
       local connects = from.connect_to(to, true)
@@ -85,7 +99,8 @@ local function probe(surface, label, a, b, range)
   range = range or RANGE
   local ok, result = pcall(function()
     local first, second = spec(table.unpack(a)), spec(table.unpack(b))
-    return { label = label, a = describe(first), b = describe(second), range = range, rows = grid(surface, first, second, range) }
+    local rows = grid(surface, first, second, range)
+    return { label = label, a = describe(first), b = describe(second), range = range, rows = rows }
   end)
   if ok then return result end
   for _, entity in pairs(surface.find_entities()) do entity.destroy() end
@@ -117,8 +132,8 @@ local function run()
     probe(surface, "constant - medium pole", constant, medium),
     probe(surface, "constant - big pole", constant, big),
     probe(surface, "constant - steel chest", constant, { "steel-chest" }),
-    -- Added with the poles and the speaker of the editor; not in the recording of 2.1.24 yet (rerun `make probe-wire-reach`).
-    -- Pole to pole, where neither end has the 9 tiles of the other entities: the smaller of two reaches, and a reach above 9.
+    -- Added with the poles and the speaker of the editor. Pole to pole, where neither end has the 9 tiles of the other entities:
+    -- the smaller of two reaches, and a reach above 9. The game measures these pairs from center to center.
     probe(surface, "constant - substation", constant, substation),
     probe(surface, "constant - speaker", constant, speaker),
     probe(surface, "speaker - small pole", speaker, small),
@@ -128,10 +143,11 @@ local function run()
     probe(surface, "substation - substation", substation, substation, LONG_RANGE),
     probe(surface, "big pole - substation", big, substation, LONG_RANGE),
     probe(surface, "big pole - big pole", big, big, LONG_RANGE),
-    -- Added with the entity table (docs/factorio-audit.md 13): does the distance between the tile footprints also decide for the
-    -- shapes and reaches of the other wired entities? The odd one is A, which the game may move onto the rail grid; B is a constant
-    -- combinator or a pole. Tile size against collision box: the train stop is 2 x 2 tiles around a box of one, the offshore pump
-    -- one tile under a box of 1.2 x 1.35 that lies north of its center, the railgun turret 3 x 5 with a box of 2.82 x 4.
+    -- Added with the entity table (docs/factorio-audit.md 13): what decides for the shapes and reaches of the other wired entities?
+    -- Not the tile footprint and not the collision box, as these cases showed, but the selection box (5.4). The odd one is A, which
+    -- the game may move onto the rail grid; B is a constant combinator or a pole. The train stop is 2 x 2 tiles around a collision
+    -- box of one, the offshore pump one tile under a box of 1.2 x 1.35 that lies north of its center, the railgun turret 3 x 5 with
+    -- a box of 2.82 x 4.
     probe(surface, "train stop - constant", { "train-stop" }, constant),
     probe(surface, "train stop east - constant", { "train-stop", d.east }, constant),
     probe(surface, "offshore pump - constant", { "offshore-pump" }, constant),
@@ -155,6 +171,36 @@ local function run()
     probe(surface, "agricultural tower - constant", tower, constant),
     probe(surface, "agricultural tower - agricultural tower", tower, tower, LONG_RANGE),
     probe(surface, "agricultural tower - big pole", tower, big, LONG_RANGE),
+    -- Added when the recording of 2026-11-14 showed that the game measures between the selection boxes, and from center to center
+    -- between two poles. A box that is not the same on all four sides, in every direction: does it turn with the entity?
+    probe(surface, "inserter north - constant", { "inserter", d.north }, constant),
+    probe(surface, "inserter east - constant", { "inserter", d.east }, constant),
+    probe(surface, "inserter south - constant", { "inserter", d.south }, constant),
+    probe(surface, "inserter west - constant", { "inserter", d.west }, constant),
+    probe(surface, "offshore pump south - constant", { "offshore-pump", d.south }, constant),
+    probe(surface, "offshore pump west - constant", { "offshore-pump", d.west }, constant),
+    probe(surface, "display panel north - constant", { "display-panel", d.north }, constant),
+    probe(surface, "display panel east - constant", { "display-panel", d.east }, constant),
+    probe(surface, "display panel south - constant", { "display-panel", d.south }, constant),
+    probe(surface, "display panel west - constant", { "display-panel", d.west }, constant),
+    -- A box narrower than its square of tiles, which does not turn because the furnace does not, and the other direction of the
+    -- oblong ones above. `LuaEntity.selection_box` of a rail signal that faces east or west is moved along the rail; the reach is not.
+    probe(surface, "stone furnace north - constant", { "stone-furnace", d.north }, constant),
+    probe(surface, "stone furnace east - constant", { "stone-furnace", d.east }, constant),
+    probe(surface, "rail signal east - constant", { "rail-signal", d.east }, constant),
+    probe(surface, "rail chain signal east - constant", { "rail-chain-signal", d.east }, constant),
+    probe(surface, "splitter east - constant", { "splitter", d.east }, constant),
+    probe(surface, "recycler north - constant", { "recycler", d.north }, constant),
+    -- Two boxes that are not their tiles.
+    probe(surface, "inserter east - inserter north", { "inserter", d.east }, { "inserter", d.north }),
+    probe(surface, "train stop - stone furnace east", { "train-stop" }, { "stone-furnace", d.east }),
+    -- A pole against something that is not a pole: by its box (the small pole's is smaller than its tile) or by its center?
+    -- Against the splitter the distance between the boxes as data.raw has them (0.4 and 0.9 from the centers) is exactly the
+    -- pole's 7.5 at 7 tiles by 2; the game has boxes in 1/256 of a tile.
+    probe(surface, "train stop - small pole", { "train-stop" }, small),
+    probe(surface, "small pole - splitter north", small, { "splitter", d.north }),
+    probe(surface, "small pole - inserter north", small, { "inserter", d.north }),
+    probe(surface, "small pole - medium pole", small, medium),
   }
   helpers.write_file("face-wire-reach.json", helpers.table_to_json({ game_version = helpers.game_version, range = RANGE, cases = cases }))
 end

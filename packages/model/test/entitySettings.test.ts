@@ -25,6 +25,9 @@ const OWN_TYPES: Readonly<Record<string, string | undefined>> = {
   "electric-pole": undefined,
 };
 
+/** Defaults the reference states and the game has otherwise, as the test below finds them. */
+const REFERENCE_DIFFERS: readonly string[] = ["asteroid-collector.include-hands: false by the reference"];
+
 const generic = (prototype: string): EntityShape => ({ kind: "entity", prototype });
 const types = [...new Set(entityTable().entities.map((prototype) => prototype.type))].sort();
 const genericTypes = types.filter((type) => !Object.hasOwn(OWN_TYPES, type));
@@ -115,27 +118,31 @@ describe("the settings table", () => {
     }
   });
 
-  it("has the defaults the reference states; a default it does not state is marked as assumed", () => {
+  it("has the defaults the reference states, but for the ones the game itself has otherwise", () => {
+    // The table has what the game says (fixture F-01, held against it by packages/blueprints/test/game.test.ts). Where the
+    // reference at hand (2.1.23) states another default, the game (2.1.24) wins; these are the differences.
+    const differing: string[] = [];
     for (const type of genericTypes) {
       const row = ENTITY_SETTINGS[type]!;
       const fields = fieldsOf(row.behavior);
       for (const spec of row.settings) {
         const where = `${type}.${spec.key}`;
         const stated = fields.get(spec.field)!.default;
-        if (spec.type === "boolean") {
-          if (stated === undefined) expect(spec.assumed, where).toBe(true);
-          else expect(String(spec.default), where).toBe(stated);
+        if (spec.type === "boolean" && stated !== undefined && String(spec.default) !== stated) differing.push(`${where}: ${stated} by the reference`);
+        if (spec.type === "condition") {
+          // The reference states no default for the flag of a wall, which the game has on.
+          const flag = fields.get(spec.flag)!.default;
+          if (flag === undefined) expect(spec.flagOnByDefault === true, where).toBe(type === "wall");
+          else if (flag !== String(spec.flagOnByDefault ?? false)) differing.push(`${where}: ${spec.flag} ${flag} by the reference`);
         }
-        if (spec.type === "condition") expect(fields.get(spec.flag)!.default ?? "false", where).toBe("false");
         if (spec.type === "enum") {
-          // The numbers of a define are in no source at hand.
-          expect(spec.assumed, where).toBe(true);
           const flagDefault = spec.flag && fields.get(spec.flag.field)!.default;
           if (spec.flag && flagDefault === "false") expect(spec.default, where).toBe(spec.flag.off);
           if (!spec.flag && stated !== undefined) expect([spec.default, `send-${spec.default}`], where).toContain(stated.replace(/^.*\./, "").replace(/_/g, "-"));
         }
       }
     }
+    expect(differing).toEqual(REFERENCE_DIFFERS);
   });
 
   it("writes the words of an enum as the game names its values", () => {
@@ -150,7 +157,8 @@ describe("the settings table", () => {
         expect(valued, where).toHaveLength(values.length);
         // The fluid box's values are `send_contents` and `send_segment_contents`; the word leaves the verb to the property.
         for (const { word } of valued) expect(values.filter((value) => [word, `send-${word}`].includes(value.replace(/_/g, "-"))), `${where} = ${word}`).toHaveLength(1);
-        expect(valued.map((entry) => entry.value), where).toEqual(valued.map((_, index) => index));
+        // The numbers are the game's (fixture F-01): one after the other from 0, the modes of a radar from 1.
+        expect(valued.map((entry) => entry.value), where).toEqual(valued.map((_, index) => index + (type === "radar" ? 1 : 0)));
         expect(spec.values.some((entry) => entry.word === spec.default), where).toBe(true);
         expect(spec.values.filter((entry) => entry.value === undefined).map((entry) => entry.word), where).toEqual(spec.flag ? [spec.flag.off] : []);
         if (spec.booleans) for (const word of spec.booleans) expect(spec.values.some((entry) => entry.word === word), where).toBe(true);

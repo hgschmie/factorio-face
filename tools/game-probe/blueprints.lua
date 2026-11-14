@@ -1,29 +1,18 @@
 -- Scenario run headless by tools/game-probe/blueprints.mjs via `factorio --test-scenario`. The tool puts one line in front of
--- this file that defines CASES_JSON: the cases of tools/game-probe/lib/blueprintCases.ts as JSON. For every case the game
+-- this file that defines CASES_JSON: what tools/game-probe/lib/blueprintCases.ts asks for, as JSON. For every case the game
 --   1. imports the blueprint string this project exported and exports it again (what its own parser kept of it),
 --   2. builds that blueprint, revives the ghosts, and exports a new blueprint of what stands there,
 --   3. builds the same circuit from the runtime API alone, without a blueprint of ours, and exports that.
--- It also exports every supported entity as it is placed, untouched, and records the numbers behind the defines a blueprint uses,
--- those of the enums of the generic entities among them.
+-- For every prototype of the editor it also records the entity as it is placed (as a blueprint, and every setting as its control
+-- behaviour has it), what becomes of each of the sixteen directions, and it records the numbers behind the defines a blueprint
+-- uses, those of the enums of the generic entities among them. A space platform is made for the hub, which stands nowhere else.
 -- Everything goes to script-output/face-blueprints.json. A step that fails is recorded with its error and the rest goes on.
 
 local OUTPUT = "face-blueprints.json"
 local ERROR_OUTPUT = "face-blueprints-error.txt"
 local HALF = 64
 local AREA = { { -HALF, -HALF }, { HALF, HALF } }
--- Every prototype of the editor: the ten with a kind of their own, then the generic ones (the entity table of packages/model).
-local FRESH = {
-  "constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "small-electric-pole", "medium-electric-pole", "big-electric-pole",
-  "substation", "programmable-speaker", "accumulator", "active-provider-chest", "agricultural-tower", "artillery-turret", "assembling-machine-1", "assembling-machine-2",
-  "assembling-machine-3", "asteroid-collector", "big-mining-drill", "biochamber", "biolab", "blue-chest", "boiler", "bottomless-chest", "buffer-chest", "bulk-inserter", "burner-inserter",
-  "burner-mining-drill", "cargo-landing-pad", "centrifuge", "chemical-plant", "crash-site-chest-1", "crash-site-chest-2", "crusher", "cryogenic-plant", "display-panel", "electric-furnace",
-  "electric-mining-drill", "electromagnetic-plant", "express-loader", "express-splitter", "express-transport-belt", "fast-inserter", "fast-loader", "fast-splitter", "fast-transport-belt",
-  "flamethrower-turret", "foundry", "gun-turret", "heat-exchanger", "heat-pipe", "heating-tower", "infinity-chest", "infinity-pipe", "inserter", "iron-chest", "lab", "land-mine",
-  "laser-turret", "linked-chest", "loader", "long-handed-inserter", "nuclear-reactor", "offshore-pump", "oil-refinery", "passive-provider-chest", "pipe", "pipe-to-ground", "power-switch",
-  "proxy-container", "pump", "pumpjack", "radar", "rail-chain-signal", "rail-signal", "railgun-turret", "recycler", "red-chest", "requester-chest", "roboport", "rocket-silo",
-  "rocket-turret", "space-platform-hub", "splitter", "stack-inserter", "steel-chest", "steel-furnace", "stone-furnace", "stone-wall", "storage-chest", "storage-tank", "tesla-turret",
-  "train-stop", "transport-belt", "turbo-loader", "turbo-splitter", "turbo-transport-belt", "wooden-chest",
-}
+local HUB = "space-platform-hub"
 -- Each fresh entity has a cell of this many tiles to itself (the rocket silo covers nine), this many cells to a row.
 local FRESH_CELL = 10
 local FRESH_COLUMNS = 12
@@ -50,10 +39,27 @@ local function prepare(surface)
   surface.set_tiles(tiles)
 end
 
+-- Everything goes but the hub of a space platform: the platform is gone with it.
 local function clear(surface)
   for _, entity in pairs(surface.find_entities()) do
-    if entity.valid then entity.destroy() end
+    if entity.valid and entity.name ~= HUB then entity.destroy() end
   end
+end
+
+-- A space platform with its hub, which the game places nowhere else, and a floor around it. Each one has a hub that nothing has touched yet.
+local function new_platform(name)
+  local platform = game.forces.player.create_space_platform({ name = name, planet = "nauvis", starter_pack = "space-platform-starter-pack" })
+  if not platform then error("the game made no space platform") end
+  platform.apply_starter_pack()
+  local surface, hub = platform.surface, platform.hub
+  if not surface or not hub then error("the space platform has no surface or no hub") end
+  local tiles = {}
+  for x = -24, 23 do
+    for y = -24, 23 do tiles[#tiles + 1] = { name = "space-platform-foundation", position = { hub.position.x + x, hub.position.y + y } } end
+  end
+  surface.set_tiles(tiles)
+  clear(surface)
+  return { surface = surface, hub = hub }
 end
 
 -- The blueprint string of everything that stands in the area.
@@ -118,11 +124,19 @@ local function set_behavior(entity, assignments)
   end
 end
 
--- One entity of a case, placed and set through the runtime API.
-local function build_native(surface, spec)
+-- One entity of a case, placed and set through the runtime API. `offset` moves the case to where the hub of a platform stands,
+-- which is the one entity that is there before the case. A wall has a connection point and a control behaviour only while a gate
+-- stands next to it: the gate is built below it and named in `helpers`, because it is in the blueprint the game then makes.
+local function build_native(place, spec, offset, helpers)
   local direction = spec.direction and defines.direction[spec.direction] or nil
-  local entity = surface.create_entity({ name = spec.name, position = spec.position, direction = direction, force = "player" })
+  local position = { x = spec.position.x + offset.x, y = spec.position.y + offset.y }
+  local entity = spec.name == HUB and place.hub or place.surface.create_entity({ name = spec.name, position = position, direction = direction, force = "player" })
   if not entity then error("cannot place " .. spec.name) end
+  if entity.type == "wall" then
+    local gate = place.surface.create_entity({ name = "gate", position = { position.x, position.y + 1 }, direction = defines.direction.north, force = "player" })
+    if not gate then error("cannot place a gate next to " .. spec.name) end
+    helpers[#helpers + 1] = gate.name
+  end
   if spec.description then entity.combinator_description = spec.description end
   if spec.constant then set_constant(entity, spec.constant) end
   if spec.parameters then entity.get_or_create_control_behavior().parameters = spec.parameters end
@@ -132,7 +146,22 @@ local function build_native(surface, spec)
   return entity
 end
 
-local function record_case(surface, case)
+local function hub_of(entities)
+  for index, entity in ipairs(entities) do
+    if entity.name == HUB then return index, entity end
+  end
+end
+
+-- Builds the blueprint of the stack. A blueprint with the hub of a space platform is not built where it is told to: its
+-- positions are taken as they are, the hub being the one that stands at (0, 0) of every platform, whose settings the game takes
+-- from the blueprint. Returns the ghosts and the number of entities of the blueprint that stood there before.
+local function build_blueprint(stack, place)
+  local ghosts = stack.build_blueprint({ surface = place.surface, force = "player", position = { 0, 0 }, build_mode = defines.build_mode.forced })
+  return ghosts, (place.hub and hub_of(stack.get_blueprint_entities() or {})) and 1 or 0
+end
+
+-- `places` are where the steps "build" and "native" happen: the plain surface twice, or two platforms, so that the hub of each is untouched.
+local function record_case(places, case)
   local out = { label = case.label, sent = case.string, errors = {} }
   local function step(name, action)
     local ok, err = pcall(action)
@@ -145,49 +174,70 @@ local function record_case(surface, case)
     out.reexported = inventory[1].export_stack()
   end)
 
-  clear(surface)
+  local place = places.build
+  clear(place.surface)
   step("build", function()
-    local ghosts = inventory[1].build_blueprint({ surface = surface, force = "player", position = { 0, 0 }, build_mode = defines.build_mode.forced })
-    out.ghosts = #ghosts
-    out.revived = 0
+    local ghosts, standing = build_blueprint(inventory[1], place)
+    -- What the blueprint has and the game did not build here is named: an offshore pump away from water, a mining drill without ore.
+    local unbuilt = {}
+    for _, record in ipairs(inventory[1].get_blueprint_entities() or {}) do unbuilt[record.name] = (unbuilt[record.name] or 0) + 1 end
+    if standing > 0 then unbuilt[HUB] = nil end
+    out.ghosts, out.revived, out.standing = #ghosts, 0, standing
     for _, ghost in pairs(ghosts) do
       if ghost.valid and ghost.type == "entity-ghost" then
+        local name = ghost.ghost_name
         local _, revived = ghost.revive()
-        if revived then out.revived = out.revived + 1 end
+        if revived then
+          out.revived = out.revived + 1
+          unbuilt[name] = unbuilt[name] > 1 and unbuilt[name] - 1 or nil
+        end
       end
     end
-    out.rebuilt = blueprint_of(surface, inventory[2])
+    out.unbuilt = {}
+    for name in pairs(unbuilt) do out.unbuilt[#out.unbuilt + 1] = name end
+    table.sort(out.unbuilt)
+    out.rebuilt = blueprint_of(place.surface, inventory[2])
   end)
+  clear(place.surface)
 
-  clear(surface)
+  place = places.native
+  clear(place.surface)
+  out.helpers = {}
   step("native", function()
     local built = {}
+    local _, hub_spec = hub_of(case.entities)
+    local offset = (place.hub and hub_spec) and { x = place.hub.position.x - hub_spec.position.x, y = place.hub.position.y - hub_spec.position.y } or { x = 0, y = 0 }
     for index, spec in ipairs(case.entities) do
-      local ok, result = pcall(build_native, surface, spec)
+      local ok, result = pcall(build_native, place, spec, offset, out.helpers)
       if not ok then error("entity " .. index .. " (" .. spec.name .. "): " .. tostring(result)) end
       built[index] = result
     end
-    for _, wire in ipairs(case.wires) do
-      local from = built[wire[1]].get_wire_connector(defines.wire_connector_id[wire[2]], true)
-      local to = built[wire[3]].get_wire_connector(defines.wire_connector_id[wire[4]], true)
-      if not from.connect_to(to, false) then error("no wire from entity " .. wire[1] .. " " .. wire[2] .. " to entity " .. wire[3] .. " " .. wire[4]) end
+    local function connector(index, id)
+      local entity = built[index]
+      local found = entity.get_wire_connector(defines.wire_connector_id[id], true)
+      if not found then error("entity " .. index .. " (" .. entity.name .. ") has no connector " .. id) end
+      return found
     end
-    out.native = blueprint_of(surface, inventory[2])
+    for _, wire in ipairs(case.wires) do
+      local connected = connector(wire[1], wire[2]).connect_to(connector(wire[3], wire[4]), false)
+      if not connected then error("no wire from entity " .. wire[1] .. " " .. wire[2] .. " to entity " .. wire[3] .. " " .. wire[4]) end
+    end
+    out.native = blueprint_of(place.surface, inventory[2])
   end)
+  clear(place.surface)
 
-  clear(surface)
   inventory.destroy()
   return out
 end
 
--- Every supported entity as the game places it, each on a cell of its own. `touch` also gives each its control behaviour, as a
--- first wire does. A prototype the game does not place here (it wants rails, water or a space platform under it) is left out;
--- the tests of packages/blueprints name the ones that are missing from the recording.
-local function record_fresh(surface, touch)
+-- Every prototype as the game places it, each on a cell of its own, as one blueprint. `touch` also gives each its control
+-- behaviour, as a first wire does. A prototype that is missing from the blueprint is one the game does not place here (the hub
+-- of a space platform) or does not put into a blueprint.
+local function record_fresh(surface, names, touch)
   clear(surface)
-  for index, name in ipairs(FRESH) do
+  for index, name in ipairs(names) do
     local proto = prototypes.entity[name]
-    if proto then
+    if proto and name ~= HUB then
       local column, row = (index - 1) % FRESH_COLUMNS, math.floor((index - 1) / FRESH_COLUMNS)
       local position = { x = (column - FRESH_COLUMNS / 2) * FRESH_CELL + proto.tile_width / 2, y = (row - 5) * FRESH_CELL + proto.tile_height / 2 }
       local ok, entity = pcall(surface.create_entity, { name = name, position = position, force = "player" })
@@ -201,16 +251,99 @@ local function record_fresh(surface, touch)
   return text
 end
 
+-- The hub of a platform nothing has touched, as a blueprint.
+local function record_fresh_hub(place, touch)
+  if touch then place.hub.get_or_create_control_behavior() end
+  local inventory = game.create_inventory(1)
+  local text = blueprint_of(place.surface, inventory[1])
+  inventory.destroy()
+  return text
+end
+
+-- A constant combinator whose sections were all removed, as a blueprint. The editor writes no such combinator (one without
+-- sections there is the one the game places, with its empty section), so no case has it.
+local function record_without_sections(surface)
+  clear(surface)
+  local entity = surface.create_entity({ name = "constant-combinator", position = { 0.5, 0.5 }, force = "player" })
+  set_constant(entity, { enabled = true, sections = {} })
+  local inventory = game.create_inventory(1)
+  local text = blueprint_of(surface, inventory[1])
+  inventory.destroy()
+  clear(surface)
+  return text
+end
+
 local function numbers(values)
   local out = {}
   for name, value in pairs(values) do out[name] = value end
   return out
 end
 
+-- What the control behaviour of a new entity says for every setting of the editor: `attributes` are { field, attribute } pairs. A
+-- signal that is not set is left out; an attribute the game does not have is in `errors`.
+local function read_defaults(entity, attributes)
+  local out = { values = {}, errors = {} }
+  local behavior = entity.get_or_create_control_behavior()
+  if not behavior then return { values = {}, errors = { control_behavior = "none" } } end
+  for _, pair in ipairs(attributes) do
+    local ok, value = pcall(function() return behavior[pair.attribute] end)
+    if not ok then out.errors[pair.field] = tostring(value)
+    elseif type(value) == "table" and value.condition ~= nil then out.values[pair.field] = value.condition
+    else out.values[pair.field] = value end
+  end
+  return out
+end
+
+-- The direction of the one entity in the blueprint string of a stack, as the game writes it: north when it writes none, -1 without an entity.
+local function exported_direction(stack)
+  if not stack.is_blueprint_setup() then return -1 end
+  local written = helpers.json_to_table(helpers.decode_string(string.sub(stack.export_stack(), 2)))
+  local entity = written and written.blueprint and written.blueprint.entities and written.blueprint.entities[1]
+  return entity and (entity.direction or 0) or -1
+end
+
+-- What becomes of each of the sixteen directions of one prototype: in the string of a blueprint that is given the direction
+-- (`blueprint`), on the entity the game builds from that blueprint (`built`), in the string of a blueprint the game makes of
+-- that entity (`exported`), and on an entity created with the direction (`created`). -1: there is no such blueprint or entity,
+-- because the game does not put the prototype into a blueprint or does not build it here.
+local function read_directions(surface, name)
+  local proto = prototypes.entity[name]
+  local out = { supports_direction = proto.supports_direction, blueprint = {}, built = {}, exported = {}, created = {} }
+  local inventory = game.create_inventory(2)
+  local stack = inventory[1]
+  local position = { x = proto.tile_width / 2, y = proto.tile_height / 2 }
+  for direction = 0, 15 do
+    local slot = direction + 1
+    out.blueprint[slot], out.built[slot], out.exported[slot], out.created[slot] = -1, -1, -1, -1
+    clear(surface)
+    pcall(function()
+      stack.set_stack({ name = "blueprint" })
+      stack.set_blueprint_entities({ { entity_number = 1, name = name, position = position, direction = direction } })
+      out.blueprint[slot] = exported_direction(stack)
+      for _, ghost in pairs(stack.build_blueprint({ surface = surface, force = "player", position = { 0, 0 }, build_mode = defines.build_mode.forced })) do
+        local _, revived = ghost.revive()
+        if revived then
+          out.built[slot] = revived.direction
+          inventory[2].set_stack({ name = "blueprint" })
+          inventory[2].create_blueprint({ surface = surface, force = "player", area = AREA })
+          out.exported[slot] = exported_direction(inventory[2])
+        end
+      end
+    end)
+    clear(surface)
+    local ok, entity = pcall(surface.create_entity, { name = name, position = position, direction = direction, force = "player" })
+    if ok and entity then out.created[slot] = entity.direction end
+  end
+  clear(surface)
+  inventory.destroy()
+  return out
+end
+
 local function run()
-  local cases = helpers.json_to_table(CASES_JSON)
+  local request = helpers.json_to_table(CASES_JSON)
   local surface = game.create_surface("face-blueprints")
   prepare(surface)
+  local plain = { surface = surface }
   local out = {
     game_version = helpers.game_version,
     active_mods = script.active_mods,
@@ -221,17 +354,60 @@ local function run()
       lamp_color_mode = numbers(defines.control_behavior.lamp.color_mode),
     },
     fresh = {},
+    defaults = {},
+    directions = {},
     cases = {},
+    errors = {},
   }
   for name, path in pairs(ENUM_DEFINES) do
     local ok, values = pcall(function() return defines.control_behavior[path[1]][path[2]] end)
     if ok and values then out.defines[name] = numbers(values) end
   end
-  for _, variant in ipairs({ { key = "placed", touch = false }, { key = "with_control_behavior", touch = true } }) do
-    local ok, result = pcall(record_fresh, surface, variant.touch)
-    out.fresh[variant.key] = ok and { string = result } or { error = tostring(result) }
+
+  -- Three platforms: one whose hub stays as it is placed until the blueprints of the cases are built on it, one for the circuits
+  -- built through the runtime API, one whose hub gives its defaults.
+  local platforms = {}
+  for _, key in ipairs({ "build", "native", "defaults" }) do
+    local ok, result = pcall(new_platform, "face-blueprints-" .. key)
+    if ok then platforms[key] = result else out.errors[#out.errors + 1] = "space platform (" .. key .. "): " .. tostring(result) end
   end
-  for _, case in ipairs(cases) do out.cases[#out.cases + 1] = record_case(surface, case) end
+
+  local names = {}
+  for index, prototype in ipairs(request.prototypes) do names[index] = prototype.name end
+  for _, variant in ipairs({ { key = "placed", touch = false }, { key = "with_control_behavior", touch = true } }) do
+    local ok, result = pcall(record_fresh, surface, names, variant.touch)
+    out.fresh[variant.key] = ok and { string = result } or { error = tostring(result) }
+    if platforms.build then
+      ok, result = pcall(record_fresh_hub, platforms.build, variant.touch)
+      out.fresh[variant.key .. "_on_platform"] = ok and { string = result } or { error = tostring(result) }
+    end
+  end
+
+  local ok, result = pcall(record_without_sections, surface)
+  out.states = { constant_without_sections = ok and { string = result } or { error = tostring(result) } }
+
+  for _, prototype in ipairs(request.prototypes) do
+    local name = prototype.name
+    if name == HUB then
+      if platforms.defaults then out.defaults[name] = read_defaults(platforms.defaults.hub, prototype.attributes) end
+    else
+      clear(surface)
+      local ok, entity = pcall(surface.create_entity, { name = name, position = { 0, 0 }, force = "player" })
+      if ok and entity and #prototype.attributes > 0 then out.defaults[name] = read_defaults(entity, prototype.attributes) end
+      local done, result = pcall(read_directions, surface, name)
+      if done then out.directions[name] = result else out.errors[#out.errors + 1] = "directions of " .. name .. ": " .. tostring(result) end
+    end
+  end
+  clear(surface)
+
+  for _, case in ipairs(request.cases) do
+    local on_platform = case.surface == "platform"
+    if on_platform and not (platforms.build and platforms.native) then
+      out.cases[#out.cases + 1] = { label = case.label, sent = case.string, errors = { "no space platform to build on" } }
+    else
+      out.cases[#out.cases + 1] = record_case(on_platform and platforms or { build = plain, native = plain }, case)
+    end
+  end
   helpers.write_file(OUTPUT, helpers.table_to_json(out))
 end
 

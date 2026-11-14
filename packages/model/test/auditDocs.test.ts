@@ -25,8 +25,18 @@ function fieldCell(field: string, specs: readonly SettingSpec[], stated: string 
   if (own.length === 0 && flagged.length === 0) return `${code(field)}: kept only`;
   if (own.length === 0) return `${code(field)}: in use of ${flagged.map((spec) => code(word(spec))).join(", ")}`;
   const spec = own[0]!;
-  const source = stated !== undefined ? `api default ${code(stated)}` : spec.type === "signal" ? (spec.prototypeDefault === undefined ? "no default" : `default ${code(`default_${spec.prototypeDefault}_signal`)} [data]`) : spec.type === "networks" ? "both [api]" : spec.type === "condition" ? "blank" : "default assumed";
-  const numbers = spec.type === "enum" ? `; ${spec.values.filter((entry) => entry.value !== undefined).map((entry) => `${entry.word} ${entry.value}`).join(", ")} assumed` : "";
+  // Every default is the one of the game (fixture F-01). `[api]`: the reference states the same; `[api: x]`: it states another.
+  const plain = (value: string): string => value.replace(/^defines\..*\./, "").replace(/_/g, "-").replace(/^send-/, "");
+  const agrees = (ours: string): string => (stated === undefined ? "[game]" : plain(stated) === ours ? "[api]" : `[api: ${code(stated)}]`);
+  const source =
+    spec.type === "boolean" ? `default ${code(String(spec.default))} ${agrees(String(spec.default))}`
+    : spec.type === "enum" ? `default ${code(spec.default)} ${spec.flag ? "[game]" : agrees(spec.default)}`
+    : spec.type === "signal" ? (spec.prototypeDefault === undefined ? "no default" : `default ${code(`default_${spec.prototypeDefault}_signal`)} [data]`)
+    : spec.type === "networks" ? "both [api]"
+    : spec.gameDefault ? `in a blueprint without it ${code(`${spec.gameDefault.first!.name} ${spec.gameDefault.comparator} 0`)} [game]`
+    : spec.flagOnByDefault ? "blank, its flag on [game]"
+    : "blank";
+  const numbers = spec.type === "enum" ? `; ${spec.values.filter((entry) => entry.value !== undefined).map((entry) => `${entry.word} ${entry.value}`).join(", ")} [game]` : "";
   return `${code(field)}: ${code(word(spec))} (${spec.type}; ${source}${numbers})`;
 }
 

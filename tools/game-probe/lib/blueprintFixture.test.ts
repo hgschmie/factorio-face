@@ -1,18 +1,21 @@
-// The parts of the blueprint probe that run without the game: the cases it sends, the scenario it composes and the fixture it
+// The parts of the blueprint probe that run without the game: what it sends, the scenario it composes and the fixture it
 // builds from a recording. The libraries are plain .mjs, loaded as in tools/catalog.
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { ENTITY_SETTINGS, PROTOTYPE_NAMES, PROTOTYPES, STANDARD_ENTITY_TABLE } from "@face/model";
+import { ENTITY_SETTINGS, PROTOTYPE_NAMES, PROTOTYPES, settingFields, STANDARD_ENTITY_TABLE } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { encodeBlueprintString } from "../../../packages/blueprints/src/index.ts";
 import { defineGroup, enumSettings } from "../../../packages/blueprints/test/gameNames.ts";
-import { GENERIC_SAMPLES, SAMPLES } from "../../../packages/blueprints/test/samples.ts";
-import { probeCases, type ProbeCase } from "./blueprintCases.ts";
+import { GENERIC_SAMPLES, NOT_HELD, SAMPLES } from "../../../packages/blueprints/test/samples.ts";
+import { probeCases, probePrototypes, probeRequest, type ProbeRequest } from "./blueprintCases.ts";
 
 interface Exported { string: string; blueprint: unknown }
-interface FixtureCase { label: string; importResult?: number; ghosts?: number; revived?: number; errors: string[]; sent: Exported; reexported?: Exported; rebuilt?: Exported; native?: Exported }
-interface Fixture { id: string; covers: string[]; gameVersion: string; activeMods: string[]; defines: Record<string, Record<string, number>>; fresh: Record<string, Exported | { error: string }>; cases: FixtureCase[] }
+interface FixtureCase { label: string; importResult?: number; ghosts?: number; revived?: number; standing?: number; unbuilt?: string[]; helpers?: string[]; errors: string[]; sent: Exported; reexported?: Exported; rebuilt?: Exported; native?: Exported }
+interface Fixture {
+  id: string; covers: string[]; gameVersion: string; activeMods: string[]; errors: string[]; defines: Record<string, Record<string, number>>; fresh: Record<string, Exported | { error: string }>;
+  states: Record<string, Exported | { error: string }>; defaults: Record<string, Record<string, unknown>>; directions: Record<string, Record<string, unknown>>; cases: FixtureCase[];
+}
 
 const { buildFixture, decodeString, fixtureErrors, serialiseFixture } = (await import(/* @vite-ignore */ new URL("./blueprintFixture.mjs", import.meta.url).href)) as {
   buildFixture(recording: unknown, source: string): Fixture;
@@ -20,9 +23,9 @@ const { buildFixture, decodeString, fixtureErrors, serialiseFixture } = (await i
   fixtureErrors(fixture: Fixture): string[];
   serialiseFixture(fixture: Fixture): string;
 };
-const { composeScenario, loadCases } = (await import(/* @vite-ignore */ new URL("./blueprintScenario.mjs", import.meta.url).href)) as {
-  composeScenario(cases: unknown): string;
-  loadCases(workDir: string): Promise<ProbeCase[]>;
+const { composeScenario, loadRequest } = (await import(/* @vite-ignore */ new URL("./blueprintScenario.mjs", import.meta.url).href)) as {
+  composeScenario(request: unknown): string;
+  loadRequest(workDir: string): Promise<ProbeRequest>;
 };
 
 const lamp = { blueprint: { entities: [{ entity_number: 1, name: "small-lamp", position: { x: 0.5, y: 0.5 } }], item: "blueprint", version: 562954249961472 } };
@@ -34,9 +37,13 @@ const recording = {
   game_version: "2.1.24",
   active_mods: { "space-age": "2.1.24", base: "2.1.24" },
   defines: { wire_connector_id: { circuit_green: 2, pole_copper: 5, circuit_red: 1, combinator_input_red: 1 }, direction: { south: 8, north: 0 } },
-  fresh: { placed: { string: lampString }, with_control_behavior: { error: "cannot place small-lamp" } },
+  fresh: { placed: { string: lampString }, with_control_behavior: { error: "cannot place small-lamp" }, placed_on_platform: { string: poleString } },
+  states: { constant_without_sections: { string: lampString } },
+  defaults: { pump: { values: { set_filter: false, circuit_enable_disable: false }, errors: {} }, accumulator: { values: {}, errors: { read_charge: "no such attribute" } } },
+  directions: { "small-lamp": { supports_direction: false, blueprint: [0, 0], built: [0, 0], exported: [0, 0], created: [0, -1] } },
+  errors: {},
   cases: [
-    { label: "lamps", sent: lampString, import_result: 0, reexported: lampString, ghosts: 1, revived: 1, rebuilt: lampString, native: poleString, errors: {} },
+    { label: "lamps", sent: lampString, import_result: 0, reexported: lampString, ghosts: 1, revived: 1, standing: 0, unbuilt: {}, rebuilt: lampString, helpers: ["gate"], native: poleString, errors: {} },
     { label: "poles", sent: poleString, import_result: 0, reexported: poleString, errors: ["build: boom", "native: entity 1 (substation): bang"] },
   ],
 };
@@ -50,12 +57,25 @@ describe("blueprint probe: the fixture", () => {
   it("holds every blueprint as its string and its JSON, and keeps what the game could not do", () => {
     const fixture = buildFixture(recording, "test");
     expect(fixture).toMatchObject({ id: "F-01-blueprints", covers: ["F-01", "F-02", "F-23"], gameVersion: "2.1.24", activeMods: ["base", "space-age"], source: "test" });
-    expect(fixture.fresh).toEqual({ placed: { string: lampString, blueprint: lamp }, withControlBehavior: { error: "cannot place small-lamp" } });
+    expect(fixture.fresh).toEqual({
+      placed: { string: lampString, blueprint: lamp }, withControlBehavior: { error: "cannot place small-lamp" }, placedOnPlatform: { string: poleString, blueprint: pole }, withControlBehaviorOnPlatform: { error: "not recorded" },
+    });
+    expect(fixture.states).toEqual({ constantWithoutSections: { string: lampString, blueprint: lamp } });
     expect(fixture.cases[0]).toEqual({
-      label: "lamps", importResult: 0, ghosts: 1, revived: 1, errors: [], sent: { string: lampString, blueprint: lamp }, reexported: { string: lampString, blueprint: lamp }, rebuilt: { string: lampString, blueprint: lamp }, native: { string: poleString, blueprint: pole },
+      label: "lamps", importResult: 0, ghosts: 1, revived: 1, standing: 0, unbuilt: [], helpers: ["gate"], errors: [], sent: { string: lampString, blueprint: lamp }, reexported: { string: lampString, blueprint: lamp }, rebuilt: { string: lampString, blueprint: lamp }, native: { string: poleString, blueprint: pole },
     });
     expect(fixture.cases[1]).toEqual({ label: "poles", importResult: 0, errors: ["build: boom", "native: entity 1 (substation): bang"], sent: { string: poleString, blueprint: pole }, reexported: { string: poleString, blueprint: pole } });
-    expect(fixtureErrors(fixture)).toEqual(["fresh withControlBehavior: cannot place small-lamp", "poles: build: boom", "poles: native: entity 1 (substation): bang"]);
+    expect(fixtureErrors(fixture)).toEqual([
+      "defaults of accumulator: read_charge: no such attribute", "fresh withControlBehavior: cannot place small-lamp", "fresh withControlBehaviorOnPlatform: not recorded", "poles: build: boom", "poles: native: entity 1 (substation): bang",
+    ]);
+  });
+
+  it("holds the defaults and the directions per prototype, in the order of the names", () => {
+    const fixture = buildFixture(recording, "test");
+    expect(Object.entries(fixture.defaults)).toEqual([["accumulator", {}], ["pump", { circuit_enable_disable: false, set_filter: false }]]);
+    expect(Object.keys(fixture.defaults.pump!)).toEqual(["circuit_enable_disable", "set_filter"]);
+    expect(fixture.directions).toEqual({ "small-lamp": { supportsDirection: false, blueprint: [0, 0], built: [0, 0], exported: [0, 0], created: [0, -1] } });
+    expect(buildFixture({ ...recording, errors: ["space platform (build): no"] }, "test").errors).toEqual(["space platform (build): no", "defaults of accumulator: read_charge: no such attribute"]);
   });
 
   it("puts the defines in the order of their numbers", () => {
@@ -112,9 +132,11 @@ describe("blueprint probe: what the game is sent", () => {
       constant: { enabled: false, sections: [{ active: true, multiplier: 1, filters: [{ value: { type: "virtual", name: "signal-B", quality: "normal", comparator: "=" }, min: 1 }] }] },
     });
     expect(entity("constant combinators", 0).constant!.sections[0]!.filters[0]).toEqual({ value: { type: "item", name: "iron-plate", quality: "normal", comparator: "=" }, min: 5 });
-    expect(entity("constant combinators", 4).constant).toEqual({ enabled: true, sections: [] });
+    // One without sections in the editor is the combinator the game places, with its one empty section.
+    expect(entity("constant combinators", 4).constant).toEqual({ enabled: true, sections: [{ active: true, multiplier: 1, filters: [] }] });
     expect(entity("arithmetic combinators, first half of the operations", 0).parameters).toEqual({ first_signal: { type: "virtual", name: "signal-B" }, second_constant: 2, operation: "*", output_signal: { type: "virtual", name: "signal-A" } });
-    expect(entity("arithmetic combinators, first half of the operations", 6)).toEqual({ name: "arithmetic-combinator", position: { x: 5, y: 2.5 }, direction: "east" });
+    expect(entity("arithmetic combinators, first half of the operations", 8)).toEqual({ name: "arithmetic-combinator", position: { x: 1, y: 4.5 }, direction: "east", parameters: { first_constant: 0, second_constant: 0, operation: "*" } });
+    expect(entity("decider combinators", 9).parameters).toEqual({ conditions: [{}], outputs: [{}], else_outputs: [] });
     expect(entity("decider combinators", 4).parameters).toEqual({
       conditions: [{ first_signal: { type: "virtual", name: "signal-A" }, constant: 1, comparator: "=" }], outputs: [{ signal: { type: "virtual", name: "signal-A" }, copy_count_from_input: false }], else_outputs: [],
     });
@@ -143,17 +165,18 @@ describe("blueprint probe: what the game is sent", () => {
     expect(splitter!.behavior!.map((assignment) => assignment.attribute)).toEqual(["set_input_side", "input_left_condition", "input_right_condition", "set_output_side", "output_left_condition", "output_right_condition", "input_networks", "set_filter"]);
     // An entity without settings has nothing to assign.
     const panel = cases.flatMap((entry) => entry.entities).find((entity) => entity.name === "display-panel")!;
-    expect(panel).toEqual({ name: "display-panel", position: panel.position });
+    expect(panel).toEqual({ name: "display-panel", position: panel.position, direction: "east" });
   });
 
   it("sends every generic sample with every setting of its prototype, every mode by its define", () => {
-    const generic = cases.filter((entry) => entry.label.startsWith("generic entities"));
-    expect(generic.map((entry) => entry.label)).toEqual(GENERIC_SAMPLES.map(([label]) => label));
+    const labels = GENERIC_SAMPLES.map(([label]) => label);
+    const generic = cases.filter((entry) => labels.includes(entry.label));
+    expect(generic.map((entry) => entry.label)).toEqual(labels);
     const modes = new Set(enumSettings().map(({ spec }) => spec.field));
     for (const entity of generic.flatMap((entry) => entry.entities)) {
       if (PROTOTYPES[entity.name]?.kind !== "entity") continue;
       const { settings } = ENTITY_SETTINGS[STANDARD_ENTITY_TABLE.byName.get(entity.name)!.type]!;
-      expect((entity.behavior ?? []).length, entity.name).toBeGreaterThanOrEqual(settings.length);
+      expect((entity.behavior ?? []).length, entity.name).toBeGreaterThanOrEqual(settings.length - (NOT_HELD[entity.name]?.length ?? 0));
       for (const assignment of entity.behavior ?? []) {
         expect(assignment.attribute, entity.name).toMatch(/^[a-z_]+$/);
         expect(assignment.define === undefined ? assignment.value !== undefined : assignment.define.length === 3, `${entity.name} ${assignment.attribute}`).toBe(true);
@@ -164,30 +187,44 @@ describe("blueprint probe: what the game is sent", () => {
     expect(modes.size).toBeGreaterThan(0);
   });
 
-  it("asks the game for every prototype of the editor as it is placed, and for the numbers of every mode", () => {
+  it("asks the game for every prototype of the editor as it is placed, with the attribute of every field of its settings, and for the numbers of every mode", () => {
+    const prototypes = probePrototypes();
+    expect(prototypes.map((prototype) => prototype.name)).toEqual(PROTOTYPE_NAMES);
+    expect(prototypes).toHaveLength(98);
+    for (const { name, attributes } of prototypes) {
+      const row = PROTOTYPES[name]!.kind === "entity" ? ENTITY_SETTINGS[STANDARD_ENTITY_TABLE.byName.get(name)!.type]! : undefined;
+      expect(attributes.map((entry) => entry.field).sort(), name).toEqual([...new Set((row?.settings ?? []).flatMap(settingFields))].sort());
+    }
+    expect(prototypes.find((prototype) => prototype.name === "transport-belt")!.attributes).toContainEqual({ field: "circuit_contents_read_mode", attribute: "read_contents_mode" });
+    expect(prototypes.find((prototype) => prototype.name === "small-lamp")!.attributes).toEqual([]);
     const scenario = readFileSync(new URL("../blueprints.lua", import.meta.url), "utf8");
-    expect(PROTOTYPE_NAMES).toHaveLength(98);
-    for (const name of PROTOTYPE_NAMES) expect(scenario, name).toContain(`"${name}"`);
     for (const { key, define } of enumSettings()) {
       expect(define, key).toBeDefined();
       expect(scenario, key).toContain(`${defineGroup(define!)} = { "${define!.path[0]}", "${define!.path[1]}" }`);
     }
   });
 
+  it("builds a case with the hub of a space platform on a platform, the only place the hub stands", () => {
+    expect(cases.filter((entry) => entry.surface === "platform").map((entry) => entry.label)).toEqual(["generic entities: space platform hub"]);
+    const hub = cases.find((entry) => entry.surface === "platform")!.entities.find((entity) => entity.name === "space-platform-hub")!;
+    // The blueprint is written around the hub, as the game builds it.
+    expect(hub.position).toEqual({ x: 0, y: 0 });
+  });
+
   it("composes the scenario: the cases as one line of ASCII in front of blueprints.lua", () => {
-    const lua = composeScenario([{ label: "café ≥", string: "0eN" }]);
+    const lua = composeScenario({ prototypes: [], cases: [{ label: "café ≥", string: "0eN" }] });
     const [first, second] = lua.split("\n");
-    expect(first).toBe('local CASES_JSON = [==[[{"label":"caf\\u00e9 \\u2265","string":"0eN"}]]==]');
+    expect(first).toBe('local CASES_JSON = [==[{"prototypes":[],"cases":[{"label":"caf\\u00e9 \\u2265","string":"0eN"}]}]==]');
     expect(second).toBe(readFileSync(new URL("../blueprints.lua", import.meta.url), "utf8").split("\n")[0]);
     expect(lua).toContain("helpers.json_to_table(CASES_JSON)");
-    expect(/^[\x00-\x7f]*$/.test(composeScenario(cases))).toBe(true);
+    expect(/^[\x00-\x7f]*$/.test(composeScenario(probeRequest()))).toBe(true);
     expect(() => composeScenario([{ label: "]==]" }])).toThrow("ends the Lua string");
   });
 
-  it("bundles the cases for Node as the tool does, with the same result", async () => {
+  it("bundles the request for Node as the tool does, with the same result", async () => {
     const workDir = mkdtempSync(join(tmpdir(), "face-blueprint-cases-"));
     try {
-      expect(await loadCases(workDir)).toEqual(cases);
+      expect(await loadRequest(workDir)).toEqual(probeRequest());
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }

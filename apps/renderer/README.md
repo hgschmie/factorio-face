@@ -542,8 +542,10 @@ value out of range. Like the name and the modules it is not part of
 the document: not undoable, and a change makes the project dirty.
 
 - The measure is `wireDistance(a, b)` of `@face/model` (`wireReach.ts`): the distance between the nearest points of the two
-  tile footprints (`footprintDistance`), in tiles, 0 for entities that touch. It is the game's rule, verified by fixture F-24
-  (`tests/fixtures/game/F-24-wire-reach.json`). A wire is too long when that distance is greater than the reach
+  selection boxes (`selectionBox`, `boxDistance`), in tiles; the box is the tile footprint for most prototypes, so that such
+  entities are 0 tiles apart when they touch, and a little smaller or larger for 18 (an inserter, a splitter, a small pole).
+  Two electric poles are measured from center to center instead (`wireMeasure`, `WireSpan.measure`). It is the game's rule,
+  verified by fixture F-24 (`tests/fixtures/game/F-24-wire-reach.json`). A wire is too long when that distance is greater than the reach
   (`exceedsWireReach`); exactly the reach is fine. A wire with an end that has no `tile` has no distance, and a wire of an
   entity to itself spans 0, so neither is ever flagged. `formatWireDistance(distance, reach)` is the distance for display: one
   decimal, more where that would hide on which side of the reach it is ("9.01" next to a reach of 9), none for a whole number of tiles ("9", with `tileUnit` for "1 tile"); `formatWireReach(reach)`
@@ -558,12 +560,14 @@ the document: not undoable, and a change makes the project dirty.
   with `data-too-long="true"` and an extra `path.wire-flag` between casing and core, dashes in `--status-warning` (yellow)
   that show on both sides of the core, which keeps the color of the wire. That is neither the solid orange outline of a
   selected wire nor a red wire, and a selected wire that is too long has both. The `<title>` of a wire with a distance ends in
-  `(4 tiles apart)` or `(12.4 tiles apart, over the wire reach of 9)`. Because the layout is rebuilt for every tile of a drag, the flags
+  `(4 tiles apart)` or `(12.4 tiles apart, over the wire reach of 9)`, between two poles `(9 tiles apart from center to center, over the
+  wire reach of a small electric pole, 7.5)` (`describeWireDistance`). Because the layout is rebuilt for every tile of a drag, the flags
   follow the drag: a wire that would become too long at the previewed place is flagged before the drop, one that would become
   fine is not. An entity without a tile shows its wires measured while it is dragged, also over the tiles it stood on, where
   the drop then places it. The edit canvas shows every wire as before, without a distance.
 - The inspector: a selected wire between two different entities that both have a tile shows `section.wire-distance` (in both
-  display modes): how far apart the entities are, "Reach 9" ("Reach unlimited" for 0; the reach that applied, also a pole's own),
+  display modes): how far apart the entities are ("The two entities are 4 tiles apart", between two poles "The two poles are 9 tiles
+  apart from center to center"), "Reach 9" ("Reach unlimited" for 0; the reach that applied, also a pole's own),
   a sentence that says whose reach that is and why (`wireReachNote` in `selectionText.ts`: "The wire reach of a small electric
   pole is 7.5: a pole has its own reach, and a wire spans the smaller reach of its two ends.", and where the project limits a
   wire to a pole that would reach further: "The wire reach of the project is 9. It is the smaller reach of the two ends: a big

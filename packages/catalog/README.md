@@ -51,7 +51,7 @@ All data comes from the game itself. For each of the eight module sets the game 
 
 | Run | Command | Used for |
 | --- | --- | --- |
-| data | `--dump-data` | `data.raw`: icon definitions (`icon`, `icons`, `icon_size`, tint, scale, shift), utility constants; for the entity table the wire distances, collision boxes, tile sizes, flags and default signals |
+| data | `--dump-data` | `data.raw`: icon definitions (`icon`, `icons`, `icon_size`, tint, scale, shift), utility constants; for the entity table the wire distances, collision and selection boxes, tile sizes, flags and default signals |
 | locale | `--dump-prototype-locale` | English display names per prototype type (config `locale=en`) |
 | runtime | `--test-scenario face-catalog-dump --test-ticks 600` | the engine's finalised prototypes |
 
@@ -60,7 +60,8 @@ reads `prototypes.*` on the first tick and writes `script-output/face-runtime-du
 and `order` (recipes and entities inherit them from products and items), computed item weights, `LuaRecipePrototype.hide_from_signal_gui`
 and `LuaAsteroidChunkPrototype.hide_from_signal_gui` / `item_signal_alias` (derived by the engine), `LuaVirtualSignalPrototype.special`,
 `items_to_place_this` of entities, and the rocket silo lift weight. Since 2026-11-14 it also writes `circuit_entities`: for every
-prototype with a wire reach what the entity table needs and `data.raw` lacks or only implies (see "Entity table"). `--test-scenario` is new
+prototype with a wire reach what the entity table needs and `data.raw` lacks or only implies, and for an entity it builds of each whether
+it has a direction (see "Entity table"). `--test-scenario` is new
 in 2.1.24 and runs headless.
 
 Module sets are selected through `mod-list.json` in an isolated mod directory. Dependencies per `info.json`: `elevated-rails -> base`,
@@ -178,7 +179,7 @@ before name). Groups and subgroups without signals (`tiles`, `effects` for the d
 
 ## Entity table
 
-`packages/model/data/entities-2.1.24.json` (14 kB) has the 98 prototypes of the game that a circuit wire connects to, whether or not
+`packages/model/data/entities-2.1.24.json` (15 kB) has the 98 prototypes of the game that a circuit wire connects to, whether or not
 the editor can do anything with them yet. `@face/model` reads it (`STANDARD_ENTITY_TABLE`, `parseEntityTable`); the ten prototypes the
 editor has take their size, rotation and wire reach from it. Built by `tools/catalog/lib/entities.mjs`; the facts behind the rules are in
 `docs/factorio-audit.md` 13.
@@ -188,7 +189,7 @@ editor has take their size, rotation and wire reach from it. Built by `tools/cat
   "schema": 1,
   "game": {"version":"2.1.24","build":87808},
   "generator": "tools/catalog/generate.mjs",
-  "runtimeChecked": false,
+  "runtimeChecked": true,
   "defaults": {"width":1,"height":1,"directions":1,"wireReach":9,"modules":["base"]},
   "entities": [
     {"name":"accumulator","type":"accumulator","displayName":"Accumulator","width":2,"height":2,"signals":{"output":"virtual:signal-A"}},
@@ -202,11 +203,11 @@ One record per line, sorted by name, fields in one order, no timestamp. A field 
 | `name`, `type` | prototype name and prototype type | `data.raw` | never |
 | `displayName` | the game's English name | locale dump | never |
 | `width`, `height` | tiles covered facing north | `tile_width` / `tile_height`, else the size of `collision_box` rounded up | 1 |
-| `directions` | 1 (cannot be turned), 2 (north and east: `two_direction_only`), 4, 8 or 16 (`building-direction-8-way`, `-16-way`) | whether it turns at all: runtime dump, else the provisional table; how many ways: `data.raw` | 1 |
+| `directions` | 1 (cannot be turned), 2 (north and east: `two_direction_only`), 4, 8 or 16 (`building-direction-8-way`, `-16-way`) | whether it turns at all: the entity the runtime dump's scenario built, else the rule by prototype type; how many ways: `data.raw` | 1 |
 | `wireReach` | reach of a circuit wire in tiles, normal quality | `circuit_wire_max_distance`; `maximum_wire_distance` of an electric pole; `wire_max_distance` of a power switch | 9 |
 | `hidden` | not offered for building | runtime dump (`hidden`), which must agree with `data.raw` | false |
 | `offGrid` | flag `placeable-off-grid` | `data.raw` | false |
-| `collisionBox` | `[left, top, right, bottom]` around the center, facing north | `data.raw` | the tile size is the size of the box rounded up (all but three) |
+| `selectionBox` | the game's selection box, `[left, top, right, bottom]` in tiles around the center, facing north: what the reach of a wire is measured between | `selection_box` of `data.raw`, cut off to the game's 1/256 of a tile; the runtime dump must have the same | it is the tiles the prototype covers (all but 18) |
 | `placedBy` | items that build it; `[]` when there is none | runtime dump (`items_to_place_this`) | it is the one item of the entity's name |
 | `signals` | the `default_<key>_signal` fields as `{ key: "kind:name" }`, keys sorted | `data.raw` | there are none |
 | `modules`, `removedBy` | as in the catalog ("Provenance rules") | presence in the eight dumps | `["base"]`; absent |
@@ -218,30 +219,36 @@ with `base` alone, 80 with the recycler and 98 with Space Age, in 48 prototype t
 The table has no variants. Every module set that has a prototype must give the same record for it, field by field; the build fails
 naming the prototype, the fields and the two sets otherwise. In 2.1.24 all eight agree.
 
-### What is provisional, and what the next run against the game checks
+### What the run against the game checks
 
-Whether a prototype can be turned is not in `data.raw`; the game says it at run time (`LuaEntityPrototype.supports_direction`). The
-scenario records it since 2026-11-14, but the dumps under `.runtime/factorio-dump` are older, and an agent session cannot start the game.
-Until then the generator takes it from `PROVISIONAL_ROTATION` in `tools/catalog/lib/entities.mjs`: one entry per prototype type, yes or
-no, and for the crafting machines (`assembling-machine`, `furnace`) "has fluid boxes or is not square". The file says so with
-`"runtimeChecked": false`, and the generator prints a note.
-
-`make catalog` (the full run, which starts the game) then has `circuit_entities` in every runtime dump and compares, for each of the 98 in
+`make catalog` (the full run, which starts the game) has `circuit_entities` in every runtime dump and compares, for each of the 98 in
 each of the eight module sets:
 
 - the selection: the prototypes with `get_max_circuit_wire_distance() > 0` or `get_max_wire_distance() > 0` are exactly those the rule on
   `data.raw` selects;
-- `type`, `tile_width` x `tile_height` against `width` x `height`, the reach at normal quality against `wireReach` (for a pole, and
-  for a prototype without a circuit distance, `get_max_wire_distance`; else `get_max_circuit_wire_distance`);
-- `supports_direction` against the provisional table, the flags `placeable-off-grid`, `building-direction-8-way` and `-16-way`, and
-  `two_direction_only` where a script can read it;
+- `type`, `tile_width` x `tile_height` against `width` x `height`, `selection_box` against `selectionBox` (or the tiles), the reach at
+  normal quality against `wireReach` (for a pole, and for a prototype without a circuit distance, `get_max_wire_distance`; else
+  `get_max_circuit_wire_distance`);
+- whether it can be turned against the rule by prototype type, the flags `placeable-off-grid`, `building-direction-8-way` and
+  `-16-way`, and `two_direction_only` where a script can read it;
 - every `default_*_signal` the game answers with against `signals`: another signal, or one where `data.raw` has none (a default of
   the engine's own). A field the game gives no answer for is not compared: a script cannot read every such field of every type.
 
+Whether a prototype can be turned is not in `data.raw`, and the game says it in two places that differ (`docs/factorio-audit.md` 13.4):
+`LuaEntityPrototype.supports_direction` is true for every crafting machine, `LuaEntity.supports_direction` only for a machine whose
+fluid boxes are in use or that is not square. The scenario records both: it builds every prototype once on an empty surface (`built`)
+and gives an assembling machine without a direction the recipes with a fluid until it has one (`fluid_recipe`). The table follows the
+entity. Of a prototype the scenario cannot build (`space-platform-hub`) there is only the prototype's word that an entity could have a
+direction; where it says yes, the rule of the type decides. `ROTATION_BY_TYPE` in
+`tools/catalog/lib/entities.mjs` has the same as a rule, one entry per prototype type: yes, no, for the crafting machines
+(`assembling-machine`, `furnace`) "has fluid boxes or is not square", for an ammo turret "is built in eight directions". The generator
+builds the table from it for dumps that predate `circuit_entities` (the file then says `"runtimeChecked": false` and the generator
+prints a note), and cross-checks it otherwise.
+
 Any difference stops the generator after the dumps and before it writes the catalog or a table, with one line per point ("gun-turret:
-supports_direction is false at run time, the provisional rotation table says true for type ammo-turret"). The fix is then in
-`entities.mjs`: correct the entry, or the rule that derived the value; `--reuse-dumps` builds again without another run of the game. When nothing differs the file is rewritten with `"runtimeChecked": true` and is otherwise unchanged; from then on
-`supports_direction` of the dump is what the table is built from, and `PROVISIONAL_ROTATION` only cross-checks it. The scenario also
+the entity as built has no direction at run time, the rotation table says true for type ammo-turret"). The fix is then in
+`entities.mjs`: correct the entry, or the rule that derived the value; `--reuse-dumps` builds again without another run of the game.
+The run of 2026-11-14 against 2.1.24 ended without a difference, and the file says `"runtimeChecked": true`. The scenario also
 records both wire distances for every quality; the generator prints how many prototypes reach further at higher quality, the table keeps
 the reach at normal quality (the editor has no entity quality).
 

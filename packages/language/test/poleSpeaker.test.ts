@@ -169,20 +169,22 @@ describe("wire reach with poles", () => {
 
   it("gives a wire to a small pole the pole's 7.5 tiles and says so", () => {
     expect(codes(wired("(0.5, 0.5)", "(8.5, 0.5)"))).toEqual([]);
-    expect(diagnostics(wired("(0.5, 0.5)", "(9.5, 0.5)"))).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 8 tiles apart; the wire reach of a small electric pole is 7.5"]]);
+    // The selection box of a small pole ends 0.4 tiles from its center, a tenth before its tile does.
+    expect(diagnostics(wired("(0.5, 0.5)", "(9.5, 0.5)"))).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 8.1 tiles apart; the wire reach of a small electric pole is 7.5"]]);
     // In a project without a limit the pole still has its reach, and a smaller project reach wins over it.
-    expect(diagnostics(wired("(0.5, 0.5)", "(9.5, 0.5)"), { wireReach: 0 })).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 8 tiles apart; the wire reach of a small electric pole is 7.5"]]);
-    expect(diagnostics(wired("(0.5, 0.5)", "(6.5, 0.5)"), { wireReach: 4 })).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 5 tiles apart; the wire reach of the project is 4"]]);
+    expect(diagnostics(wired("(0.5, 0.5)", "(9.5, 0.5)"), { wireReach: 0 })).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 8.1 tiles apart; the wire reach of a small electric pole is 7.5"]]);
+    expect(diagnostics(wired("(0.5, 0.5)", "(6.5, 0.5)"), { wireReach: 4 })).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 5.1 tiles apart; the wire reach of the project is 4"]]);
   });
 
   it("limits a wire from a big pole to another entity by the project, and one between two big poles by the poles", () => {
     expect(diagnostics(wired("(1, 1)", "(12.5, 0.5)", "big-electric-pole"))).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 10 tiles apart; the wire reach of the project is 9"]]);
     expect(codes(wired("(1, 1)", "(11.5, 0.5)", "big-electric-pole"))).toEqual([]);
     const poles = (x: number, a = "big-electric-pole", b = "big-electric-pole") => circuit(`pole a tile (1, 1) { prototype = ${a} }\npole b tile (${x}, 1) { prototype = ${b} }\nwire green a <-> b`);
-    for (const wireReach of [9, 0, 2]) expect(codes(poles(35), { wireReach })).toEqual([]);
-    expect(diagnostics(poles(36))).toEqual([["wire-too-long", "Wire from 'a' to 'b': the entities are 33 tiles apart; the wire reach of a big electric pole is 32"]]);
-    expect(diagnostics(poles(22, "big-electric-pole", "substation"))).toEqual([["wire-too-long", "Wire from 'a' to 'b': the entities are 19 tiles apart; the wire reach of a substation is 18"]]);
-    expect(codes(poles(21, "substation", "big-electric-pole"))).toEqual([]);
+    // Two poles are measured from center to center, not between their tiles.
+    for (const wireReach of [9, 0, 2]) expect(codes(poles(33), { wireReach })).toEqual([]);
+    expect(diagnostics(poles(34))).toEqual([["wire-too-long", "Wire from 'a' to 'b': the poles are 33 tiles apart from center to center; the wire reach of a big electric pole is 32"]]);
+    expect(diagnostics(poles(20, "big-electric-pole", "substation"))).toEqual([["wire-too-long", "Wire from 'a' to 'b': the poles are 19 tiles apart from center to center; the wire reach of a substation is 18"]]);
+    expect(codes(poles(19, "substation", "big-electric-pole"))).toEqual([]);
   });
 
   it("measures the chain of the example without a warning", () => {

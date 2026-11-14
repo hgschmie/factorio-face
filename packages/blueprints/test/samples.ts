@@ -53,13 +53,22 @@ export function configuredSettings(prototype: string): EntitySettings {
   return normalizedSettings(prototype, Object.fromEntries(values));
 }
 
+/** Settings the game takes and does not keep, because the prototype has nothing for them: no lab of the game burns fuel. */
+export const NOT_HELD: Readonly<Record<string, readonly string[]>> = { lab: ["read-fuel"] };
+
+/** The settings a prototype has in its sample: every one away from its default, but for the ones the game does not keep on it. */
+export function sampledSettings(prototype: string): EntitySettings {
+  return Object.fromEntries(Object.entries(configuredSettings(prototype)).filter(([key]) => !NOT_HELD[prototype]?.includes(key)));
+}
+
 /** Per sample the prototypes that stand in it, in rows of four behind a constant combinator. Those of one sample are about the same size. */
 export const GENERIC_SAMPLES: readonly (readonly [label: string, prototypes: readonly string[]])[] = [
   ["generic entities: chests", ["steel-chest", "requester-chest", "linked-chest", "proxy-container"]],
   ["generic entities: belts and inserters", ["fast-inserter", "transport-belt", "splitter", "loader"]],
   ["generic entities: pipes, pumps and switches", ["pipe", "infinity-pipe", "pump", "offshore-pump", "power-switch", "heat-pipe", "accumulator"]],
   ["generic entities: walls, turrets and rails", ["stone-wall", "land-mine", "gun-turret", "display-panel", "rail-signal", "rail-chain-signal", "train-stop"]],
-  ["generic entities: machines", ["assembling-machine-2", "electric-furnace", "lab", "electric-mining-drill", "boiler"]],
+  // Machines that burn fuel, for 'read-fuel': the game does not keep it on an electric one.
+  ["generic entities: machines", ["biochamber", "stone-furnace", "lab", "electric-mining-drill", "boiler"]],
   ["generic entities: towers and tanks", ["agricultural-tower", "artillery-turret", "asteroid-collector", "storage-tank", "radar"]],
   ["generic entities: reactor and roboport", ["nuclear-reactor", "roboport"]],
   ["generic entities: rocket silo", ["rocket-silo"]],
@@ -69,6 +78,7 @@ export const GENERIC_SAMPLES: readonly (readonly [label: string, prototypes: rea
 
 /** Entities per row of the layout. */
 const COLUMNS = 4;
+const CRAFTING_TYPES: ReadonlySet<string> = new Set(["assembling-machine", "furnace"]);
 
 /**
  * The source of a sample of generic entities: a constant combinator and the prototypes, configured, each wired to the one before
@@ -82,7 +92,9 @@ function genericSource(prototypes: readonly string[]): string {
     const name = entityNameBase({ kind: "entity", prototype });
     const count = (counters.get(name) ?? 0) + 1;
     counters.set(name, count);
-    return { ...base, id: `e${index + 1}`, name: `${name}${count}`, kind: "entity", prototype, settings: configuredSettings(prototype) };
+    // A crafting machine has a direction only while its recipe uses its fluid boxes; the samples have no recipe.
+    const placement = CRAFTING_TYPES.has(entityTable().byName.get(prototype)!.type) ? { placement: { direction: "north" as const } } : {};
+    return { ...base, ...placement, id: `e${index + 1}`, name: `${name}${count}`, kind: "entity", prototype, settings: sampledSettings(prototype) };
   });
   const all = [source, ...entities];
   const side = (entity: Entity) => (entity.kind === "constant" ? "out" : "io") as "out" | "io";
@@ -110,6 +122,7 @@ export const SAMPLES: readonly Sample[] = [
       }
       constant scaled facing west { section { multiplier = 2.5  virtual:signal-D = 4 } }
       constant blank { }
+      constant zero { virtual:signal-Z = 0 }
       wire red plain.out <-> off.out
       wire green grouped.out <-> scaled.out
     `,
@@ -123,6 +136,8 @@ export const SAMPLES: readonly Sample[] = [
       arithmetic sub facing west { item:iron-plate@rare = virtual:signal-A[red] - virtual:signal-B[green] }
       arithmetic mod { description = "remainder"  fluid:water = item:iron-plate % item:copper-plate }
       arithmetic pow { virtual:signal-A = -2147483648 ^ 2 }
+      arithmetic zero_first { virtual:signal-A = 0 + virtual:signal-B }
+      arithmetic zeros { virtual:signal-A = 0 * 0 }
       arithmetic blank { }
       wire red mul.out <-> div.in
       wire green add.out <-> add.in
@@ -157,6 +172,10 @@ export const SAMPLES: readonly Sample[] = [
       decider any facing south { when anything > virtual:signal-A[none]  output anything = input  else output virtual:signal-Z = -5 }
       decider all facing west { when everything < 100  output everything = input[green] }
       decider one { when virtual:signal-A = 1  output virtual:signal-A = 1 }
+      decider zero { when virtual:signal-A < 0  output virtual:signal-F = 0 }
+      decider undecided { when virtual:signal-A > 1 }
+      decider otherwise { when virtual:signal-A > 1  else output virtual:signal-B = 2 }
+      decider unconditional { output virtual:signal-A = 3 }
       decider blank { }
       wire red gate.out <-> gate.in
       wire green gate.out <-> each_gate.in
@@ -244,6 +263,8 @@ export const SAMPLES: readonly Sample[] = [
       speaker chime { when everything < virtual:signal-B  instrument = drum-kit  note = hat-1  volume = 80 }
       speaker first_note { when item:iron-plate = 0  instrument = bass }
       speaker other_note { when anything != 1  note = alarm-2  show-alert = true }
+      speaker plain_condition { when virtual:signal-A < 0 }
+      speaker stopping { stop-playing-sounds = true }
       constant source { virtual:signal-A = 1 }
       wire red source.out <-> alarm.in
       wire green source.out <-> tune.in
@@ -294,6 +315,30 @@ export const SAMPLES: readonly Sample[] = [
     `,
   },
   ...GENERIC_SAMPLES.map(([label, prototypes]): Sample => ({ label, source: genericSource(prototypes) })),
+  {
+    // Where a new entity of the game does not have what the editor calls nothing: the open-gate flag of a wall is on, the
+    // conditions of a splitter are set.
+    label: "generic entities: defaults of the game that are not blank",
+    source: `
+      constant source { virtual:signal-A = 1 }
+      entity sensor { prototype = stone-wall  read-sensor = true }
+      entity sides { prototype = splitter  input-left when virtual:signal-I < 0  input-right when virtual:signal-I > 0  output-left when virtual:signal-O < 0  output-right when virtual:signal-O > 0 }
+      entity left_only { prototype = splitter  input-left when virtual:signal-A > 5 }
+      entity right_out { prototype = splitter  output-right when virtual:signal-B > 6 }
+      entity chest_blue { prototype = blue-chest }
+      entity chest_red { prototype = red-chest }
+      entity crash1 { prototype = crash-site-chest-1 }
+      entity crash2 { prototype = crash-site-chest-2 }
+      wire red source.out <-> sensor
+      wire red source.out <-> sides
+      wire red sides <-> left_only
+      wire red left_only <-> right_out
+      wire red source.out <-> chest_blue
+      wire red chest_blue <-> chest_red
+      wire red chest_red <-> crash1
+      wire red crash1 <-> crash2
+    `,
+  },
 ];
 
 /** The prototype types of the settings table that no sample has; every control behaviour should be in one. */

@@ -6,7 +6,7 @@ import { collapseAll, moduleAlgebra } from "./build.mjs";
 export const STANDARD_WIRE_REACH = 9;
 /** What a record of the table has when it does not say. `placedBy` defaults to the item of the entity's own name. */
 export const ENTITY_DEFAULTS = { width: 1, height: 1, directions: 1, wireReach: STANDARD_WIRE_REACH, modules: ["base"] };
-const FIELDS = ["name", "type", "displayName", "width", "height", "directions", "wireReach", "hidden", "offGrid", "collisionBox", "placedBy", "signals", "modules", "removedBy"];
+const FIELDS = ["name", "type", "displayName", "width", "height", "directions", "wireReach", "hidden", "offGrid", "selectionBox", "placedBy", "signals", "modules", "removedBy"];
 const NORMAL_QUALITY = "normal";
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -16,32 +16,38 @@ const asArray = (value) => (Array.isArray(value) ? value : []);
 const count = (value) => (value && typeof value === "object" ? Object.keys(value).length : 0);
 
 /**
- * PROVISIONAL: whether a prototype can be turned, by prototype type. `data.raw` does not say; the game does at run time
- * (`LuaEntityPrototype.supports_direction`), which the runtime dump records since this table exists. A dump that has it is the
- * source, and the build fails where it disagrees with an entry here. Until the generator has run against the game once
- * (`make catalog`), `--from-dumps` builds from these entries: the editor's ten prototypes as the model had them by hand, the
- * rest from the game's changelog and from the directions in the blueprint strings the game ships (docs/factorio-audit.md 13.4).
+ * Whether an entity of a prototype can be turned, by prototype type; a function where the type alone does not say. `data.raw`
+ * does not say it. The game does at run time, in two places that differ: `LuaEntityPrototype.supports_direction` ("could possibly
+ * ever be rotated") is true for every crafting machine, `LuaEntity.supports_direction` of a machine that stands only while its
+ * fluid boxes are in use or when it is not square. The table follows the entity. The runtime dump has both, the second for an
+ * entity the scenario builds (`built`); a dump that has them is the source, and the build fails where it disagrees with an
+ * entry here. Dumps without them are built from these entries.
+ *
+ * Confirmed by the game (2.1.24, `make catalog` on 2026-11-14), which corrected the entries taken from the changelog: the
+ * artillery turret and the display panel turn; the ammo and electric turrets do not, except one built in eight directions
+ * (the railgun turret). For the crafting machines it confirmed the rule: an assembling machine 1, a centrifuge and the
+ * furnaces of the game never have a direction.
  */
-// Changelog 2.0.25: "Fixed that assemblers without fluid boxes were incorrectly considered rotatable"; one that is not square has to turn.
-const craftingMachine = (proto, size) => count(proto.fluid_boxes) > 0 || size.width !== size.height;
-export const PROVISIONAL_ROTATION = {
+const directed = (proto) => asArray(proto.flags).some((flag) => flag.startsWith("building-direction-"));
+const crafting = (proto, size) => count(proto.fluid_boxes) > 0 || size.width !== size.height;
+export const ROTATION_BY_TYPE = {
   accumulator: false,
   "agricultural-tower": false,
-  "ammo-turret": true,
+  "ammo-turret": directed,
   "arithmetic-combinator": true,
-  "artillery-turret": false,
-  "assembling-machine": craftingMachine,
+  "artillery-turret": true,
+  "assembling-machine": crafting,
   "asteroid-collector": true,
   boiler: true,
   "cargo-landing-pad": false,
   "constant-combinator": true,
   container: false,
   "decider-combinator": true,
-  "display-panel": false,
+  "display-panel": true,
   "electric-pole": false,
-  "electric-turret": true,
+  "electric-turret": false,
   "fluid-turret": true,
-  furnace: craftingMachine,
+  furnace: crafting,
   "heat-pipe": false,
   "infinity-container": false,
   "infinity-pipe": false,
@@ -89,23 +95,30 @@ export function circuitEntities(raw) {
   return Object.entries(raw).flatMap(([type, protos]) => Object.values(protos).filter((proto) => wireReachOf(type, proto) > 0).map((proto) => ({ type, proto })));
 }
 
-/** [left, top, right, bottom] of a collision box, which the dump has as [[x, y], [x, y]] or as { left_top, right_bottom }. */
-function collisionBox(proto) {
-  const box = proto.collision_box;
+/** [left, top, right, bottom] of a box of a prototype, which the dump has as [[x, y], [x, y]] or as { left_top, right_bottom }. */
+function boxOf(proto, field, what) {
+  const box = proto[field];
   const [from, to] = Array.isArray(box) ? box : [box?.left_top, box?.right_bottom];
   const point = (value) => (Array.isArray(value) ? value : [value?.x, value?.y]);
   const out = [...point(from), ...point(to)];
-  if (!out.every(Number.isFinite)) throw new Error(`${proto.name}: no collision box`);
+  if (!out.every(Number.isFinite)) throw new Error(`${proto.name}: no ${what}`);
   return out;
 }
 
 /** The tiles of a prototype facing north: `tile_width` and `tile_height` where it has them, else the size of the collision box rounded up. */
 function footprint(proto) {
-  const box = collisionBox(proto);
-  const ofBox = { width: Math.ceil(box[2] - box[0]), height: Math.ceil(box[3] - box[1]) };
-  const size = { width: proto.tile_width ?? ofBox.width, height: proto.tile_height ?? ofBox.height };
-  return { ...size, ...(sameJson(size, ofBox) ? {} : { collisionBox: box }) };
+  const box = boxOf(proto, "collision_box", "collision box");
+  return { width: proto.tile_width ?? Math.ceil(box[2] - box[0]), height: proto.tile_height ?? Math.ceil(box[3] - box[1]) };
 }
+
+/**
+ * The selection box of a prototype facing north, around its center, as the game has it: a position of the game is a whole
+ * number of 1/256 of a tile, and what `data.raw` says is cut off to that (0.4 is 102/256). It is what the game measures the
+ * reach of a wire between (docs/factorio-audit.md 5.4).
+ */
+const selectionBox = (proto) => boxOf(proto, "selection_box", "selection box").map((value) => Math.trunc(value * 256) / 256);
+/** The box of a prototype whose selection box is its tiles, which the table leaves out. */
+const tileBox = ({ width, height }) => [-width / 2, -height / 2, width / 2, height / 2];
 
 const signalOf = (value) => `${value.type ?? "item"}:${value.name}`;
 /** `default_<key>_signal` fields of a prototype as { key: "kind:name" }. */
@@ -126,6 +139,19 @@ function reachAt(fact, quality) {
   return fact.type === "electric-pole" || !(circuit > 0) ? fact.wire_distance?.[quality] : circuit;
 }
 
+/** What `ROTATION_BY_TYPE` says of a prototype; undefined for a type it does not have. */
+function turnsByRule(type, proto, size) {
+  const rule = ROTATION_BY_TYPE[type];
+  return typeof rule === "function" ? rule(proto, size) : rule;
+}
+
+/**
+ * Whether an entity of the prototype has a direction by the runtime dump: the entity the scenario built, as it stood or once
+ * it had a recipe with a fluid. Of a prototype it could not build the dump has only what the prototype says, which is that an
+ * entity could have one: the rule of its type (`byRule`) then decides whether it has.
+ */
+const turnsAtRuntime = (fact, byRule) => (fact.built ? fact.built.supports_direction === true || fact.built.fluid_recipe !== undefined : fact.supports_direction === true && byRule !== false);
+
 /** What the runtime dump says against the record derived from `data.raw`, as sentences; none when they agree. */
 function runtimeProblems(record, type, proto, fact) {
   const problems = [];
@@ -133,15 +159,17 @@ function runtimeProblems(record, type, proto, fact) {
   differs("type", fact.type, type);
   differs("tile size", `${fact.tile_width} x ${fact.tile_height}`, `${record.width} x ${record.height}`);
   differs("wire reach", reachAt(fact, NORMAL_QUALITY), record.wireReach);
-  const rule = PROVISIONAL_ROTATION[type];
-  const provisional = typeof rule === "function" ? rule(proto, record) : rule;
-  if (provisional !== undefined && provisional !== fact.supports_direction) {
-    problems.push(`${record.name}: supports_direction is ${fact.supports_direction} at run time, the provisional rotation table says ${provisional} for type ${type}`);
+  if (fact.selection_box !== undefined) differs("selection box", JSON.stringify(fact.selection_box), JSON.stringify(record.selectionBox ?? tileBox(record)));
+  const expected = turnsByRule(type, proto, record);
+  const turns = turnsAtRuntime(fact, expected);
+  if (expected !== undefined && expected !== turns) {
+    problems.push(`${record.name}: ${fact.built ? "the entity as built" : "the prototype"} ${turns ? "has a direction" : "has no direction"} at run time, the rotation table says ${expected} for type ${type}`);
   }
+  if (turns && !fact.supports_direction) problems.push(`${record.name}: the entity as built has a direction, but supports_direction of its prototype is false at run time`);
   const flags = asArray(fact.flags);
   for (const flag of ["placeable-off-grid", "building-direction-8-way", "building-direction-16-way"]) differs(`flag ${flag}`, flags.includes(flag), asArray(proto.flags).includes(flag));
   const ways = asArray(proto.flags).find((flag) => flag.startsWith("building-direction-"));
-  if (ways && !fact.supports_direction) problems.push(`${record.name}: has the flag ${ways}, but supports_direction is false at run time`);
+  if (ways && !turns) problems.push(`${record.name}: has the flag ${ways}, but has no direction at run time`);
   // Fields the scenario could not read are absent; one the prototype does not have is false.
   if (fact.optional?.two_direction_only !== undefined) differs("two_direction_only", fact.optional.two_direction_only === true, proto.two_direction_only === true);
   // The scenario has the default signals the game answered with: one that data.raw lacks is a default of the engine's own.
@@ -168,9 +196,10 @@ function entitiesOfSet({ id, raw, runtime, locale }, lenient) {
     if (!entry) throw new Error(`${name} (${type}) takes a circuit wire in data.raw of ${id}, but the game has no entity of that name`);
     const fact = facts?.get(name);
     const size = footprint(proto);
-    const rule = PROVISIONAL_ROTATION[type];
-    const rotates = fact?.supports_direction ?? (typeof rule === "function" ? rule(proto, size) : rule);
-    if (rotates === undefined) throw new Error(`${name}: no rotation rule for prototype type ${type}; add it to PROVISIONAL_ROTATION in tools/catalog/lib/entities.mjs or dump from the game`);
+    const byRule = turnsByRule(type, proto, size);
+    const rotates = fact ? turnsAtRuntime(fact, byRule) : byRule;
+    if (rotates === undefined) throw new Error(`${name}: no rotation rule for prototype type ${type}; add it to ROTATION_BY_TYPE in tools/catalog/lib/entities.mjs or dump from the game`);
+    const box = selectionBox(proto);
     const record = {
       name,
       type,
@@ -181,7 +210,7 @@ function entitiesOfSet({ id, raw, runtime, locale }, lenient) {
       wireReach: wireReachOf(type, proto),
       hidden: entry.hidden === true,
       offGrid: asArray(proto.flags).includes("placeable-off-grid"),
-      ...(size.collisionBox && { collisionBox: size.collisionBox }),
+      ...(!sameJson(box, tileBox(size)) && { selectionBox: box }),
       placedBy: asArray(entry.items_to_place_this),
       signals: defaultSignals(proto),
     };
@@ -276,7 +305,7 @@ export function buildEntityTable({ sets, modules, game }, { lenient = false, gen
   const entities = collapseAll("entity", perSet.map((set) => set.records), sets, moduleAlgebra(modules)).map(compact);
   const byQuality = qualityReach(sets);
   const notes = [];
-  if (!checked[0]) notes.push("the runtime dumps predate circuit_entities: rotation is from the provisional table in tools/catalog/lib/entities.mjs; run `make catalog` to check it against the game");
+  if (!checked[0]) notes.push("the runtime dumps predate circuit_entities: rotation is from the table by prototype type in tools/catalog/lib/entities.mjs; run `make catalog` to check it against the game");
   if (byQuality.size) {
     const [name, distances] = [...byQuality][0];
     const example = Object.entries(distances).map(([quality, reach]) => `${quality} ${reach}`).join(", ");

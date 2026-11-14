@@ -2,7 +2,7 @@
 // settings form and the connections. A selected wire shows its color, its two ends and, between two entities with a tile, its
 // length against the wire reach; several things selected are summed up.
 // Presentational: every edit is emitted through a callback.
-import { canRotate, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, tileUnit, wireKey, wireSpan, type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type Wire, type WireColor } from "@face/model";
+import { canRotate, DIRECTIONS, facingOf, formatWireDistance, formatWireReach, tileUnit, wireEndsNoun, wireKey, wireSpan, type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type Wire, type WireColor } from "@face/model";
 import { printTerminal } from "@face/language";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
@@ -286,7 +286,8 @@ function WireInspector({ wire, names, span, editable, onSelect, onDelete }: Wire
             <span>Reach {formatWireReach(span.reach)}</span>
           </div>
           <p>
-            The two entities are <b>{formatWireDistance(distance, span.reach)}</b> {tileUnit(distance)} apart
+            The two {wireEndsNoun(span.measure)} are <b>{formatWireDistance(distance, span.reach)}</b> {tileUnit(distance)} apart
+            {span.measure === "centers" && " from center to center"}
           </p>
           {/* Which reach applied and why: a wire spans the smaller reach of its two ends. */}
           <p className="muted-note wire-reach-source">{span.note}</p>

@@ -69,9 +69,13 @@ describe("export: place and direction", () => {
   });
 });
 
+/** The control behaviour of a constant combinator as the game places it. */
+const EMPTY_SECTION = { sections: { sections: [{ index: 1 }] } };
+
 describe("export: constant combinator", () => {
-  it("writes nothing for one without sections", () => {
-    expect(settingsOf("constant c { }")).toEqual({ direction: 4 });
+  it("writes one without sections as the game places it: with one empty section", () => {
+    expect(settingsOf("constant c { }")).toEqual({ direction: 4, control_behavior: EMPTY_SECTION });
+    expect(settingsOf("constant c { section { } }")).toEqual({ direction: 4, control_behavior: EMPTY_SECTION });
   });
 
   it("writes filters with slot numbers, the signal kind unless it is an item, and quality and comparator always", () => {
@@ -110,21 +114,27 @@ describe("export: constant combinator", () => {
         ],
       },
     });
-    expect(settingsOf("constant c { enabled = false }").control_behavior).toEqual({ is_on: false });
+    expect(JSON.stringify(settingsOf("constant c { enabled = false }").control_behavior)).toBe('{"sections":{"sections":[{"index":1}]},"is_on":false}');
   });
 
   it("writes the description of a combinator", () => {
-    expect(settingsOf('constant c { description = "two\\nlines" }')).toEqual({ direction: 4, player_description: "two\nlines" });
-    expect(settingsOf('decider c { description = "d" }')).toEqual({ direction: 4, player_description: "d" });
-    expect(settingsOf('constant c { description = "" }')).toEqual({ direction: 4 });
+    expect(settingsOf('constant c { description = "two\\nlines" }')).toEqual({ direction: 4, control_behavior: EMPTY_SECTION, player_description: "two\nlines" });
+    expect(settingsOf('decider c { description = "d" }')).toMatchObject({ direction: 4, player_description: "d" });
+    expect(settingsOf('constant c { description = "" }')).toEqual({ direction: 4, control_behavior: EMPTY_SECTION });
   });
 });
 
 describe("export: arithmetic combinator", () => {
   const conditions = (body: string) => (settingsOf(body).control_behavior as { arithmetic_conditions: unknown }).arithmetic_conditions;
 
-  it("writes nothing for one that is not configured", () => {
-    expect(settingsOf("arithmetic a { }")).toEqual({ direction: 4 });
+  it("writes one that is not configured as 0 * 0 without an output", () => {
+    expect(settingsOf("arithmetic a { }")).toEqual({ direction: 4, control_behavior: { arithmetic_conditions: { first_constant: 0, second_constant: 0, operation: "*" } } });
+  });
+
+  it("writes the network selections after everything else, as the game does", () => {
+    expect(JSON.stringify(conditions("arithmetic a { item:iron-plate = virtual:signal-A[red] - virtual:signal-B[green] }"))).toBe(
+      '{"first_signal":{"type":"virtual","name":"signal-A"},"second_signal":{"type":"virtual","name":"signal-B"},"operation":"-","output_signal":{"name":"iron-plate"},"first_signal_networks":{"red":true,"green":false},"second_signal_networks":{"red":false,"green":true}}',
+    );
   });
 
   it("writes signals and constants on either side, and the operation always", () => {
@@ -151,8 +161,20 @@ describe("export: arithmetic combinator", () => {
 describe("export: decider combinator", () => {
   const conditions = (body: string) => (settingsOf(body).control_behavior as { decider_conditions: unknown }).decider_conditions;
 
-  it("writes nothing for one without conditions and outputs", () => {
-    expect(settingsOf("decider d { }")).toEqual({ direction: 4 });
+  it("writes one without conditions and outputs as the game places it: with a blank condition and a blank output", () => {
+    expect(settingsOf("decider d { }")).toEqual({ direction: 4, control_behavior: { decider_conditions: { conditions: [{}], outputs: [{}], else_outputs: [] } } });
+  });
+
+  it("writes all three lists, also the empty ones", () => {
+    expect(conditions("decider d { when virtual:signal-A > 1 }")).toEqual({ conditions: [{ first_signal: A, constant: 1, comparator: ">" }], outputs: [], else_outputs: [] });
+    expect(conditions("decider d { output virtual:signal-A = 1 }")).toEqual({ conditions: [], outputs: [{ signal: A, copy_count_from_input: false }], else_outputs: [] });
+  });
+
+  it("leaves out a constant of 0 and the comparator '<', which the game leaves out in a decider combinator only", () => {
+    expect(conditions("decider d { when virtual:signal-A < 0 or virtual:signal-B < virtual:signal-C }")).toMatchObject({ conditions: [{ first_signal: A }, { first_signal: B, second_signal: C }] });
+    expect(JSON.stringify(conditions("decider d { when virtual:signal-B[red] != virtual:signal-C[green] and virtual:signal-A > 5 }"))).toContain(
+      '"comparator":"≠","first_signal_networks":{"red":true,"green":false},"second_signal_networks":{"red":false,"green":true}},{"first_signal":{"type":"virtual","name":"signal-A"},"constant":5,"comparator":">","compare_type":"and"}',
+    );
   });
 
   it("writes conditions with the comparator in the game's spelling, how each joins the ones before it, and networks", () => {
@@ -161,16 +183,18 @@ describe("export: decider combinator", () => {
         { first_signal: A, constant: 5, comparator: ">" },
         { first_signal: B, first_signal_networks: { red: true, green: false }, second_signal: C, second_signal_networks: { red: false, green: true }, comparator: "≠", compare_type: "and" },
         { first_signal: IRON, constant: -1, comparator: "≤" },
-        { first_signal: { type: "virtual", name: "signal-each" }, constant: 0, comparator: "≥" },
-        { first_signal: { type: "virtual", name: "signal-anything" }, constant: 0, comparator: "=", compare_type: "and" },
-        { first_signal: { type: "virtual", name: "signal-everything" }, constant: 1, comparator: "<", compare_type: "and" },
+        { first_signal: { type: "virtual", name: "signal-each" }, comparator: "≥" },
+        { first_signal: { type: "virtual", name: "signal-anything" }, comparator: "=", compare_type: "and" },
+        { first_signal: { type: "virtual", name: "signal-everything" }, constant: 1, compare_type: "and" },
       ],
+      outputs: [],
+      else_outputs: [],
     });
   });
 
   it("writes outputs that copy the input, with the networks to copy from, and outputs of a constant, 1 by leaving it out", () => {
     expect(conditions("decider d { when virtual:signal-A > 0  output virtual:signal-A = input  output virtual:signal-B = input[red]  output virtual:signal-C = 7  output item:iron-plate = 1  else output virtual:signal-B = input[none]  else output virtual:signal-C = -1 }")).toEqual({
-      conditions: [{ first_signal: A, constant: 0, comparator: ">" }],
+      conditions: [{ first_signal: A, comparator: ">" }],
       outputs: [{ signal: A }, { signal: B, networks: { red: true, green: false } }, { signal: C, copy_count_from_input: false, constant: 7 }, { signal: IRON, copy_count_from_input: false }],
       else_outputs: [{ signal: B, networks: { red: false, green: false } }, { signal: C, copy_count_from_input: false, constant: -1 }],
     });
@@ -180,8 +204,8 @@ describe("export: decider combinator", () => {
 describe("export: selector combinator", () => {
   const behavior = (body: string) => settingsOf(`selector s { ${body} }`).control_behavior;
 
-  it("writes nothing for one as it is placed, and the parameters without a wrapper otherwise", () => {
-    expect(settingsOf("selector s { }")).toEqual({ direction: 4 });
+  it("writes the parameters without a wrapper, also for one as it is placed", () => {
+    expect(settingsOf("selector s { }")).toEqual({ direction: 4, control_behavior: { operation: "select", select_max: true, index_constant: 0 } });
     expect(behavior("operation = select  order = min")).toEqual({ operation: "select", select_max: false, index_constant: 0 });
     expect(behavior("operation = select  index = 3  index-comparator = <=")).toEqual({ operation: "select", select_max: true, index_constant: 3, index_comparator: "≤" });
     expect(behavior("operation = select  index = virtual:signal-A")).toEqual({ operation: "select", select_max: true, index_signal: A });
@@ -191,21 +215,21 @@ describe("export: selector combinator", () => {
     expect(behavior("operation = count  output = virtual:signal-A")).toEqual({ operation: "count", count_signal: A });
     expect(behavior("operation = count")).toEqual({ operation: "count" });
     expect(behavior("operation = random  interval = 60")).toEqual({ operation: "random", random_update_interval: 60 });
-    expect(behavior("operation = random")).toEqual({ operation: "random", random_update_interval: 0 });
+    expect(behavior("operation = random")).toEqual({ operation: "random" });
     expect(behavior("operation = stack-size")).toEqual({ operation: "stack-size" });
     expect(behavior("operation = rocket-capacity")).toEqual({ operation: "rocket-capacity" });
     expect(behavior("operation = quality-filter  quality = rare  comparator = >=")).toEqual({ operation: "quality-filter", quality_filter: { quality: "rare", comparator: "≥" } });
     expect(behavior("operation = quality-filter")).toEqual({ operation: "quality-filter" });
     expect(behavior("operation = quality-filter  comparator = >")).toEqual({ operation: "quality-filter", quality_filter: { comparator: ">" } });
-    expect(behavior("operation = quality-select")).toEqual({ operation: "quality-select" });
+    expect(behavior("operation = quality-select")).toEqual({ operation: "quality-select", select_highest_quality: true });
     expect(behavior("operation = quality-select  order = lowest")).toEqual({ operation: "quality-select", select_highest_quality: false });
     expect(behavior("operation = quality-transfer  source = legendary  destination = each")).toEqual({ operation: "quality-transfer", quality_source_static: { name: "legendary" }, quality_destination_signal: { type: "virtual", name: "signal-each" } });
-    expect(behavior("operation = quality-transfer")).toEqual({ operation: "quality-transfer", quality_source_static: { name: "normal" } });
+    expect(behavior("operation = quality-transfer")).toEqual({ operation: "quality-transfer" });
     expect(behavior("operation = quality-transfer  source = signal  source-signal = item:iron-plate@rare  destination = virtual:signal-A")).toEqual({
       operation: "quality-transfer", select_quality_from_signal: true, quality_source_signal: IRON, quality_destination_signal: A,
     });
     expect(behavior("operation = quality-transfer  source = signal")).toEqual({ operation: "quality-transfer", select_quality_from_signal: true });
-    expect(behavior("operation = time  day-length = virtual:signal-A  day-tick = virtual:signal-B  game-tick = item:iron-plate")).toEqual({ operation: "time", day_length_signal: A, day_tick_signal: B, game_tick_signal: IRON });
+    expect(JSON.stringify(behavior("operation = time  day-length = virtual:signal-A  day-tick = virtual:signal-B  game-tick = item:iron-plate"))).toBe(JSON.stringify({ operation: "time", game_tick_signal: IRON, day_tick_signal: B, day_length_signal: A }));
     expect(behavior("operation = time")).toEqual({ operation: "time" });
   });
 });
@@ -236,11 +260,18 @@ describe("export: programmable speaker", () => {
   const fresh = {
     parameters: { playback_volume: 1, playback_mode: "local", allow_polyphony: false, volume_controlled_by_signal: false },
     alert_parameters: { show_alert: false, show_on_map: true, alert_message: "" },
-    control_behavior: { circuit_condition: { constant: 0, comparator: "<" }, circuit_parameters: { signal_value_is_pitch: false, stop_playing_sounds: false, instrument_id: 0, note_id: 0 } },
   };
+  const idle = { signal_value_is_pitch: false, stop_playing_sounds: false, instrument_id: 0, note_id: 0 };
 
-  it("writes its three objects in full, also for a speaker without settings", () => {
+  it("writes its parameters in full, and no control behaviour for a speaker the circuit does not concern", () => {
     expect(settingsOf("speaker s { }")).toEqual(fresh);
+    expect(settingsOf("speaker s { volume = 50  show-alert = true }")).not.toHaveProperty("control_behavior");
+  });
+
+  it("writes the control behaviour first, with its parameters in full and the condition only where there is one", () => {
+    expect(settingsOf("speaker s { stop-playing-sounds = true }")).toEqual({ control_behavior: { circuit_parameters: { ...idle, stop_playing_sounds: true } }, ...fresh });
+    expect(settingsOf("speaker s { when virtual:signal-A < 0 }")).toEqual({ control_behavior: { circuit_condition: { first_signal: A, constant: 0, comparator: "<" }, circuit_parameters: idle }, ...fresh });
+    expect(Object.keys(settingsOf("speaker s { note = siren }"))).toEqual(["control_behavior", "parameters", "alert_parameters"]);
   });
 
   it("writes every setting", () => {
@@ -265,7 +296,7 @@ describe("export: programmable speaker", () => {
 
   it("writes instrument and note as their places in the lists of the game; a name left out is the first", () => {
     const sound = (body: string) => (settingsOf(`speaker s { ${body} }`).control_behavior as { circuit_parameters: { instrument_id: number; note_id: number } }).circuit_parameters;
-    expect(sound("instrument = alarms  note = alarm-1")).toMatchObject({ instrument_id: 0, note_id: 0 });
+    expect(sound("instrument = alarms  note = alarm-1  stop-playing-sounds = true")).toMatchObject({ instrument_id: 0, note_id: 0 });
     expect(sound("note = siren")).toMatchObject({ instrument_id: 0, note_id: 6 });
     expect(sound("instrument = steel-drum")).toMatchObject({ instrument_id: 11, note_id: 0 });
     expect(sound('instrument = steel-drum  note = "E6"')).toMatchObject({ instrument_id: 11, note_id: 35 });
@@ -308,7 +339,7 @@ describe("export: wires", () => {
 
   it("writes a wire from a combinator to itself with the input first, and every wire once, in order", () => {
     const { blueprint } = exported(circuitOf("decider d { }  constant c { }  lamp l { }  wire green d.out <-> d.in  wire red d.out <-> d.in  wire red l.in <-> c.out  wire red c.out <-> d.in  wire green l.in <-> d.out  wire red d.in <-> c.out"));
-    expect(blueprint.wires).toEqual([[1, 1, 1, 3], [1, 2, 1, 4], [1, 1, 2, 1], [1, 4, 3, 2], [2, 1, 3, 1]]);
+    expect(blueprint.wires).toEqual([[1, 1, 1, 3], [1, 1, 2, 1], [1, 2, 1, 4], [1, 4, 3, 2], [2, 1, 3, 1]]);
   });
 
   it("warns about a wire that is longer than the game lets it be", () => {
@@ -317,6 +348,21 @@ describe("export: wires", () => {
     expect(result.ok && result.warnings.map((warning) => `${warning.code} ${warning.entities.join()}`)).toEqual(["wire-too-long c,far"]);
     expect(result.ok && result.warnings[0]!.message).toContain("spans 10 tiles; in the game it reaches 9");
     expect(result.ok && result.data.blueprint.wires).toHaveLength(3);
+  });
+});
+
+describe("export: what the game does not take as it is", () => {
+  it("writes a circuit with the hub of a space platform around the hub, which is at (0, 0) of every platform", () => {
+    const circuit = parse("constant c tile (0.5, 0.5) { }  entity hub tile (12, 4) { prototype = space-platform-hub }  lamp l tile (20.5, -3.5) { }  wire red c.out <-> hub");
+    const result = exportBlueprint(circuit);
+    expect(result.ok && result.data.blueprint.entities.map((entity) => [entity.name, entity.position])).toEqual([["constant-combinator", { x: -11.5, y: -3.5 }], ["space-platform-hub", { x: 0, y: 0 }], ["small-lamp", { x: 8.5, y: -7.5 }]]);
+    expect(result.ok && result.warnings).toEqual([]);
+  });
+
+  it("warns about an entity no item builds, which the game leaves out of a blueprint it reads", () => {
+    const result = exportBlueprint(circuitOf("constant c { }  entity blue { prototype = blue-chest }  entity crash { prototype = crash-site-chest-1 }  entity steel { prototype = steel-chest }  wire red c.out <-> blue"));
+    expect(result.ok && result.warnings).toEqual([{ code: "no-item", entities: ["blue", "crash"], message: "No item builds 'blue', 'crash'; the game leaves them and their wires out when it reads the blueprint" }]);
+    expect(result.ok && result.data.blueprint.entities).toHaveLength(4);
   });
 });
 

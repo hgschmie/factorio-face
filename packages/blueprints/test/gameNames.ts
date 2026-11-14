@@ -1,6 +1,7 @@
 // The names the game's runtime API has for what a blueprint names otherwise: the attribute of the control behaviour behind a
 // field of `control_behavior`, and the define behind the number of an enum. From the API reference (runtime-api.json 2.1.23,
-// the `Lua*ControlBehavior` classes and `defines.control_behavior`); the probe builds circuits with them and records the numbers.
+// the `Lua*ControlBehavior` classes and `defines.control_behavior`); the probe builds circuits with them and reads the defaults
+// through them, so the recording of the game (fixture F-01) confirms every one.
 
 import { ENTITY_SETTINGS, type EnumSetting } from "@face/model";
 

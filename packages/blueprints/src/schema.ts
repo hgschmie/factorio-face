@@ -37,7 +37,7 @@ export const DIRECTION_NUMBERS: Readonly<Record<Direction, number>> = { north: 0
  */
 export const CONNECTOR = { red: 1, green: 2, outputRed: 3, outputGreen: 4, poleCopper: 5, switchRightCopper: 6 } as const;
 
-/** `defines.control_behavior.lamp.color_mode`. The numbers are the order of the API reference; the game has not confirmed them (F-01). */
+/** `defines.control_behavior.lamp.color_mode`, as the game numbers it (fixture F-01). */
 export const LAMP_COLOR_MODE_NUMBERS = { mapping: 0, components: 1, "packed-rgb": 2 } as const;
 
 /** The game writes the three comparators that have a sign of their own with it; it reads both spellings. */
@@ -60,7 +60,7 @@ export interface BlueprintNetworks {
   readonly green: boolean;
 }
 
-/** `constant` is written when there is no `second_signal`. */
+/** `constant` is written when there is no `second_signal`, also when it is 0. */
 export interface BlueprintCondition {
   readonly first_signal?: BlueprintSignal;
   readonly second_signal?: BlueprintSignal;
@@ -85,25 +85,32 @@ export interface BlueprintSection {
   readonly active?: false;
 }
 
+/** The game writes the sections always: a new combinator has one that is empty (`{ index: 1 }`). */
 export interface ConstantControlBehavior {
+  readonly sections: { readonly sections: readonly BlueprintSection[] };
   readonly is_on?: false;
-  readonly sections?: { readonly sections: readonly BlueprintSection[] };
 }
 
+/** A new combinator is `{ second_constant: 0, operation: "*" }`: a first constant of 0 is left out, a second one is not. */
 export interface ArithmeticControlBehavior {
   readonly arithmetic_conditions: {
     readonly first_signal?: BlueprintSignal;
-    readonly first_signal_networks?: BlueprintNetworks;
     readonly first_constant?: number;
     readonly second_signal?: BlueprintSignal;
-    readonly second_signal_networks?: BlueprintNetworks;
     readonly second_constant?: number;
     readonly operation: ArithmeticOperation;
     readonly output_signal?: BlueprintSignal;
+    readonly first_signal_networks?: BlueprintNetworks;
+    readonly second_signal_networks?: BlueprintNetworks;
   };
 }
 
-export interface BlueprintDeciderCondition extends BlueprintCondition {
+/** Unlike `BlueprintCondition`: a `constant` of 0 and the `comparator` `<` are left out. A blank row is `{}`. */
+export interface BlueprintDeciderCondition {
+  readonly first_signal?: BlueprintSignal;
+  readonly second_signal?: BlueprintSignal;
+  readonly constant?: number;
+  readonly comparator?: string;
   readonly first_signal_networks?: BlueprintNetworks;
   readonly second_signal_networks?: BlueprintNetworks;
   readonly compare_type?: "and";
@@ -116,15 +123,16 @@ export interface BlueprintDeciderOutput {
   readonly networks?: BlueprintNetworks;
 }
 
+/** All three lists always. A new combinator has one blank condition and one blank output: `[{}]`, `[{}]`, `[]`. */
 export interface DeciderControlBehavior {
   readonly decider_conditions: {
-    readonly conditions?: readonly BlueprintDeciderCondition[];
-    readonly outputs?: readonly BlueprintDeciderOutput[];
-    readonly else_outputs?: readonly BlueprintDeciderOutput[];
+    readonly conditions: readonly BlueprintDeciderCondition[];
+    readonly outputs: readonly (BlueprintDeciderOutput | Record<string, never>)[];
+    readonly else_outputs: readonly BlueprintDeciderOutput[];
   };
 }
 
-/** The parameters stand in `control_behavior` itself, without the wrapper the arithmetic and the decider combinator have. */
+/** The parameters stand in `control_behavior` itself, without the wrapper the arithmetic and the decider combinator have. Always written. */
 export interface SelectorControlBehavior {
   readonly operation: SelectorOperation;
   readonly select_max?: boolean;
@@ -134,14 +142,14 @@ export interface SelectorControlBehavior {
   readonly count_signal?: BlueprintSignal;
   readonly random_update_interval?: number;
   readonly quality_filter?: { readonly quality?: string; readonly comparator: string };
-  readonly select_highest_quality?: false;
+  readonly select_highest_quality?: boolean;
   readonly select_quality_from_signal?: true;
   readonly quality_source_static?: { readonly name: string };
   readonly quality_source_signal?: BlueprintSignal;
   readonly quality_destination_signal?: BlueprintSignal;
-  readonly day_length_signal?: BlueprintSignal;
-  readonly day_tick_signal?: BlueprintSignal;
   readonly game_tick_signal?: BlueprintSignal;
+  readonly day_tick_signal?: BlueprintSignal;
+  readonly day_length_signal?: BlueprintSignal;
 }
 
 export interface LampControlBehavior {
@@ -149,15 +157,16 @@ export interface LampControlBehavior {
   readonly circuit_enabled?: true;
   readonly circuit_condition?: BlueprintCondition;
   readonly use_colors?: true;
-  readonly color_mode?: number;
   readonly red_signal?: BlueprintSignal;
   readonly green_signal?: BlueprintSignal;
   readonly blue_signal?: BlueprintSignal;
   readonly rgb_signal?: BlueprintSignal;
+  readonly color_mode?: number;
 }
 
+/** Not written for a speaker the circuit does not concern (no condition, no pitch signal, the first note, nothing to stop). */
 export interface SpeakerControlBehavior {
-  readonly circuit_condition: BlueprintCondition;
+  readonly circuit_condition?: BlueprintCondition;
   readonly circuit_parameters: { readonly signal_value_is_pitch: boolean; readonly stop_playing_sounds: boolean; readonly instrument_id: number; readonly note_id: number };
 }
 

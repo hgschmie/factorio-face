@@ -108,7 +108,7 @@ describe("kinds", () => {
 describe("session", () => {
   it("analyzes the source with the instruments of the catalog and the wire reach per entity", () => {
     const { session } = createSession(SOURCE);
-    expect(session.state.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`)).toEqual(["wire-too-long: Wire from 'p1' to 'far': the entities are 8 tiles apart; the wire reach of a small electric pole is 7.5"]);
+    expect(session.state.diagnostics.map((diagnostic) => `${diagnostic.code}: ${diagnostic.message}`)).toEqual(["wire-too-long: Wire from 'p1' to 'far': the poles are 9 tiles apart from center to center; the wire reach of a small electric pole is 7.5"]);
     // Unlimited for the project still leaves the pole its reach; a wire between other entities is then never too long.
     session.commands.setWireReach(0);
     expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["wire-too-long"]);
@@ -176,7 +176,7 @@ describe("canvases", () => {
     }
   });
 
-  it("stands a big pole on two by two tiles and measures its wires from them", () => {
+  it("stands a big pole on two by two tiles, and measures a wire between two poles from center to center and any other between the boxes", () => {
     const board = blueprintLayout(entities);
     expect(arrangeBoard(entities).get(byName("big").id)).toMatchObject({ origin: { x: 8, y: 0 }, size: { width: 2, height: 2 }, conflict: false });
     expect(board.rect(byName("big"))).toEqual({ x: 640, y: 0, width: 160, height: 160 });
@@ -184,11 +184,11 @@ describe("canvases", () => {
     expect(board.pin(byName("big"), "io", "red")).toEqual({ x: 710, y: 12 });
     expect(board.pin(byName("big"), "io", "green")).toEqual({ x: 730, y: 12 });
     expect(board.pin(byName("p1"), "io", "red")).toEqual({ x: 350, y: 12 });
-    expect(board.wireSpan(byName("p1"), byName("big"), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 3, tooLong: false });
-    expect(board.wireSpan(byName("big"), byName("light"), 9)).toEqual({ reach: 9, of: "project", distance: 2, tooLong: false });
-    expect(board.wireSpan(byName("p1"), byName("far"), 9)).toMatchObject({ reach: 7.5, distance: 8, tooLong: true });
+    expect(board.wireSpan(byName("p1"), byName("big"), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: Math.hypot(4.5, 0.5), measure: "centers", tooLong: false });
+    expect(board.wireSpan(byName("big"), byName("light"), 9)).toEqual({ reach: 9, of: "project", distance: 2, measure: "boxes", tooLong: false });
+    expect(board.wireSpan(byName("p1"), byName("far"), 9)).toMatchObject({ reach: 7.5, distance: 9, measure: "centers", tooLong: true });
     // A pole being dragged is measured where the drag would put it.
-    const moved = blueprintLayout(entities, new Map([[byName("far").id, { x: 12 * 80, y: 0 }]]));
+    const moved = blueprintLayout(entities, new Map([[byName("far").id, { x: 11 * 80, y: 0 }]]));
     expect(moved.wireSpan(byName("p1"), byName("far"), 9)).toMatchObject({ distance: 7, tooLong: false });
   });
 });

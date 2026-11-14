@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  clampWireReach, DEFAULT_WIRE_REACH, describeWireReach, footprintBox, footprintDistance, formatWireDistance, formatWireReach, isWireReach, tileCenter, tileUnit, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE, wireDistance,
-  wireReachBetween, wireReachOwner, wireSpan,
+  boxDistance, clampWireReach, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, footprintBox, formatWireDistance, formatWireReach, isWireReach, selectionBox, tileCenter, tileUnit, UNLIMITED_WIRE_REACH,
+  WIRE_REACH_RANGE, wireDistance, wireEndsNoun, wireMeasure, wireReachBetween, wireReachOwner, wireSpan,
   type Direction, type EntityKind, type PlacedShape, type Point, type PrototypeOfKind, type TileBox,
 } from "../src/index.ts";
 
@@ -10,6 +10,8 @@ type Placed = PlacedShape;
 const standing = (kind: EntityKind, direction: Direction, origin: Point): Placed => ({ kind, placement: { tile: tileCenter({ kind }, direction, origin), direction } });
 const constant = (x: number, y: number): Placed => standing("constant", "east", { x, y });
 const pole = (prototype: PrototypeOfKind<"pole">, x: number, y: number): Placed => ({ kind: "pole", prototype, placement: { tile: tileCenter({ kind: "pole", prototype }, "east", { x, y }) } });
+/** A generic entity of `prototype` whose top-left tile is `origin`. */
+const generic = (prototype: string, direction: Direction, origin: Point): Placed => ({ kind: "entity", prototype, placement: { tile: tileCenter({ kind: "entity", prototype }, direction, origin), direction } });
 const unplaced: Placed = { kind: "decider", placement: { direction: "north" } };
 /** Whether a wire between the two is too long for a project with the reach 9, or `reach`. */
 const tooLong = (a: Placed, b: Placed, reach = 9): boolean => wireSpan(a, b, reach).tooLong;
@@ -25,22 +27,22 @@ describe("wire reach", () => {
     expect([-1, -0.01, -0, 0, 0.5, 9, 64, 64.01, 100].map(clampWireReach)).toEqual([0, 0, 0, 0, 0.5, 9, 64, 64, 64]);
   });
 
-  it("measures two footprints between their nearest points", () => {
+  it("measures two boxes between their nearest points", () => {
     // Touching or overlapping: nothing to span.
-    expect(footprintDistance(box(0, 0), box(1, 0))).toBe(0);
-    expect(footprintDistance(box(0, 0), box(1, 1))).toBe(0);
-    expect(footprintDistance(box(0, 0, 2, 2), box(1, 1, 3, 1))).toBe(0);
-    expect(footprintDistance(box(0, 0), box(0, 0))).toBe(0);
+    expect(boxDistance(box(0, 0), box(1, 0))).toBe(0);
+    expect(boxDistance(box(0, 0), box(1, 1))).toBe(0);
+    expect(boxDistance(box(0, 0, 2, 2), box(1, 1, 3, 1))).toBe(0);
+    expect(boxDistance(box(0, 0), box(0, 0))).toBe(0);
     // Overlapping on one axis: the gap along the other.
-    expect(footprintDistance(box(0, 0), box(10, 0))).toBe(9);
-    expect(footprintDistance(box(0, 0, 1, 2), box(-5, 1))).toBe(4);
-    expect(footprintDistance(box(0, 3, 4, 1), box(2, -6, 1, 2))).toBe(7);
+    expect(boxDistance(box(0, 0), box(10, 0))).toBe(9);
+    expect(boxDistance(box(0, 0, 1, 2), box(-5, 1))).toBe(4);
+    expect(boxDistance(box(0, 3, 4, 1), box(2, -6, 1, 2))).toBe(7);
     // Apart on both: corner to corner, the same from either side.
-    expect(footprintDistance(box(0, 0), box(4, 5))).toBe(5);
-    expect(footprintDistance(box(4, 5), box(0, 0))).toBe(5);
-    expect(footprintDistance(box(0, 0, 2, 2), box(-4, -5, 1, 1))).toBe(5);
-    expect(footprintDistance(box(0, 0), box(7, 7))).toBeCloseTo(8.485, 3);
-    expect(footprintDistance(box(0, 0), box(8, 8))).toBeCloseTo(9.899, 3);
+    expect(boxDistance(box(0, 0), box(4, 5))).toBe(5);
+    expect(boxDistance(box(4, 5), box(0, 0))).toBe(5);
+    expect(boxDistance(box(0, 0, 2, 2), box(-4, -5, 1, 1))).toBe(5);
+    expect(boxDistance(box(0, 0), box(7, 7))).toBeCloseTo(8.485, 3);
+    expect(boxDistance(box(0, 0), box(8, 8))).toBeCloseTo(9.899, 3);
   });
 
   it("gives entities side by side the distance 0 and counts the empty tiles between two 1x1 entities", () => {
@@ -79,10 +81,50 @@ describe("wire reach", () => {
     expect(wireDistance(constant(0, 0), { kind: "decider", placement: { tile: { x: 10.5, y: 0.5 }, direction: "east" } })).toBe(8.5);
   });
 
+  it("measures an entity whose selection box is not its tiles from that box, which turns with the entity", () => {
+    // Most boxes are the tiles; the table has the others in the game's 1/256 of a tile.
+    expect(selectionBox({ kind: "decider" }, "north", { x: 0.5, y: 1 })).toEqual(footprintBox({ kind: "decider" }, "north", { x: 0.5, y: 1 }));
+    const inserter = { kind: "entity", prototype: "inserter" } as const;
+    const at = (direction: Direction): number[] => (({ x, y, width, height }) => [x, y, x + width, y + height])(selectionBox(inserter, direction, { x: 0, y: 0 }));
+    expect(at("north")).toEqual([-0.3984375, -0.34765625, 0.3984375, 0.44921875]);
+    expect(at("east")).toEqual([-0.44921875, -0.3984375, 0.34765625, 0.3984375]);
+    expect(at("south")).toEqual([-0.3984375, -0.44921875, 0.3984375, 0.34765625]);
+    expect(at("west")).toEqual([-0.34765625, -0.3984375, 0.44921875, 0.3984375]);
+    // An inserter on the tile (0, 0) and a constant combinator four tiles to its east and to its south.
+    expect(wireDistance(generic("inserter", "north", { x: 0, y: 0 }), constant(5, 0))).toBe(4 + (0.5 - 0.3984375));
+    expect(wireDistance(generic("inserter", "east", { x: 0, y: 0 }), constant(5, 0))).toBe(4 + (0.5 - 0.34765625));
+    expect(wireDistance(generic("inserter", "north", { x: 0, y: 0 }), constant(0, 5))).toBe(4 + (0.5 - 0.44921875));
+    // A box may be larger than the tiles: the offshore pump's reaches a tile to its back.
+    expect(wireDistance(generic("offshore-pump", "south", { x: 0, y: 0 }), constant(0, 5))).toBe(3 + (1 - 0.98828125));
+    // A stone furnace does not turn, and neither does its box, which is narrower than its two tiles.
+    for (const direction of ["north", "east"] as const) {
+      expect(wireDistance(generic("stone-furnace", direction, { x: 0, y: 0 }), constant(5, 0))).toBe(3 + (1 - 0.796875));
+      expect(wireDistance(generic("stone-furnace", direction, { x: 0, y: 0 }), constant(0, 5))).toBe(3);
+    }
+    // The small pole's box is smaller than its tile: against anything but a pole it counts.
+    expect(wireDistance(constant(0, 0), pole("small-electric-pole", 5, 0))).toBe(4 + (0.5 - 0.3984375));
+  });
+
+  it("measures two electric poles from center to center, and a pole against anything else like any entity", () => {
+    expect(wireMeasure({ kind: "pole" }, { kind: "pole", prototype: "substation" })).toBe("centers");
+    expect(wireMeasure({ kind: "pole" }, { kind: "lamp" })).toBe("boxes");
+    expect(wireMeasure({ kind: "entity", prototype: "power-switch" }, { kind: "pole" })).toBe("boxes");
+    expect(wireDistance(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 0, 8))).toBe(8);
+    expect(wireDistance(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 3, 4))).toBe(5);
+    // A big pole stands on four tiles; its center is their common corner.
+    expect(wireDistance(pole("big-electric-pole", 0, 0), pole("small-electric-pole", 6, 0))).toBe(Math.hypot(5.5, 0.5));
+    expect(wireDistance(pole("big-electric-pole", 0, 0), pole("big-electric-pole", 0, 0))).toBe(0);
+    expect(wireDistance(pole("big-electric-pole", 0, 0), constant(6, 0))).toBe(4);
+    expect(describeWireDistance(8, 7.5, "centers")).toBe("8 tiles apart from center to center");
+    expect(describeWireDistance(1, 9, "boxes")).toBe("1 tile apart");
+    expect(describeWireDistance(Math.hypot(9, 0.5), 9, "boxes")).toBe("9.01 tiles apart");
+    expect(["centers", "boxes"].map((measure) => wireEndsNoun(measure as "centers" | "boxes"))).toEqual(["poles", "entities"]);
+  });
+
   it("calls a wire too long only when the entities are further apart than the reach", () => {
     // Nine empty tiles in a row connect, ten do not.
-    expect(wireSpan(constant(0, 0), constant(10, 0), 9)).toEqual({ reach: 9, of: "project", distance: 9, tooLong: false });
-    expect(wireSpan(constant(0, 0), constant(11, 0), 9)).toEqual({ reach: 9, of: "project", distance: 10, tooLong: true });
+    expect(wireSpan(constant(0, 0), constant(10, 0), 9)).toEqual({ reach: 9, of: "project", distance: 9, measure: "boxes", tooLong: false });
+    expect(wireSpan(constant(0, 0), constant(11, 0), 9)).toEqual({ reach: 9, of: "project", distance: 10, measure: "boxes", tooLong: true });
     // Six and six empty tiles connect (8.49), seven and seven do not (9.90).
     expect(tooLong(constant(0, 0), constant(7, 7))).toBe(false);
     expect(tooLong(constant(0, 0), constant(8, 8))).toBe(true);
@@ -94,7 +136,7 @@ describe("wire reach", () => {
   });
 
   it("flags nothing between entities without a reach of their own when the project's reach is 0, which means unlimited", () => {
-    expect(wireSpan(constant(0, 0), constant(1, 0), UNLIMITED_WIRE_REACH)).toEqual({ reach: 0, of: "project", distance: 0, tooLong: false });
+    expect(wireSpan(constant(0, 0), constant(1, 0), UNLIMITED_WIRE_REACH)).toEqual({ reach: 0, of: "project", distance: 0, measure: "boxes", tooLong: false });
     expect(tooLong(constant(0, 0), constant(2, 0), UNLIMITED_WIRE_REACH)).toBe(false);
     expect(tooLong(constant(0, 0), constant(5000, -5000), UNLIMITED_WIRE_REACH)).toBe(false);
     expect(formatWireReach(UNLIMITED_WIRE_REACH)).toBe("unlimited");
@@ -106,8 +148,8 @@ describe("wire reach", () => {
     expect(wireDistance(constant(0, 0), unplaced)).toBeUndefined();
     expect(wireDistance(unplaced, constant(0, 0))).toBeUndefined();
     expect(wireDistance({ kind: "lamp" }, { kind: "lamp" })).toBeUndefined();
-    expect(wireSpan(constant(0, 0), unplaced, 1)).toEqual({ reach: 1, of: "project", tooLong: false });
-    expect(wireSpan(pole("small-electric-pole", 0, 0), unplaced, 9)).toEqual({ reach: 7.5, of: "small-electric-pole", tooLong: false });
+    expect(wireSpan(constant(0, 0), unplaced, 1)).toEqual({ reach: 1, of: "project", measure: "boxes", tooLong: false });
+    expect(wireSpan(pole("small-electric-pole", 0, 0), unplaced, 9)).toEqual({ reach: 7.5, of: "small-electric-pole", measure: "boxes", tooLong: false });
   });
 
   it("never flags a wire from an entity to itself", () => {
@@ -171,20 +213,25 @@ describe("wire reach", () => {
 
   it("measures a wire to a pole against the reach that applies", () => {
     const lamp = standing("lamp", "east", { x: 0, y: 0 });
-    // Seven empty tiles to a small pole connect, eight do not; half a tile more is the limit.
-    expect(wireSpan(lamp, pole("small-electric-pole", 8, 0), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 7, tooLong: false });
-    expect(wireSpan(lamp, pole("small-electric-pole", 9, 0), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 8, tooLong: true });
-    expect(tooLong(lamp, { kind: "pole", prototype: "small-electric-pole", placement: { tile: { x: 9, y: 0.5 } } })).toBe(false);
-    // Two big poles span 32 tiles between their 2x2 footprints, whatever the project says.
+    // Seven empty tiles to a small pole connect, eight do not; the pole's box ends a little before its tile does.
+    expect(wireSpan(lamp, pole("small-electric-pole", 8, 0), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 7.1015625, measure: "boxes", tooLong: false });
+    expect(wireSpan(lamp, pole("small-electric-pole", 9, 0), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 8.1015625, measure: "boxes", tooLong: true });
+    // Off the grid, with its box exactly 7.5 tiles from the lamp, and a little further.
+    expect(tooLong(lamp, { kind: "pole", prototype: "small-electric-pole", placement: { tile: { x: 8.8984375, y: 0.5 } } })).toBe(false);
+    expect(tooLong(lamp, { kind: "pole", prototype: "small-electric-pole", placement: { tile: { x: 9, y: 0.5 } } })).toBe(true);
+    // Two small poles in a column: seven tiles from center to center connect, eight do not, although only seven tiles are empty between them.
+    expect(tooLong(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 0, 7))).toBe(false);
+    expect(wireSpan(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 0, 8), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 8, measure: "centers", tooLong: true });
+    // Two big poles span 32 tiles from center to center, whatever the project says.
     for (const reach of [9, 4, UNLIMITED_WIRE_REACH]) {
-      expect(wireSpan(pole("big-electric-pole", 0, 0), pole("big-electric-pole", 34, 0), reach)).toEqual({ reach: 32, of: "big-electric-pole", distance: 32, tooLong: false });
-      expect(tooLong(pole("big-electric-pole", 0, 0), pole("big-electric-pole", 35, 0), reach)).toBe(true);
+      expect(wireSpan(pole("big-electric-pole", 0, 0), pole("big-electric-pole", 32, 0), reach)).toEqual({ reach: 32, of: "big-electric-pole", distance: 32, measure: "centers", tooLong: false });
+      expect(tooLong(pole("big-electric-pole", 0, 0), pole("big-electric-pole", 33, 0), reach)).toBe(true);
     }
     // A big pole and a lamp: the lamp's end has the project's reach.
     expect(tooLong(pole("big-electric-pole", 0, 0), standing("lamp", "east", { x: 12, y: 0 }))).toBe(true);
     expect(tooLong(pole("big-electric-pole", 0, 0), standing("lamp", "east", { x: 11, y: 0 }))).toBe(false);
-    expect(tooLong(pole("substation", 0, 0), pole("substation", 20, 0))).toBe(false);
-    expect(tooLong(pole("substation", 0, 0), pole("substation", 21, 0))).toBe(true);
+    expect(tooLong(pole("substation", 0, 0), pole("substation", 18, 0))).toBe(false);
+    expect(tooLong(pole("substation", 0, 0), pole("substation", 19, 0))).toBe(true);
   });
 
   it("says whose reach applied", () => {

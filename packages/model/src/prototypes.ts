@@ -7,7 +7,7 @@
 
 import type { EntityKind, EntitySettings } from "./circuit.ts";
 import { ENTITY_SETTINGS, normalizeSettings, type SettingSpec } from "./entitySettings.ts";
-import { hasOwnWireReach, STANDARD_ENTITY_TABLE, type EntityPrototype, type EntityTable } from "./entityTable.ts";
+import { hasOwnWireReach, STANDARD_ENTITY_TABLE, type BoxEdges, type EntityPrototype, type EntityTable } from "./entityTable.ts";
 
 export interface PrototypeData {
   readonly kind: EntityKind;
@@ -24,6 +24,8 @@ export interface PrototypeData {
   readonly offGrid?: true;
   /** Its own wire reach in tiles (`hasOwnWireReach`: an electric pole's `maximum_wire_distance`). Absent: the wire reach of the project applies. */
   readonly wireReach?: number;
+  /** The game's selection box around the center, facing north, where it is not the tiles the entity covers (`selectionBox` in footprint.ts). */
+  readonly selectionBox?: BoxEdges;
 }
 
 /** The kind of the prototypes that have one of their own, keyed by the game's prototype name. The first prototype of a kind is the one an entity of that kind is without saying which. */
@@ -63,8 +65,9 @@ function rowsOf(table: EntityTable): [PrototypeName, PrototypeData][] {
   const generic = table.entities.filter((prototype) => kindOf(prototype) === "entity").map((prototype) => prototype.name);
   return [...DEDICATED_NAMES, ...generic].map((name): [PrototypeName, PrototypeData] => {
     const game = table.byName.get(name)!;
-    const { displayName, width, height, directions, wireReach, offGrid } = game;
-    return [name, { kind: kindOf(game)!, label: displayName.toLowerCase(), width, height, rotatable: directions > 1, ...(directions === 2 && { twoWay: true }), ...(offGrid && { offGrid: true }), ...(hasOwnWireReach(game) && { wireReach }) }];
+    const { displayName, width, height, directions, wireReach, offGrid, selectionBox } = game;
+    const optional = { ...(directions === 2 && { twoWay: true as const }), ...(offGrid && { offGrid: true as const }), ...(hasOwnWireReach(game) && { wireReach }), ...(selectionBox && { selectionBox }) };
+    return [name, { kind: kindOf(game)!, label: displayName.toLowerCase(), width, height, rotatable: directions > 1, ...optional }];
   });
 }
 

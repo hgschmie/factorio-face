@@ -247,10 +247,11 @@ describe("import: place and direction", () => {
     ]);
   });
 
-  it("takes the nearest of the four for any other direction and says so", () => {
+  it("takes the one of the four before any other direction, as the game does, and says so", () => {
     const facing = (direction: unknown) => importedEntity("decider-combinator", { direction });
     expect(facing(5)).toEqual({ entity: DEFAULT_ENTITY.decider, notes: ["changed direction"] });
-    expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 14 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "north" });
+    expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 14 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "west" });
+    expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 3 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "north" });
     expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 9 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "south" });
     expect(facing("east").notes).toEqual(["invalid direction"]);
     expect(facing(16).notes).toEqual(["changed direction"]);
@@ -320,6 +321,16 @@ describe("import: constant combinator", () => {
     expect(importedEntity("constant-combinator")).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
     expect(read({})).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
     expect(read({ sections: {} }).entity).toEqual(DEFAULT_ENTITY.constant);
+    // The game places it with one empty section, and writes one without any section as null.
+    expect(sections([{ index: 1 }])).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
+    expect(read({ sections: null })).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
+  });
+
+  it("keeps an empty section that says something, or that is not the only one", () => {
+    const empty = { active: true, multiplier: 1, filters: [] };
+    expect(sections([{ index: 1, group: "g" }]).entity.sections).toEqual([{ ...empty, group: "g" }]);
+    expect(sections([{ index: 1, active: false }]).entity.sections).toEqual([{ ...empty, active: false }]);
+    expect(sections([{ index: 1 }, { index: 2 }]).entity.sections).toEqual([empty, empty]);
   });
 
   it("reads the switch, sections in the order of their index, and filters in the order of theirs", () => {
@@ -393,6 +404,8 @@ describe("import: arithmetic combinator", () => {
     expect(importedEntity("arithmetic-combinator")).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
     expect(read({})).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
     expect(read({ operation: "*", first_constant: 0 })).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
+    // As the game writes one it has just placed: nothing on the left, 0 on the right.
+    expect(read({ second_constant: 0, operation: "*" })).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
   });
 
   it("reads signals, constants, networks, the operation and the output", () => {
@@ -642,6 +655,9 @@ describe("import: programmable speaker", () => {
 
   it("is as placed without settings, with its objects missing or filled with the defaults", () => {
     expect(importedEntity("programmable-speaker")).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: [] });
+    // The game writes no control behaviour for a speaker the circuit does not concern, and no condition where there is none.
+    expect(importedEntity("programmable-speaker", { parameters, alert_parameters: alert })).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: [] });
+    expect(importedEntity("programmable-speaker", { control_behavior: { circuit_parameters: { ...circuit, stop_playing_sounds: true } }, parameters, alert_parameters: alert })).toEqual({ entity: { ...DEFAULT_ENTITY.speaker, stopPlayingSounds: true }, notes: [] });
     expect(read({})).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: [] });
   });
 

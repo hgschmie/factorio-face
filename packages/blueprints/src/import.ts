@@ -226,7 +226,10 @@ function readConstant(entity: Fields): Settings<"constant"> {
       const group = section.string("group");
       return { ...(group && { group }), active: section.boolean("active", true), multiplier: float32(section.number("multiplier", 1)), filters: [...filters.values()] };
     });
-  return { kind: "constant", enabled: behavior?.boolean("is_on", true) ?? true, sections };
+  // The one empty section of a combinator as the game places it is what the editor calls no section.
+  const [only] = sections;
+  const untouched = sections.length === 1 && only !== undefined && only.group === undefined && only.active && only.multiplier === 1 && only.filters.length === 0;
+  return { kind: "constant", enabled: behavior?.boolean("is_on", true) ?? true, sections: untouched ? [] : sections };
 }
 
 function readArithmetic(entity: Fields): Settings<"arithmetic"> {
@@ -460,9 +463,10 @@ function readDirection(entity: Fields, rotatable: boolean): Direction {
     return "north";
   }
   const value = entity.number("direction", 0);
-  const quarter = ((Math.round(value / 4) % 4) + 4) % 4;
-  if (!Number.isInteger(value) || value < 0 || value > 15 || value % 4 !== 0) entity.changed("direction", "is not one of the four directions an entity of the editor faces; the nearest is used");
-  return DIRECTIONS[quarter]!;
+  const valid = Number.isInteger(value) && value >= 0 && value <= 15;
+  // The game builds a direction between two of the four as the one before it.
+  if (!valid || value % 4 !== 0) entity.changed("direction", "is not one of the four directions the entity is built in; the one before it is used, as in the game");
+  return valid ? DIRECTIONS[Math.floor(value / 4)]! : "north";
 }
 
 function readPosition(record: Json): Point | undefined {

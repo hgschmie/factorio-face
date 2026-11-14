@@ -2,7 +2,7 @@
 // board the footprints below and the wires above them, as the game draws them. Memoized as a whole, so camera changes that
 // stay inside the current culling rectangle do not touch it, and with memoized children, so a drag only re-renders the moved
 // entities and wires and a selection only the entities and wires whose state changed. Hovering a wire is CSS only.
-import { formatWireDistance, formatWireReach, terminalKey, tileUnit, wireKey, wireReachOwner, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor, type WireSpan } from "@face/model";
+import { describeWireDistance, formatWireReach, terminalKey, wireKey, wireReachOwner, type Circuit, type Entity, type EntityId, type TerminalRef, type Wire, type WireColor, type WireSpan } from "@face/model";
 import { printTerminal } from "@face/language";
 import { memo, useMemo } from "react";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -72,11 +72,14 @@ const WireView = memo(function WireView({ id, color, path, title, selected, tooL
   );
 });
 
-/** "(10 tiles apart, over the wire reach of 9)"; a reach that an entity has by itself is named: "over the wire reach of a small electric pole, 7.5". */
+/**
+ * "(10 tiles apart, over the wire reach of 9)"; a reach that an entity has by itself is named: "over the wire reach of a small
+ * electric pole, 7.5". Two poles are measured otherwise, and the text says so: "(8 tiles apart from center to center, ...)".
+ */
 function measureText(span: WireSpan | undefined): string {
   if (span?.distance === undefined) return "";
   const reach = span.of === "project" ? formatWireReach(span.reach) : `${wireReachOwner(span)}, ${formatWireReach(span.reach)}`;
-  return ` (${formatWireDistance(span.distance, span.reach)} ${tileUnit(span.distance)} apart${span.tooLong ? `, over the wire reach of ${reach}` : ""})`;
+  return ` (${describeWireDistance(span.distance, span.reach, span.measure)}${span.tooLong ? `, over the wire reach of ${reach}` : ""})`;
 }
 
 function routeWires(circuit: Circuit, byId: ReadonlyMap<EntityId, Entity>, layout: Layout, wireReach: number): RoutedWire[] {

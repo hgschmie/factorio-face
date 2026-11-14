@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { COMPARATOR_SIGNS, exportBlueprint, importBlueprint, type BlueprintEntity } from "../src/index.ts";
 import { A, B, blueprintOf, exported, imported, importedEntity, IRON, parse } from "./helpers.ts";
-import { configuredSettings, GENERIC_SAMPLES, unsampledBehaviors } from "./samples.ts";
+import { configuredSettings, GENERIC_SAMPLES, NOT_HELD, sampledSettings, unsampledBehaviors } from "./samples.ts";
 
 const TYPES = Object.keys(ENTITY_SETTINGS);
 const game = (prototype: string): EntityPrototype => entityTable().byName.get(prototype)!;
@@ -153,7 +153,11 @@ describe("generic entities: settings by example", () => {
   it("reads a mode without a checkbox by its number, and the roboport's also as the boolean the API reference gives it", () => {
     expect(importedEntity("storage-tank", { control_behavior: { circuit_mode_of_operation: 2 } }).entity.settings).toEqual({ "read-contents": "segment-contents" });
     expect(importedEntity("storage-tank", { control_behavior: { circuit_mode_of_operation: 1 } }).entity.settings).toEqual({});
-    expect(importedEntity("radar", { control_behavior: { mode: 1, universe_channel: A } }).entity.settings).toEqual({ mode: "universe", channel: { kind: "virtual", name: "signal-A" } });
+    // The modes of a radar are numbered from 1.
+    expect(importedEntity("radar", { control_behavior: { mode: 2, universe_channel: A } }).entity.settings).toEqual({ mode: "universe", channel: { kind: "virtual", name: "signal-A" } });
+    expect(importedEntity("radar", { control_behavior: { mode: 1 } })).toEqual({ entity: { kind: "entity", prototype: "radar", settings: {} }, notes: [] });
+    expect(importedEntity("radar", { control_behavior: { mode: 0 } }).notes).toEqual(["invalid control_behavior.mode"]);
+    expect(recordOf(generic("radar", { mode: "universe" }))).toEqual({ control_behavior: { mode: 2 } });
     expect(importedEntity("roboport", { control_behavior: { read_items_mode: 2 } }).entity.settings).toEqual({ "read-items": "missing-requests" });
     expect(importedEntity("roboport", { control_behavior: { read_items_mode: false } })).toEqual({ entity: { kind: "entity", prototype: "roboport", settings: { "read-items": "none" } }, notes: [] });
     expect(importedEntity("roboport", { control_behavior: { read_items_mode: true } }).entity.settings).toEqual({});
@@ -185,13 +189,38 @@ describe("generic entities: settings by example", () => {
   it("shares the flag of a splitter side between its two conditions", () => {
     const left = { first_signal: A, constant: 1, comparator: "=" };
     const one = importedEntity("splitter", { control_behavior: { set_input_side: true, input_left_condition: left, input_right_condition: { comparator: "<" }, set_output_side: true } });
-    expect(one.entity.settings).toEqual({ "input-left-when": { first: { kind: "virtual", name: "signal-A" }, comparator: "=", second: { type: "constant", value: 1 } } });
-    // The input side has a condition; the output side is on with none.
-    expect(one.notes).toEqual(["changed control_behavior.set_output_side"]);
+    // A side that is on without a condition has the one the game gives it: its signal below 0 for left, above 0 for right.
+    const side = (name: string, comparator: string) => ({ first: { kind: "virtual", name }, comparator, second: { type: "constant", value: 0 } });
+    expect(one.entity.settings).toEqual({
+      "input-left-when": { first: { kind: "virtual", name: "signal-A" }, comparator: "=", second: { type: "constant", value: 1 } }, "input-right-when": side("signal-I", ">"),
+      "output-left-when": side("signal-O", "<"), "output-right-when": side("signal-O", ">"),
+    });
+    expect(one.notes).toEqual([]);
+    // The game leaves its own conditions out of a blueprint, and so does the export.
+    expect(recordOf(generic("splitter", one.entity.settings as EntitySettings, { direction: "north" }))).toEqual({ control_behavior: { set_input_side: true, input_left_condition: left, set_output_side: true } });
     const both: EntitySettings = { "input-left-when": condition, "input-right-when": { ...condition, comparator: ">=" }, "output-right-when": condition };
     const record = recordOf(generic("splitter", both, { direction: "north" }));
     expect(record).toEqual({ control_behavior: { set_input_side: true, input_left_condition: when, input_right_condition: { ...when, comparator: "≥" }, set_output_side: true, output_right_condition: when } });
-    expect(importedEntity("splitter", record)).toEqual({ entity: { kind: "entity", prototype: "splitter", settings: JSON.parse(JSON.stringify(both)), }, notes: [] });
+    // The left output, which the editor did not have, comes back as the one the game takes for it.
+    expect(importedEntity("splitter", record)).toEqual({ entity: { kind: "entity", prototype: "splitter", settings: JSON.parse(JSON.stringify({ ...both, "output-left-when": side("signal-O", "<") })) }, notes: [] });
+  });
+
+  it("says that the open-gate flag of a wall is off where the wall has no such condition, because the game has it on in a new one", () => {
+    expect(recordOf(generic("stone-wall", { "read-sensor": true }))).toEqual({ control_behavior: { circuit_open_gate: false, circuit_read_sensor: true } });
+    expect(recordOf(generic("stone-wall", { "open-gate-when": condition, "read-sensor": true }))).toEqual({ control_behavior: { circuit_open_gate: true, circuit_read_sensor: true, circuit_condition: when } });
+    expect(recordOf(generic("stone-wall"))).toEqual({});
+    expect(importedEntity("stone-wall", { control_behavior: { circuit_open_gate: false, circuit_read_sensor: true } })).toEqual({ entity: { kind: "entity", prototype: "stone-wall", settings: { "read-sensor": true } }, notes: [] });
+    // On with a blank condition, as the game writes a wall nobody touched: the editor has no blank condition.
+    expect(importedEntity("stone-wall", { control_behavior: { circuit_open_gate: true, circuit_read_sensor: true } }).notes).toEqual(["changed control_behavior.circuit_open_gate"]);
+    expect(importedEntity("stone-wall", { control_behavior: { circuit_read_sensor: true } }).notes).toEqual([]);
+  });
+
+  it("writes the fields of a control behaviour in the order of the game: the network selections first", () => {
+    const fields = (prototype: string) => Object.keys(recordOf(generic(prototype, configuredSettings(prototype), { direction: "north" })).control_behavior as object).join();
+    expect(fields("stone-wall")).toBe("input_networks,output_networks,circuit_open_gate,circuit_read_sensor,output_signal,circuit_condition");
+    expect(fields("accumulator")).toBe("output_networks,output_signal,read_charge");
+    expect(fields("requester-chest")).toBe("input_networks,output_networks,read_contents,read_empty_slots,empty_slots_signal,set_requests,circuit_condition_enabled,circuit_condition");
+    expect(fields("pump")).toBe("input_networks,circuit_enabled,circuit_condition,connect_to_logistic_network,logistic_condition,set_filter");
   });
 
   it("keeps the wildcards a condition takes and resets an entity whose condition the language cannot say", () => {
@@ -308,6 +337,12 @@ describe("generic entities: directions", () => {
     expect(facing("boiler", 12)).toEqual(plain("west", 12));
   });
 
+  it("reads a direction between two quarter turns as the game builds it: the one before it, and says so", () => {
+    const before = (name: Direction | "(east)", out: number | undefined) => ({ ...plain(name, out), notes: ["changed direction"] });
+    expect([1, 2, 3, 5, 7, 9, 14, 15].map((direction) => facing("fast-inserter", direction))).toEqual([before("north", undefined), before("north", undefined), before("north", undefined), before("(east)", 4), before("(east)", 4), before("south", 8), before("west", 12), before("west", 12)]);
+    expect([9, 13].map((direction) => facing("storage-tank", direction))).toEqual([before("north", undefined), before("(east)", 4)]);
+  });
+
   it("gives an entity of two directions north or east: south is north and west is east (the storage tank)", () => {
     expect(PROTOTYPES["storage-tank"]).toMatchObject({ rotatable: true, twoWay: true });
     expect([undefined, 0, 4, 8, 12].map((direction) => facing("storage-tank", direction))).toEqual([plain("north", undefined), plain("north", undefined), plain("(east)", 4), plain("north", undefined), plain("(east)", 4)]);
@@ -322,6 +357,9 @@ describe("generic entities: directions", () => {
     expect([2, 6, 10, 14].map((direction) => facing("flamethrower-turret", direction))).toEqual([kept(2, "(east)"), kept(6, "south"), kept(10, "west"), kept(14, "north")]);
     expect([1, 3, 5, 7, 9, 13, 15].map((direction) => facing("rail-signal", direction))).toEqual([kept(1, "north"), kept(3, "(east)"), kept(5, "(east)"), kept(7, "south"), kept(9, "south"), kept(13, "west"), kept(15, "north")]);
     expect(facing("rail-chain-signal", 12)).toEqual(plain("west", 12));
+    // Of the sixteen an entity of eight directions is built in the even ones: the game takes the one before an odd one.
+    expect(facing("flamethrower-turret", 3)).toEqual(kept(2, "(east)"));
+    expect(facing("flamethrower-turret", 5)).toEqual({ ...plain("(east)", 4), notes: ["changed direction"] });
   });
 
   it("writes the kept direction while the entity faces as it came, and the editor's once it was turned", () => {
@@ -334,11 +372,12 @@ describe("generic entities: directions", () => {
     expect(recordOf(generic("rail-signal", {}, { blueprintData: '{"direction":16}', direction: "east" }))).toEqual({ direction: 4 });
   });
 
-  it("keeps the direction of an entity the entity table says cannot turn, without a word, and writes it back", () => {
+  it("passes over the direction of an entity that does not turn, as the game does", () => {
     expect(PROTOTYPES["steel-chest"]!.rotatable).toBe(false);
-    expect(facing("steel-chest", 4)).toEqual({ facing: "(east)", kept: '{"direction":4}', notes: [], out: 4 });
-    expect(facing("steel-chest", 0)).toEqual(plain("(east)", undefined));
-    expect(facing("radar", 6)).toEqual({ facing: "(east)", kept: '{"direction":6}', notes: [], out: 6 });
+    expect(facing("steel-chest", 4)).toEqual(plain("(east)", undefined));
+    expect(facing("radar", 6)).toEqual(plain("(east)", undefined));
+    expect(facing("gun-turret", "up")).toEqual(plain("(east)", undefined));
+    expect(recordOf(generic("steel-chest", {}, { blueprintData: '{"direction":4,"bar":3}' }))).toEqual({ bar: 3 });
   });
 
   it("reports a direction that is none and faces north", () => {
@@ -471,11 +510,12 @@ describe("generic entities: the samples for the game probe", () => {
     for (const prototype of sampled) expect(PROTOTYPES[prototype]?.kind, prototype).toBe("entity");
   });
 
-  it("set every setting key and every field of the table at least once", () => {
+  it("set every setting key and every field of the table at least once, but for the fuel of a lab, which the game does not keep", () => {
     const sampled = GENERIC_SAMPLES.flatMap(([, prototypes]) => prototypes);
-    const written = new Set(sampled.flatMap((prototype) => Object.keys((recordOf(generic(prototype, configuredSettings(prototype))).control_behavior ?? {}) as object).map((field) => `${ENTITY_SETTINGS[game(prototype).type]!.behavior}.${field}`)));
+    const written = new Set(sampled.flatMap((prototype) => Object.keys((recordOf(generic(prototype, sampledSettings(prototype))).control_behavior ?? {}) as object).map((field) => `${ENTITY_SETTINGS[game(prototype).type]!.behavior}.${field}`)));
     const all = new Set(Object.values(ENTITY_SETTINGS).flatMap((row) => row.settings.flatMap(settingFields).map((field) => `${row.behavior}.${field}`)));
-    expect([...all].filter((field) => !written.has(field))).toEqual([]);
+    expect([...all].filter((field) => !written.has(field))).toEqual(["LabBlueprintControlBehavior.read_fuel"]);
+    expect(NOT_HELD).toEqual({ lab: ["read-fuel"] });
   });
 });
 

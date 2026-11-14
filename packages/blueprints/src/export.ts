@@ -1,13 +1,13 @@
-// From a circuit of the editor to a blueprint of the game. What is written at a default and what is left out follows
-// docs/factorio-audit.md 3; the shapes the game has not confirmed yet are listed in the README of this package (fixture F-01).
+// From a circuit of the editor to a blueprint of the game. Every entity is written as the game writes it itself, field for field
+// and in its order: what it leaves out at a default and what it spells out is recorded in fixture F-01 (docs/factorio-audit.md 12).
 
 import {
   canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, gamePrototype, isTileCenter, NORMAL_QUALITY, prototypeOf, signalKey, TERMINALS, wireSpan,
-  type Circuit, type Condition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SignalId, type SpeakerInstrument, type TerminalRef, type WireColor,
+  type Circuit, type Condition, type DeciderCondition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type Point, type SelectorMode, type SignalId, type SpeakerInstrument, type TerminalRef, type WireColor,
 } from "@face/model";
 import {
   COMPARATOR_SIGNS, CONNECTOR, DIRECTION_NUMBERS, EXPORT_VERSION, LAMP_COLOR_MODE_NUMBERS,
-  type Blueprint, type BlueprintCondition, type BlueprintDeciderOutput, type BlueprintEntity, type BlueprintFile, type BlueprintNetworks, type BlueprintSection, type BlueprintSignal, type BlueprintWire,
+  type Blueprint, type BlueprintCondition, type BlueprintDeciderCondition, type BlueprintDeciderOutput, type BlueprintEntity, type BlueprintFile, type BlueprintNetworks, type BlueprintSection, type BlueprintSignal, type BlueprintWire,
   type SelectorControlBehavior,
 } from "./schema.ts";
 import { parseBlueprintData, writeGeneric } from "./generic.ts";
@@ -32,7 +32,7 @@ export interface ExportProblem {
   readonly message: string;
 }
 
-export type ExportWarningCode = "description-lost" | "wire-too-long";
+export type ExportWarningCode = "description-lost" | "wire-too-long" | "no-item";
 
 /** Something the blueprint does not carry, or that the game may not take as it is. */
 export interface ExportWarning {
@@ -84,15 +84,16 @@ class Exporter {
     return kept ?? {};
   }
 
-  private condition(condition: Condition | undefined): BlueprintCondition {
-    const first = this.optional(condition?.first);
-    const second = condition?.second.type === "signal" ? { second_signal: this.signal(condition.second.signal) } : { constant: condition?.second.value ?? 0 };
-    return { ...(first && { first_signal: first }), ...second, comparator: COMPARATOR_SIGNS[condition?.comparator ?? "<"] };
+  /** A circuit condition of anything but a decider combinator: the game writes a constant of 0 and the comparator `<` here. */
+  private condition(condition: Condition): BlueprintCondition {
+    const first = this.optional(condition.first);
+    const second = condition.second.type === "signal" ? { second_signal: this.signal(condition.second.signal) } : { constant: condition.second.value };
+    return { ...(first && { first_signal: first }), ...second, comparator: COMPARATOR_SIGNS[condition.comparator] };
   }
 
+  /** One side of an arithmetic operation: a constant is written also when it is 0. The network selections come after everything else. */
   private operand(prefix: "first" | "second", operand: Operand): Record<string, unknown> {
-    if (operand.type === "constant") return { [`${prefix}_constant`]: operand.value };
-    return { [`${prefix}_signal`]: this.signal(operand.signal), ...networks(`${prefix}_signal_networks`, operand.networks) };
+    return operand.type === "signal" ? { [`${prefix}_signal`]: this.signal(operand.signal) } : { [`${prefix}_constant`]: operand.value };
   }
 
   private output(output: DeciderOutput): BlueprintDeciderOutput {
@@ -101,34 +102,46 @@ class Exporter {
     return { signal, copy_count_from_input: false, ...(output.constant !== 1 && { constant: output.constant }) };
   }
 
-  private selector(mode: SelectorMode): SelectorControlBehavior | undefined {
+  /** A condition of a decider combinator, where the game leaves out a constant of 0 and the comparator `<`. */
+  private deciderCondition(condition: DeciderCondition, index: number): BlueprintDeciderCondition {
+    const first = this.optional(condition.first);
+    const { second } = condition;
+    return {
+      ...(first && { first_signal: first }),
+      ...(second.type === "signal" ? { second_signal: this.signal(second.signal) } : second.value !== 0 && { constant: second.value }),
+      ...(condition.comparator !== "<" && { comparator: COMPARATOR_SIGNS[condition.comparator] }),
+      ...(first && networks("first_signal_networks", condition.firstNetworks)),
+      ...(second.type === "signal" && networks("second_signal_networks", second.networks)),
+      ...(index > 0 && condition.join === "and" && { compare_type: "and" as const }),
+    };
+  }
+
+  private selector(mode: SelectorMode): SelectorControlBehavior {
     const { operation } = mode;
     const signals = (fields: Record<string, SignalId | undefined>): Record<string, BlueprintSignal> =>
       Object.fromEntries(Object.entries(fields).flatMap(([key, id]) => (id ? [[key, this.signal(id)]] : [])));
     switch (mode.operation) {
       case "select": {
-        // A selector as it is placed: nothing to say.
-        if (mode.max && mode.index.type === "constant" && mode.index.value === 0 && mode.indexComparator === "=") return undefined;
         const index = mode.index.type === "signal" ? { index_signal: this.signal(mode.index.signal) } : { index_constant: mode.index.value };
         return { operation, select_max: mode.max, ...index, ...(mode.indexComparator !== "=" && { index_comparator: COMPARATOR_SIGNS[mode.indexComparator] }) };
       }
       case "count": return { operation, ...signals({ count_signal: mode.output }) };
-      case "random": return { operation, random_update_interval: mode.interval };
+      case "random": return { operation, ...(mode.interval !== 0 && { random_update_interval: mode.interval }) };
       case "stack-size":
       case "rocket-capacity": return { operation };
       case "quality-filter":
         // Any quality, which is what the mode starts with: no filter.
         if (mode.quality === undefined && (mode.comparator ?? "=") === "=") return { operation };
         return { operation, quality_filter: { ...(mode.quality !== undefined && { quality: mode.quality }), comparator: COMPARATOR_SIGNS[mode.comparator ?? "="] } };
-      case "quality-select": return { operation, ...(!mode.highest && { select_highest_quality: false as const }) };
+      case "quality-select": return { operation, select_highest_quality: mode.highest };
       case "quality-transfer": {
         const destination = signals({ quality_destination_signal: mode.destination });
-        if (mode.source.type === "quality") return { operation, quality_source_static: { name: mode.source.quality }, ...destination };
+        if (mode.source.type === "quality") return { operation, ...(mode.source.quality !== NORMAL_QUALITY && { quality_source_static: { name: mode.source.quality } }), ...destination };
         // A SignalIDBase: the quality of the source signal is what is read, so the signal itself has none.
         const source = mode.source.signal && { quality_source_signal: this.signal({ kind: mode.source.signal.kind, name: mode.source.signal.name }) };
         return { operation, select_quality_from_signal: true, ...source, ...destination };
       }
-      case "time": return { operation, ...signals({ day_length_signal: mode.dayLength, day_tick_signal: mode.dayTick, game_tick_signal: mode.gameTick }) };
+      case "time": return { operation, ...signals({ game_tick_signal: mode.gameTick, day_tick_signal: mode.dayTick, day_length_signal: mode.dayLength }) };
     }
   }
 
@@ -167,44 +180,47 @@ class Exporter {
           ...(section.multiplier !== 1 && { multiplier: section.multiplier }),
           ...(!section.active && { active: false as const }),
         }));
-        return behavior({ ...(!entity.enabled && { is_on: false }), ...(sections.length > 0 && { sections: { sections } }) });
+        // A combinator without sections is the one the game places, which has one empty section.
+        return { control_behavior: { sections: { sections: sections.length > 0 ? sections : [{ index: 1 }] }, ...(!entity.enabled && { is_on: false as const }) } };
       }
       case "arithmetic": {
-        const isZero = (operand: Operand) => operand.type === "constant" && operand.value === 0;
-        if (!entity.output && entity.operation === "*" && isZero(entity.first) && isZero(entity.second)) return {};
         const output = this.optional(entity.output);
-        return behavior({ arithmetic_conditions: { ...this.operand("first", entity.first), ...this.operand("second", entity.second), operation: entity.operation, ...(output && { output_signal: output }) } });
+        const selection = (prefix: "first" | "second", side: Operand) => (side.type === "signal" ? networks(`${prefix}_signal_networks`, side.networks) : {});
+        return {
+          control_behavior: {
+            arithmetic_conditions: {
+              ...this.operand("first", entity.first),
+              ...this.operand("second", entity.second),
+              operation: entity.operation,
+              ...(output && { output_signal: output }),
+              ...selection("first", entity.first),
+              ...selection("second", entity.second),
+            },
+          },
+        };
       }
       case "decider": {
-        const conditions = entity.conditions.map((condition, index) => {
-          const first = this.optional(condition.first);
-          const second = condition.second.type === "signal"
-            ? { second_signal: this.signal(condition.second.signal), ...networks("second_signal_networks", condition.second.networks) }
-            : { constant: condition.second.value };
-          return {
-            ...(first && { first_signal: first, ...networks("first_signal_networks", condition.firstNetworks) }),
-            ...second,
-            comparator: COMPARATOR_SIGNS[condition.comparator],
-            ...(index > 0 && condition.join === "and" && { compare_type: "and" as const }),
-          };
-        });
-        const lists = { conditions, outputs: entity.outputs.map((output) => this.output(output)), else_outputs: entity.elseOutputs.map((output) => this.output(output)) };
-        const filled = Object.fromEntries(Object.entries(lists).filter(([, list]) => list.length > 0));
-        return behavior(Object.keys(filled).length ? { decider_conditions: filled } : {});
+        const outputs = (list: readonly DeciderOutput[]) => list.map((output) => this.output(output));
+        // The combinator the game places has one blank condition and one blank output; the lists are written also when they are empty.
+        const blank = entity.conditions.length + entity.outputs.length + entity.elseOutputs.length === 0;
+        const conditions = entity.conditions.map((condition, index) => this.deciderCondition(condition, index));
+        const lists = blank ? { conditions: [{}], outputs: [{}], else_outputs: [] } : { conditions, outputs: outputs(entity.outputs), else_outputs: outputs(entity.elseOutputs) };
+        return { control_behavior: { decider_conditions: lists } };
       }
       case "selector":
-        return behavior(this.selector(entity.mode) ?? {});
+        return { control_behavior: this.selector(entity.mode) };
       case "lamp": {
         const signals = { red_signal: this.optional(entity.redSignal), green_signal: this.optional(entity.greenSignal), blue_signal: this.optional(entity.blueSignal), rgb_signal: this.optional(entity.rgbSignal) };
         const control = behavior({
           ...networks("input_networks", entity.inputNetworks),
           ...(entity.condition && { circuit_enabled: true, circuit_condition: this.condition(entity.condition) }),
           ...(entity.useColors && { use_colors: true }),
-          ...(entity.colorMode !== "mapping" && { color_mode: LAMP_COLOR_MODE_NUMBERS[entity.colorMode] }),
           ...Object.fromEntries(Object.entries(signals).filter(([, id]) => id)),
+          ...(entity.colorMode !== "mapping" && { color_mode: LAMP_COLOR_MODE_NUMBERS[entity.colorMode] }),
         });
         const channel = (value: number) => Math.max(0, Math.min(255, value)) / 255;
-        return { ...control, ...(entity.alwaysOn && { always_on: true as const }), ...(entity.color && { color: { r: channel(entity.color.r), g: channel(entity.color.g), b: channel(entity.color.b), a: 1 } }) };
+        const color = entity.color && { r: channel(entity.color.r), g: channel(entity.color.g), b: channel(entity.color.b), a: 1 };
+        return { ...control, ...(color && { color }), ...(entity.alwaysOn && { always_on: true as const }) };
       }
       case "pole":
         return {};
@@ -214,8 +230,13 @@ class Exporter {
         const volumeSignal = this.optional(entity.volumeSignal);
         const icon = this.optional(entity.alertIcon);
         // With "signal value is pitch" the left side of the condition is the pitch signal; the rest of the condition is not used.
-        const condition = entity.pitchSignal ? this.condition({ first: entity.pitchSignal, comparator: "<", second: { type: "constant", value: 0 } }) : this.condition(entity.condition);
+        const pitch: Condition | undefined = entity.pitchSignal && { first: entity.pitchSignal, comparator: "<", second: { type: "constant", value: 0 } };
+        const condition = pitch ? this.condition(pitch) : entity.condition && this.condition(entity.condition);
+        const circuit = { signal_value_is_pitch: entity.pitchSignal !== undefined, stop_playing_sounds: entity.stopPlayingSounds, ...this.sound(entity) };
+        // A speaker that the circuit does not concern has no control behaviour; one that it does has its parameters in full.
+        const idle = !condition && !circuit.signal_value_is_pitch && !circuit.stop_playing_sounds && circuit.instrument_id === 0 && circuit.note_id === 0;
         return {
+          ...(!idle && { control_behavior: { ...(condition && { circuit_condition: condition }), circuit_parameters: circuit } }),
           parameters: {
             playback_volume: entity.volume / 100,
             playback_mode: entity.playbackMode,
@@ -224,19 +245,15 @@ class Exporter {
             ...(volumeSignal && { volume_signal_id: volumeSignal }),
           },
           alert_parameters: { show_alert: entity.showAlert, show_on_map: entity.showOnMap, ...(icon && { icon_signal_id: icon }), alert_message: entity.alertMessage },
-          control_behavior: {
-            circuit_condition: condition,
-            circuit_parameters: { signal_value_is_pitch: entity.pitchSignal !== undefined, stop_playing_sounds: entity.stopPlayingSounds, ...this.sound(entity) },
-          },
         };
       }
     }
   }
 
-  entity(entity: Entity, number: number): BlueprintEntity {
+  entity(entity: Entity, number: number, origin: Point): BlueprintEntity {
     this.current = entity.name;
     const facing = facingOf(entity);
-    const tile = entity.placement?.tile ?? { x: 0, y: 0 };
+    const tile = entity.placement?.tile ?? origin;
     // The game has the description on the four combinators only.
     const description = entity.description && isCombinator(entity) ? { player_description: entity.description } : {};
     const kept = entity.kind === "entity" ? this.kept(entity) : {};
@@ -245,7 +262,7 @@ class Exporter {
     return {
       entity_number: number,
       name: prototypeOf(entity),
-      position: { x: tile.x, y: tile.y },
+      position: { x: tile.x - origin.x, y: tile.y - origin.y },
       ...(direction !== undefined && { direction }),
       ...this.settings(entity, kept),
       ...description,
@@ -292,6 +309,18 @@ function placementProblems(circuit: Circuit): ExportProblem[] {
   return problems;
 }
 
+/** The prototype type of the hub of a space platform. */
+const PLATFORM_HUB = "space-platform-hub";
+
+/**
+ * Where (0, 0) of the blueprint is. The game builds a blueprint that has the hub of a space platform with its positions as they
+ * are, the hub being the one that stands at (0, 0) of every platform; so a circuit with a hub is written around its (first) hub.
+ */
+function platformOrigin(circuit: Circuit): Point {
+  const hub = circuit.entities.find((entity) => entity.kind === "entity" && gamePrototype(entity).type === PLATFORM_HUB);
+  return hub?.placement?.tile ?? { x: 0, y: 0 };
+}
+
 /**
  * Up to four icons: the items of the most frequent entities, as the game picks them for a new blueprint. The item is the one that
  * builds the entity (`placedBy` of the entity table); the few prototypes without one (chests of the game's editor) are shown as entities.
@@ -315,7 +344,8 @@ function icons(entities: readonly Entity[]): Blueprint["icons"] {
 export function exportBlueprint(circuit: Circuit, options: ExportOptions = {}): ExportResult {
   const problems = placementProblems(circuit);
   const exporter = new Exporter(options.instruments);
-  const entities = circuit.entities.map((entity, index) => exporter.entity(entity, index + 1));
+  const origin = platformOrigin(circuit);
+  const entities = circuit.entities.map((entity, index) => exporter.entity(entity, index + 1, origin));
   exporter.finish();
   problems.push(...exporter.problems);
   if (problems.length) return { ok: false, problems };
@@ -340,7 +370,15 @@ export function exportBlueprint(circuit: Circuit, options: ExportOptions = {}): 
   const noted = circuit.entities.filter((entity) => entity.description && !isCombinator(entity)).map((entity) => entity.name);
   if (noted.length) warnings.push({ code: "description-lost", entities: noted, message: `The game has a description on combinators only; the ${plural(noted.length, "description", "descriptions")} of ${listNames(noted)} ${plural(noted.length, "is", "are")} not in the blueprint` });
 
-  const sorted = [...wires.values()].sort((x, y) => x[0] - y[0] || x[2] - y[2] || x[1] - y[1] || x[3] - y[3]);
+  // The order of the game: by the first end, entity then connector, then by the second.
+  // The game drops an entity that no item builds from a blueprint it reads, and its wires with it.
+  const unbuildable = circuit.entities.filter((entity) => gamePrototype(entity).placedBy.length === 0).map((entity) => entity.name);
+  if (unbuildable.length) {
+    const [them, their] = [plural(unbuildable.length, "it", "them"), plural(unbuildable.length, "its", "their")];
+    warnings.push({ code: "no-item", entities: unbuildable, message: `No item builds ${listNames(unbuildable)}; the game leaves ${them} and ${their} wires out when it reads the blueprint` });
+  }
+
+  const sorted = [...wires.values()].sort((x, y) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || x[3] - y[3]);
   const blueprint: Blueprint = {
     icons: icons(circuit.entities),
     entities,

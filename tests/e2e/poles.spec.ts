@@ -7,8 +7,9 @@ import { canvas, card, clickCenter, clientPointOf, expect, pin, selectEntity, sh
 import { bubble, committedTiles, dragOnBoard, footprint, hoverOnBoard, inspector, openBoard, openBoardProject, pinOffsets, selectOnBoard, setSource } from "./board.ts";
 
 /**
- * source -> p1 -> p2 -> light and the speaker, all within reach. `far` is a small pole 8.5 tiles from p1: too far for a small
- * pole. The two big poles are 18 tiles apart, twice the reach of the project and well within their own.
+ * source -> p1 -> p2 -> light and the speaker, all within reach. `far` is a small pole 9.8 tiles from p1, measured from center to
+ * center as the game does between two poles: too far for a small pole. The two big poles are 20 tiles apart, more than twice the
+ * reach of the project and well within their own.
  */
 const POLES = `circuit "Poles" {
     constant source at (40, 80) tile (0.5, 0.5) {
@@ -52,7 +53,7 @@ const POLES = `circuit "Poles" {
 `;
 
 const NAMES = ["source", "p1", "p2", "light", "alarm", "far", "big1", "big2"];
-const TOO_LONG = "Wire from 'p1' to 'far': the entities are 8.5 tiles apart; the wire reach of a small electric pole is 7.5";
+const TOO_LONG = "Wire from 'p1' to 'far': the poles are 9.8 tiles apart from center to center; the wire reach of a small electric pole is 7.5";
 const diagnostics = (page: Page) => page.evaluate(() => window.faceSession!.getState().diagnostics.map((diagnostic) => `${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}`));
 const title = (page: Page, key: string) => wire(page, key).locator("title");
 
@@ -94,7 +95,8 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   await expect(card(page, "far")).toHaveAttribute("data-in-green", "nothing");
   await expect(card(page, "far")).toHaveAttribute("data-in-red", "no wire");
 
-  // The wire reach. Within 7.5 tiles of a small pole: no flag. 8.5 tiles to a small pole: flagged, with the pole named.
+  // The wire reach. Within 7.5 tiles of a small pole: no flag. 9.8 tiles to a small pole: flagged, with the pole named. A pole and
+  // another entity are measured between their boxes, and the small pole's ends a tenth of a tile before its tile does.
   const [near, relay, tooFar, between] = await Promise.all([
     wireKeyOf(page, "red", "source.out", "p1"),
     wireKeyOf(page, "red", "p1", "p2"),
@@ -103,13 +105,13 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   ]);
   await expect(page.locator("g.wire[data-too-long]")).toHaveCount(1);
   await expect(wire(page, tooFar)).toHaveAttribute("data-too-long", "true");
-  expect(await title(page, tooFar).textContent()).toBe("green: p1 <-> far (8.5 tiles apart, over the wire reach of a small electric pole, 7.5)");
+  expect(await title(page, tooFar).textContent()).toBe("green: p1 <-> far (9.8 tiles apart from center to center, over the wire reach of a small electric pole, 7.5)");
   await expect(wire(page, near)).not.toHaveAttribute("data-too-long");
-  expect(await title(page, near).textContent()).toBe("red: source.out <-> p1 (3 tiles apart)");
-  expect(await title(page, relay).textContent()).toBe("red: p1 <-> p2 (5 tiles apart)");
+  expect(await title(page, near).textContent()).toBe("red: source.out <-> p1 (3.1 tiles apart)");
+  expect(await title(page, relay).textContent()).toBe("red: p1 <-> p2 (6 tiles apart from center to center)");
   // Two big poles span more than the 9 tiles of the project: their own reach is 32.
   await expect(wire(page, between)).not.toHaveAttribute("data-too-long");
-  expect(await title(page, between).textContent()).toBe("green: big1 <-> big2 (18 tiles apart)");
+  expect(await title(page, between).textContent()).toBe("green: big1 <-> big2 (20 tiles apart from center to center)");
   // Between poles in a row a wire runs beside the line of the pins, clear of the pin of the other color: red 10 units above
   // it, green 10 below, each stepping over to its own pins. A wire with no such pin in its way is straight.
   await expect(wire(page, relay).locator("path.wire-core")).toHaveAttribute("d", "M 350 12 L 350 12 Q 350 2 360 2 L 820 2 Q 830 2 830 12 L 830 12");
@@ -126,7 +128,7 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   await select(tooFar);
   await expect(distance).toHaveAttribute("data-too-long", "true");
   await expect(distance.locator(".section-label")).toHaveText("DistanceReach 7.5");
-  await expect(distance.locator("p").first()).toHaveText("The two entities are 8.5 tiles apart");
+  await expect(distance.locator("p").first()).toHaveText("The two poles are 9.8 tiles apart from center to center");
   await expect(distance.locator(".wire-reach-source")).toContainText("The wire reach of a small electric pole is 7.5");
   await expect(distance.getByRole("status")).toContainText("Further apart than the wire reach.");
   await expect(inspector(page).locator(".wire-end small")).toHaveText(["connection", "connection"]);
@@ -386,7 +388,10 @@ test("a 2x2 pole on the board: selection, bubble, drag onto free and onto taken 
   expect(await diagnostics(page)).toEqual([]);
 });
 
-/** A small pole 8.49 tiles from the constant (six tiles in each direction; shown as 8.5) with a lamp on the tile beside it. */
+/**
+ * A small pole six tiles from the constant in each direction, with a lamp on the tile beside it. The box of a small pole ends a
+ * tenth of a tile before its tile does: 8.63 tiles, shown as 8.6. A medium pole on that tile fills it: 8.49, shown as 8.5.
+ */
 const REACH = `circuit "Reach" {
     constant source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
@@ -423,10 +428,10 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   // A pole has no description in the game; the box says so.
   await expect(inspector(page).getByLabel("Description")).toHaveAttribute("title", "A small electric pole has no description in the game. This text stays in the project.");
 
-  // The reach of the small pole is 7.5: the wire to the constant, 8.5 tiles away, is flagged.
+  // The reach of the small pole is 7.5: the wire to the constant, 8.6 tiles away, is flagged.
   await expect(wire(page, far)).toHaveAttribute("data-too-long", "true");
-  expect(await title(page, far).textContent()).toBe("red: source.out <-> p (8.5 tiles apart, over the wire reach of a small electric pole, 7.5)");
-  expect(await diagnostics(page)).toEqual(["warning wire-too-long: Wire from 'source.out' to 'p': the entities are 8.5 tiles apart; the wire reach of a small electric pole is 7.5"]);
+  expect(await title(page, far).textContent()).toBe("red: source.out <-> p (8.6 tiles apart, over the wire reach of a small electric pole, 7.5)");
+  expect(await diagnostics(page)).toEqual(["warning wire-too-long: Wire from 'source.out' to 'p': the entities are 8.6 tiles apart; the wire reach of a small electric pole is 7.5"]);
 
   // A medium pole reaches 9: the flag goes with the choice. Same tile, same size.
   await option("Medium electric pole").click();

@@ -170,7 +170,8 @@ describe("canvases", () => {
       const route = board.route(wire, entities.find((entity) => entity.id === wire.a.entity)!, entities.find((entity) => entity.id === wire.b.entity)!);
       expect(route.path.startsWith("M ")).toBe(true);
     }
-    expect(board.wireSpan(byName("box"), byName("feeder"), 9)).toEqual({ reach: 9, of: "project", distance: 1, tooLong: false });
+    // One empty tile between the chest and the inserter, whose selection box is smaller than its tile: 0.4 around its center, in the game's 1/256 of a tile.
+    expect(board.wireSpan(byName("box"), byName("feeder"), 9)).toEqual({ reach: 9, of: "project", distance: 1 + (0.5 - 0.3984375), measure: "boxes", tooLong: false });
   });
 });
 

@@ -17,7 +17,7 @@ export async function writeCannedDump(directory: string, { activeMods = { base: 
   const signal = (name: string, type: string): object => ({ name, type, order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
   const raw = {
     item: { plate: { icon: "__base__/graphics/icons/plate.png" }, gadget: { icon: "__some-mod__/graphics/gadget.png" }, lamp: { icon: "__base__/graphics/icons/lamp.png" } },
-    lamp: { lamp: { name: "lamp", icon: "__base__/graphics/icons/lamp.png", collision_box: [[-0.35, -0.35], [0.35, 0.35]], circuit_wire_max_distance: 9 } },
+    lamp: { lamp: { name: "lamp", icon: "__base__/graphics/icons/lamp.png", collision_box: [[-0.35, -0.35], [0.35, 0.35]], selection_box: [[-0.5, -0.5], [0.5, 0.5]], circuit_wire_max_distance: 9 } },
     "item-group": { g: { icon: "__base__/graphics/g.png", icon_size: 128 } },
     "utility-constants": { default: { default_item_weight: 100, default_rocket_lift_weight: 1000 } },
   };

@@ -30,7 +30,8 @@ const FACTORY = {
       { entity_number: 6, name: "train-stop", position: position(11, 1), control_behavior: { send_to_train: false, read_from_train: true }, station: "Iron pickup", manual_trains_limit: 2 },
       {
         entity_number: 7, name: "decider-combinator", position: position(1, 2.5), direction: 4,
-        control_behavior: { decider_conditions: { conditions: [{ first_signal: IRON, constant: 0, comparator: ">" }], outputs: [{ signal: { type: "virtual", name: "signal-A" }, copy_count_from_input: false }] } },
+        // As the game writes a decider combinator: no constant of 0, all three lists.
+        control_behavior: { decider_conditions: { conditions: [{ first_signal: IRON, comparator: ">" }], outputs: [{ signal: { type: "virtual", name: "signal-A" }, copy_count_from_input: false }], else_outputs: [] } },
       },
       { entity_number: 8, name: "inserter", position: position(3.5, 2.5), control_behavior: { circuit_enabled: true, circuit_condition: { first_signal: IRON, constant: 100, comparator: ">" } } },
     ],
@@ -40,8 +41,8 @@ const FACTORY = {
       [1, 1, 8, 1],
       [2, 1, 3, 1],
       [3, 2, 4, 2],
-      [5, 2, 6, 2],
       [5, 1, 7, 3],
+      [5, 2, 6, 2],
     ],
     item: "blueprint",
     label: "Factory",

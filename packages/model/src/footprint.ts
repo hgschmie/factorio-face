@@ -1,5 +1,5 @@
-// Tile footprints of the entities and the geometry between the game's center position (`placement.tile`) and whole tiles.
-// Sizes and rotation per prototype: `prototypes.ts`. The direction of a combinator: docs/factorio-audit.md 3.1. Position rules: 5.4.
+// Tile footprints and selection boxes of the entities and the geometry between the game's center position (`placement.tile`) and
+// whole tiles. Sizes, boxes and rotation per prototype: `prototypes.ts`. The direction of a combinator: docs/factorio-audit.md 3.1. Position rules: 5.4.
 //
 // A tile is named by the integer coordinates of its top-left corner; x grows to the east, y to the south. A center is "on the
 // grid" when the footprint it describes covers whole tiles: along an axis on which the footprint has an odd number of tiles the
@@ -77,6 +77,21 @@ export function tileOrigin(entity: EntityShape, direction: Direction, center: Po
 export function footprintBox(entity: EntityShape, direction: Direction, center: Point): TileBox {
   const { width, height } = tileSize(entity, direction);
   return { x: center.x - width / 2, y: center.y - height / 2, width, height };
+}
+
+/**
+ * The game's selection box of an entity around `center`: what the reach of a wire is measured between (wireReach.ts). For most
+ * prototypes it is the footprint. Where it is not (an inserter, a splitter, a small pole) the entity table has the box of the
+ * prototype facing north, and it turns with an entity that can be turned.
+ */
+export function selectionBox(entity: EntityShape, direction: Direction, center: Point): TileBox {
+  const { selectionBox: box, rotatable } = prototypeData(entity);
+  if (!box) return footprintBox(entity, direction, center);
+  const [l, t, r, b] = box;
+  // [left, top, right, bottom] after clockwise quarter turns: what was above the center is to the right of it after one.
+  const turned = { north: box, east: [-b, l, -t, r], south: [-r, -b, -l, -t], west: [t, -r, b, -l] } as const;
+  const [left, top, right, bottom] = turned[rotatable ? direction : "north"];
+  return { x: center.x + left, y: center.y + top, width: right - left, height: bottom - top };
 }
 
 /**
