@@ -153,14 +153,16 @@ function runtimeProblems(record, type, proto, fact) {
   return problems;
 }
 
-/** The full records of one module set by name, and what its runtime dump says against them. */
-function entitiesOfSet({ id, raw, runtime, locale }) {
+/**
+ * The full records of one module set by name, and what its runtime dump says against them. `lenient` is for a game with
+ * mods, where nothing proves the derivation: a prototype that cannot be derived, or that the game contradicts, is left out
+ * and named in `leftOut` instead of failing the build.
+ */
+function entitiesOfSet({ id, raw, runtime, locale }, lenient) {
   if (runtime.circuit_entities_error) throw new Error(`${id}: the runtime scenario (tools/catalog/runtime-dump/control.lua) could not read the wired entities: ${runtime.circuit_entities_error}`);
   const placing = new Map(runtime.entity.map((entry) => [entry.name, entry]));
   const facts = runtime.circuit_entities === undefined ? undefined : new Map(asArray(runtime.circuit_entities).map((fact) => [fact.name, fact]));
-  const records = new Map();
-  const problems = [];
-  for (const { type, proto } of circuitEntities(raw)) {
+  const derive = ({ type, proto }) => {
     const { name } = proto;
     const entry = placing.get(name);
     if (!entry) throw new Error(`${name} (${type}) takes a circuit wire in data.raw of ${id}, but the game has no entity of that name`);
@@ -183,13 +185,33 @@ function entitiesOfSet({ id, raw, runtime, locale }) {
       placedBy: asArray(entry.items_to_place_this),
       signals: defaultSignals(proto),
     };
+    const problems = [];
     if ((proto.hidden === true) !== record.hidden) problems.push(`${name}: hidden is ${record.hidden} at run time, ${proto.hidden === true} in data.raw`);
     if (facts && !fact) problems.push(`${name}: takes a circuit wire by data.raw (reach ${record.wireReach}), but has no wire reach at run time`);
     if (fact) problems.push(...runtimeProblems(record, type, proto, fact));
-    records.set(name, record);
+    return { record, problems };
+  };
+  const records = new Map();
+  const problems = [];
+  const leftOut = [];
+  const selected = new Set();
+  for (const candidate of circuitEntities(raw)) {
+    selected.add(candidate.proto.name);
+    let derived;
+    try {
+      derived = derive(candidate);
+    } catch (error) {
+      if (!lenient) throw error;
+      derived = { problems: [error.message] };
+    }
+    if (lenient && derived.problems.length) leftOut.push(...derived.problems);
+    else {
+      problems.push(...derived.problems);
+      records.set(derived.record.name, derived.record);
+    }
   }
-  for (const name of facts?.keys() ?? []) if (!records.has(name)) problems.push(`${name}: has a wire reach at run time, but the selection rule on data.raw does not find it`);
-  return { records, problems, checked: facts !== undefined };
+  for (const name of facts?.keys() ?? []) if (!selected.has(name)) (lenient ? leftOut : problems).push(`${name}: has a wire reach at run time, but the selection rule on data.raw does not find it`);
+  return { records, problems, leftOut, checked: facts !== undefined };
 }
 
 /** How the reach changes with quality, per prototype whose reach does: for the generator's log, not part of the table. */
@@ -219,12 +241,14 @@ function compact(record) {
 
 /**
  * @param sets  as for `buildCatalog`: [{ id, mods, raw, runtime, locale }] for every valid module set
+ * @param options  `lenient`: leave out what cannot be derived or what the game contradicts and say so in the notes (see
+ *   `entitiesOfSet`); `generator`: what the head of the table names as its origin
  * @returns { table, notes }: the table as the file has it, and remarks for the log. Throws when a module set has another
  *   record for a prototype than the others, and when a runtime dump with `circuit_entities` contradicts the derivation.
  */
-export function buildEntityTable({ sets, modules, game }) {
+export function buildEntityTable({ sets, modules, game }, { lenient = false, generator = "tools/catalog/generate.mjs" } = {}) {
   sets = [...sets].sort((a, b) => a.mods.length - b.mods.length || compare(a.id, b.id));
-  const perSet = sets.map(entitiesOfSet);
+  const perSet = sets.map((set) => entitiesOfSet(set, lenient));
   const checked = perSet.map((set) => set.checked);
   if (new Set(checked).size > 1) {
     throw new Error(`Only some runtime dumps have circuit_entities (${sets.filter((_, index) => checked[index]).map((set) => set.id).join(", ")}); dump all module sets again`);
@@ -258,7 +282,8 @@ export function buildEntityTable({ sets, modules, game }) {
     const example = Object.entries(distances).map(([quality, reach]) => `${quality} ${reach}`).join(", ");
     notes.push(`the wire reach of ${byQuality.size} prototypes grows with quality (${name}: ${example}); the entity table has the reach at normal quality`);
   }
-  return { table: { schema: 1, game, generator: "tools/catalog/generate.mjs", runtimeChecked: checked[0] === true, defaults: ENTITY_DEFAULTS, entities }, notes };
+  for (const { leftOut } of perSet) notes.push(...leftOut.map((reason) => `left out: ${reason}`));
+  return { table: { schema: 1, game, generator, runtimeChecked: checked[0] === true, defaults: ENTITY_DEFAULTS, entities }, notes };
 }
 
 /** One record per line, the head pretty-printed: line-diffable, and the same text for the same table. */

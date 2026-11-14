@@ -245,6 +245,33 @@ supports_direction is false at run time, the provisional rotation table says tru
 records both wire distances for every quality; the generator prints how many prototypes reach further at higher quality, the table keeps
 the reach at normal quality (the editor has no entity quality).
 
+## Single-set mode
+
+`tools/catalog/lib/single.ts` builds the same three tables from one dump instead of eight: the game as one user has it, mods
+included. The app uses it for the data it reads from the installed game on request (`apps/desktop/src/gameData`); the generator's
+own run does not. `buildSingleSet` takes the parsed `data-raw-dump.json` and `face-runtime-dump.json`, the names of the dumped locale
+files (`singleSetLocale`) and the head (`singleSetModules`), and calls `buildCatalog` and `buildEntityTable` with that one set.
+
+What differs from the standard tables, because one dump cannot say which module adds what:
+
+- Every record has `modules: []` and neither `removedBy` nor `variants`: it is there with any modules enabled. `modules` in the head of
+  the catalog lists what the game had loaded by its own account (`active_mods` of the runtime dump): its own modules as their
+  `info.json` has them, a mod by name and version alone. `provenance.modSets` has the one set; the entity table has `mods` (name to
+  version) in its head. The icon table's head has no place for them.
+- An icon that is not made of image files of the game's own modules (a mod's) is left out of the icon table and counted; the table is
+  checked one icon at a time with `parseIconTable`.
+- The entity table is built leniently (`buildEntityTable(input, { lenient: true })`): a wired prototype that cannot be derived, or that
+  the game contradicts, is left out and named in the notes instead of failing the build. The standard build stays strict.
+- A name the dump lacks is the prototype's name: the quality `normal` is "normal" without the quality module, where the standard
+  catalog borrows "Normal" from a larger set.
+
+`tools/catalog/lib/single.test.ts` builds the `base` set and the full set from the generator's dumps this way and compares signals,
+picker groups, qualities, speaker, constants, icons and wired entities with what the standard tables say for those modules.
+
+What a dump run is made of (the three commands and their output files, the private `config.ini`, the environment, the sandbox
+profile, `info.json` reading, the version line) is in `tools/catalog/lib/commands.ts`, shared by `dump.mjs` and the app's runner.
+`build.d.mts`, `entities.d.mts` and `locale.d.mts` type the `.mjs` libraries for the TypeScript that imports them.
+
 ## Data format
 
 `data/icons-2.1.24.json` (147 kB, 1138 icons): `{ "schema": 1, "game": { "version", "build" }, "icons": { "<icon id>": ... } }`, one icon
