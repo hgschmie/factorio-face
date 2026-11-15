@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import {
-  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, SPEAKER_PLAYBACK_MODES, TERMINALS, normalizedSettings, prototypesOf, settingSpecsOf, signal,
+  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, SPEAKER_PLAYBACK_MODES, TERMINALS, heldPrototype, normalizedSettings, prototypesOf, settingSpecsOf, signal,
   wildcardSignal, wireKey,
   type Circuit, type Condition, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityKind, type EntitySettings, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec,
   type SettingValue, type SignalId, type Wire,
@@ -171,9 +171,12 @@ export class Generator {
 
   /** A random entity that the language can express exactly. */
   entity(kind: EntityKind, name: string): Entity {
+    // Which prototype of its kind, where the game data has several (with mods); a pole and a generic entity say theirs below.
+    const prototype = kind !== "pole" && kind !== "entity" && prototypesOf(kind).length > 1 ? heldPrototype(kind, this.pick(prototypesOf(kind))) : undefined;
     const base = {
       id: `x-${name}`,
       name,
+      ...(prototype !== undefined && { prototype }),
       position: { x: this.int(-50, 50) * 20, y: this.int(-50, 50) * 20 },
       ...(this.chance(0.3) ? { placement: this.pick([{ tile: { x: this.int(-9, 9) + 0.5, y: this.int(-9, 9) } }, { direction: this.pick(DIRECTIONS) }, { tile: { x: 1, y: -2 }, direction: this.pick(DIRECTIONS) }]) } : {}),
       ...(this.chance(0.3) ? { description: this.pick(["", "plain", 'with "quotes" and \\ backslash', "two\nlines", "// not a comment"]) } : {}),

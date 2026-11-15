@@ -14,13 +14,15 @@ export interface CannedDump {
   readonly editor?: boolean;
   /** With `editor`: prototypes the game lacks after all (a mod removed them). */
   readonly without?: readonly string[];
+  /** With `editor`: further prototypes a wire connects to, as a mod adds them (`MODDED_KINDS`). */
+  readonly entities?: readonly WiredEntity[];
 }
 
 /** What only the mod of an `editor` dump has. */
 export const MOD_ENTITY = "mod-crate";
 export const MOD_SIGNAL = "mod-signal";
 
-interface WiredEntity {
+export interface WiredEntity {
   readonly name: string;
   readonly type: string;
   readonly label: string;
@@ -46,13 +48,26 @@ const EDITOR_ENTITIES: readonly WiredEntity[] = [
 ];
 
 /**
+ * What a mod adds to the kinds of the editor: a prototype of a type with a kind of its own in another size than the standard
+ * one, a pole with its own reach, a loader of one tile, and a speaker, which stays without a kind.
+ */
+export const MODDED_KINDS: readonly WiredEntity[] = [
+  { name: "mod-arithmetic", type: "arithmetic-combinator", label: "Tiny arithmetic combinator", size: [1, 1], turns: true, module: "some-mod" },
+  { name: "mod-decider", type: "decider-combinator", label: "Wide decider combinator", size: [2, 2], turns: true, module: "some-mod" },
+  { name: "mod-lamp", type: "lamp", label: "Big lamp", size: [2, 2], module: "some-mod" },
+  { name: "mod-pole", type: "electric-pole", label: "Huge electric pole", size: [2, 2], poleReach: 48, module: "some-mod" },
+  { name: "mod-loader", type: "loader-1x1", label: "Miniloader", size: [1, 1], turns: true, module: "some-mod" },
+  { name: "mod-speaker", type: "programmable-speaker", label: "Loud speaker", size: [1, 1], module: "some-mod" },
+];
+
+/**
  * Writes the files the three dump commands leave below `script-output`, for a game with two items (one with a mod's icon),
  * a lamp a wire connects to and one item group; with `editor` also what the editor needs of a game. Small, and complete
  * enough for the tables to be built from it.
  */
-export async function writeCannedDump(directory: string, { activeMods = { base: "2.1.24" }, gameVersion = "2.1.24", editor = false, without = [] }: CannedDump = {}): Promise<string> {
+export async function writeCannedDump(directory: string, { activeMods = { base: "2.1.24" }, gameVersion = "2.1.24", editor = false, without = [], entities = [] }: CannedDump = {}): Promise<string> {
   const signal = (name: string, type: string): object => ({ name, type, order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
-  const wired = editor ? EDITOR_ENTITIES.filter((entity) => !without.includes(entity.name)) : [];
+  const wired = editor ? [...EDITOR_ENTITIES, ...entities].filter((entity) => !without.includes(entity.name)) : [];
   const iconOf = (entity: WiredEntity): string => `__${entity.module ?? "base"}__/graphics/icons/${entity.name}.png`;
   const boxOf = ([width, height]: readonly [number, number], inset: number): number[][] => [[-width / 2 + inset, -height / 2 + inset], [width / 2 - inset, height / 2 - inset]];
   const byType: Record<string, Record<string, object>> = {};

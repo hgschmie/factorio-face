@@ -3,10 +3,10 @@
 
 import { analyze, checkEntity, printCircuit } from "@face/language";
 import {
-  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, entityNameBase, facingOf, isPrototypeName, LAMP_COLOR_MODES, NORMAL_QUALITY, normalizeWire, prototypeOf, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
+  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, entityNameBase, facingOf, heldPrototype, isPrototypeName, LAMP_COLOR_MODES, NORMAL_QUALITY, normalizeWire, prototypeOf, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
   SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, TERMINALS, tileOrigin, wildcardOf, wireKey,
   type Circuit, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction, type Entity, type EntityKind, type EntityOfKind, type Operand, type Point,
-  type PrototypeName, type PrototypeOfKind, type RgbColor, type SelectorMode, type SpeakerInstrument, type TerminalSide, type Wire, type WireColor,
+  type PrototypeName, type RgbColor, type SelectorMode, type SpeakerInstrument, type TerminalSide, type Wire, type WireColor,
 } from "@face/model";
 import { readGeneric } from "./generic.ts";
 import { circuitCondition, Fields, float32, isObject, type Json, type NoteKind, type NoteSink } from "./reader.ts";
@@ -449,7 +449,7 @@ function readSettings(kind: Exclude<EntityKind, "entity">, prototype: PrototypeN
     case "decider": return readDecider(entity);
     case "selector": return readSelector(entity);
     case "lamp": return readLamp(entity);
-    case "pole": return { kind: "pole", prototype: prototype as PrototypeOfKind<"pole"> };
+    case "pole": return { kind: "pole", prototype };
     case "speaker": return readSpeaker(entity, instruments);
   }
 }
@@ -493,9 +493,8 @@ function expressible(entity: Entity, note: NoteSink): Entity {
   const { id, name, position, placement } = entity;
   // A generic entity keeps what the blueprint said beyond its settings; that is data, not something the language has to express.
   const fresh =
-    entity.kind === "pole" ? { ...DEFAULT_ENTITY.pole, prototype: entity.prototype }
-    : entity.kind === "entity" ? { ...DEFAULT_ENTITY.entity, prototype: entity.prototype, ...(entity.blueprintData !== undefined && { blueprintData: entity.blueprintData }) }
-    : DEFAULT_ENTITY[entity.kind];
+    entity.kind === "entity" ? { ...DEFAULT_ENTITY.entity, prototype: entity.prototype, ...(entity.blueprintData !== undefined && { blueprintData: entity.blueprintData }) }
+    : { ...DEFAULT_ENTITY[entity.kind], ...(entity.prototype !== undefined && { prototype: entity.prototype }) };
   return { ...fresh, id, name, position, ...(placement && { placement }) } as Entity;
 }
 
@@ -640,7 +639,9 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
     // East is what an entity faces without saying so; an entity of two directions faces north or east (`facingOf`).
     const facing = facingOf({ ...shape, placement: { direction } });
     const placement = { tile, ...(canRotate(shape) && facing !== "east" && { direction: facing }) };
-    const entity = { ...settings, id: `e${imported.length + 1}`, name, position: { x: 0, y: 0 }, placement, ...(description && { description }) } as Entity;
+    // Which prototype of its kind it is: the first goes without saying.
+    const held = heldPrototype(kind, prototype);
+    const entity = { ...settings, ...(held !== undefined && { prototype: held }), id: `e${imported.length + 1}`, name, position: { x: 0, y: 0 }, placement, ...(description && { description }) } as Entity;
     imported.push({ number, entity });
     byNumber.set(number, entity);
   }

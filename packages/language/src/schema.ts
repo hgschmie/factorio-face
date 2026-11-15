@@ -29,6 +29,12 @@ export interface PropertySpec {
   readonly detail: string;
 }
 
+/** What a kind is called in a sentence: "an electric pole". */
+export const KIND_LABEL: Readonly<Record<EntityKind, string>> = {
+  constant: "constant combinator", arithmetic: "arithmetic combinator", decider: "decider combinator", selector: "selector combinator", lamp: "lamp", pole: "electric pole", speaker: "programmable speaker",
+  entity: "entity",
+};
+
 const BOOL: ValueSpec = { type: "bool" };
 const INT: ValueSpec = { type: "int" };
 const SIGNAL: ValueSpec = { type: "signal", wildcards: [] };
@@ -60,7 +66,8 @@ function settingProperty(spec: SettingSpec): PropertySpec[] {
   }
 }
 
-const GENERIC_PROTOTYPE: PropertySpec = { name: PROTOTYPE_PROPERTY, values: [{ type: "name", of: "prototype" }], detail: "Which entity of the game this is, by its name in a blueprint (required)" };
+const PROTOTYPE_NAME: ValueSpec = { type: "name", of: "prototype" };
+const GENERIC_PROTOTYPE: PropertySpec = { name: PROTOTYPE_PROPERTY, values: [PROTOTYPE_NAME], detail: "Which entity of the game this is, by its name in a blueprint (required)" };
 const BLUEPRINT_DATA: PropertySpec = { name: BLUEPRINT_DATA_PROPERTY, values: [{ type: "string" }], detail: "What a blueprint says about the entity beyond its circuit settings, as JSON text; kept for the export" };
 
 /** Every setting word of every prototype type, a word once per form it has (`read-contents` is a switch for a chest and a mode for a belt). */
@@ -122,18 +129,17 @@ const OWN_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
   ],
 };
 
-/** A kind with several game prototypes takes `prototype = <name>`; the first of the kind is the default. A generic entity always says which one it is. */
-function prototypeProperty(kind: EntityKind): PropertySpec[] {
-  if (kind === "entity") return [GENERIC_PROTOTYPE];
-  const names = prototypesOf(kind);
-  return names.length > 1 ? [{ name: PROTOTYPE_PROPERTY, values: [oneOf(...names)], detail: `Which ${kind} of the game this is (default ${names[0]})` }] : [];
+/**
+ * Every entity may say which game prototype of its kind it is, `prototype = <name>`; the first of the kind is the default. A
+ * generic entity always says which one it is. The names are data of the entity table, so the value is checked against it by the
+ * analysis and not here: a kind with one prototype in the game data takes the word too, but is not offered it (`propertyNames`).
+ */
+function prototypeProperty(kind: EntityKind): PropertySpec {
+  return kind === "entity" ? GENERIC_PROTOTYPE : { name: PROTOTYPE_PROPERTY, values: [PROTOTYPE_NAME], detail: `Which ${KIND_LABEL[kind]} of the game this is, by its name in a blueprint (default: the standard one)` };
 }
 
-// The generic kind stands first: where all properties are listed by name, a word it shares with another kind (`networks`, `prototype`) is described by that kind.
-const KINDS_GENERIC_FIRST: readonly EntityKind[] = ["entity", ...ENTITY_KINDS.filter((kind) => kind !== "entity")];
-
 export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = Object.fromEntries(
-  KINDS_GENERIC_FIRST.map((kind) => [kind, [DESCRIPTION, ...prototypeProperty(kind), ...OWN_PROPERTIES[kind]]]),
+  ENTITY_KINDS.map((kind) => [kind, [DESCRIPTION, prototypeProperty(kind), ...OWN_PROPERTIES[kind]]]),
 ) as Record<EntityKind, PropertySpec[]>;
 
 export const SECTION_PROPERTIES: readonly PropertySpec[] = [
@@ -221,8 +227,10 @@ export function lookupProperty(kind: EntityKind, name: string, variant: Property
   return named.length ? { status: "inapplicable", operations: named.flatMap((p) => p.operations ?? []) } : { status: "unknown" };
 }
 
+/** The properties to name for an entity of `kind`: the legal ones, less `prototype` where the game data has one prototype of the kind and so nothing to choose. */
 export function propertyNames(kind: EntityKind, variant?: PropertyVariant, inSection = false): string[] {
-  return [...new Set((inSection ? SECTION_PROPERTIES : propertiesFor(kind, variant)).map((p) => p.name))];
+  const offered = (p: PropertySpec): boolean => p.name !== PROTOTYPE_PROPERTY || kind === "entity" || prototypesOf(kind).length > 1;
+  return [...new Set((inSection ? SECTION_PROPERTIES : propertiesFor(kind, variant).filter(offered)).map((p) => p.name))];
 }
 
 /** The words in front of `when` that a generic entity of this prototype takes: `logistic`, `harvest`. The enable condition has none. */

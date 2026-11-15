@@ -1,6 +1,6 @@
 // The whole way from an installation to accepted game data and into the cache, with the fake game in place of the real one.
 import { STANDARD_CATALOG_VERSION, availableSignals, createCatalog, loadStandardCatalog } from "@face/catalog";
-import { STANDARD_ENTITY_TABLE, parseEntityTable } from "@face/model";
+import { missingEditorPrototypes, parseEntityTable, PROTOTYPES, prototypesOf, setEntityTable, STANDARD_ENTITY_TABLE } from "@face/model";
 import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -11,7 +11,7 @@ import { GameDataCache, GAME_DATA_FILE_NAME } from "../../src/gameData/cache.ts"
 import { describeGameDataSource, gameDataKeyId, gameDataSource, parseGameData, parseGameDataKey, sameGameState, type GameData, type GameDataKey } from "../../src/gameData/gameData.ts";
 import { planGameRead, readGameData, type RefreshOptions } from "../../src/gameData/refresh.ts";
 import { ValidationError } from "../../src/validation.ts";
-import { fakeGameStarts, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
+import { fakeGameStarts, MODDED_KINDS, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
 import { writeGameData } from "../support/fakeGame.ts";
 import { useScratch } from "../support/scratch.ts";
 import { treeSnapshot } from "../support/treeSnapshot.ts";
@@ -95,6 +95,33 @@ describe("readGameData", () => {
     await writeFile(join(mods, "some-mod_1.3.0.zip"), "newer");
     const changed = await planGameRead(options.installation, options.host);
     expect(changed.ok && sameGameState(result.data.key, changed.plan.key)).toBe(false);
+  });
+
+  it("has what a mod adds to the kinds of the editor in the entity table, a loader of one tile among it, and the editor gives each its kind", async () => {
+    const { options } = await setup("modded-kinds", { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3" }, entities: MODDED_KINDS });
+    const result = await readGameData(options);
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    // Nothing was left out: the game says of each whether it turns, also of a type the rotation table has for mods only.
+    expect(result.data.notes).toEqual([]);
+    const table = parseEntityTable(result.data.entities);
+    expect(table.entities.filter((entity) => entity.name.startsWith("mod-") && entity.name !== "mod-crate")).toMatchObject([
+      { name: "mod-arithmetic", type: "arithmetic-combinator", displayName: "Tiny arithmetic combinator", width: 1, height: 1, directions: 4, wireReach: 9 },
+      { name: "mod-decider", type: "decider-combinator", width: 2, height: 2, directions: 4 },
+      { name: "mod-lamp", type: "lamp", width: 2, height: 2, directions: 1 },
+      { name: "mod-loader", type: "loader-1x1", width: 1, height: 1, directions: 4 },
+      { name: "mod-pole", type: "electric-pole", width: 2, height: 2, directions: 1, wireReach: 48 },
+      { name: "mod-speaker", type: "programmable-speaker", width: 1, height: 1, directions: 1 },
+    ]);
+    expect(missingEditorPrototypes(table)).toEqual([]);
+    setEntityTable(table);
+    try {
+      const kinds = Object.fromEntries(MODDED_KINDS.map(({ name }) => [name, PROTOTYPES[name]?.kind]));
+      expect(kinds).toEqual({ "mod-arithmetic": "arithmetic", "mod-decider": "decider", "mod-lamp": "lamp", "mod-pole": "pole", "mod-loader": "entity", "mod-speaker": undefined });
+      expect(prototypesOf("arithmetic")).toEqual(["arithmetic-combinator", "mod-arithmetic"]);
+    } finally {
+      setEntityTable(STANDARD_ENTITY_TABLE);
+    }
   });
 
   it("starts only the program that was agreed to", async () => {

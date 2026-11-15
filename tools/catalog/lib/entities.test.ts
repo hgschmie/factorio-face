@@ -350,7 +350,8 @@ describe.skipIf(!local)("entity table of the dumps", () => {
 
   it("has a rotation rule for exactly the prototype types it selects", () => {
     const types = new Set(lib.circuitEntities(rawOf(dump.validModSets(local!.modules).at(-1)!)).map(({ type }) => type));
-    expect(Object.keys(lib.ROTATION_BY_TYPE).sort()).toEqual([...types].sort());
+    // And for the loader of one tile, which only mods wire.
+    expect(Object.keys(lib.ROTATION_BY_TYPE).sort()).toEqual([...types, "loader-1x1"].sort());
     expect(types.size).toBe(48);
   });
 

@@ -2,7 +2,7 @@
 // Unrelated text, comments, spacing and declaration order are never touched.
 
 import {
-  canRotate, DEFAULT_ENTITY, DEFAULT_FACING, DIRECTIONS, entityNameBase, facingOf, hasTerminal, isInt32, isTileCenter, NORMAL_QUALITY, prototypeData, prototypesOf, rotateTile, wireKey,
+  canRotate, DEFAULT_ENTITY, DEFAULT_FACING, DIRECTIONS, entityNameBase, facingOf, hasTerminal, heldPrototype, isInt32, isTileCenter, NORMAL_QUALITY, prototypeData, prototypesOf, rotateTile, wireKey,
   type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type TerminalRef, type WireColor,
 } from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
@@ -330,7 +330,7 @@ function checkPosition(position: Point): Point {
  * a generic entity is named after its prototype, `fast_inserter1` (`entityNameBase`). With `facing` other than east the declaration
  * gets a `facing` clause, unless the entity cannot rotate (a lamp). With `tile` (the game's center position, on the grid for the
  * entity in that direction) it gets a `tile` clause. `prototype` says which game prototype of the kind the entity is (a
- * `big-electric-pole`); without it it is the first of the kind. A generic entity (kind `entity`) has to say which one it is.
+ * `big-electric-pole`, a modded combinator); without it it is the first of the kind. A generic entity (kind `entity`) has to say which one it is.
  */
 export function addEntity(parse: ParseResult, kind: EntityKind, position: Point, name?: string, tile?: Point, facing?: Direction, prototype?: PrototypeName): { changes: TextChange[]; name: string } {
   const edit = new Edit(parse);
@@ -339,8 +339,9 @@ export function addEntity(parse: ParseResult, kind: EntityKind, position: Point,
   if (prototype !== undefined && !(prototypesOf(kind) as readonly string[]).includes(prototype)) {
     throw new EditError("invalid-entity", kind === "entity" ? `'${prototype}' is not an entity of the game that the editor has under the kind 'entity'` : `'${prototype}' is not a ${kind}; use ${prototypesOf(kind).join(", ")}`);
   }
-  // Only a kind with several prototypes carries one.
-  const shape = { ...DEFAULT_ENTITY[kind], ...(prototype !== undefined && "prototype" in DEFAULT_ENTITY[kind] && { prototype }) };
+  // The first of a kind goes without saying.
+  const held = prototype === undefined ? undefined : heldPrototype(kind, prototype);
+  const shape = { ...DEFAULT_ENTITY[kind], ...(held !== undefined && { prototype: held }) };
   if (name === undefined) {
     const base = entityNameBase(shape);
     let n = 1;

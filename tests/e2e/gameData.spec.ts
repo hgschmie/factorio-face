@@ -6,13 +6,14 @@ import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { MOD_ENTITY, MOD_SIGNAL } from "../../apps/desktop/test/support/cannedDump.ts";
+import { MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump } from "../../apps/desktop/test/support/cannedDump.ts";
 import type { GameDataInUse, GameDataStatus } from "../../apps/desktop/src/ipc.ts";
+import { decodeBlueprintString } from "../../packages/blueprints/src/string.ts";
 import {
-  APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, readProjectEntries, SCREENSHOT_DIR, sourceText, test,
+  APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, pin, readProjectEntries, SCREENSHOT_DIR, showDisplay, sourceText, test,
   type RunningApp,
 } from "./app.ts";
-import { setSource } from "./board.ts";
+import { inspector, setSource } from "./board.ts";
 import { addFakeProgram, setFakeProgram, writeFakeGame, type FakeProgram } from "./fakeGame.ts";
 
 const SHOTS = resolve(SCREENSHOT_DIR, "game-data");
@@ -37,9 +38,9 @@ interface Game extends RunningApp {
 }
 
 /** The app with an installation whose program is the stand-in, and the mod directory of a user with one mod. */
-async function launchWithGame(options: { readonly userData?: string; readonly behaviour?: Parameters<typeof addFakeProgram>[2]; readonly program?: FakeProgram; readonly folder?: string } = {}): Promise<Game> {
+async function launchWithGame(options: { readonly userData?: string; readonly behaviour?: Parameters<typeof addFakeProgram>[2]; readonly program?: FakeProgram; readonly folder?: string; readonly dump?: CannedDump } = {}): Promise<Game> {
   const game = options.folder === undefined ? await writeFakeGame({ bundle: process.platform === "darwin" }) : undefined;
-  const program = options.program ?? (await addFakeProgram(game!, {}, options.behaviour));
+  const program = options.program ?? (await addFakeProgram(game!, options.dump, options.behaviour));
   const folder = options.folder ?? game!.folder;
   const running = await launchApp({ open: "start", userData: options.userData, env: { FACE_GAME_DIR: folder, FACE_GAME_MODS_DIR: program.modDirectory } });
   return { ...running, program, dataDirectory: game?.dataDirectory ?? "" };
@@ -308,6 +309,132 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     const again = JSON.parse((await readProjectEntries(projectPath))["face.json"]!) as Record<string, unknown>;
     expect(again).toMatchObject({ name: "Modded, renamed", gameMods: saved.gameMods, modules: saved.modules });
     expect((await readdir(program.modDirectory)).sort()).toEqual(["mod-list.json", "some-mod_1.2.3.zip"]);
+  } finally {
+    await closeApp(app);
+  }
+});
+
+const MODDED_KINDS_SOURCE = `circuit "Modded kinds" {
+    constant source at (40, 80) tile (0.5, 0.5) {
+        virtual:signal-A = 3
+    }
+
+    arithmetic double at (280, 80) tile (2.5, 0.5) {
+        prototype = mod-arithmetic
+        virtual:signal-A = virtual:signal-A * 2
+    }
+
+    decider gate at (520, 80) tile (5, 1) facing north {
+        prototype = mod-decider
+        when virtual:signal-A > 5
+        output virtual:signal-A = 1
+    }
+
+    pole relay at (760, 80) tile (9, 1) {
+        prototype = mod-pole
+    }
+
+    lamp light at (1000, 80) tile (13, 1) {
+        prototype = mod-lamp
+        when virtual:signal-A > 0
+    }
+
+    entity feed at (1240, 80) tile (16.5, 0.5) {
+        prototype = mod-loader
+        when virtual:signal-A > 0
+    }
+
+    wire red source.out <-> double.in
+    wire red double.out <-> gate.in
+    wire green gate.out <-> relay
+    wire green relay <-> light.in
+    wire green relay <-> feed
+}
+`;
+
+test("a mod's combinators, lamps, poles and loaders are entities of their kinds: selector, inspector, source, board, blueprint", async () => {
+  const { app, page } = await launchWithGame({ dump: { entities: MODDED_KINDS } });
+  const projectPath = await newProjectPath("Modded kinds");
+  try {
+    await readGame(app, page);
+    await page.keyboard.press("Escape");
+    await expect(settingsDialog(page)).toHaveCount(0);
+
+    // The selector has each of them in the tab of its item group, with the kind of its prototype type. A modded speaker has none.
+    for (const [prototype, kind, name] of [["mod-arithmetic", "arithmetic", "Tiny arithmetic combinator"], ["mod-decider", "decider", "Wide decider combinator"], ["mod-lamp", "lamp", "Big lamp"], ["mod-pole", "pole", "Huge electric pole"], ["mod-loader", "entity", "Miniloader"]] as const) {
+      await expect(paletteEntry(page, prototype)).toHaveAttribute("data-kind", kind);
+      await expect(paletteEntry(page, prototype)).toHaveAccessibleName(name);
+    }
+    await expect(palette(page).locator('[data-prototype="mod-speaker"]')).toHaveCount(0);
+    // The first row stays the four combinators of the game.
+    const pinned = palette(page).getByRole("group", { name: "Combinators" }).locator(".palette-item");
+    expect(await pinned.evaluateAll((items) => items.map((item) => item.getAttribute("data-prototype")))).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"]);
+
+    // Placed from its tile: an arithmetic combinator that says which one it is.
+    await paletteEntry(page, "mod-arithmetic").click();
+    const spot = await clientPointOf(page, { x: 400, y: 200 });
+    await page.mouse.click(spot.x, spot.y);
+    await expect(card(page, "arithmetic1")).toHaveClass(/selected/);
+    await expect(card(page, "arithmetic1")).toHaveAttribute("data-kind", "arithmetic");
+    expect(await sourceText(page)).toMatch(/    arithmetic arithmetic1 at \(\d+, \d+\) \{\n        prototype = mod-arithmetic\n    \}/);
+
+    // The inspector has the form of the kind, and above it the choice among the prototypes of the kind.
+    const choice = inspector(page).getByRole("group", { name: "Arithmetic" });
+    expect(await choice.getByRole("button").evaluateAll((all) => all.map((element) => element.getAttribute("data-prototype")))).toEqual(["arithmetic-combinator", "mod-arithmetic"]);
+    await expect(choice.getByRole("button", { pressed: true })).toHaveText(/Tiny arithmetic combinator.*1 tile/);
+    await expect(inspector(page).locator(".muted-note.prototype-note")).toHaveCount(0);
+    await choice.locator('[data-prototype="arithmetic-combinator"]').click();
+    await expect(choice.getByRole("button", { pressed: true })).toHaveText(/Arithmetic combinator.*1 x 2 tiles/);
+    expect(await sourceText(page)).toContain("        prototype = arithmetic-combinator\n");
+    await choice.locator('[data-prototype="mod-arithmetic"]').click();
+    expect(await sourceText(page)).toContain("        prototype = mod-arithmetic\n");
+    await page.screenshot({ path: resolve(SHOTS, "modded-kinds-inspector.png") });
+
+    // A circuit of modded prototypes is free of problems, and on the board each stands on the tiles of its prototype.
+    await setSource(page, MODDED_KINDS_SOURCE);
+    expect(await page.evaluate(() => window.faceSession!.getState().diagnostics)).toEqual([]);
+    await showDisplay(page, "blueprint");
+    const bodySize = (name: string): Promise<(string | null)[]> => card(page, name).locator(".card-body").evaluate((body) => [body.getAttribute("width"), body.getAttribute("height")]);
+    // A body leaves four units of its tiles free on every side: 72 is one tile, 152 two.
+    expect(await Promise.all(["source", "double", "gate", "relay", "light", "feed"].map(bodySize))).toEqual([["72", "72"], ["72", "72"], ["152", "152"], ["152", "152"], ["152", "152"], ["72", "72"]]);
+    for (const name of ["double", "gate"]) for (const side of ["in", "out"] as const) await expect(pin(page, name, side, "red")).toHaveCount(1);
+    // The combinator of two by two tiles has its halves across its facing, like the one of the game: two arrows and the notch between.
+    await expect(card(page, "gate").locator(".board-arrow")).toHaveCount(2);
+    await expect(card(page, "double").locator(".board-arrow")).toHaveCount(0);
+    await expect(card(page, "relay")).toHaveAttribute("data-kind", "pole");
+    await page.screenshot({ path: resolve(SHOTS, "modded-kinds-board.png") });
+
+    // It computes as the standard entities do: the lamp behind the modded pole is lit.
+    for (let tick = 0; tick < 6 && (await card(page, "light").getAttribute("data-status")) !== "lit"; tick++) await page.getByRole("button", { name: "Step" }).click();
+    await expect(card(page, "light")).toHaveAttribute("data-status", "lit");
+
+    // The blueprint names every entity by its prototype.
+    const exported = await page.evaluate(() => {
+      const result = window.faceSession!.commands.exportBlueprint();
+      return result.ok ? result.string : undefined;
+    });
+    const decoded = decodeBlueprintString(exported ?? "");
+    expect(decoded.ok && (decoded.data as { blueprint: { entities: { name: string }[] } }).blueprint.entities.map((entity) => entity.name)).toEqual(["constant-combinator", "mod-arithmetic", "mod-decider", "mod-pole", "mod-lamp", "mod-loader"]);
+
+    // Saved and opened with the built-in data: the project comes back, and each prototype of the mod is named as unknown for its kind.
+    await app.evaluate(({ dialog }, path) => {
+      dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as typeof dialog.showSaveDialog;
+    }, projectPath);
+    await clickMenu(app, "File", "Save");
+    await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
+    await openSettings(app, page);
+    await builtInButton(page).click();
+    await expect(source(page)).toHaveText(BUILT_IN_SOURCE, { timeout: 20_000 });
+    await page.keyboard.press("Escape");
+    expect(await sourceText(page)).toBe(MODDED_KINDS_SOURCE);
+    const flagged = await page.evaluate(() => window.faceSession!.getState().diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.message));
+    expect(flagged).toEqual([
+      "Unknown prototype 'mod-arithmetic' for an arithmetic combinator; the game data has arithmetic-combinator",
+      "Unknown prototype 'mod-decider' for a decider combinator; the game data has decider-combinator",
+      "Unknown prototype 'mod-pole' for an electric pole; the game data has small-electric-pole, medium-electric-pole, big-electric-pole, substation",
+      "Unknown prototype 'mod-lamp' for a lamp; the game data has small-lamp",
+      "Unknown prototype 'mod-loader'; did you mean loader?",
+    ]);
   } finally {
     await closeApp(app);
   }

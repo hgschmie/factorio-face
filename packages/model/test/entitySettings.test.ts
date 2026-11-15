@@ -53,7 +53,9 @@ describe("the API reference", () => {
 describe("the settings table", () => {
   it("has a row for every prototype type of the game without a kind of its own, and for nothing else", () => {
     expect(types).toHaveLength(48);
-    expect(Object.keys(ENTITY_SETTINGS).sort()).toEqual(genericTypes);
+    // And one for the loader of one tile, which only mods wire: the row of the loader itself.
+    expect(Object.keys(ENTITY_SETTINGS).sort()).toEqual([...genericTypes, "loader-1x1"].sort());
+    expect(ENTITY_SETTINGS["loader-1x1"]).toBe(ENTITY_SETTINGS.loader);
     expect(genericTypes).toHaveLength(41);
     for (const [type, behavior] of Object.entries(OWN_TYPES)) expect(reference.types[type]?.behavior, type).toBe(behavior);
   });

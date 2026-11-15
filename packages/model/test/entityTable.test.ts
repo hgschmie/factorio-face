@@ -154,7 +154,7 @@ describe("another entity table", () => {
     expect(missingEditorPrototypes(parseEntityTable(tableWith(() => [])))).toHaveLength(10);
     expect(() => setEntityTable(without)).toThrow("The entity table of Factorio 2.1.24 has no substation");
     expect(entityTable()).toBe(STANDARD_ENTITY_TABLE);
-    expect(PROTOTYPES["small-lamp"].width).toBe(1);
+    expect(PROTOTYPES["small-lamp"]!.width).toBe(1);
   });
 
   it("is read with the defaults of its file and sorted by name", () => {

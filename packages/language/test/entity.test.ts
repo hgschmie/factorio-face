@@ -56,8 +56,8 @@ function sample(spec: SettingSpec, prototype: string): { value: SettingValue; te
   }
 }
 
-/** One prototype of the standard game per prototype type that has a row of settings. */
-const ONE_PER_TYPE = Object.keys(ENTITY_SETTINGS).map((type) => entityTable().entities.find((prototype) => prototype.type === type)!.name);
+/** One prototype of the standard game per prototype type that has a row of settings; a type only mods wire (`loader-1x1`) has none. */
+const ONE_PER_TYPE = Object.keys(ENTITY_SETTINGS).flatMap((type) => entityTable().entities.find((prototype) => prototype.type === type)?.name ?? []);
 
 describe("the word entity", () => {
   it("is reserved, and the signal kind of the same name stays a signal", () => {

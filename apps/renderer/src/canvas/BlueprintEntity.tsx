@@ -93,14 +93,17 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
   const long = halves.input.x !== halves.output.x || halves.input.y !== halves.output.y;
   const square = !long && size.width > 1 && size.height > 1;
   const middle = (half: TileBox) => ({ x: (half.x + half.width / 2) * TILE, y: (half.y + half.height / 2) * TILE });
-  // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end.
-  const pinsTowards = long || square ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
+  // Along the facing the halves follow each other, whatever the size of the entity: the standard combinator is 1 x 2, a modded one may be 2 x 2.
+  const sideways = forward.x !== 0;
+  // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end, unless
+  // both ends carry pins (a combinator of one tile, which a mod may have).
+  const pinsTowards = long || square || TERMINALS[entity.kind].length > 1 ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
   const center = { x: width / 2, y: height / 2 - pinsTowards.y * PIN_ROOM };
   const block = square ? blockContent(width, height) : undefined;
   // Without text the icon alone fills the middle: as large as with it, and larger on a footprint that has the room.
   const icon = outline ? Math.max(ICON.outline, block?.icon ?? 0) : long ? ICON.long : (block?.icon ?? ICON.single);
   const iconTop = outline ? height / 2 - icon / 2 : block ? block.iconTop : center.y + (long ? -27 : -19);
-  const nameChars = block ? block.nameChars : long ? (size.width === 2 ? NAME_CHARS.wide : NAME_CHARS.tall) : size.width > 1 ? NAME_CHARS.wide : NAME_CHARS.single;
+  const nameChars = block ? block.nameChars : size.width > 1 ? NAME_CHARS.wide : long ? NAME_CHARS.tall : NAME_CHARS.single;
   // A lamp that is lit and a speaker that plays show it: the indicator, and a glow over the body in the color of the light.
   const lit = status?.active ?? false;
   // A generic entity shows its conditions: the indicator is on while the one that enables it holds, or any where it has no such one.
@@ -138,7 +141,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
       {long && (
         <>
           {/* Where the input half ends and the output half begins: a notch on both long edges, clear of the icon and the text. */}
-          <path className="board-divider" d={size.width === 2 ? `M ${TILE} ${INSET} v ${NOTCH} M ${TILE} ${height - INSET} v ${-NOTCH}` : `M ${INSET} ${TILE} h ${NOTCH} M ${width - INSET} ${TILE} h ${-NOTCH}`} />
+          <path className="board-divider" d={sideways ? `M ${width / 2} ${INSET} v ${NOTCH} M ${width / 2} ${height - INSET} v ${-NOTCH}` : `M ${INSET} ${height / 2} h ${NOTCH} M ${width - INSET} ${height / 2} h ${-NOTCH}`} />
           {/* As the game marks a combinator: an arrow into the input end and one out of the output end, both along the facing. */}
           <path className="board-arrow in" d={arrowPath(middle(halves.input).x - forward.x * ARROW_SHIFT, middle(halves.input).y - forward.y * ARROW_SHIFT, forward)} />
           <path className="board-arrow out" d={arrowPath(middle(halves.output).x + forward.x * ARROW_SHIFT, middle(halves.output).y + forward.y * ARROW_SHIFT, forward)} />
@@ -152,7 +155,7 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
           </text>
           {long && status?.output && (
             <text className="board-output" x={center.x} y={center.y + 26}>
-              {compactOutput(status.output, size.width === 2 ? OUTPUT_CHARS.wide : OUTPUT_CHARS.tall)}
+              {compactOutput(status.output, size.width > 1 ? OUTPUT_CHARS.wide : OUTPUT_CHARS.tall)}
             </text>
           )}
         </>

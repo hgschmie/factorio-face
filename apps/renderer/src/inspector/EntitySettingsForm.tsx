@@ -1,6 +1,6 @@
 // Dispatches to the settings form of the entity's kind. All forms are controlled: they render `entity` and emit a
-// complete replacement through `onChange`. A kind with several game prototypes first says which one the entity is.
-import { prototypesOf, type Entity, type GenericEntity, type PrototypeName } from "@face/model";
+// complete replacement through `onChange`. A kind with several game prototypes in the game data first says which one the entity is.
+import { prototypeOf, type Entity, type GenericEntity, type PrototypeName } from "@face/model";
 import { prototypeNotes } from "../entities/typeInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { ArithmeticForm } from "./ArithmeticForm.tsx";
@@ -67,6 +67,9 @@ function GenericType({ entity, resolveEntityIcon, prototypes, onChange }: Entity
   );
 }
 
+/** A row of icons takes over from the buttons with name and facts where a kind has more prototypes than the four poles of the game. */
+const MAX_NAMED_CHOICES = 4;
+
 export function EntitySettingsForm({ entity, resolveEntityIcon, prototypes, onChange }: EntitySettingsFormProps) {
   const note = NOTES[entity.kind];
   if (entity.kind === "entity") {
@@ -77,12 +80,13 @@ export function EntitySettingsForm({ entity, resolveEntityIcon, prototypes, onCh
       </>
     );
   }
+  // Which prototype of its kind the entity is: a pole of the game, and every kind a mod gives further prototypes.
+  const choices = alternativePrototypes(prototypeOf(entity), prototypes?.offers, prototypes?.position);
   return (
     <>
-      {prototypesOf(entity.kind).length > 1 && (
+      {choices.length > 1 && (
         <FormSection title="Type">
-          {/* The prototype is a property of the kinds that have one; the cast names the entity that results. */}
-          <PrototypeField entity={entity} resolveIcon={resolveEntityIcon} onChange={(prototype) => onChange({ ...entity, prototype } as Entity)} />
+          <PrototypeField entity={entity} prototypes={choices} compact={choices.length > MAX_NAMED_CHOICES} resolveIcon={resolveEntityIcon} onChange={(prototype) => onChange(withPrototype(entity, prototype))} />
           {note && <p className="muted-note">{note}</p>}
         </FormSection>
       )}

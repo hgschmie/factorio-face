@@ -2,14 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   boxDistance, clampWireReach, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, footprintBox, formatWireDistance, formatWireReach, isWireReach, selectionBox, tileCenter, tileUnit, UNLIMITED_WIRE_REACH,
   WIRE_REACH_RANGE, wireDistance, wireEndsNoun, wireMeasure, wireReachBetween, wireReachOwner, wireSpan,
-  type Direction, type EntityKind, type PlacedShape, type Point, type PrototypeOfKind, type TileBox,
+  type Direction, type EntityKind, type PlacedShape, type Point, type PrototypeName, type TileBox,
 } from "../src/index.ts";
 
 type Placed = PlacedShape;
 /** An entity of `kind` whose top-left tile is `origin`. */
 const standing = (kind: EntityKind, direction: Direction, origin: Point): Placed => ({ kind, placement: { tile: tileCenter({ kind }, direction, origin), direction } });
 const constant = (x: number, y: number): Placed => standing("constant", "east", { x, y });
-const pole = (prototype: PrototypeOfKind<"pole">, x: number, y: number): Placed => ({ kind: "pole", prototype, placement: { tile: tileCenter({ kind: "pole", prototype }, "east", { x, y }) } });
+const pole = (prototype: PrototypeName, x: number, y: number): Placed => ({ kind: "pole", prototype, placement: { tile: tileCenter({ kind: "pole", prototype }, "east", { x, y }) } });
 /** A generic entity of `prototype` whose top-left tile is `origin`. */
 const generic = (prototype: string, direction: Direction, origin: Point): Placed => ({ kind: "entity", prototype, placement: { tile: tileCenter({ kind: "entity", prototype }, direction, origin), direction } });
 const unplaced: Placed = { kind: "decider", placement: { direction: "north" } };

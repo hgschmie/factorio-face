@@ -10,9 +10,10 @@ import { COMPARATOR_SIGNS, exportBlueprint, importBlueprint, type BlueprintEntit
 import { A, B, blueprintOf, exported, imported, importedEntity, IRON, parse } from "./helpers.ts";
 import { configuredSettings, GENERIC_SAMPLES, NOT_HELD, sampledSettings, unsampledBehaviors } from "./samples.ts";
 
-const TYPES = Object.keys(ENTITY_SETTINGS);
 const game = (prototype: string): EntityPrototype => entityTable().byName.get(prototype)!;
 const prototypesOfType = (type: string): string[] => entityTable().entities.filter((entity) => entity.type === type).map((entity) => entity.name);
+/** The types of the settings table that the standard game has a prototype of; `loader-1x1`, which only mods wire, has the row of the loader. */
+const TYPES = Object.keys(ENTITY_SETTINGS).filter((type) => prototypesOfType(type).length > 0);
 
 /** A generic entity on a place that fits it, facing north (which a blueprint does not write) unless told otherwise. */
 function generic(prototype: string, settings: EntitySettings = {}, more: Partial<Pick<EntityOfKind<"entity">, "blueprintData" | "description">> & { direction?: Direction } = {}): EntityOfKind<"entity"> {

@@ -122,7 +122,7 @@ export function completionContext(parse: ParseResult, offset: number): Completio
           if (alternative.type === "signal") expected.push({ type: "signal", wildcards: alternative.wildcards });
           else if (alternative.type === "int") expected.push({ type: "literal", kind: "integer" });
           else if (alternative.type === "number" || alternative.type === "string" || alternative.type === "color" || alternative.type === "quality") expected.push({ type: "literal", kind: alternative.type });
-          else if (alternative.type === "name" && alternative.of === "prototype") expected.push({ type: "enum", property: expectation.property, values: prototypesOf("entity") });
+          else if (alternative.type === "name" && alternative.of === "prototype") expected.push({ type: "enum", property: expectation.property, values: prototypesOf(expectation.kind) });
           else if (alternative.type === "name") expected.push(alternative.of === "instrument" ? { type: "instrument" } : { type: "note", ...instrumentOf(entity) });
         }
         break;

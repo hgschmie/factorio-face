@@ -1,8 +1,9 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, gamePrototype, prototypeOf, settingSpecsOf, tileCenter, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
+import { MODDED_RECORDS, withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
 import { decodeBlueprintString, exportBlueprint, importBlueprint, type ImportReport } from "../src/index.ts";
 import { A, B, exported, IRON, imported } from "./helpers.ts";
@@ -129,6 +130,19 @@ describe("round trip: editor to blueprint to editor", () => {
       roundTrip(circuit, GENERATED_INSTRUMENTS);
     }
     expect([...kinds].sort()).toEqual(["arithmetic", "constant", "decider", "entity", "lamp", "pole", "selector", "speaker"]);
+  });
+
+  it("keeps generated circuits with the entity table of a modded game: every prototype of a kind, and a loader of one tile", () => {
+    const prototypes = new Set<string>();
+    withModdedTable(() => {
+      for (let seed = 1; seed <= 300; seed++) {
+        const circuit = blueprintable(new Generator(seed).circuit(1 + (seed % 12)));
+        for (const entity of circuit.entities) prototypes.add(prototypeOf(entity));
+        roundTrip(circuit, GENERATED_INSTRUMENTS);
+      }
+    });
+    // Every modded prototype that has a kind was among them, the hidden one included; the two without a kind cannot be.
+    expect(MODDED_RECORDS.map(({ name }) => name).filter((name) => !prototypes.has(name))).toEqual(["mod-speaker", "mod-oddity"]);
   });
 
   it("changes exactly what the normal form says", () => {

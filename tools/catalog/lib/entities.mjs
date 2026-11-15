@@ -57,6 +57,8 @@ export const ROTATION_BY_TYPE = {
   "land-mine": false,
   "linked-container": false,
   loader: true,
+  // Only a mod gives it a circuit connection.
+  "loader-1x1": true,
   "logistic-container": false,
   "mining-drill": true,
   "offshore-pump": true,

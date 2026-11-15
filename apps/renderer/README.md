@@ -88,8 +88,9 @@ src/
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm / SpeakerForm
     GenericForm.tsx    the settings of a generic entity (kind `entity`): a control per setting of its prototype type, from the
                        settings table of the model
-    PrototypeField.tsx which entity of its kind an entity is, for a kind with several game prototypes (a pole), and which one of
-                       its prototype type a generic entity is (`compact`: icons in a row)
+    PrototypeField.tsx which entity of its kind an entity is, for a kind with several game prototypes in the game data (a pole; a
+                       combinator or a lamp where a mod adds one), and which one of its prototype type a generic entity is
+                       (`compact`: icons in a row, also for a kind with more than four prototypes)
     speakerEdits.ts    instrument and note of a speaker against the game's lists: what is a default and is not written   (pure)
     instruments.ts     `InstrumentsContext`: the speaker's instruments and notes from the catalog, for the form and the cards
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
@@ -1182,7 +1183,8 @@ prototype. What there is:
   that is in the source already has its value patched, as for every kind. A condition without its signal is a draft with the hint 'The condition
   "Enable/disable" needs a signal.' (`session/drafts.ts`). Above the form: the choice of the prototype among those of its prototype type that the
   project can place, as icons in the game's order with the chosen one named under them (`PrototypeField` with `compact`; `alternativePrototypes`,
-  `withPrototype`), refused on the board when the new footprint would cover a tile of another entity ("Not changed: maker would stand on a tile of
+  `withPrototype`; the same two functions give an entity of any other kind the prototypes of its kind, which with the built-in data is a choice
+  for a pole only and with data of a modded game for every kind a mod adds a prototype to), refused on the board when the new footprint would cover a tile of another entity ("Not changed: maker would stand on a tile of
   box."); the notes of `prototypeNotes` (a wall connects only next to a gate; an entity no item builds is taken into no blueprint; the messages of a
   display panel and the research conditions of a lab are kept only). The facing control has the directions the game builds the entity in: four,
   north and east for a storage tank, none for one that does not turn. Under the form a line names what a blueprint had that the editor only keeps

@@ -24,7 +24,9 @@ describe("language tables", () => {
     expect(propertyNames("lamp")).toEqual(["description", "networks", "always-on", "colors", "red", "green", "blue", "rgb", "color"]);
     expect(propertyNames("selector", "select")).toEqual(["description", "operation", "order", "index", "index-comparator"]);
     expect(propertyNames("selector", "time")).toEqual(["description", "operation", "day-length", "day-tick", "game-tick"]);
-    expect(propertiesFor("selector", "stack-size").map((p) => p.name)).toEqual(["description", "operation"]);
+    // Every kind takes `prototype`; it is named only where the game data has several of the kind.
+    expect(propertiesFor("selector", "stack-size").map((p) => p.name)).toEqual(["description", "prototype", "operation"]);
+    expect(propertyNames("selector", "stack-size")).toEqual(["description", "operation"]);
     for (const spec of Object.values(ENTITY_PROPERTIES).flat()) expect(spec.detail.length).toBeGreaterThan(0);
   });
 

@@ -3,6 +3,8 @@
 // nothing here, and a type without a line gets one made from its settings. Pure.
 import { entityTable, settingSpecsOf, type PrototypeName, type SettingSpec } from "@face/model";
 
+const LOADER = "Switch it on a condition, set its filters by signal";
+
 /** By prototype type, in the words of the palette: what the type is on a circuit for. */
 export const TYPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   accumulator: "Send how far it is charged",
@@ -25,7 +27,8 @@ export const TYPE_DESCRIPTIONS: Readonly<Record<string, string>> = {
   lab: "Set the research by signal, read its progress",
   "land-mine": "Arm it on a condition",
   "linked-container": "Read what a chest holds",
-  loader: "Switch it on a condition, set its filters by signal",
+  loader: LOADER,
+  "loader-1x1": LOADER,
   "logistic-container": "Read what a chest holds, set its requests by signal",
   "mining-drill": "Switch it on a condition, read the resources under it",
   "offshore-pump": "Switch it on a condition",

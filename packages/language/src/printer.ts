@@ -187,9 +187,9 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
   const unit = options.unit ?? "    ";
   const items: StatementItem[] = [];
   if (entity.description !== undefined) items.push(property("description", encodeString(entity.description)));
-  // A kind with several game prototypes says which one it is; the first of the kind goes without saying, except for a generic entity.
+  // An entity says which game prototype of its kind it is; the first of the kind goes without saying, except for a generic entity.
   if (entity.kind === "entity") items.push(property(PROTOTYPE_PROPERTY, printName(entity.prototype)));
-  else if (prototypesOf(entity.kind).length > 1) items.push(property(PROTOTYPE_PROPERTY, prototypeOf(entity), prototypeOf(entity) === prototypesOf(entity.kind)[0]));
+  else items.push(property(PROTOTYPE_PROPERTY, printName(prototypeOf(entity)), prototypeOf(entity) === prototypesOf(entity.kind)[0]));
   const signal = (key: string, id: SignalId | undefined) => {
     if (id) items.push(property(key, printSignal(id)));
   };

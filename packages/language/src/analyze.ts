@@ -1,20 +1,20 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, isInt32, isPrototypeName, isTileCenter,
+  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, heldPrototype, isInt32, isPrototypeName, isTileCenter,
   normalizedSettings, normalizeWire, PROTOTYPES, prototypeData, prototypesOf, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
   withArticle,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
-  type Entity, type EntityId, type EntityKind, type EntityOfKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeOfKind, type RgbColor,
+  type Entity, type EntityId, type EntityKind, type EntityOfKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeName, type RgbColor,
   type SelectorMode, type SelectorOperation, type SettingValue, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
 import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
-import { printTerminal } from "./printer.ts";
+import { printName, printTerminal } from "./printer.ts";
 import {
-  BLUEPRINT_DATA_PROPERTY, conditionRoles, lookupProperty, NO_NETWORK, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_FORMS,
+  BLUEPRINT_DATA_PROPERTY, conditionRoles, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_FORMS,
   type PropertySpec, type PropertyVariant, type SignalSlot, type StatementForm,
 } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
@@ -119,10 +119,6 @@ export interface ParseResult {
   readonly identity: IdentityState;
 }
 
-const KIND_LABEL: Readonly<Record<EntityKind, string>> = {
-  constant: "constant combinator", arithmetic: "arithmetic combinator", decider: "decider combinator", selector: "selector combinator", lamp: "lamp", pole: "electric pole", speaker: "programmable speaker",
-  entity: "entity",
-};
 /** "A lamp", "An electric pole". */
 const aKind = (kind: EntityKind): string => capitalize(withArticle(KIND_LABEL[kind]));
 /** The same for one entity; a generic entity is named by its prototype: "A fast inserter". */
@@ -413,7 +409,8 @@ class Analyzer {
     const direction = node.facing?.direction?.text as Direction | undefined;
     const placement: Placement | undefined = tile || direction ? compact({ tile, direction }) : undefined;
     const description = sorted.values.get("description")?.value as string | undefined;
-    const base = compact({ id, name, position, placement, description });
+    const prototype = node.kind === "entity" ? undefined : this.prototype(node.kind, sorted);
+    const base = compact({ id, name, position, placement, description, prototype });
     const label = node.name ?? node.keyword;
     switch (node.kind) {
       case "constant": return { ...base, ...this.constant(sorted, label) };
@@ -421,10 +418,27 @@ class Analyzer {
       case "decider": return { ...base, ...this.decider(sorted, label) };
       case "selector": return { ...base, kind: "selector", mode: this.selector(sorted, operation ?? "select") };
       case "lamp": return { ...base, ...this.lamp(sorted) };
-      case "pole": return { ...base, kind: "pole", prototype: (sorted.values.get(PROTOTYPE_PROPERTY)?.value as PrototypeOfKind<"pole"> | undefined) ?? DEFAULT_ENTITY.pole.prototype };
+      case "pole": return { ...base, kind: "pole", prototype: prototype ?? DEFAULT_ENTITY.pole.prototype };
       case "speaker": return { ...base, ...this.speaker(sorted, label) };
       case "entity": return { ...base, ...this.generic(sorted, statements, label) };
     }
+  }
+
+  /**
+   * Which prototype of its kind an entity is, as the entity holds it (`heldPrototype`: the first of the kind goes without
+   * saying). A name the game data does not have for the kind is an error, and the entity then is the first of its kind.
+   */
+  private prototype(kind: Exclude<EntityKind, "entity">, sorted: Sorted): PrototypeName | undefined {
+    const names = prototypesOf(kind);
+    const named = sorted.values.get(PROTOTYPE_PROPERTY)?.value as PrototypeName | undefined;
+    if (named === undefined || names.includes(named)) return heldPrototype(kind, named ?? names[0]!);
+    const own = isPrototypeName(named) ? PROTOTYPES[named]!.kind : undefined;
+    const message =
+      own === "entity" ? `'${named}' is not ${withArticle(KIND_LABEL[kind])}: declare it as 'entity <name> { ${PROTOTYPE_PROPERTY} = ${printName(named)} }'`
+      : own ? `'${named}' is ${withArticle(KIND_LABEL[own])}, not ${withArticle(KIND_LABEL[kind])}: declare it as '${own} <name> { ... }'`
+      : `Unknown prototype '${named}' for ${withArticle(KIND_LABEL[kind])}; the game data has ${names.join(", ")}`;
+    this.report(sorted.properties.get(PROTOTYPE_PROPERTY)!.value!, "invalid-value", message);
+    return heldPrototype(kind, names[0]!);
   }
 
   /**

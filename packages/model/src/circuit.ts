@@ -1,7 +1,7 @@
 // Semantic circuit model. Independent of source text, UI and simulation state.
 // Field names follow the editor's vocabulary; packages/blueprints maps them to Factorio's blueprint schema.
 
-import type { PrototypeOfKind } from "./prototypes.ts";
+import type { PrototypeName } from "./prototypes.ts";
 import type { SignalId } from "./signal.ts";
 
 export type EntityId = string;
@@ -87,6 +87,12 @@ interface EntityBase {
   readonly position: Point;
   readonly placement?: Placement;
   readonly description?: string;
+  /**
+   * Which game prototype of its kind the entity is, where the kind has several (a modded combinator, a big electric pole); absent:
+   * the first of the kind, which goes without saying (`prototypeOf`, `heldPrototype`). It decides the size, the rotation and the
+   * wire reach, never the behaviour.
+   */
+  readonly prototype?: PrototypeName;
 }
 
 // Constant combinator
@@ -199,10 +205,10 @@ export interface Lamp extends EntityBase {
 
 // Electric pole
 
-/** Relays circuit signals: every wire of one color on it is one network. It has no settings; the prototype decides its size and its wire reach. */
+/** Relays circuit signals: every wire of one color on it is one network. It has no settings; the prototype decides its size and its wire reach, and a pole always says which one it is. */
 export interface Pole extends EntityBase {
   readonly kind: "pole";
-  readonly prototype: PrototypeOfKind<"pole">;
+  readonly prototype: PrototypeName;
 }
 
 // Programmable speaker
@@ -264,7 +270,7 @@ export type EntitySettings = Readonly<Record<string, SettingValue>>;
  */
 export interface GenericEntity extends EntityBase {
   readonly kind: "entity";
-  readonly prototype: PrototypeOfKind<"entity">;
+  readonly prototype: PrototypeName;
   readonly settings: EntitySettings;
   /**
    * What a blueprint says about the entity that the editor does not model (recipe, filters, quality, a direction that is no

@@ -79,7 +79,7 @@ function importOf(recorded: RecordedBlueprint): { circuit: Circuit; report: Impo
  * `omit` are prototypes to leave out with their wires: the ones the game did not take or did not build.
  */
 export function arrangement(circuit: Circuit, omit: ReadonlySet<string> = new Set()): { entities: unknown[]; wires: string[] } {
-  const prototype = (entity: Entity): string => ("prototype" in entity ? entity.prototype : entity.kind);
+  const prototype = (entity: Entity): string => entity.prototype ?? entity.kind;
   const kept = circuit.entities.filter((entity) => !omit.has(prototype(entity)));
   const tiles = kept.map((entity) => entity.placement!.tile!);
   const corner = { x: Math.min(...tiles.map((tile) => tile.x)), y: Math.min(...tiles.map((tile) => tile.y)) };

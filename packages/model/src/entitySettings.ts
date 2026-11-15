@@ -155,7 +155,9 @@ const RAIL_SIGNAL: readonly SettingSpec[] = [
 
 const row = (behavior: string, settings: readonly SettingSpec[], more: Partial<Pick<SettingsRow, "assumed" | "kept">> = {}): SettingsRow => ({ behavior, settings, ...more });
 
-/** The settings per prototype type. A type that is not here is not a generic entity of the editor. */
+const LOADER = row("LoaderBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, SET_FILTERS, bool("read-transfers", "circuit_read_transfers", "Read transfers")]);
+
+/** The settings per prototype type. A type that is not here is not a generic entity of the editor. Two types that share a row share its object. */
 export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   accumulator: row("AccumulatorBlueprintControlBehavior", [OUTPUT_NETWORKS, bool("read-charge", "read_charge", "Read charge", true), under("read-charge", signalOf("output-signal", "output_signal", "Charge signal", "output"))]),
   "agricultural-tower": row("AgriculturalTowerBlueprintControlBehavior", [
@@ -187,7 +189,9 @@ export const ENTITY_SETTINGS: Readonly<Record<string, SettingsRow>> = {
   ], { kept: ["conditions"] }),
   "land-mine": row("LandMineBlueprintControlBehavior", ON_OFF),
   "linked-container": row("ContainerBlueprintControlBehavior", CONTAINER, { assumed: true }),
-  loader: row("LoaderBlueprintControlBehavior", [...ON_OFF, OUTPUT_NETWORKS, SET_FILTERS, bool("read-transfers", "circuit_read_transfers", "Read transfers")]),
+  loader: LOADER,
+  // The loader of one tile, which only mods give a circuit connection (miniloaders): the game has one control behaviour for both.
+  "loader-1x1": LOADER,
   "logistic-container": row("LogisticContainerBlueprintControlBehavior", LOGISTIC_CONTAINER),
   "mining-drill": row("MiningDrillBlueprintControlBehavior", [
     ...ON_OFF, OUTPUT_NETWORKS,

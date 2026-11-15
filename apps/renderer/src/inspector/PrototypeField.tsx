@@ -1,6 +1,7 @@
-// Which entity of its kind an entity is, for a kind with several game prototypes (a pole): one button per prototype with its
-// icon and what the choice decides, the tiles it covers and its wire reach. A generic entity chooses among the prototypes of
-// its type, which can be many: those are icons in a row (`compact`), with the name and the facts of the chosen one under them.
+// Which entity of its kind an entity is, for a kind with several game prototypes (a pole; a combinator or a lamp where a mod adds
+// some): one button per prototype with its icon and what the choice decides, the tiles it covers and its wire reach. Where there
+// are many (the prototypes of the type of a generic entity, a kind with many modded ones) they are icons in a row (`compact`),
+// with the name and the facts of the chosen one under them.
 import { prototypeOf, prototypesOf, type Entity, type PrototypeName } from "@face/model";
 import { KIND_INFO, prototypeFacts, prototypeLabel } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";

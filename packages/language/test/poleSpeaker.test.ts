@@ -64,13 +64,18 @@ describe("pole", () => {
   });
 
   it("rejects an unknown prototype and everything a pole does not take", () => {
-    expect(diagnostics(circuit("pole p { prototype = small-lamp }"))).toEqual([["invalid-value", "Invalid value 'small-lamp' for 'prototype'; expected one of small-electric-pole, medium-electric-pole, big-electric-pole, substation"]]);
+    expect(diagnostics(circuit("pole p { prototype = small-lamp }"))).toEqual([["invalid-value", "'small-lamp' is a lamp, not an electric pole: declare it as 'lamp <name> { ... }'"]]);
+    expect(diagnostics(circuit("pole p { prototype = steel-chest }"))).toEqual([["invalid-value", "'steel-chest' is not an electric pole: declare it as 'entity <name> { prototype = steel-chest }'"]]);
+    expect(diagnostics(circuit("pole p { prototype = huge-pole }"))).toEqual([["invalid-value", "Unknown prototype 'huge-pole' for an electric pole; the game data has small-electric-pole, medium-electric-pole, big-electric-pole, substation"]]);
+    expect(diagnostics(circuit("pole p { prototype = 5 }"))).toEqual([["invalid-value", "Invalid value '5' for 'prototype'; expected a prototype name"]]);
     expect(diagnostics(circuit("pole p { prototype = big-electric-pole prototype = substation }"))).toEqual([["duplicate-statement", "Duplicate property 'prototype'"]]);
     expect(diagnostics(circuit("pole p { enabled = true }"))).toEqual([["unknown-property", "Unknown property 'enabled' in an electric pole; expected one of description, prototype"]]);
     expect(diagnostics(circuit("pole p { when virtual:signal-A > 1 }"))).toEqual([["invalid-statement", "An electric pole does not take a 'when' statement"]]);
     expect(diagnostics(circuit("pole p { virtual:signal-A = 1 }"))).toEqual([["invalid-statement", "An electric pole does not take signal assignments"]]);
-    // A kind with one prototype has no such property.
-    expect(codes(circuit("lamp l { prototype = small-lamp }"))).toEqual(["unknown-property"]);
+    // A kind with one prototype in the game data takes the word too, though nothing offers it: its one prototype, and no other.
+    expect(codes(circuit("lamp l { prototype = small-lamp }\nspeaker s { prototype = programmable-speaker when virtual:signal-A > 0 }"))).toEqual([]);
+    expect(diagnostics(circuit("lamp l { prototype = big-lamp }"))).toEqual([["invalid-value", "Unknown prototype 'big-lamp' for a lamp; the game data has small-lamp"]]);
+    expect(diagnostics(circuit("lamp l { size = 2 }"))).toEqual([["unknown-property", "Unknown property 'size' in a lamp; expected one of description, networks, always-on, colors, red, green, blue, rgb, color"]]);
   });
 
   it("prints the prototype unless it is the default", () => {
