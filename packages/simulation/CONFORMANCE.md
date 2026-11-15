@@ -1,12 +1,13 @@
 # @face/simulation: conformance status
 
 The engine implements the reference model of `docs/factorio-audit.md` section 6 for Factorio 2.1.24.
-**Nothing in this package has been validated against the running game.** No fixture has provenance `game` yet.
+**Nothing in this package has been validated against the running game, except the rules whose status is `game`.** No conformance fixture has provenance `game` yet.
 
 Status values used below:
 
 - **documented**: the behavior follows a statement in the audit that carries a `[data]`, `[api]`, `[changelog]` or `[web]` tag. Still not game-validated.
 - **assumed**: the audit tags the behavior `[unverified]` or leaves it open; the engine makes the choice described here (the audit's stated expectation where it gives one).
+- **game**: the game was asked and does the same; the recording is the named fixture under `tests/fixtures/game`, and a test of this package holds the rule against it.
 
 Every assumed rule has one place in the source and at least one test whose name carries the audit fixture id (`F-nn assumption: ...`).
 When a game fixture disagrees: change the place named in the table, update the test, flip the status to `game`.
@@ -89,8 +90,8 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 | D-PRECEDENCE | The flat list is an OR of AND groups; a group starts at every condition joined with `or` | 6.4 | F-10 | documented | `decider.ts` `groupConditions` |
 | D-FIRSTJOIN | The join of the first condition is ignored | 3.6 | F-10 | assumed | `decider.ts` `groupConditions` |
 | D-NETWORKS | Each operand reads its own network selection; both networks are summed | 6.4 | F-10 | documented | `decider.ts` `conditionHolds` |
-| D-EMPTY | An empty condition list is false: only else outputs fire | 6.4 | F-15 | assumed | `rules.ts` `emptyConditionListResult` |
-| D-BLANK | A condition without a first signal is false | 6.4 | F-15 | assumed | `rules.ts` `blankFirstSignalResult` |
+| D-EMPTY | An empty condition list is false: only else outputs fire | 6.4 | F-15, F-29 | game (F-29) | `rules.ts` `emptyConditionListResult` |
+| D-BLANK | A condition without a first signal is false | 6.4 | F-15, F-29 | assumed; the game (F-29) agrees for the default `< 0` only: it reads the blank signal as 0, so `= 0`, `> -1` and `< signal` hold there and not here | `rules.ts` `blankFirstSignalResult` |
 | D-EVERYTHING | everything: all non-zero signals on the operand's networks pass; true without input | 6.4 | F-11 | documented | `decider.ts` `conditionHolds` |
 | D-ANYTHING | anything: at least one signal passes; false without input | 6.4 | F-11 | documented | `decider.ts` `conditionHolds` |
 | D-RHS-EXCLUDED | In `everything / anything cmp S` the right-hand signal S is excluded from the checked set (wiki claim) | 6.4 | F-11 | assumed | `rules.ts` `wildcardExcludesRightHandSignal` |
@@ -155,8 +156,8 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 | --- | --- | --- | --- | --- | --- |
 | L-AMBIENT | No day/night cycle: a lamp without circuit control is lit only when always-on | 6.7, 9.8 | F-21 | assumed (simulator convention) | `lamp.ts` `planLamp` |
 | L-ENABLE | A wired lamp with an enable condition is lit exactly when the condition holds, regardless of always-on | 6.7 | F-21 | assumed | `lamp.ts` `planLamp` |
-| L-UNWIRED | An enable condition applies only while the lamp has a circuit wire (any color) | 6.7 | F-21 | assumed | `rules.ts` `lampConditionNeedsWire` |
-| L-BLANK | The default condition (no first signal) is false | 6.7 | F-21 | assumed | `rules.ts` `blankFirstSignalResult` |
+| L-UNWIRED | An enable condition applies only while the lamp has a circuit wire (any color) | 6.7 | F-21, F-29 | game (F-29, red wire) | `rules.ts` `lampConditionNeedsWire` |
+| L-BLANK | The default condition (no first signal) is false | 6.7 | F-21, F-29 | game (F-29) | `rules.ts` `blankFirstSignalResult` |
 | L-WILDCARD | everything / anything work in the enable condition as in a decider (including D-RHS-EXCLUDED); each or a wildcard right-hand side makes the lamp invalid (dark) | 2.4 | F-21 | assumed | `lamp.ts`, `validate.ts` |
 | L-SCOPE | The input network selection scopes both the condition and the color signals | 6.7 | F-22 | assumed | `lamp.ts` `planLamp` |
 | L-MAPPING | Color mapping uses the prototype table (red, green, blue, yellow, pink, cyan, white, grey, black), scaled to 0..255, grey = 128 | 6.7 | F-22 | documented | `lamp.ts` `MAPPING_COLORS` |
@@ -171,13 +172,13 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 ### Programmable speaker
 
 No sound is produced. `EntitySnapshot.speaker` says per tick whether the speaker is triggered and with what: `playing`, `instrument`, `note`, `volume` (percent), `alert`; `totals.speakersPlaying` counts.
-None of this is validated against the game: fixture F-25 is the probe that has to decide the rules marked assumed.
+None of this is validated against the game but SP-BLANK: fixture F-25 is the probe that has to decide the rules marked assumed.
 
 | Rule | Chosen behavior | Audit | Fixture | Status | Source |
 | --- | --- | --- | --- | --- | --- |
 | SP-ENABLE | A speaker evaluates its condition from the current tick's content, like a lamp, and emits nothing; it is reported as playing at every tick at which the condition holds | 6.10 | F-25 | assumed | `engine.ts` `snapshot`, `speaker.ts` |
 | SP-UNWIRED | Without a circuit wire (any color) a speaker makes no sound, whatever its condition | 6.10 | F-25 | documented (changelog 0.15) | `speaker.ts` `planSpeaker` |
-| SP-BLANK | The condition of a new speaker (no first signal) is false, and so is a speaker without a condition | 6.10 | F-25 | assumed | `rules.ts` `blankFirstSignalResult` |
+| SP-BLANK | The condition of a new speaker (no first signal) is false, and so is a speaker without a condition | 6.10 | F-25, F-29 | game (F-29: the condition is not fulfilled; the sound was not observed) | `rules.ts` `blankFirstSignalResult` |
 | SP-NETWORKS | Both operands of the condition, the pitch signal and the volume signal read the wrapping sum of red and green; a speaker has no network selection | 3.10 | F-25 | documented (no such field), assumed (sum) | `speaker.ts` `planSpeaker` |
 | SP-WILDCARD | everything / anything work in the condition as in a lamp (L-WILDCARD); each, a wildcard right-hand side, and a wildcard as pitch or volume signal make the speaker invalid (silent) | 2.4 | F-25 | assumed | `speaker.ts`, `validate.ts` |
 | SP-HELD | While the trigger holds, the speaker is reported as playing at every tick. How often the game starts the sound again, how long a sample sounds, the limit of sounds at a time (`allow_polyphony`, 10 per speaker), `stop_playing_sounds` and `playback_mode` are not modelled and do not change the snapshot | 6.10 | F-25 | assumed (simulator convention) | `speaker.ts` `planSpeaker` |
@@ -192,7 +193,7 @@ None of this is validated against the game: fixture F-25 is the probe that has t
 
 Every prototype of the game without a kind of its own is of the kind `entity`; which settings it has is a table per prototype type (`ENTITY_SETTINGS` in `@face/model`, `docs/factorio-audit.md` 14).
 Of those settings the simulation uses the circuit conditions, the input network selection and, for a radar, mode and channel. Everything else is kept for the blueprint.
-None of this section has a game fixture: F-27 and F-28 name the recordings that would decide it.
+None of this section has a game fixture but G-UNWIRED: F-27 and F-28 name the recordings that would decide it.
 
 | Rule | Chosen behavior | Audit | Fixture | Status | Source |
 | --- | --- | --- | --- | --- | --- |
@@ -200,7 +201,7 @@ None of this section has a game fixture: F-27 and F-28 name the recordings that 
 | G-CONDITION | Every circuit condition among its settings (`when`, the enable condition, and `harvest-when`, `plant-when`, `input-left-when`, `input-right-when`, `output-left-when`, `output-right-when`, `ignore-unlisted-when`, `close-when`, `open-gate-when`) is evaluated at every tick from the current tick's content, like a lamp's (T-LAMP), and reported as `conditions[key]`; there is no latency. A condition is among the settings exactly while its flag in the blueprint is on | 14 | F-27 | assumed | `entity.ts` `planEntity`, `engine.ts` `snapshot` |
 | G-NETWORKS | Both sides of every condition read the networks the entity's `networks` setting (`input_networks`) selects: the wrapping sum of red and green without one, one color, or nothing (N-NONE). `output-networks` has no effect | 14 | F-27 | documented (the selection, API: "Which circuit networks (red/green) to read signals from. Defaults to both wire colors"), assumed (that it scopes every condition, and both sides) | `entity.ts` `inputNetworksOf` |
 | G-WILDCARD | everything / anything work on the left side as in a lamp (L-WILDCARD, including D-RHS-EXCLUDED); each, or a wildcard on the right side, makes the entity invalid: it reports no conditions | 2.4 | F-27 | assumed | `validate.ts` `checkGeneric` |
-| G-UNWIRED | Without a circuit wire (any color) no condition applies: the snapshot has no `conditions` and the entity does not count as disabled | 14 | F-27 | assumed (as L-UNWIRED) | `entity.ts` `planEntity` |
+| G-UNWIRED | Without a circuit wire (any color) no condition applies: the snapshot has no `conditions` and the entity does not count as disabled | 14 | F-27, F-29 | game (F-29: the enable condition of 20 prototypes; the other conditions assumed) | `entity.ts` `planEntity` |
 | G-BLANK | The model holds no condition without a left side (`isSettingValue`); such a value, or one of another type, or a condition the prototype's type does not have, is no condition of the entity | 14 | none | by design | `entity.ts` `circuitConditions` |
 | G-LOGISTIC | The logistic condition (`logistic-when`) reads the logistic network, which the simulation does not have: it is kept and never evaluated, and it is not in `conditions` | 14 | none | by design | `entity.ts` `circuitConditions` |
 | G-DISABLED | An entity counts as disabled (`totals.entitiesDisabled`) exactly when its enable condition `when` is reported and false; the other conditions do not enable or disable | 14 | F-27 | assumed | `engine.ts` `snapshot` |

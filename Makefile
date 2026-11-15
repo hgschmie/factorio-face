@@ -2,7 +2,7 @@
 SHELL := /bin/bash
 ENV := source scripts/env.sh &&
 
-.PHONY: install build typecheck test e2e run catalog examples probe-wire-reach probe-blueprints clean
+.PHONY: install build typecheck test e2e run catalog examples probe-wire-reach probe-blueprints probe-blank-condition clean
 
 install:
 	$(ENV) npm install && node node_modules/electron/install.js
@@ -36,6 +36,10 @@ probe-wire-reach:
 # Records tests/fixtures/game/F-01-blueprints.json from the installed game: what it exports and what it makes of our blueprints.
 probe-blueprints:
 	$(ENV) npm run probe-blueprints
+
+# Records tests/fixtures/game/F-29-blank-condition.json from the installed game: what an entity does whose circuit condition is in use and blank.
+probe-blank-condition:
+	$(ENV) npm run probe-blank-condition
 
 clean:
 	rm -rf dist .runtime

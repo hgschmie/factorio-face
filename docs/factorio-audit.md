@@ -924,8 +924,8 @@ Condition expression:
 | "Each of these operators can be toggled between AND and OR with AND having higher order of precedence." | [web: https://wiki.factorio.com/Decider_combinator] |
 | There is no explicit grouping; the flat list with `compare_type` is the whole expression. Equivalent form: a disjunction of AND-groups, a new group starting at every condition whose `compare_type` is `or` (the default) | [api] + [web: same]; equivalence is a direct consequence |
 | Each operand has its own red/green selection; "If both red and green are checked, the input values are summed." | [web: same] [api] |
-| Empty condition list: result | [unverified] |
-| A condition with blank `first_signal` | [unverified] |
+| Empty condition list: the conditions do not hold, the else outputs are sent | [game: fixture F-29] |
+| A condition with blank `first_signal`: the blank signal reads as 0. The default `< 0` does not hold; `= 0`, `> -1` and `< signal` with that signal at 1 hold | [game: fixture F-29]. Unlike the condition of an entity (6.7), which is never fulfilled without a first signal |
 
 Wildcards in conditions (no each present):
 
@@ -1012,8 +1012,8 @@ Input is the sum of red and green (no selection fields exist) [api]; latency one
 | --- | --- |
 | Without circuit control the lamp lights by darkness (all lamps on at darkness 0.5, off at 0.3) or permanently with `always_on` | [data: base/prototypes/entity/entities.lua] [data: core.cfg gui-lamp] |
 | "Lamp will be always on (unless disabled by control behavior)." | [data: core.cfg] |
-| "Enable if: Turn this entity on only when the condition is true." Applies only when `circuit_enabled` is true and a wire is connected | [data: core.cfg]; gating by `circuit_enabled` [api default false] [unverified] |
-| Default condition (blank signal `<` 0) is false | [api defaults]; [unverified] |
+| "Enable if: Turn this entity on only when the condition is true." Applies only when `circuit_enabled` is true and a wire is connected | [data: core.cfg]; gating by `circuit_enabled` [api default false] and by the wire [game: fixture F-29: with the flag off, or without a wire, a condition that does not hold disables nothing] |
+| Default condition (blank signal `<` 0) is false: a wired lamp with `circuit_enabled` and no condition is disabled (`disabled`, status "disabled by control behavior"). A condition without a first signal is never fulfilled, also as `= 0`. The same for all 20 prototypes with an enable condition that were asked (belt, inserter, pump, mining drill, train stop, power switch, assembling machine and others), built from a blueprint or set through the API; the game writes the state as `circuit_enabled: true` without `circuit_condition` | [api defaults]; [game: fixture F-29] |
 | A circuit-enabled lamp with a true condition lights regardless of daylight | [unverified] |
 | `input_networks` selects which wires feed condition and color | [api] [changelog 2.1.7]; whether it also scopes color signals [unverified] |
 | Use colors: "Sets the color of the lamp based on color signals. If a color signal has a value greater than 0, the lamp will show that color. If multiple colors are present, only one of them will be used." | [data: core.cfg] |
@@ -1064,6 +1064,7 @@ reading results through `LuaCombinatorControlBehavior.signals_last_tick`, `LuaEn
 | F-27 | Generic entities: an inserter, a belt, a splitter (input and output side), an agricultural tower (harvest, plant), a turret (ignore unlisted targets), a rail signal (close) and a wall (open gate) with a circuit condition each, fed by a constant combinator over red, green and both with `input_networks` set; `LuaGenericOnOffControlBehavior.disabled` and the entity's state per tick; the same without a wire; a logistic condition next to a circuit condition. Authored: `tests/fixtures/conformance/F-27-entity-conditions.json` (assumed) | conditions of the generic entities (14.4), rules G-* of `packages/simulation/CONFORMANCE.md` |
 | F-28 | Radar: two radars in surface mode, one wired to a constant combinator and one to a lamp; a third in universe mode with a channel, a fourth with the same channel, a fifth with another; `LuaEntity.get_signals` on each. Authored: `tests/fixtures/conformance/F-28-radar-networks.json` (assumed) | wireless networks of the radar (13.7, 14.4), rules G-RADAR* |
 | F-24 | Wire reach: an entity B on every tile of a 29 x 29 grid (73 x 73 for the long reaches) around an entity A, asking `can_wire_reach` and `connect_to`: the combinators in all four directions and with both connectors, lamp, speaker, steel chest, the four electric poles against each other and against other entities, the power switch, the agricultural tower, and every selection box of the entity table that is not the tiles of its prototype, the three that are not the same on all sides in all four directions. With every entity the selection box of its prototype and the direction it has once it stands. Recorded: `tests/fixtures/game/F-24-wire-reach.json` by `tools/game-probe/wire-reach.mjs` (`make probe-wire-reach`, 68 cases on 2026-11-14), checked by `packages/model/test/wireReachGame.test.ts` | the measure of wire reach (5.4): from where, inclusive or not, which of two reaches |
+| F-29 | Blank condition: 23 prototypes with a circuit condition (belt, inserter, lamp, pump, offshore pump, both mining drills, train stop, power switch, assembling machine, furnace, boiler, turrets, land mine, loader, agricultural tower, asteroid collector, speaker, wall next to a gate, rail signal), each next to a constant combinator in seven states: flag on with no condition (wired, unwired), a condition that holds, one that does not (wired, unwired), flag off, no first signal with `= 0`; each built from a blueprint string and through the runtime API. After 60 ticks: flag, condition and its `fulfilled`, `LuaGenericOnOffControlBehavior.disabled`, `LuaEntity.status`, the item on a belt, the power switch, the gate, the rail signal, and the `control_behavior` the game writes into a blueprint. Eight decider combinators: no condition, blank conditions that 0 passes and does not pass. Recorded: `tests/fixtures/game/F-29-blank-condition.json` by `tools/game-probe/blank-condition.mjs` (`make probe-blank-condition`, on 2026-11-15), checked by `packages/simulation/test/blankConditionGame.test.ts` | a condition in use without a first signal (6.4, 6.7, 6.10, 14.4): never fulfilled in an entity, so a wired entity is disabled; without a wire no condition disables; in a decider the blank signal reads as 0; rules L-BLANK, L-UNWIRED, SP-BLANK, G-UNWIRED, D-EMPTY, D-BLANK |
 
 ### 6.9 Electric poles
 
@@ -1084,7 +1085,7 @@ The simulator treats a pole as a connection point without behaviour (rule P-RELA
 | "it shows alerts and plays sounds based on circuit network signals" | [changelog 0.15.0] |
 | Without a circuit wire the speaker makes no sound: "Fixed programmable speaker continuing to make sounds without a wire connected" | [changelog 0.15.x] |
 | The speaker plays when its circuit condition is true; it emits nothing | [web: https://wiki.factorio.com/Programmable_speaker]; evaluated from the current tick like a lamp [unverified] |
-| A blank condition (no first signal) is false | [unverified], as for the lamp |
+| A blank condition (no first signal) is false | [game: fixture F-29: `fulfilled` of the condition as the control behaviour gives it back, also for `= 0`; the sound itself was not observed] |
 | While the condition stays true the sound is started again and again: "sounds will repeat extremely rapidly (10 per second or so)" with polyphony, about one every half second without | [web: same page]; the exact rule (per tick, per sample length) [unverified] |
 | "Allow polyphony": up to `maximum_polyphony` = 10 sounds at once; without it one sound at a time | [data: core.cfg] [data: dump]; what happens to a trigger while a sound plays [unverified] |
 | "Stop playing sounds": a change of the input signal stops the playing sounds instead of letting them finish | [data: core.cfg] [changelog 2.0.36] |
@@ -1812,4 +1813,4 @@ Open:
 
 - Whether the game takes the kept fields (14.3) back unchanged when modelled fields next to them change: no sample has kept data.
 - `read_fuel` of a lab: no lab of the game burns fuel, so the game has nothing to say about the field.
-- A control behaviour of a generic entity without a wire through a build: the samples wire every generic entity.
+- A control behaviour of a generic entity without a wire through a build: settled by fixture F-29. The entity keeps it, with flag and condition, and the game writes it into a blueprint again; a wall and a speaker whose blueprint says nothing but the default (flag on, no condition) are built without one.
