@@ -2,7 +2,10 @@
 // resynchronizes at the next statement or member.
 
 import { COMPARATORS, DIRECTIONS, WILDCARDS, WIRE_COLORS, type EntityKind, type Wildcard } from "@face/model";
-import type { CstAssign, CstBlock, CstCircuit, CstCondition, CstEntity, CstFacing, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstPoint, CstProperty, CstSection, CstSigRef, CstStatement, CstTerminal, CstWhen, CstWire } from "./cst.ts";
+import type {
+  CstAssign, CstBlock, CstCircuit, CstCondition, CstEntity, CstFacing, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstPassedDeclaration, CstPoint, CstProperty, CstSection, CstSigRef,
+  CstStatement, CstTerminal, CstWhen, CstWire,
+} from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import { declaredPrototype } from "./names.ts";
 import { ARITHMETIC_OPERATORS, NO_NETWORK, SIGNAL_SLOTS } from "./schema.ts";
@@ -67,6 +70,8 @@ function slot(kind: EntityKind, role: string): readonly Wildcard[] {
 
 class Parser {
   readonly diagnostics: Diagnostic[] = [];
+  /** The declarations that were read past (`passDeclaration`), of the circuit or of the fragment. */
+  readonly passed: CstPassedDeclaration[] = [];
   private pos = 0;
   private lastEnd = 0;
   /** Token index of the most recent error, used to avoid reporting the same token twice. */
@@ -194,7 +199,7 @@ class Parser {
     let close: Token | undefined;
     if (this.is("}")) close = this.next();
     else this.expected("'}' to close the circuit");
-    return { from: keyword.from, to: this.lastEnd, keyword, name, open, close, members };
+    return { from: keyword.from, to: this.lastEnd, keyword, name, open, close, members, passed: this.passed };
   }
 
   /** The members of a circuit body up to its closing brace; a fragment has no braces around it and ends with the input. */
@@ -224,8 +229,7 @@ class Parser {
         this.skip(() => false);
       } else if (token.kind === "keyword" && this.peek().kind === "ident" && opensEntity(this.peek(2))) {
         this.error(token, `'${token.text}' is a reserved word; an entity of this name is declared in quotes: ${encodeString(token.text)} ${this.peek().text}`);
-        this.next();
-        this.passDeclaration();
+        this.passDeclaration(this.next());
       } else this.skip(() => false, "Expected an entity or wire declaration");
     }
     return members;
@@ -246,7 +250,7 @@ class Parser {
     const declared = declaredPrototype(prototype);
     if ("problem" in declared) {
       this.error(word, declared.message, declared.problem === "unknown" ? "unknown-prototype" : "unsupported-prototype");
-      this.passDeclaration();
+      this.passDeclaration(word);
       return undefined;
     }
     const header = this.header();
@@ -291,13 +295,14 @@ class Parser {
   }
 
   /**
-   * Reads past the rest of a declaration that is no entity (its word is the one error it has): the name, the clauses and the
-   * block by its braces, whatever they say. It ends before the next declaration where the closing brace is missing.
+   * Reads past the rest of a declaration that is no entity (`word` is the one error it has): the name, the clauses and the
+   * block by its braces, whatever they say. It ends before the next declaration where the closing brace is missing. The name is
+   * kept (`passed`).
    */
-  private passDeclaration(): void {
+  private passDeclaration(word: Token): void {
     const { length } = this.diagnostics;
     const { errorPos } = this;
-    this.header();
+    const { name } = this.header();
     if (this.is("{")) {
       let depth = 0;
       do {
@@ -310,6 +315,7 @@ class Parser {
     } else if (this.eof) this.failedAtEnd = true;
     this.diagnostics.length = length;
     this.errorPos = errorPos;
+    this.passed.push({ from: word.from, to: this.lastEnd, word, name });
   }
 
   private point(): CstPoint {
@@ -597,6 +603,8 @@ export function parse(source: string): SyntaxResult {
 
 export interface FragmentSyntax {
   readonly members: readonly CstMember[];
+  /** The declarations among them that are no entities. */
+  readonly passed: readonly CstPassedDeclaration[];
   readonly diagnostics: readonly Diagnostic[];
 }
 
@@ -607,7 +615,7 @@ export interface FragmentSyntax {
 export function parseFragment(source: string): FragmentSyntax {
   const { parser, tokens } = parserFor(source);
   const members = parser.fragment(tokens, source.length);
-  return { members, diagnostics: parser.diagnostics };
+  return { members, passed: parser.passed, diagnostics: parser.diagnostics };
 }
 
 /** Everything the grammar would accept directly after `prefix`. */

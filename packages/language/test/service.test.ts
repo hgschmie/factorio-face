@@ -76,6 +76,11 @@ describe("completionContext", () => {
     expect(at(circuit("lamp a |")).expected).toEqual([{ type: "keyword", values: ["at", "tile", "facing"] }]);
     expect(at(circuit("lamp a { | }")).expected).toEqual([]);
     expect(at(circuit("lamp a { when virtual:signal-A > 0 }\n|")).expected).toEqual([{ type: "keyword", values: ["wire"] }, { type: "entity", prototypes: PROTOTYPE_NAMES }]);
+    // Its name is no end of a wire to offer: what it would be wired at is not known. Behind a dot it is a name like one that is not declared.
+    const body = "lamp old { }\nsmall-lamp l { }\n";
+    expect(at(circuit(`${body}wire red |`)).expected).toEqual([{ type: "terminal", entities: [{ name: "l", kind: "lamp", sides: ["in"] }] }]);
+    expect(at(circuit(`${body}wire red old.|`)).expected).toEqual([{ type: "side", entity: "old", sides: ["in", "out"] }]);
+    expect(at(circuit(`${body}wire red l.|`)).expected).toEqual([{ type: "side", entity: "l", sides: ["in"] }]);
   });
 
   it("expects a name, then header clauses and directions", () => {

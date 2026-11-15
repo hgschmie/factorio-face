@@ -480,9 +480,8 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     expect(await sourceText(page)).toBe(MODDED_KINDS_SOURCE);
     const flagged = await page.evaluate(() => window.faceSession!.getState().diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.message));
     const missing = (name: string): string => `Unknown entity '${name}': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)`;
-    expect(flagged.slice(0, 5)).toEqual([missing("mod-arithmetic"), missing("mod-decider"), missing("mod-pole"), missing("mod-lamp"), "Unknown entity 'mod-loader'; did you mean loader?"]);
-    // They are no entities: every end of a wire at one of them finds nothing of its name.
-    expect(flagged.slice(5)).toEqual(["double", "double", "gate", "gate", "relay", "relay", "light", "relay", "feed"].map((name) => `Unknown entity '${name}'`));
+    // One error per declaration, on its word; the five wires that end at them are left out and say nothing.
+    expect(flagged).toEqual([missing("mod-arithmetic"), missing("mod-decider"), missing("mod-pole"), missing("mod-lamp"), "Unknown entity 'mod-loader'; did you mean loader?"]);
   } finally {
     await closeApp(app);
   }

@@ -100,10 +100,12 @@ describe("the entities of a table that has modded ones", () => {
       ["unsupported-prototype", "'mod-speaker' (Loud speaker) is not supported: it is a programmable speaker of its own, and the editor has the instruments of 'programmable-speaker' only"],
     ]);
     expect(diagnostics(circuit('"mod-oddity" o { anything = at all }'))).toEqual([["unsupported-prototype", "'mod-oddity' (Oddity) is not supported: it is a simple-entity-with-owner, for which the editor has no settings"]]);
-    // It is no entity: the rest of the file is read, and a wire to it finds nothing of that name.
-    const result = analyze(circuit("mod-lamp l { }\nmod-speaker s { when virtual:signal-A > 0 }\nmod-pole p { }\nwire red p <-> l.in\nwire red p <-> s.in"));
-    expect(result.diagnostics.map((d) => [d.code, d.message])).toEqual([["unsupported-prototype", expect.stringContaining("'mod-speaker'")], ["unknown-entity", "Unknown entity 's'"]]);
+    // It is no entity: the rest of the file is read, and a wire that ends at it, at either end, is left out without another error.
+    const result = analyze(circuit("mod-lamp l { }\nmod-speaker s { when virtual:signal-A > 0 }\nmod-pole p { }\nwire red p <-> l.in\nwire red p <-> s.in\nwire green s.in <-> l.in\nwire red s.in <-> s.in"));
+    expect(result.diagnostics.map((d) => [d.code, d.message])).toEqual([["unsupported-prototype", expect.stringContaining("'mod-speaker'")]]);
     expect(result.sourceMap.entities.size).toBe(2);
+    expect(result.sourceMap.wires.size).toBe(1);
+    expect(result.cst.circuit!.passed.map((declaration) => [declaration.word.text, declaration.name?.text])).toEqual([["mod-speaker", "s"]]);
     expect(diagnostics(circuit("nixie-tube l { }"))).toEqual([
       ["unknown-prototype", "Unknown entity 'nixie-tube': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)"],
     ]);
@@ -195,16 +197,17 @@ describe("an entity whose name is a word of the language", () => {
 });
 
 describe("a project made with mods, read with the standard game data", () => {
-  it("has one error per declaration of an entity the data does not have, and the rest of the circuit", () => {
-    const result = analyze(circuit(`${MODDED}\nsmall-lamp light { }\nwire red c.out <-> light.in`));
+  it("has one error per declaration of an entity the data does not have and none for the wires to them, and the rest of the circuit", () => {
+    const result = analyze(circuit(`${MODDED}\nsmall-lamp light { }\nwire red c.out <-> light.in\nwire red c.out <-> a.in\nwire green p <-> m\nwire green light.in <-> f.in`));
     const missing = (name: string): string => `Unknown entity '${name}': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)`;
     expect(result.diagnostics.map((d) => d.message)).toEqual([
       ...["mod-constant", "mod-arithmetic", "mod-decider", "mod-selector", "mod-lamp", "5d-lamp", "mod-pole"].map(missing),
       // A name of the game inside the one of the mod is offered.
       "Unknown entity 'mod-loader'; did you mean loader?",
-      "Unknown entity 'c'",
     ]);
-    expect(result.diagnostics.map((d) => d.code)).toEqual([...Array.from({ length: 8 }, () => "unknown-prototype"), "unknown-entity"]);
+    expect(result.diagnostics.map((d) => d.code)).toEqual(Array.from({ length: 8 }, () => "unknown-prototype"));
     expect([...result.sourceMap.entities.values()].map((entity) => entity.name)).toEqual(["light"]);
+    expect(result.sourceMap.wires.size).toBe(0);
+    expect(result.cst.circuit!.passed.map((declaration) => declaration.name?.text)).toEqual(["c", "a", "d", "s", "l", "f", "p", "m"]);
   });
 });

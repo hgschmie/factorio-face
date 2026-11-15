@@ -1004,7 +1004,7 @@ in a native dialog of its own before it starts the game.
   use: mods and modules the data lacks, mods in another version (a module of the game only counts when it is missing), a game
   version that differs. The sentence is the message of the toast and stays in the project settings (`ProjectView.modsNotice`,
   `[data-note="mods-notice"]`, with `[data-note="made-with"]` for the record itself). The project opens all the same and its source
-  is not changed; a declaration of an entity the data in use does not have is an error of the language (`unknown-prototype`), so the
+  is not changed; a declaration of an entity the data in use does not have is one error of the language (`unknown-prototype`; the wires to it add none), so the
   circuit of a project with an entity of a missing mod is not drawn until the game is read with that mod.
 - **The section** "Game data" of the application settings (`GameDataSection.tsx`, `gameDataView`, `useGameData`). It shows the
   source in words (`.game-data-source`, `data-source="built-in|game"`: "Built in, Factorio 2.1.24" or "Read from your game on

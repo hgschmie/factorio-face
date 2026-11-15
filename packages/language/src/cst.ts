@@ -15,11 +15,23 @@ export interface CstCircuit extends Range {
   readonly open?: Token;
   readonly close?: Token;
   readonly members: readonly CstMember[];
+  /** The declarations among them that are no entities, in source order. */
+  readonly passed: readonly CstPassedDeclaration[];
+}
+
+/**
+ * A declaration that is no entity: its word is no entity of the game data in use, one the editor does not support, or a reserved
+ * word. It has the one error on its word and is read past, whatever it says. What is kept of it is its name: a wire that ends
+ * there is left out without a further error.
+ */
+export interface CstPassedDeclaration extends Range {
+  readonly word: Token;
+  readonly name?: Token;
 }
 
 export type CstMember = CstEntity | CstWire;
 
-/** A declaration of an entity the game data in use has; one it does not have is an error of the parser and no node. */
+/** A declaration of an entity the game data in use has; one it does not have is an error of the parser and no member (`CstCircuit.passed`). */
 export interface CstEntity extends Range {
   readonly type: "entity";
   /** The declaration word, bare or quoted: the game's name of the entity. */

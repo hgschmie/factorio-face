@@ -8,7 +8,9 @@ import {
   type Entity, type EntityConfig, type EntityId, type EntityKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeName, type RgbColor,
   type SelectorMode, type SelectorOperation, type SettingValue, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
-import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
+import type {
+  CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstPassedDeclaration, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire,
+} from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
@@ -854,8 +856,13 @@ interface MemberAnalysis {
   readonly match: IdentityMatch;
 }
 
-/** Entities, wires and their source map from the member declarations of a circuit or a fragment. */
-function analyzeMembers(members: readonly CstMember[], analyzer: Analyzer, previous: IdentityState | undefined): MemberAnalysis {
+/**
+ * Entities, wires and their source map from the member declarations of a circuit or a fragment. `passed` are the declarations
+ * that are no entities: each has its one error already, so a wire that ends at the name of one is left out without another.
+ * A name that an entity has as well is that entity's.
+ */
+function analyzeMembers(members: readonly CstMember[], passed: readonly CstPassedDeclaration[], analyzer: Analyzer, previous: IdentityState | undefined): MemberAnalysis {
+  const passedNames = new Set(passed.flatMap((declaration) => declaration.name?.text ?? []));
   const entityNodes = members.filter((member): member is CstEntity => member.type === "entity");
   const wireNodes = members.filter((member): member is CstWire => member.type === "wire");
 
@@ -883,7 +890,7 @@ function analyzeMembers(members: readonly CstMember[], analyzer: Analyzer, previ
       if (!cst) return undefined;
       const entity = byName.get(cst.name.text);
       if (!entity) {
-        analyzer.report(cst.name, "unknown-entity", `Unknown entity '${cst.name.text}'`);
+        if (!passedNames.has(cst.name.text)) analyzer.report(cst.name, "unknown-entity", `Unknown entity '${cst.name.text}'`);
         return undefined;
       }
       // After a dot without a side the parser has reported the error.
@@ -999,7 +1006,7 @@ function sortDiagnostics(...lists: readonly (readonly Diagnostic[])[]): Diagnost
 export function analyze(source: string, previous?: ParseResult, options: AnalyzeOptions = {}): ParseResult {
   const syntax = parse(source);
   const analyzer = new Analyzer(options.signals, options.instruments);
-  const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], analyzer, previous?.identity);
+  const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], syntax.cst.circuit?.passed ?? [], analyzer, previous?.identity);
   checkPlacement(entityNodes, entities, analyzer);
   checkWireReach(sources.wires, entities, options.wireReach ?? DEFAULT_WIRE_REACH, analyzer);
 
@@ -1030,7 +1037,7 @@ export interface FragmentResult {
 export function analyzeFragment(source: string): FragmentResult {
   const syntax = parseFragment(source);
   const analyzer = new Analyzer(undefined);
-  const { entities, wires } = analyzeMembers(syntax.members, analyzer, undefined);
+  const { entities, wires } = analyzeMembers(syntax.members, syntax.passed, analyzer, undefined);
   const diagnostics = sortDiagnostics(syntax.diagnostics, analyzer.diagnostics);
   const hasErrors = diagnostics.some((d) => d.severity === "error");
   return compact({ diagnostics, hasErrors, fragment: hasErrors ? undefined : { entities, wires } });

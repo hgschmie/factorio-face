@@ -577,7 +577,8 @@ describe("diagnostics", () => {
   it("keeps the rest of the circuit around an entity the game does not have, and its id once the word is one of the game", () => {
     const good = valid(circuit("small-lamp a { }\nsmall-lamp b { always-on = true }\nconstant-combinator c { item:x = 1 }\nwire red c.out <-> a.in\nwire red c.out <-> b.in"));
     const broken = analyze(good.source.replace("small-lamp b", "smal-lamp b"), good);
-    expect(broken.diagnostics.map((d) => [d.code, d.message])).toEqual([["unknown-prototype", "Unknown entity 'smal-lamp'; did you mean small-lamp?"], ["unknown-entity", "Unknown entity 'b'"]]);
+    // The one error is on the word: the wire to `b` is left out and says nothing.
+    expect(broken.diagnostics.map((d) => [d.code, d.message])).toEqual([["unknown-prototype", "Unknown entity 'smal-lamp'; did you mean small-lamp?"]]);
     expect(broken.circuit).toBeUndefined();
     // The other entities and the wire between them are there, under their ids.
     expect([...broken.sourceMap.entities.values()].map((entity) => [entity.name, entity.id])).toEqual([["a", idOf(good, "a")], ["c", idOf(good, "c")]]);
@@ -586,6 +587,43 @@ describe("diagnostics", () => {
     expect(idOf(fixed, "b")).toBe(idOf(good, "b"));
     expect(fixed.circuit.entities.find((entity) => entity.name === "b")).toMatchObject({ kind: "lamp", prototype: "small-lamp", alwaysOn: true });
     expect(fixed.circuit.wires).toHaveLength(2);
+  });
+
+  it("says nothing about a wire that ends at a declaration that is no entity, at either end, and names every name that is declared nowhere", () => {
+    const body = (wires: string) => circuit(`small-lamp a { }\nlamp old at (0, 0) { when item:x > 1 }\ngate g { }\nred r { }\ndecider-combinator d { when item:x > 1 output item:x = 1 }\n${wires}`);
+    const declared = [["unknown-prototype", "lamp"], ["unknown-prototype", "gate"], ["syntax-error", "red"]];
+    expect(report(body(""))).toEqual(declared);
+    // First end, second end, both ends, to itself, twice, with a terminal the name could not have: one error per declaration, as without the wires.
+    const silent = ["wire red old.in <-> a.in", "wire green a.in <-> old.in", "wire red old.in <-> g", "wire red g <-> g", "wire red d.out <-> old.in\nwire red old.in <-> d.out", "wire red old.nowhere <-> a.in", "wire green r.out <-> d.in"];
+    for (const wires of [...silent, silent.join("\n")]) expect(report(body(wires)), wires).toEqual(declared);
+    // Such a wire is no wire of the circuit; the ones between entities are.
+    const mixed = analyze(body("wire red d.out <-> a.in\nwire red d.out <-> old.in\nwire green g <-> a.in"));
+    expect([...mixed.sourceMap.wires.keys()]).toEqual([`red|${idOf(mixed, "a")}.in|${idOf(mixed, "d")}.out`]);
+    expect(mixed.sourceMap.wireAt(mixed.source.indexOf("wire green g"))).toBeUndefined();
+    // A name that no declaration has is still an error, also on a wire whose other end is silent.
+    expect(report(body("wire red nope.out <-> a.in"))).toEqual([...declared, ["unknown-entity", "nope"]]);
+    expect(report(body("wire red old.in <-> nope.in\nwire red nope <-> g"))).toEqual([...declared, ["unknown-entity", "nope"], ["unknown-entity", "nope"]]);
+    // What is wrong with the wire itself is still said.
+    expect(report(body("wire red old. <-> a.in")).map(([code]) => code)).toEqual(["unknown-prototype", "unknown-prototype", "syntax-error", "syntax-error"]);
+    // A declaration without a name, or one that is being typed, has no name to end a wire at.
+    expect(report(circuit("small-lamp a { }\ngate\nwire red gate <-> a.in"))).toEqual([["unknown-prototype", "gate"], ["unknown-entity", "gate"]]);
+    // The same in a fragment.
+    expect(analyzeFragment("small-lamp a { }\ngate g { }\nwire red g <-> a.in\nwire red nope <-> a.in").diagnostics.map((d) => d.code)).toEqual(["unknown-prototype", "unknown-entity"]);
+  });
+
+  it("takes the entity of a name that a declaration that is none has as well, and calls neither a duplicate", () => {
+    for (const body of ["small-lamp x { }\ngate x { }", "gate x { }\nsmall-lamp x { }", "gate x { }\nsmall-lamp x { }\nlamp x { }"]) {
+      const result = analyze(circuit(`constant-combinator c { item:a = 1 }\n${body}\nwire red c.out <-> x.in`));
+      // The one error of each declaration that is no entity; the wire ends at the lamp, and a terminal it does not have is said.
+      expect(result.diagnostics.map((d) => d.code), body).toEqual(body.split("\n").flatMap((line) => (line.startsWith("small-lamp") ? [] : ["unknown-prototype"])));
+      expect([...result.sourceMap.entities.values()].map((entity) => [entity.name, entity.kind]), body).toEqual([["c", "constant"], ["x", "lamp"]]);
+      expect([...result.sourceMap.wires.keys()], body).toEqual([`red|${idOf(result, "c")}.out|${idOf(result, "x")}.in`]);
+      expect(codes(result.source.replace("x.in", "x.out")), body).toContain("invalid-terminal");
+    }
+    // Two entities of one name are a duplicate as ever, whatever else has the name.
+    expect(codes(circuit("small-lamp x { }\ngate x { }\nsmall-lamp x { }"))).toEqual(["unknown-prototype", "duplicate-entity"]);
+    // Two declarations that are no entities are two errors and nothing more.
+    expect(codes(circuit("gate x { }\nlamp x { }\nwire red x <-> x.in"))).toEqual(["unknown-prototype", "unknown-prototype"]);
   });
 
   it("has a test for every diagnostic code", () => {
