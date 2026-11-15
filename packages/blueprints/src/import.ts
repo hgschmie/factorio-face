@@ -201,7 +201,8 @@ const SELECTOR_FIELDS = [
 function readConstant(entity: Fields): Settings<"constant"> {
   const behavior = entity.fields("control_behavior");
   const wrapper = behavior?.fields("sections");
-  wrapper?.unsupported("trash_not_requested", false);
+  // Of a logistic request, like the request fields of a filter below.
+  wrapper?.skip("trash_not_requested");
   const sections = (wrapper?.list("sections") ?? [])
     .map((section, position) => ({ section, index: section.number("index", position + 1) }))
     .sort((a, b) => a.index - b.index)

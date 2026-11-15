@@ -379,11 +379,10 @@ describe("import: constant combinator", () => {
     expect(notes).toEqual(["changed control_behavior.sections.sections[].filters[].name", "changed control_behavior.sections.sections[].filters[].name", "changed control_behavior.sections.sections[].filters[].comparator"]);
   });
 
-  it("drops the request fields of a filter without a note, and reports the request flag of the entity and values of the wrong type", () => {
+  it("drops what a logistic request has and a constant combinator does not without a note, and reports values of the wrong type", () => {
     const { entity, notes } = read({ is_on: "no", sections: { trash_not_requested: true, sections: [{ index: 1, active: 1, multiplier: "2", group: 5, filters: [{ index: 1, ...A, count: 1.5, import_from: "nauvis", max_count: 5, minimum_delivery_count: 2 }, { index: 2, type: "plasma", name: "x", count: 1 }, "text"] }, 7] } });
     expect(entity).toEqual({ kind: "constant", prototype: "constant-combinator", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: SA, count: 0 }] }] });
     expect(notes.sort()).toEqual([
-      "ignored control_behavior.sections.trash_not_requested",
       "invalid control_behavior.is_on",
       "invalid control_behavior.sections.sections[]",
       "invalid control_behavior.sections.sections[].active",

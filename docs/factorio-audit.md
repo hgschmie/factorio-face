@@ -1276,8 +1276,8 @@ entity quality, tags, the blueprint's description, icons, snapping and tiles). W
 | Filter `comparator` other than `=`, or missing `quality` (any-quality filter) | unsupported-with-diagnostic (kept, emits nothing) | Not a valid constant combinator signal per API |
 | `multiplier` | supported, rounding pending F-20 | |
 | `group` name | supported as a named section; identical names with different contents in one blueprint get a diagnostic | Global group sharing across a save is not modeled |
-| `max_count`, `minimum_delivery_count`, `import_from` of a filter | dropped without a note (user, 2026-11-15) | Request fields that a logistic group shared with a requester or a platform hub brings along; without meaning for a constant combinator |
-| `request_from`, `trash_not_requested` | preserved-on-roundtrip-only | Logistic-request fields without meaning for a constant combinator |
+| `max_count`, `minimum_delivery_count`, `import_from` of a filter, `trash_not_requested` | dropped without a note (user, 2026-11-15) | Request fields that a logistic group shared with a requester or a platform hub brings along; without meaning for a constant combinator |
+| `request_from` | preserved-on-roundtrip-only | Logistic-request fields without meaning for a constant combinator |
 | Wildcard signals in filters | unsupported-with-diagnostic | Cannot be transmitted |
 | More than 1000 filters per section | unsupported-with-diagnostic | Exceeds `max_logistic_filter_count` |
 
@@ -1481,7 +1481,7 @@ All [game: F-01]: the exporter writes every entity of the samples as the game do
 ### 12.4 What import drops
 
 Entities whose `name` is not one of the ten prototypes of 3.1, with every wire that has an end on one of them; copper wires (both connectors 5 or 6); wires that name an entity number or a connector that does not exist, or that join a red with a green connector.
-Of the blueprint: everything but `label`, `entities`, `wires` and `version`. Of a known entity: `quality`, `tags`, `items`, `mirror`, a `direction` on an entity that cannot turn (the game drops it too [game]), a lamp's logistic connection, and every unknown field. The request fields of a filter of a constant combinator (`max_count`, `minimum_delivery_count`, `import_from`) are dropped as well, without a report (user, 2026-11-15).
+Of the blueprint: everything but `label`, `entities`, `wires` and `version`. Of a known entity: `quality`, `tags`, `items`, `mirror`, a `direction` on an entity that cannot turn (the game drops it too [game]), a lamp's logistic connection, and every unknown field. The request fields of a filter of a constant combinator (`max_count`, `minimum_delivery_count`, `import_from`) and its `trash_not_requested` are dropped as well, without a report (user, 2026-11-15).
 Each is counted or named in the import report (`packages/blueprints/README.md`).
 
 ### 12.5 Fixture F-01: recorded on 2026-11-14
