@@ -171,11 +171,23 @@ export interface SelectorCombinator extends EntityBase {
 
 // Lamp
 
+/** A comparison. `first` is absent only in the draft of a form; the blank condition of an entity with a switch for it is `UNSET_CONDITION`. */
 export interface Condition {
   readonly first?: SignalId;
   readonly comparator: Comparator;
   readonly second: { readonly type: "constant"; readonly value: number } | { readonly type: "signal"; readonly signal: SignalId };
 }
+
+/**
+ * A condition that is in use and names no signal: the switch of the condition is on and its signal is blank. In the game it never
+ * holds, whatever its comparator and constant (fixture F-29), so they are not kept. The language writes `when unset`. A lamp and
+ * the conditions of a generic entity take it; a speaker, which has no switch, says the same by having no condition.
+ */
+export const UNSET_CONDITION = "unset";
+export type UnsetCondition = typeof UNSET_CONDITION;
+
+/** What an entity holds for a condition it has a switch for: a comparison or the blank one. Absent: the switch is off. */
+export type ConditionValue = Condition | UnsetCondition;
 
 export const LAMP_COLOR_MODES = ["mapping", "components", "packed-rgb"] as const;
 export type LampColorMode = (typeof LAMP_COLOR_MODES)[number];
@@ -189,7 +201,7 @@ export interface RgbColor {
 export interface Lamp extends EntityBase {
   readonly kind: "lamp";
   /** Enable condition; absent means the lamp is not circuit controlled. */
-  readonly condition?: Condition;
+  readonly condition?: ConditionValue;
   readonly inputNetworks: NetworkSelection;
   readonly alwaysOn: boolean;
   readonly useColors: boolean;
@@ -256,7 +268,7 @@ export interface Speaker extends EntityBase {
 // Every other entity of the game
 
 /** The value of one setting of a generic entity: what its `SettingSpec` (`entitySettings.ts`) says, a word for an enum. */
-export type SettingValue = boolean | string | SignalId | Condition | NetworkSelection;
+export type SettingValue = boolean | string | SignalId | ConditionValue | NetworkSelection;
 
 /** Settings by the key of their spec (the word of the language). A setting at its default is absent: `normalizeSettings`. */
 export type EntitySettings = Readonly<Record<string, SettingValue>>;

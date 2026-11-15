@@ -2,11 +2,11 @@
 // for every circuit the language can express (see `checkEntity` in commands.ts for the exceptions).
 
 import {
-  conditionRole, DEFAULT_ENTITY, entityTable, isValidSignalName, NORMAL_QUALITY, settingDefault, settingSpecsOf, wildcardOf,
-  type Circuit, type Condition, type ConstantSection, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec, type SettingValue, type SignalId,
+  conditionRole, DEFAULT_ENTITY, entityTable, isValidSignalName, NORMAL_QUALITY, settingDefault, settingSpecsOf, UNSET_CONDITION, wildcardOf,
+  type Circuit, type ConditionValue, type ConstantSection, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec, type SettingValue, type SignalId,
   type TerminalRef, type TerminalSide, type WireColor,
 } from "@face/model";
-import { BLUEPRINT_DATA_PROPERTY, NO_NETWORK } from "./schema.ts";
+import { BLUEPRINT_DATA_PROPERTY, NO_NETWORK, UNSET_WORD } from "./schema.ts";
 import { encodeString, isKeyword } from "./tokens.ts";
 
 export interface PrintOptions {
@@ -56,15 +56,22 @@ function printQuality(name: string): string {
   return name === "signal" ? encodeString(name) : printName(name);
 }
 
+/** What stands behind `when`: the comparison, `unset` for a condition in use without a signal; nothing for a comparison without a first signal, which no entity holds. */
+function printCondition(condition: ConditionValue): string | undefined {
+  if (condition === UNSET_CONDITION) return UNSET_WORD;
+  if (!condition.first) return undefined;
+  return `${printSignal(condition.first)} ${condition.comparator} ${condition.second.type === "constant" ? printInteger(condition.second.value) : printSignal(condition.second.signal)}`;
+}
+
 /**
- * `when S > 5`: the circuit condition of a lamp or a speaker; nothing for one without a first signal. A further condition of a
- * generic entity has its role in front, `logistic when S > 5`, and the key of its setting.
+ * `when S > 5`: the circuit condition of a lamp or a speaker. A further condition of a generic entity has its role in front,
+ * `logistic when S > 5`, and the key of its setting.
  */
-function conditionItem(condition: Condition | undefined, key = "when"): StatementItem[] {
-  if (!condition?.first) return [];
-  const second = condition.second.type === "constant" ? printInteger(condition.second.value) : printSignal(condition.second.signal);
+function conditionItem(condition: ConditionValue | undefined, key = "when"): StatementItem[] {
+  const text = condition && printCondition(condition);
+  if (text === undefined) return [];
   const role = key === "when" ? undefined : conditionRole(key);
-  return [{ key, text: `${role === undefined ? "" : `${role} `}when ${printSignal(condition.first)} ${condition.comparator} ${second}`, implicit: false }];
+  return [{ key, text: `${role === undefined ? "" : `${role} `}when ${text}`, implicit: false }];
 }
 
 /** The word for a selection other than the default of both networks. */
@@ -175,7 +182,7 @@ function genericItems(entity: EntityOfKind<"entity">): StatementItem[] {
   const game = entityTable().byName.get(entity.prototype);
   return settingSpecsOf(entity.prototype).flatMap((spec): StatementItem[] => {
     const held = entity.settings[spec.key];
-    if (spec.type === "condition") return conditionItem(held as Condition | undefined, spec.key);
+    if (spec.type === "condition") return conditionItem(held as ConditionValue | undefined, spec.key);
     const value = held ?? (game && settingDefault(spec, game));
     const text = value === undefined ? undefined : printSetting(spec, value);
     return text === undefined ? [] : [property(spec.key, text, held === undefined)];

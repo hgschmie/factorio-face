@@ -132,8 +132,9 @@ describe("completionContext", () => {
 
   it("expects signals with the wildcards legal at that position", () => {
     expect(at(circuit("decider-combinator d { when | }")).expected).toEqual([{ type: "signal", wildcards: ["everything", "anything", "each"] }]);
-    expect(at(circuit("small-lamp l { when | }")).expected).toEqual([{ type: "signal", wildcards: ["anything", "everything"] }]);
-    expect(at(circuit("small-lamp l { when virtual:sig| }"))).toMatchObject({ prefix: "virtual:sig", expected: [{ type: "signal", wildcards: ["anything", "everything"] }] });
+    expect(at(circuit("small-lamp l { when | }")).expected).toEqual([{ type: "keyword", values: ["unset"] }, { type: "signal", wildcards: ["anything", "everything"] }]);
+    expect(at(circuit("small-lamp l { when virtual:sig| }"))).toMatchObject({ prefix: "virtual:sig", expected: [{ type: "keyword", values: ["unset"] }, { type: "signal", wildcards: ["anything", "everything"] }] });
+    expect(at(circuit("programmable-speaker s { when | }")).expected).toEqual([{ type: "signal", wildcards: ["anything", "everything"] }]);
     expect(at(circuit("small-lamp l { when item:a | }")).get("keyword")!.values).toEqual(["<", ">", "=", "!=", "<=", ">="]);
     expect(at(circuit("small-lamp l { when item:a > | }")).expected).toEqual([{ type: "signal", wildcards: [] }, { type: "literal", kind: "integer" }]);
     expect(at(circuit("arithmetic-combinator a { each = | }")).expected).toEqual([{ type: "signal", wildcards: ["each"] }, { type: "literal", kind: "integer" }]);
@@ -144,6 +145,18 @@ describe("completionContext", () => {
     expect(at(circuit("decider-combinator d { output | }")).expected).toEqual([{ type: "signal", wildcards: ["everything", "anything", "each"] }]);
     expect(at(circuit("decider-combinator d { output each = | }")).expected).toEqual([{ type: "keyword", values: ["input"] }, { type: "literal", kind: "integer" }]);
     expect(at(circuit("constant-combinator c { item:a = | }")).expected).toEqual([{ type: "literal", kind: "integer" }]);
+  });
+
+  it("expects 'unset' where a condition has a switch, in the place of the comparison and with nothing after it", () => {
+    for (const source of ["small-lamp l { when | }", "transport-belt b { when | }", "transport-belt b { logistic when | }", "stone-wall w { open-gate when un| }"]) {
+      expect(at(circuit(source)).get("keyword")?.values, source).toEqual(["unset"]);
+    }
+    for (const source of ["decider-combinator d { when | }", "decider-combinator d { when item:a > 1 and | }", "programmable-speaker s { when | }"]) expect(at(circuit(source)).get("keyword"), source).toBeUndefined();
+    // Behind it stands the next statement, not a comparator.
+    const after = at(circuit("transport-belt b { when unset | }"));
+    expect(after.get("keyword")!.values).toEqual(["when", "logistic"]);
+    expect(after.get("property")).toBeDefined();
+    expect(at(circuit("small-lamp l { when unset | }")).get("keyword")!.values).toEqual(["when"]);
   });
 
   it("expects wire colors, terminals with candidate entities and sides", () => {

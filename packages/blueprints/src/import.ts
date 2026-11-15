@@ -4,7 +4,7 @@
 import { analyze, checkEntity, printCircuit } from "@face/language";
 import {
   ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, entityNameBase, facingOf, isPrototypeName, LAMP_COLOR_MODES, newEntity, NORMAL_QUALITY, normalizeWire, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
-  SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, TERMINALS, tileOrigin, wildcardOf, wireKey,
+  SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, TERMINALS, tileOrigin, UNSET_CONDITION, wildcardOf, wireKey,
   type Circuit, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction, type Entity, type EntityConfig, type EntityKind, type Operand, type Point,
   type PrototypeName, type RgbColor, type SelectorMode, type SpeakerInstrument, type TerminalSide, type Wire, type WireColor,
 } from "@face/model";
@@ -357,7 +357,6 @@ function readLamp(entity: Fields): Settings<"lamp"> {
   const behavior = entity.fields("control_behavior");
   const condition = circuitCondition(behavior?.fields("circuit_condition"));
   const enabled = behavior?.boolean("circuit_enabled", false) ?? false;
-  if (enabled && !condition) behavior?.changed("circuit_enabled", "is on with a blank condition; the editor has no blank condition and takes the lamp as not controlled by the circuit");
   if (!enabled && condition) behavior?.changed("circuit_condition", "is set while the lamp is not controlled by the circuit; the editor keeps a condition only when it is in use");
   const useColors = behavior?.boolean("use_colors", false) ?? false;
   const mode = behavior?.number("color_mode", 0) ?? 0;
@@ -369,7 +368,8 @@ function readLamp(entity: Fields): Settings<"lamp"> {
   const color = readColor(entity);
   return {
     kind: "lamp",
-    ...(enabled && condition && { condition }),
+    // Controlled by the circuit without a left side, written or not: the unset condition.
+    ...(enabled && { condition: condition ?? UNSET_CONDITION }),
     inputNetworks: behavior?.networks("input_networks") ?? BOTH_NETWORKS,
     alwaysOn: entity.boolean("always_on", false),
     useColors,

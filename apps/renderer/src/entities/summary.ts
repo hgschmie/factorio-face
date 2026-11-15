@@ -1,7 +1,8 @@
 // Configuration summaries shown on entity cards: one line, two for an entity that needs them (a speaker). Pure.
+import { UNSET_WORD } from "@face/language";
 import {
-  conditionRole, gamePrototype, prototypeData, settingDefault, settingShown, settingSpecsOf,
-  type ArithmeticCombinator, type Condition, type ConstantCombinator, type DeciderCombinator, type Entity, type GenericEntity, type Lamp, type Operand, type Pole, type SelectorCombinator, type SignalId, type Speaker,
+  conditionRole, gamePrototype, prototypeData, settingDefault, settingShown, settingSpecsOf, UNSET_CONDITION,
+  type ArithmeticCombinator, type ConditionValue, type ConstantCombinator, type DeciderCombinator, type Entity, type GenericEntity, type Lamp, type Operand, type Pole, type SelectorCombinator, type SignalId, type Speaker,
 } from "@face/model";
 import { shortSignal } from "./signalText.ts";
 
@@ -67,8 +68,9 @@ function selectorSummary(entity: SelectorCombinator): string {
   }
 }
 
-function conditionText(condition: Condition): string {
-  return `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}`;
+/** A condition as the card says it: the comparison, or the word of the language for one in use without a signal. */
+function conditionText(condition: ConditionValue): string {
+  return condition === UNSET_CONDITION ? UNSET_WORD : `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}`;
 }
 
 // "Always on" is about the time of day; a lamp controlled by the circuit network follows its condition either way, so the card shows that.
@@ -111,10 +113,10 @@ export function fitLines(items: readonly string[]): readonly string[] {
   return shown === items.length ? [first] : [first, fitList(items.slice(shown), SUMMARY_CHARS.two)];
 }
 
-/** The circuit conditions a generic entity holds, in the order of its settings: the one that enables it as it is, every other one behind what it decides (`harvest A > 5`). */
+/** The circuit conditions a generic entity holds, in the order of its settings: the one that enables it as it is, every other one behind what it decides (`harvest A > 5`, `harvest unset`). */
 export function conditionLines(entity: GenericEntity): string[] {
   return settingSpecsOf(entity.prototype).flatMap((spec) => {
-    const condition = spec.type === "condition" ? (entity.settings[spec.key] as Condition | undefined) : undefined;
+    const condition = spec.type === "condition" ? (entity.settings[spec.key] as ConditionValue | undefined) : undefined;
     const role = conditionRole(spec.key);
     return condition ? [`${role === undefined ? "" : `${role} `}${conditionText(condition)}`] : [];
   });

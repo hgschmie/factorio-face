@@ -1,7 +1,7 @@
 // Identity of the simulation-relevant content of a circuit. Fields are listed explicitly per entity kind: a new model field
 // takes part only once it is added here, which is the point where its effect on the simulation has to be decided.
 
-import { signalKey, wireKey, type Circuit, type Condition, type DeciderOutput, type Entity, type Operand, type SignalId } from "@face/model";
+import { signalKey, UNSET_CONDITION, wireKey, type Circuit, type ConditionValue, type DeciderOutput, type Entity, type Operand, type SignalId } from "@face/model";
 import { circuitConditions, inputNetworksOf, radarGroup } from "./entity.ts";
 
 type Json = string | number | boolean | null | readonly Json[];
@@ -10,7 +10,10 @@ const key = (id: SignalId | undefined): Json => (id ? signalKey(id) : null);
 const networks = (n: { readonly red: boolean; readonly green: boolean }): Json => (n.red ? 1 : 0) + (n.green ? 2 : 0);
 const operand = (o: Operand): Json => (o.type === "constant" ? [o.value] : [key(o.signal), networks(o.networks)]);
 const output = (o: DeciderOutput): Json => [key(o.signal), o.copyCountFromInput, o.constant, networks(o.networks)];
-const condition = (c: Condition): Json => [key(c.first), c.comparator, c.second.type === "constant" ? [c.second.value] : [key(c.second.signal)]];
+function condition(c: ConditionValue | undefined): Json {
+  if (c === undefined) return null;
+  return c === UNSET_CONDITION ? c : [key(c.first), c.comparator, c.second.type === "constant" ? [c.second.value] : [key(c.second.signal)]];
+}
 
 function canonicalEntity(e: Entity): Json {
   switch (e.kind) {
@@ -30,12 +33,11 @@ function canonicalEntity(e: Entity): Json {
       ];
     case "selector":
       return [e.id, e.kind, selectorMode(e.mode)];
-    case "lamp": {
-      const c = e.condition;
+    case "lamp":
       return [
         e.id,
         e.kind,
-        c ? [key(c.first), c.comparator, c.second.type === "constant" ? [c.second.value] : [key(c.second.signal)]] : null,
+        condition(e.condition),
         networks(e.inputNetworks),
         e.alwaysOn,
         e.useColors,
@@ -46,17 +48,15 @@ function canonicalEntity(e: Entity): Json {
         key(e.rgbSignal),
         e.color ? [e.color.r, e.color.g, e.color.b] : null,
       ];
-    }
     case "pole":
       // The prototype decides the size and the wire reach, neither of which the simulation knows.
       return [e.id, e.kind];
-    case "speaker": {
-      const c = e.condition;
+    case "speaker":
       // Playback mode, polyphony, stop-playing-sounds and the look of the alert do not change what a snapshot reports.
       return [
         e.id,
         e.kind,
-        c ? [key(c.first), c.comparator, c.second.type === "constant" ? [c.second.value] : [key(c.second.signal)]] : null,
+        condition(e.condition),
         key(e.pitchSignal),
         e.instrument ?? null,
         e.note ?? null,
@@ -64,7 +64,6 @@ function canonicalEntity(e: Entity): Json {
         key(e.volumeSignal),
         e.showAlert,
       ];
-    }
     case "entity":
       // Of all settings only the circuit conditions with the networks they read reach a snapshot, and a radar's group the networks.
       // The prototype counts through them alone: it says which settings are conditions and whether the entity is a radar.

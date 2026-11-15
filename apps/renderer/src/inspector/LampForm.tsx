@@ -2,7 +2,7 @@ import { SIGNAL_SLOTS } from "@face/language";
 import { LAMP_COLOR_MODES, type Condition, type Lamp, type LampColorMode, type RgbColor } from "@face/model";
 import { useId } from "react";
 import { CheckboxField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
-import { ConditionFields, DEFAULT_SIGNAL, FormSection } from "./formParts.tsx";
+import { DEFAULT_SIGNAL, FormSection, SwitchedConditionFields } from "./formParts.tsx";
 import { setOptional } from "./immutable.ts";
 import { SignalField } from "./SignalField.tsx";
 
@@ -25,7 +25,7 @@ export function LampForm({ entity, onChange }: { readonly entity: Lamp; onChange
     <>
       <FormSection title="Light condition">
         <CheckboxField label="Controlled by the circuit network" checked={entity.condition !== undefined} onChange={(enabled) => onChange(setOptional(entity, "condition", enabled ? NEW_CONDITION : undefined))} />
-        {entity.condition && <ConditionFields condition={entity.condition} wildcards={SIGNAL_SLOTS["lamp.condition"]} operandWildcards={SIGNAL_SLOTS["lamp.operand"]} onChange={(condition) => onChange({ ...entity, condition })} />}
+        {entity.condition && <SwitchedConditionFields condition={entity.condition} wildcards={SIGNAL_SLOTS["lamp.condition"]} operandWildcards={SIGNAL_SLOTS["lamp.operand"]} onChange={(condition) => onChange({ ...entity, condition })} />}
         <div className="inline-field">
           <span className="field-label">Input networks</span>
           <NetworkToggle label="Input networks" value={entity.inputNetworks} onChange={(inputNetworks) => onChange({ ...entity, inputNetworks })} />

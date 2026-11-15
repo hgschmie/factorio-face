@@ -1,5 +1,5 @@
 import { checkEntity, printCircuit } from "@face/language";
-import { BOTH_NETWORKS, ENTITY_KINDS, newEntity, PROTOTYPE_NAMES, PROTOTYPES, prototypesOf, TERMINALS, type EntityKind, type TerminalSide } from "@face/model";
+import { BOTH_NETWORKS, ENTITY_KINDS, newEntity, PROTOTYPE_NAMES, PROTOTYPES, prototypesOf, TERMINALS, UNSET_CONDITION, type EntityKind, type TerminalSide } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { connectorId, encodeBlueprintString, importBlueprint, importBlueprintString, inspectBlueprint, packVersion, type ImportErrorCode, type ImportOptions } from "../src/index.ts";
 import { A, B, blueprintOf, imported, importedEntity, IRON } from "./helpers.ts";
@@ -591,11 +591,13 @@ describe("import: lamp", () => {
     expect(read({ circuit_enabled: true, circuit_condition: { first_signal: A } }).entity.condition).toEqual({ first: SA, comparator: "<", second: { type: "constant", value: 0 } });
   });
 
-  it("says so when a condition is not in use, or in use and blank; the editor has neither", () => {
+  it("says so when a condition is kept while it is not in use; one in use without a left side is the unset condition", () => {
     expect(read({ circuit_condition: condition })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed control_behavior.circuit_condition"] });
     expect(read({ circuit_enabled: false, circuit_condition: { comparator: "<", constant: 0 } })).toEqual({ entity: newEntity("small-lamp"), notes: [] });
-    expect(read({ circuit_enabled: true })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed control_behavior.circuit_enabled"] });
-    expect(read({ circuit_enabled: true, circuit_condition: { constant: 5 } }).notes).toEqual(["changed control_behavior.circuit_enabled"]);
+    // The switch alone is how the game writes it (fixture F-29); what stands behind a blank signal does not count.
+    for (const written of [undefined, { constant: 5 }, { comparator: "=", constant: 0 }, { second_signal: B, comparator: ">" }]) {
+      expect(read({ circuit_enabled: true, circuit_condition: written }), JSON.stringify(written)).toEqual({ entity: { ...newEntity("small-lamp"), condition: UNSET_CONDITION }, notes: [] });
+    }
   });
 
   it("reads networks, always on, the color modes by number and the color signals", () => {

@@ -3,8 +3,8 @@
 // settings table of the model (`ENTITY_SETTINGS` by prototype type) and its entity table: a further type, setting or prototype
 // needs nothing here. Pure.
 import {
-  entityTable, gamePrototype, isSettingValue, PROTOTYPES, prototypesOf, sameSetting, settingDefault, settingShown, settingSpecsOf, signal,
-  type Condition, type ConditionSetting, type Entity, type EnumSetting, type GenericEntity, type PrototypeName, type SettingSpec, type SettingValue,
+  entityTable, gamePrototype, isSettingValue, PROTOTYPES, prototypesOf, sameSetting, settingDefault, settingShown, settingSpecsOf, signal, UNSET_CONDITION,
+  type Condition, type ConditionSetting, type ConditionValue, type Entity, type EnumSetting, type GenericEntity, type PrototypeName, type SettingSpec, type SettingValue,
 } from "@face/model";
 
 /** The value a control shows: what the entity holds, else the default of a new entity. Undefined: no condition, or no signal. */
@@ -22,7 +22,7 @@ export function shownSettings(entity: GenericEntity): readonly SettingSpec[] {
 /**
  * The entity with one setting changed. A value at its default is not held, so the source does not say it; `undefined` takes the
  * setting away (a condition that is switched off, a signal field that is emptied: the default of the prototype then applies).
- * A value the setting does not take as it is (a condition whose signal is still missing) is held all the same: it is the draft
+ * A value the setting does not take as it is (a comparison whose signal is still missing) is held all the same: it is the draft
  * the inspector shows until it is complete.
  */
 export function withSetting(entity: GenericEntity, spec: SettingSpec, value: SettingValue | undefined): GenericEntity {
@@ -93,7 +93,10 @@ export function keptFields(entity: GenericEntity): readonly string[] {
   }
 }
 
-/** The condition of the entity that lacks its signal, if one does: what keeps an edit from being written. */
+/** The condition of the entity that is a comparison and lacks its signal, if one is: what keeps an edit from being written. The unset condition lacks nothing. */
 export function incompleteCondition(entity: GenericEntity): ConditionSetting | undefined {
-  return settingSpecsOf(entity.prototype).find((spec): spec is ConditionSetting => spec.type === "condition" && entity.settings[spec.key] !== undefined && !(entity.settings[spec.key] as Condition).first);
+  return settingSpecsOf(entity.prototype).find((spec): spec is ConditionSetting => {
+    const value = spec.type === "condition" ? (entity.settings[spec.key] as ConditionValue | undefined) : undefined;
+    return value !== undefined && value !== UNSET_CONDITION && !value.first;
+  });
 }

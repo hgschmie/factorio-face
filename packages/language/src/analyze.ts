@@ -2,9 +2,9 @@
 
 import {
   BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, isInt32, isTileCenter,
-  normalizedSettings, normalizeWire, prototypeData, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
+  normalizedSettings, normalizeWire, prototypeData, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, UNSET_CONDITION, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
   withArticle,
-  type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
+  type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConditionValue, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
   type Entity, type EntityConfig, type EntityId, type EntityKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeName, type RgbColor,
   type SelectorMode, type SelectorOperation, type SettingValue, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
@@ -16,7 +16,7 @@ import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
 import { printTerminal } from "./printer.ts";
 import {
-  BLUEPRINT_DATA_PROPERTY, conditionRoles, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS,
+  BLUEPRINT_DATA_PROPERTY, conditionRoles, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, UNSET_WORD,
   type PropertySpec, type PropertyVariant, type SignalSlot, type StatementForm,
 } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
@@ -434,7 +434,7 @@ class Analyzer {
     for (const spec of settingSpecsOf(prototype)) {
       if (spec.type === "condition") {
         const when = sorted.conditions.get(spec.key);
-        const condition = when && this.circuitCondition(when, "entity");
+        const condition = when && this.switchedCondition(when, "entity");
         if (condition) settings[spec.key] = condition;
         continue;
       }
@@ -528,6 +528,7 @@ class Analyzer {
     const conditions: DeciderCondition[] = [];
     let hasEach = false;
     for (const condition of when?.conditions ?? []) {
+      if (condition.unset) this.report(condition, "invalid-statement", `A decider combinator has no switch for a condition, so none of its conditions is '${UNSET_WORD}'; name a signal`);
       const first = this.slot(condition.first?.signal, "decider.condition");
       const second = this.operand(condition.second, "decider.operand");
       if ((first && wildcardOf(first) === "each") || (second?.type === "signal" && wildcardOf(second.signal) === "each")) hasEach = true;
@@ -584,9 +585,24 @@ class Analyzer {
     }
   }
 
+  /** A condition that has a switch (of a lamp, of a generic entity): a comparison, or `unset`, which stands alone. */
+  private switchedCondition(when: CstWhen, kind: "lamp" | "entity"): ConditionValue | undefined {
+    const [condition, next] = when.conditions;
+    if (!condition?.unset) return this.circuitCondition(when, kind);
+    const rest = condition.comparator ?? next;
+    const alone = `'${UNSET_WORD}' is the condition without a signal and stands alone: nothing is compared. Remove this, or name a signal in the place of '${UNSET_WORD}'`;
+    if (rest) this.report({ from: rest.from, to: when.to }, "syntax-error", alone);
+    return UNSET_CONDITION;
+  }
+
   /** The circuit condition of an entity with one connector: a single comparison whose signals take no network selection. */
   private circuitCondition(when: CstWhen, kind: "lamp" | "speaker" | "entity"): Condition | undefined {
     const [condition, ...extra] = when.conditions as readonly [CstCondition | undefined, ...CstCondition[]];
+    if (condition?.unset) {
+      const owner = capitalize(withArticle(KIND_LABEL[kind]));
+      this.report(when, "invalid-statement", `${owner} has no switch for its condition, so there is no '${UNSET_WORD}' to write: without a 'when' statement its condition has no signal`);
+      return undefined;
+    }
     for (const other of extra) this.report(other, "syntax-error", `${capitalize(withArticle(kind))} condition is a single comparison`);
     if (!condition) return undefined;
     const first = this.slot(condition.first?.signal, `${kind}.condition`);
@@ -610,7 +626,7 @@ class Analyzer {
     const colors = value<LampColorMode>("colors");
     return compact({
       kind: "lamp" as const,
-      condition: when && this.circuitCondition(when, "lamp"),
+      condition: when && this.switchedCondition(when, "lamp"),
       inputNetworks: networkSelection(networks),
       alwaysOn: value<boolean>("always-on") ?? false,
       useColors: colors !== undefined,

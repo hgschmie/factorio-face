@@ -1,5 +1,5 @@
 import { BOTH_NETWORKS, SPEAKER_VOLUME_RANGE, type Speaker } from "@face/model";
-import { AGGREGATE, UNBOUND, conditionHolds, planCondition, type ConditionPlan } from "./decider.ts";
+import { AGGREGATE, UNBOUND, conditionHolds, planCircuitCondition, type ConditionPlan } from "./decider.ts";
 import type { SimulationEnvironment } from "./environment.ts";
 import { RULES } from "./rules.ts";
 import type { InputView, SignalTable } from "./signals.ts";
@@ -26,17 +26,7 @@ export function signalVolume(value: number): number {
  */
 export function planSpeaker(entity: Speaker, signals: SignalTable, env: SimulationEnvironment): SpeakerPlan {
   // SP-NETWORKS: a speaker has no network selection; both operands read the sum of red and green.
-  const condition: ConditionPlan | undefined =
-    entity.condition &&
-    planCondition(
-      {
-        first: entity.condition.first,
-        firstNetworks: BOTH_NETWORKS,
-        comparator: entity.condition.comparator,
-        second: entity.condition.second.type === "signal" ? { ...entity.condition.second, networks: BOTH_NETWORKS } : entity.condition.second,
-      },
-      signals,
-    );
+  const condition: ConditionPlan | undefined = entity.condition && planCircuitCondition(entity.condition, BOTH_NETWORKS, signals);
   const pitch = entity.pitchSignal ? signals.intern(entity.pitchSignal) : -1;
   const volumeSignal = entity.volumeSignal ? signals.intern(entity.volumeSignal) : -1;
   // SP-DEFAULT-SOUND: without a name the first instrument and its first note, as the ids 0 of a blueprint say.

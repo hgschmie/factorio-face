@@ -4,7 +4,7 @@
 // a further prototype type is a row here. Where the fields are from: docs/factorio-audit.md 14. The numbers of the modes and the
 // defaults are what the game itself says (fixture F-01: `defines`, and `defaults`, the control behaviour of a new entity).
 
-import { BOTH_NETWORKS, COMPARATORS, type Condition, type EntitySettings, type NetworkSelection, type SettingValue } from "./circuit.ts";
+import { BOTH_NETWORKS, COMPARATORS, UNSET_CONDITION, type Condition, type ConditionValue, type EntitySettings, type NetworkSelection, type SettingValue } from "./circuit.ts";
 import type { EntityPrototype } from "./entityTable.ts";
 import { isSignalKind, sameSignal, type SignalId } from "./signal.ts";
 
@@ -37,8 +37,9 @@ export interface SignalSetting extends SettingBase {
 
 /**
  * A circuit condition. It is in the settings exactly while it is in use: `flag` is the boolean field of the blueprint that says so
- * (two conditions of a splitter share one). The key is `when` for the condition that enables the entity and `<role>-when` for
- * every other one; the language writes `when S > 5` and `<role> when S > 5`.
+ * (two conditions of a splitter share one). One in use that names no signal is `UNSET_CONDITION`. The key is `when` for the
+ * condition that enables the entity and `<role>-when` for every other one; the language writes `when S > 5` and
+ * `<role> when S > 5`, and `when unset` for the blank one.
  */
 export interface ConditionSetting extends SettingBase {
   readonly type: "condition";
@@ -46,8 +47,9 @@ export interface ConditionSetting extends SettingBase {
   /** Read from the logistic network, which the simulation does not have: kept, never evaluated. */
   readonly logistic?: true;
   /**
-   * The game's flag is on in a new entity (the open-gate flag of a wall, with a blank condition). The editor has a condition or
-   * none, so an entity without the condition says in a blueprint that the flag is off.
+   * The game's flag is on in a new entity (the open-gate flag of a wall, with a blank condition). An entity without the condition
+   * says in a blueprint that the flag is off, where it says anything; a blueprint that does not name the flag is read as one
+   * without the condition.
    */
   readonly flagOnByDefault?: true;
   /**
@@ -297,18 +299,19 @@ function isCondition(value: unknown): value is Condition {
   return second.type === "constant" ? Number.isInteger(second.value) : second.type === "signal" && isSignal(second.signal);
 }
 
-/** Whether a value is one the setting takes. A condition has a first signal: the language has no blank one. */
+/** Whether a value is one the setting takes. A condition has a first signal or is `UNSET_CONDITION`. */
 export function isSettingValue(spec: SettingSpec, value: unknown): value is SettingValue {
   switch (spec.type) {
     case "boolean": return typeof value === "boolean";
     case "enum": return typeof value === "string" && spec.values.some((entry) => entry.word === value);
     case "networks": return isNetworks(value);
     case "signal": return isSignal(value);
-    case "condition": return isCondition(value);
+    case "condition": return value === UNSET_CONDITION || isCondition(value);
   }
 }
 
-function sameCondition(a: Condition, b: Condition): boolean {
+function sameCondition(a: ConditionValue, b: ConditionValue): boolean {
+  if (a === UNSET_CONDITION || b === UNSET_CONDITION) return a === b;
   const sameSecond = a.second.type === "constant" ? b.second.type === "constant" && a.second.value === b.second.value : b.second.type === "signal" && sameSignal(a.second.signal, b.second.signal);
   return a.comparator === b.comparator && sameSecond && (a.first && b.first ? sameSignal(a.first, b.first) : a.first === b.first);
 }
@@ -320,7 +323,7 @@ export function sameSetting(spec: SettingSpec, a: SettingValue, b: SettingValue)
     case "enum": return a === b;
     case "networks": return (a as NetworkSelection).red === (b as NetworkSelection).red && (a as NetworkSelection).green === (b as NetworkSelection).green;
     case "signal": return sameSignal(a as SignalId, b as SignalId);
-    case "condition": return sameCondition(a as Condition, b as Condition);
+    case "condition": return sameCondition(a as ConditionValue, b as ConditionValue);
   }
 }
 

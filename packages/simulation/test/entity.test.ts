@@ -1,9 +1,9 @@
 // Generic entities (kind `entity`): one connection point, conditions evaluated per tick, nothing emitted. Rules G-* of CONFORMANCE.md.
 // The radar is the one that changes the networks.
 import { describe, expect, it } from "vitest";
-import { ENTITY_SETTINGS, prototypesOf, signal, type ConditionSetting, type EntitySettings } from "@face/model";
+import { ENTITY_SETTINGS, prototypesOf, signal, UNSET_CONDITION, type ConditionSetting, type EntitySettings } from "@face/model";
 import { circuitConditions, compile, runFixture, semanticFingerprint, validateFixture, type ConformanceFixture } from "../src/index.ts";
-import { ANYTHING, EACH, EVERYTHING, GREEN, NEITHER, RED, arithmetic, circuit, cond, conditionsOf, constant, decider, entity, lamp, networkAt, out, pole, record, selector, simulate, speaker, terminal, v, when, wire } from "./helpers.ts";
+import { ANYTHING, EACH, EVERYTHING, GREEN, NEITHER, RED, arithmetic, circuit, cond, conditionsOf, constant, decider, entity, fed, lamp, networkAt, out, pole, record, selector, simulate, speaker, terminal, v, when, wire, type Feed } from "./helpers.ts";
 
 const lit = { condition: when("A", ">", 0) };
 
@@ -115,6 +115,30 @@ describe("generic entity: conditions", () => {
     expect(conditionsOf(entity("i", "inserter", { when: true }), { red: { A: 1 } })).toBeUndefined();
     // A condition of another prototype type means nothing here.
     expect(conditionsOf(entity("c", "steel-chest", { when: when("A", ">", 0), "harvest-when": when("A", ">", 0) }), { red: { A: 1 } })).toBeUndefined();
+  });
+
+  it("G-CONDITION: the unset condition is one in use that never holds, each by its key; a static note says so and silences nothing", () => {
+    const tower = entity("t", "agricultural-tower", { when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION, "harvest-when": UNSET_CONDITION, "plant-when": when("A", ">", 0) });
+    expect(circuitConditions(tower)).toEqual([["when", UNSET_CONDITION], ["harvest-when", UNSET_CONDITION], ["plant-when", when("A", ">", 0)]]);
+    const feeds: readonly Feed[] = [{ red: { A: 1 } }, { red: { A: -1 }, green: { B: 0 } }, { green: {} }];
+    for (const feed of feeds) {
+      expect(conditionsOf(tower, feed)).toEqual({ when: false, "harvest-when": false, "plant-when": feed.red?.A === 1 });
+      expect(simulate(fed(tower, feed)).snapshot().totals.entitiesDisabled).toBe(1);
+    }
+    // G-UNWIRED: without a wire it is no more than any other condition.
+    expect(conditionsOf(tower)).toBeUndefined();
+    expect(simulate(circuit([tower])).snapshot().totals.entitiesDisabled).toBe(0);
+    expect(compile(fed(tower, { red: { A: 1 } })).notes).toEqual([
+      { severity: "info", code: "unconfigured", message: "The condition 'when' is unset: it never holds.", entity: "t" },
+      { severity: "info", code: "unconfigured", message: "The condition 'harvest-when' is unset: it never holds.", entity: "t" },
+    ]);
+    // The networks the entity reads do not change that.
+    expect(conditionsOf(entity("b", "transport-belt", { when: UNSET_CONDITION, networks: NEITHER }), { red: { A: 1 } })).toEqual({ when: false });
+    // To the fingerprint it is a condition of its own: not none, and not a comparison.
+    const variants: readonly EntitySettings[] = [{}, { when: UNSET_CONDITION }, { when: when("A", "<", 0) }, { "logistic-when": UNSET_CONDITION }];
+    const prints = variants.map((settings) => semanticFingerprint(circuit([entity("b", "transport-belt", settings)])));
+    expect(new Set(prints).size).toBe(3);
+    expect(prints[3]).toBe(prints[0]);
   });
 });
 

@@ -2,10 +2,11 @@
 // language cannot write down. Two cases are told apart here:
 // - fields that carry no meaning in the chosen configuration (an output constant while the input count is copied, ...) are
 //   set to the value the language implies, so that the edit can be written;
-// - configurations that are incomplete (a condition without a signal, an expression without an output) are kept as a draft
-//   with a hint, and written as soon as they become complete.
+// - configurations that are incomplete (a comparison without a signal, an expression without an output) are kept as a draft
+//   with a hint, and written as soon as they become complete. A condition of a lamp or a generic entity that is in use without
+//   a signal and says nothing else is complete: the unset condition, which the language writes.
 import { checkEntity, type EditFailureCode } from "@face/language";
-import { BOTH_NETWORKS, type DeciderOutput, type Entity } from "@face/model";
+import { BOTH_NETWORKS, UNSET_CONDITION, type DeciderOutput, type Entity } from "@face/model";
 import { incompleteCondition } from "../entities/genericSettings.ts";
 
 function normalizeOutput(output: DeciderOutput): DeciderOutput {
@@ -61,7 +62,7 @@ function hint(entity: Entity, fallback: string): string {
       break;
     }
     case "lamp":
-      if (entity.condition && !entity.condition.first) return "The light condition needs a signal.";
+      if (entity.condition && entity.condition !== UNSET_CONDITION && !entity.condition.first) return "The light condition needs a signal.";
       break;
     case "speaker":
       if (entity.condition && !entity.condition.first) return "The condition needs a signal.";

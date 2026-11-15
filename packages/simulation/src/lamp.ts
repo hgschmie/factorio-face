@@ -1,5 +1,5 @@
 import { signal, type Lamp, type RgbColor, type SignalId } from "@face/model";
-import { AGGREGATE, UNBOUND, conditionHolds, planCondition, type ConditionPlan } from "./decider.ts";
+import { AGGREGATE, UNBOUND, conditionHolds, planCircuitCondition, type ConditionPlan } from "./decider.ts";
 import { RULES } from "./rules.ts";
 import { selectionOf, type InputView, type SignalMap, type SignalTable } from "./signals.ts";
 import type { LampState } from "./types.ts";
@@ -54,17 +54,7 @@ function sameColor(a: RgbColor | undefined, b: RgbColor | undefined): boolean {
 export function planLamp(entity: Lamp, signals: SignalTable): LampPlan {
   const selection = selectionOf(entity.inputNetworks);
   // The shared condition evaluator reads through an InputView; the lamp's single selection applies to both operands.
-  const condition: ConditionPlan | undefined =
-    entity.condition &&
-    planCondition(
-      {
-        first: entity.condition.first,
-        firstNetworks: entity.inputNetworks,
-        comparator: entity.condition.comparator,
-        second: entity.condition.second.type === "signal" ? { ...entity.condition.second, networks: entity.inputNetworks } : entity.condition.second,
-      },
-      signals,
-    );
+  const condition: ConditionPlan | undefined = entity.condition && planCircuitCondition(entity.condition, entity.inputNetworks, signals);
   const fixed = entity.color && Object.freeze({ r: entity.color.r, g: entity.color.g, b: entity.color.b });
   const intern = (id: SignalId | undefined, fallback: SignalId): number => signals.intern(id ?? fallback);
   const mapping = MAPPING_COLORS.map(([name, color]) => ({ signal: signals.intern(signal("virtual", name)), color: Object.freeze(color) }));

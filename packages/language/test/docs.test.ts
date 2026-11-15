@@ -3,6 +3,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { conditionRole, ENTITY_SETTINGS, settingFields, STANDARD_ENTITY_TABLE, type SettingSpec } from "@face/model";
 import { describe, expect, it } from "vitest";
+import { UNSET_WORD } from "../src/index.ts";
 
 const DSL = new URL("../../../docs/dsl.md", import.meta.url);
 const BEGIN = /<!-- entity-settings:begin[^\n]*-->\n/;
@@ -26,7 +27,7 @@ function value(spec: SettingSpec): string {
     case "networks": return `${code("red")}, ${code("green")} or ${code("none")} (both)`;
     case "condition": {
       const own = spec.gameDefault && code(`${spec.gameDefault.first!.name} ${spec.gameDefault.comparator} 0`);
-      return own ? `comparison (not in use; while the other one of its side is, the game has ${own} here)` : "comparison (not in use)";
+      return own ? `comparison or ${code(UNSET_WORD)} (not in use; while the other one of its side is, the game has ${own} here)` : `comparison or ${code(UNSET_WORD)} (not in use)`;
     }
   }
 }

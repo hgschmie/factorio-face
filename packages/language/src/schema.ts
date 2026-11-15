@@ -45,6 +45,17 @@ const oneOf = (...values: string[]): ValueSpec => ({ type: "enum", values });
 /** Written where a network selection names a wire color (`[none]`, `networks = none`): the signal is read from neither network. */
 export const NO_NETWORK = "none";
 
+/**
+ * Written in the place of a comparison (`when unset`): the condition is in use and names no signal, so it never holds. Like `none`
+ * a plain word that only has this meaning there; it stays usable as an entity name.
+ */
+export const UNSET_WORD = "unset";
+
+/** Whether the conditions of a kind have a switch of their own and so can be in use without a signal. A speaker without `when` is that already. */
+export function takesUnset(kind: EntityKind): boolean {
+  return kind === "lamp" || kind === "entity";
+}
+
 const DESCRIPTION: PropertySpec = { name: "description", values: [{ type: "string" }], detail: "In-game entity description" };
 
 /** The property of a generic entity that holds what a blueprint says about it and the editor does not model, as JSON text. */

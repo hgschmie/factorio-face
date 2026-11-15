@@ -3,6 +3,7 @@
 import { SIGNAL_SLOTS } from "@face/language";
 import { DEFAULT_ENTITY, SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, wildcardOf, type Condition, type Speaker, type SpeakerPlaybackMode } from "@face/model";
 import { useContext } from "react";
+import { BLANK_CONDITION } from "./conditionEdits.ts";
 import { CheckboxField, NumberField, SelectField, TextField, type SelectOption } from "./fields.tsx";
 import { ConditionFields, DEFAULT_SIGNAL, FormSection } from "./formParts.tsx";
 import { setOptional } from "./immutable.ts";
@@ -16,8 +17,6 @@ const TRIGGERS: readonly SelectOption<Trigger>[] = [
   { value: "condition", label: "While a condition holds" },
   { value: "pitch", label: "Signal value is pitch" },
 ];
-/** A condition nobody has filled in: the game's blank condition, which never holds. */
-const BLANK_CONDITION: Condition = { comparator: "<", second: { type: "constant", value: 0 } };
 const PLAYBACK_LABELS: Readonly<Record<SpeakerPlaybackMode, string>> = { local: "Local: near the speaker", surface: "Surface: on its whole surface", global: "Global: everywhere (Universe)" };
 const PLAYBACK_MODES: readonly SelectOption<SpeakerPlaybackMode>[] = SPEAKER_PLAYBACK_MODES.map((value) => ({ value, label: PLAYBACK_LABELS[value] }));
 

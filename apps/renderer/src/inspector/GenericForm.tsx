@@ -1,9 +1,9 @@
 // The settings of a generic entity (kind `entity`): one control per setting of its prototype type, in the order and with the
 // labels of the settings table of the model. Nothing here knows a prototype or a type: the table decides what there is.
 import { SIGNAL_SLOTS } from "@face/language";
-import type { Condition, GenericEntity, NetworkSelection, SettingSpec, SettingValue, SignalId } from "@face/model";
+import type { ConditionValue, GenericEntity, NetworkSelection, SettingSpec, SettingValue, SignalId } from "@face/model";
 import { CheckboxField, NetworkToggle, SelectField } from "./fields.tsx";
-import { ConditionFields, FormSection } from "./formParts.tsx";
+import { FormSection, SwitchedConditionFields } from "./formParts.tsx";
 import { enumOptions, keptFields, newCondition, settingValue, shownSettings, withSetting } from "../entities/genericSettings.ts";
 import { SignalField } from "./SignalField.tsx";
 
@@ -39,11 +39,11 @@ function SettingControl({ spec, value, onChange }: SettingControlProps) {
         </div>
       );
     case "condition": {
-      const condition = value as Condition | undefined;
+      const condition = value as ConditionValue | undefined;
       return (
         <>
           <CheckboxField label={spec.label} checked={condition !== undefined} onChange={(enabled) => onChange(enabled ? newCondition(spec) : undefined)} />
-          {condition && <ConditionFields condition={condition} wildcards={SIGNAL_SLOTS["entity.condition"]} operandWildcards={SIGNAL_SLOTS["entity.operand"]} onChange={onChange} />}
+          {condition && <SwitchedConditionFields condition={condition} wildcards={SIGNAL_SLOTS["entity.condition"]} operandWildcards={SIGNAL_SLOTS["entity.operand"]} onChange={onChange} />}
           {condition && spec.logistic && <p className="muted-note">Read from the logistic network, which the simulation does not have: the condition is kept and not evaluated.</p>}
         </>
       );

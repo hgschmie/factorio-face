@@ -1,7 +1,8 @@
 // Building blocks shared by the per-kind settings forms.
-import { BOTH_NETWORKS, signal, type Condition, type Operand, type SignalId, type Wildcard } from "@face/model";
+import { BOTH_NETWORKS, signal, UNSET_CONDITION, type Condition, type ConditionValue, type Operand, type SignalId, type Wildcard } from "@face/model";
 import type { ReactNode } from "react";
 import { Icon } from "../icons/Icon.tsx";
+import { editedCondition, shownCondition } from "./conditionEdits.ts";
 import { COMPARATOR_OPTIONS, IntField, NetworkToggle, SelectField, type SelectOption } from "./fields.tsx";
 import { setOptional } from "./immutable.ts";
 import { SignalField } from "./SignalField.tsx";
@@ -87,8 +88,9 @@ const SECOND_TYPES: readonly SelectOption<Condition["second"]["type"]>[] = [
 ];
 
 /**
- * The circuit condition of an entity that has one (a lamp, a speaker): a signal, a comparator and a number or a second signal,
- * read from the entity's input as a whole. `wildcards` are those the left side accepts, `operandWildcards` those of the right.
+ * The circuit condition of an entity that has one (a lamp, a speaker, a generic entity): a signal, a comparator and a number or a
+ * second signal, read from the entity's input as a whole. `wildcards` are those the left side accepts, `operandWildcards` those of
+ * the right. The signal may be empty: what that makes of the condition is up to the form.
  */
 export function ConditionFields({ condition, wildcards, operandWildcards, onChange }: { readonly condition: Condition; readonly wildcards: readonly Wildcard[]; readonly operandWildcards: readonly Wildcard[]; onChange(next: Condition): void }) {
   const second = condition.second;
@@ -108,5 +110,18 @@ export function ConditionFields({ condition, wildcards, operandWildcards, onChan
         <SignalField label="Other signal" wide required wildcards={operandWildcards} value={second.signal} onChange={(next) => next && onChange({ ...condition, second: { type: "signal", signal: next } })} />
       )}
     </div>
+  );
+}
+
+/**
+ * The condition of an entity that has a switch for it (a lamp, a generic entity) while the switch is on. The unset condition is
+ * shown as one with an empty signal, with a note on what it does; `editedCondition` says what an edit makes of it.
+ */
+export function SwitchedConditionFields({ condition, wildcards, operandWildcards, onChange }: { readonly condition: ConditionValue; readonly wildcards: readonly Wildcard[]; readonly operandWildcards: readonly Wildcard[]; onChange(next: ConditionValue): void }) {
+  return (
+    <>
+      <ConditionFields condition={shownCondition(condition)} wildcards={wildcards} operandWildcards={operandWildcards} onChange={(next) => onChange(editedCondition(condition, next))} />
+      {condition === UNSET_CONDITION && <p className="muted-note" data-note="unset-condition">Unset: a condition without a signal never holds.</p>}
+    </>
   );
 }

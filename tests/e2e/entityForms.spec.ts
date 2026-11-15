@@ -119,12 +119,22 @@ test("the form of an inserter has a control per setting of its type and writes e
   await checkbox(page, "Logistic network condition").uncheck();
   expect((await body(page, "feeder")).join("\n")).not.toContain("logistic");
 
-  // A condition whose signal is taken out is a draft: the source keeps the last complete one until the signal is back.
+  // A condition whose signal is taken out is unset: in use without a signal, which the source says and the form notes. What
+  // stood behind the signal goes with it.
   await when.getByLabel("Condition signal", { exact: true }).fill("");
+  await expect(inspector(page).locator(".draft-hint")).toHaveCount(0);
+  expect(await body(page, "feeder")).toContain("when unset");
+  await expect(checkbox(page, "Enable/disable")).toBeChecked();
+  await expect(when.locator('[data-note="unset-condition"]')).toContainText("never holds");
+  await expect(when.getByLabel("Comparator")).toHaveValue("<");
+  await expect(when.getByLabel("Number", { exact: true })).toHaveValue("0");
+  // A change behind the missing signal waits for the signal as a draft; with the signal it is a comparison again.
+  await when.getByLabel("Number", { exact: true }).fill("100");
   await expect(inspector(page).locator(".draft-hint")).toContainText('The condition "Enable/disable" needs a signal.');
-  expect(await body(page, "feeder")).toContain("when item:iron-plate < 100");
+  expect(await body(page, "feeder")).toContain("when unset");
   await when.getByLabel("Condition signal", { exact: true }).fill("item:copper-plate");
   await expect(inspector(page).locator(".draft-hint")).toHaveCount(0);
+  await expect(when.locator('[data-note="unset-condition"]')).toHaveCount(0);
   expect(await body(page, "feeder")).toContain("when item:copper-plate < 100");
 
   // The form reads the source back: what is typed there shows in the controls (a field shows its own text while it has the focus).

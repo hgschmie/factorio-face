@@ -2,7 +2,7 @@
 // and in its order: what it leaves out at a default and what it spells out is recorded in fixture F-01 (docs/factorio-audit.md 12).
 
 import {
-  canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, gamePrototype, isTileCenter, NORMAL_QUALITY, signalKey, TERMINALS, wireSpan,
+  canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, gamePrototype, isTileCenter, NORMAL_QUALITY, signalKey, TERMINALS, UNSET_CONDITION, wireSpan,
   type Circuit, type Condition, type DeciderCondition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type Point, type SelectorMode, type SignalId, type SpeakerInstrument, type TerminalRef, type WireColor,
 } from "@face/model";
 import {
@@ -213,7 +213,8 @@ class Exporter {
         const signals = { red_signal: this.optional(entity.redSignal), green_signal: this.optional(entity.greenSignal), blue_signal: this.optional(entity.blueSignal), rgb_signal: this.optional(entity.rgbSignal) };
         const control = behavior({
           ...networks("input_networks", entity.inputNetworks),
-          ...(entity.condition && { circuit_enabled: true, circuit_condition: this.condition(entity.condition) }),
+          // The unset condition is the switch alone, as the game writes it.
+          ...(entity.condition && { circuit_enabled: true, ...(entity.condition !== UNSET_CONDITION && { circuit_condition: this.condition(entity.condition) }) }),
           ...(entity.useColors && { use_colors: true }),
           ...Object.fromEntries(Object.entries(signals).filter(([, id]) => id)),
           ...(entity.colorMode !== "mapping" && { color_mode: LAMP_COLOR_MODE_NUMBERS[entity.colorMode] }),

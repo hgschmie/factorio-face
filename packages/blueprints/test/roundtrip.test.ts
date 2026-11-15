@@ -1,7 +1,7 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, UNSET_CONDITION, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { MODDED_RECORDS, withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
@@ -44,7 +44,7 @@ function blueprintable(circuit: Circuit): Circuit {
  * - a section group without a name is no group, and one section without anything in it is no section, as in a combinator the game places;
  * - the first instrument and the first note of an instrument go without saying;
  * - the source signal of a quality transfer has no quality of its own;
- * - a side of a splitter that has one of its two conditions has the game's own for the other.
+ * - a side of a splitter that has one of its two conditions has the game's own for the other (a condition that is unset is one it has).
  */
 function afterRoundTrip(circuit: Circuit, instruments: readonly SpeakerInstrument[]): Circuit {
   const counters = new Map<string, number>();
@@ -124,12 +124,20 @@ describe("round trip: editor to blueprint to editor", () => {
 
   it("keeps generated circuits of every kind of entity and wire", () => {
     const kinds = new Set<string>();
+    /** The conditions in use without a signal among them: `lamp` for the one of a lamp, the key of the setting for one of a generic entity. */
+    const unset = new Set<string>();
     for (let seed = 1; seed <= 400; seed++) {
       const circuit = blueprintable(new Generator(seed).circuit(1 + (seed % 12)));
-      for (const entity of circuit.entities) kinds.add(entity.kind);
+      for (const entity of circuit.entities) {
+        kinds.add(entity.kind);
+        if (entity.kind === "lamp" && entity.condition === UNSET_CONDITION) unset.add("lamp");
+        if (entity.kind === "entity") for (const [key, value] of Object.entries(entity.settings)) if (value === UNSET_CONDITION) unset.add(key);
+      }
       roundTrip(circuit, GENERATED_INSTRUMENTS);
     }
     expect([...kinds].sort()).toEqual(["arithmetic", "constant", "decider", "entity", "lamp", "pole", "selector", "speaker"]);
+    // Every condition of every prototype, unset, is walked through in generic.test.ts.
+    expect([...unset]).toEqual(expect.arrayContaining(["lamp", "when", "logistic-when"]));
   });
 
   it("keeps generated circuits with the entity table of a modded game: every prototype of a kind, and a loader of one tile", () => {

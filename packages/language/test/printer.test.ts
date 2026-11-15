@@ -1,4 +1,4 @@
-import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, newEntity, PROTOTYPE_NAMES, prototypesOf, wildcardSignal, type Circuit, type Entity, type SignalId } from "@face/model";
+import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, newEntity, PROTOTYPE_NAMES, prototypesOf, UNSET_CONDITION, wildcardSignal, type Circuit, type Entity, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { analyze, checkEntity, printCircuit, printEntity, printName, printNumber, printSignal } from "../src/index.ts";
 import { fixture, Generator, portable, valid } from "./helpers.ts";
@@ -89,6 +89,20 @@ describe("canonical printer", () => {
     expect(printEntity(lamp)).toBe("small-lamp l at (0, 0) {\n    networks = none\n}");
     expectRoundTrip({ name: "none", entities: [decider, arithmetic, lamp], wires: [] });
     for (const entity of [decider, arithmetic, lamp]) expect(checkEntity(entity)).toEqual({ ok: true });
+  });
+
+  it("writes a condition in use without a signal as 'when unset', for a lamp as for an entity", () => {
+    const lamp: Entity = { ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", id: "l", name: "l", position: { x: 0, y: 0 }, condition: UNSET_CONDITION, alwaysOn: true };
+    const belt: Entity = { kind: "entity", prototype: "express-transport-belt", id: "b", name: "belt1", position: { x: 0, y: 0 }, settings: { when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION } };
+    expect(printEntity(lamp)).toBe("small-lamp l at (0, 0) {\n    when unset\n    always-on = true\n}");
+    expect(printEntity(belt)).toBe("express-transport-belt belt1 at (0, 0) {\n    when unset\n    logistic when unset\n}");
+    expectRoundTrip({ name: "unset", entities: [lamp, belt], wires: [] });
+    for (const entity of [lamp, belt]) expect(checkEntity(entity)).toEqual({ ok: true });
+    // A speaker has no switch: its condition is a comparison or none, and the word is not one of its statements.
+    const circuits = Array.from({ length: 150 }, (_, index) => new Generator(index + 1).circuit(6));
+    const unset = circuits.flatMap((circuit) => circuit.entities).filter((entity) => (entity.kind === "lamp" && entity.condition === UNSET_CONDITION) || (entity.kind === "entity" && Object.values(entity.settings).includes(UNSET_CONDITION)));
+    expect(new Set(unset.map((entity) => entity.kind))).toEqual(new Set(["lamp", "entity"]));
+    expect(circuits.every((circuit) => !printCircuit({ ...circuit, entities: circuit.entities.filter((entity) => entity.kind === "speaker" || entity.kind === "decider") }).includes("unset"))).toBe(true);
   });
 
   it("prints numbers without exponent or trailing decimal point", () => {

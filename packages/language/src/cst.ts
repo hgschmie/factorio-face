@@ -116,6 +116,8 @@ export interface CstAssign extends Range {
 export interface CstCondition extends Range {
   /** `and` / `or`; absent for the first condition. */
   readonly join?: Token;
+  /** The word `unset` in the place of the comparison. What follows it is read as a comparator and an operand so that it is one error. */
+  readonly unset?: Token;
   readonly first?: CstSigRef;
   readonly comparator?: Token;
   readonly second?: CstOperand;

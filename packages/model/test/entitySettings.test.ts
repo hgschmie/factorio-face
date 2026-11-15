@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   BOTH_NETWORKS, canRotate, conditionKey, conditionRole, ENABLE_CONDITION, ENTITY_SETTINGS, entityNameBase, entityTable, facingOf, findTileOverlaps, footprintBox, gamePrototype, isPrototypeName, isSettingValue, isTileCenter,
   normalizedSettings, normalizeSettings, occupiedTiles, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypesOf, rotateTile, sameSetting, setEntityTable, settingDefault, settingFields, settingShown, settingSpecsOf,
-  signal, STANDARD_ENTITY_TABLE, TERMINALS, tileCenter, tileHalves, tileSize, wireReachBetween, wireSpan,
-  type Condition, type Direction, type EntityShape, type SettingSpec, type SettingValue,
+  signal, STANDARD_ENTITY_TABLE, TERMINALS, tileCenter, tileHalves, tileSize, UNSET_CONDITION, wireReachBetween, wireSpan,
+  type Condition, type ConditionSetting, type Direction, type EntityShape, type SettingSpec, type SettingValue,
 } from "../src/index.ts";
 import standard from "../data/entities-2.1.24.json" with { type: "json" };
 import { extractControlBehaviors, type BehaviorField, type ControlBehaviors } from "./controlBehaviors.ts";
@@ -229,6 +229,27 @@ describe("setting values", () => {
     expect(sameSetting(spec("when"), condition, { ...condition, second: { type: "signal", signal: A } })).toBe(false);
     expect(sameSetting(spec("stack-size-signal"), A, signal("virtual", "signal-A", "normal"))).toBe(true);
     expect(sameSetting(spec("networks"), BOTH_NETWORKS, { red: true, green: false })).toBe(false);
+  });
+
+  it("take the unset condition for every condition: in use, without a signal, and equal to nothing but itself", () => {
+    expect(UNSET_CONDITION).toBe("unset");
+    for (const [type, row] of Object.entries(ENTITY_SETTINGS)) {
+      for (const entry of row.settings) {
+        if (entry.type === "condition") expect(isSettingValue(entry, UNSET_CONDITION), `${type} ${entry.key}`).toBe(true);
+        else if (entry.type !== "enum") expect(isSettingValue(entry, UNSET_CONDITION), `${type} ${entry.key}`).toBe(false);
+      }
+    }
+    const blank = { comparator: "<", second: { type: "constant", value: 0 } } as const;
+    expect([sameSetting(spec("when"), UNSET_CONDITION, UNSET_CONDITION), sameSetting(spec("when"), UNSET_CONDITION, condition), sameSetting(spec("when"), condition, UNSET_CONDITION)]).toEqual([true, false, false]);
+    // A comparison without its first signal is no value, and not the unset condition either.
+    expect(isSettingValue(spec("when"), blank)).toBe(false);
+    expect(normalizedSettings("fast-inserter", { when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION })).toEqual({ when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION });
+    expect(normalizedSettings("fast-inserter", { when: blank })).toEqual({});
+    // Also where the game has a condition of its own for one a blueprint leaves out: unset is not that one.
+    const left = settingSpecsOf("splitter").find((entry) => entry.key === "input-left-when") as ConditionSetting;
+    expect(sameSetting(left, UNSET_CONDITION, left.gameDefault!)).toBe(false);
+    expect(normalizedSettings("splitter", { "input-left-when": UNSET_CONDITION })).toEqual({ "input-left-when": UNSET_CONDITION });
+    expect(normalizedSettings("stone-wall", { "open-gate-when": UNSET_CONDITION })).toEqual({ "open-gate-when": UNSET_CONDITION });
   });
 
   it("have the defaults of the table and of the prototype", () => {

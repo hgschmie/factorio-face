@@ -47,7 +47,7 @@ circuit "Feedback example" {
 
 Reserved keywords: `circuit wire red green at tile facing north east south west in out when and or output else input section each anything everything true false AND OR XOR import component port`.
 `import`, `component` and `port` are reserved for reusable components (Milestone 4) and currently produce a "not supported yet" diagnostic.
-No entity of the game has a keyword: an entity is declared by its name in the game, which is data and not part of the language. So a further entity, of the game or of a mod, reserves nothing, and the words that name the families of behaviour in this document (`constant`, `arithmetic`, `decider`, `selector`, `lamp`, `pole`, `speaker`, `entity`) are free as entity names like `pump`, `belt` and `chest`. The signal kind `entity:` is a signal literal: `entity:small-biter`. The names of properties (`pitch`, `note`, `read-contents`, ...) and the words in front of `when` (`logistic`, `harvest`, ...) are not reserved either.
+No entity of the game has a keyword: an entity is declared by its name in the game, which is data and not part of the language. So a further entity, of the game or of a mod, reserves nothing, and the words that name the families of behaviour in this document (`constant`, `arithmetic`, `decider`, `selector`, `lamp`, `pole`, `speaker`, `entity`) are free as entity names like `pump`, `belt` and `chest`. The signal kind `entity:` is a signal literal: `entity:small-biter`. The names of properties (`pitch`, `note`, `read-contents`, ...) and the words in front of `when` (`logistic`, `harvest`, ...) are not reserved either, and neither are the two words that have a meaning in one place only: `none` in a network selection and `unset` in the place of a condition (`when unset`, below). Both stay usable as entity names, and neither can be taken for a signal, which always has its kind and a colon (`virtual:unset`).
 
 ## Grammar
 
@@ -166,7 +166,7 @@ condition    = sigref comparator operand ;
 output       = "output" signal "=" ( INT | "input" [ networks ] ) ;
 ```
 
-At most one `when`. `and` binds tighter than `or` and there is no grouping, matching the game's condition list (`compare_type` of each condition after the first). `output S = input` copies the input count of `S` (optionally from one network, `input[red]` or `input[green]`, or from none, `input[none]`); `output S = 5` emits a constant. `else output` lines are emitted when the condition is false. Outputs keep their source order.
+At most one `when`. A decider combinator has no switch for a condition, so none of its conditions is `unset` (an error). `and` binds tighter than `or` and there is no grouping, matching the game's condition list (`compare_type` of each condition after the first). `output S = input` copies the input count of `S` (optionally from one network, `input[red]` or `input[green]`, or from none, `input[none]`); `output S = 5` emits a constant. `else output` lines are emitted when the condition is false. Outputs keep their source order.
 
 ### Selector combinator
 
@@ -191,10 +191,11 @@ Example: `selector-combinator pick at (0, 0) { operation = select  order = min  
 `small-lamp`, and every prototype of the type `lamp` a mod adds.
 
 ```ebnf
-lamp-stmt = "when" sigref-without-networks comparator ( SIGNAL | INT ) | property ;
+lamp-stmt          = "when" switched-condition | property ;
+switched-condition = sigref-without-networks comparator ( SIGNAL | INT ) | "unset" ;    (* unset: in use without a signal *)
 ```
 
-`when` is the circuit enable condition (its presence sets `circuit_enabled`). Properties: `networks = red`, `green` or `none` (default both; the lamp's input network selection, which applies to the condition and to the color signals), `always-on = BOOL` (`false`), `colors = mapping`, `components` or `packed-rgb` (presence sets `use_colors`), `red`, `green`, `blue`, `rgb` (signals for the color modes), `color = #rrggbb` (static color).
+`when` is the circuit enable condition (its presence sets `circuit_enabled`). `when unset` is the condition in use without a signal: the lamp is controlled by the circuit and its condition names nothing, which a blueprint of the game says as `circuit_enabled: true` without a `circuit_condition`. Such a condition never holds, so a lamp with a circuit wire stays dark, also one that is `always-on`; without a wire no condition applies (see Every other entity for the word). Properties: `networks = red`, `green` or `none` (default both; the lamp's input network selection, which applies to the condition and to the color signals), `always-on = BOOL` (`false`), `colors = mapping`, `components` or `packed-rgb` (presence sets `use_colors`), `red`, `green`, `blue`, `rgb` (signals for the color modes), `color = #rrggbb` (static color).
 
 ### Electric pole
 
@@ -236,7 +237,7 @@ It reads the sum of the red and the green network on its one terminal, `name.in`
 - `when S > 5`: the circuit condition, as for a lamp (`anything` and `everything` are allowed on the left). The speaker plays `instrument` and `note` while the condition holds.
 - `pitch = S`: the game's "Signal value is pitch". The value of `S` picks the note of the instrument, 1 being its first; `note` is then not used. `when` together with `pitch` is an error.
 
-A speaker with neither never plays and gets the warning `unconfigured`.
+A speaker with neither never plays and gets the warning `unconfigured`. It has no switch for its condition: without a `when` statement its condition is the one without a signal, so `when unset` is not written for a speaker (an error).
 
 | Property | Value (default) | Game field |
 | --- | --- | --- |
@@ -274,7 +275,7 @@ programmable-speaker tune { pitch = virtual:signal-P  instrument = piano  volume
 ### Every other entity
 
 ```ebnf
-entity-stmt = [ ROLE ] "when" sigref-without-networks comparator ( SIGNAL | INT ) | property ;
+entity-stmt = [ ROLE ] "when" switched-condition | property ;    (* switched-condition: see Lamp *)
 ```
 
 Every entity of the game that connects to the circuit network and is none of the above: chests, inserters, belts, splitters, assembling machines, furnaces, pumps, turrets, train stops, rail signals, walls, roboports and so on, 88 prototypes of Factorio 2.1.24 (`docs/factorio-audit.md` 13), and with the data of a modded game those of its mods whose prototype type has settings here (a loader of one tile). This is still a circuit editor: such an entity is here with its size, its wire reach, its one connection point and its circuit settings, not with what it does in a factory.
@@ -295,7 +296,19 @@ Settings are properties, `word = value`, of four forms: a switch (`true` or `fal
 
 Conditions are statements. `when S < 100` is the condition that enables the entity (the game's "Enable/disable"); every other condition has a word in front that says what it decides: `logistic when ...`, `harvest when ...`, `input-left when ...`, `close when ...`. A condition is a single comparison as for a lamp: `anything` and `everything` are allowed on the left, the right side is a signal or an integer, and the signals take no network selection (`networks` says where all conditions of the entity read). A condition that is written is in use: its presence stands for the checkbox the game has next to it, so there is no way, and no need, to keep a condition that is switched off. Each condition may appear once.
 
-Two conditions have something in the game where the source has nothing (`docs/factorio-audit.md` 12.2). The two conditions of a side of a splitter share one checkbox: where one is written and the other is not, the game has its own condition for the other (`signal-I < 0` for `input-left`, `signal-I > 0` for `input-right`, `signal-O` likewise for the output side), and a circuit that comes back from a blueprint says it. A new wall of the game has the checkbox of `open-gate when` on with a blank condition; a wall without the condition is exported with the checkbox off. And the game keeps a setting only where the prototype has a use for it: `read-fuel` on a machine that burns nothing is legal here and gone in the game.
+A condition can be in use without a signal: in the game the checkbox is on and the signal of the condition is empty. The source writes `unset` in the place of the comparison, for the enable condition and behind a role alike:
+
+```
+express-transport-belt belt1 at (0, 0) {
+    when unset
+}
+stone-wall wall1 { open-gate when unset }
+fast-inserter feeder { when item:iron-plate < 100  logistic when unset }
+```
+
+An unset condition never holds, whatever comparator and number the game shows behind the empty signal (they are not kept): with a circuit wire on it the entity is disabled exactly as by a condition that is false, a gate stays shut, a rail signal is not closed. Without a circuit wire no condition applies, unset or not. This is what the game does (Factorio 2.1.24, fixture F-29, `docs/factorio-audit.md` 6.7), and it is not the same as leaving the condition out, which switches the checkbox off. `unset` stands alone: a comparator, an operand or `and` / `or` after it is an error, and it is no operand and no value of a property. It is written where a condition has a checkbox, which is every condition of the entities of this section and the `when` of a lamp; a decider combinator and a programmable speaker have none.
+
+Two conditions have something in the game where the source has nothing (`docs/factorio-audit.md` 12.2). The two conditions of a side of a splitter share one checkbox: where one is written and the other is not, the game has its own condition for the other (`signal-I < 0` for `input-left`, `signal-I > 0` for `input-right`, `signal-O` likewise for the output side), and a circuit that comes back from a blueprint says it. A new wall of the game has the checkbox of `open-gate when` on with its condition unset. Here a new wall has no condition, like every new entity: such a wall is exported with the checkbox off where its blueprint says anything about its circuit settings, and a wall that came from a blueprint with the checkbox on and no signal says `open-gate when unset`. The one case in between is a blueprint that does not name the checkbox at all (the game writes none for a wall without a circuit wire): it is read as a wall without the condition. And a side of a splitter that is unset is written into a blueprint as a condition without a signal, because a missing one stands for the game's own. And the game keeps a setting only where the prototype has a use for it: `read-fuel` on a machine that burns nothing is legal here and gone in the game.
 
 The entity has one connection point, written as the bare name (see Terminals above). In the game it reads and writes there. In the simulation it sends nothing: there are no stand-in signals for what a chest holds or a train stop counts. What it reads is shown, and each circuit condition is evaluated every tick, so that the editor can show whether the entity is enabled (`packages/simulation/CONFORMANCE.md`). A condition on the logistic network (`logistic when`) is kept and not evaluated.
 
@@ -345,13 +358,13 @@ The settings per prototype type, and the words with their values, defaults and t
 | `output-networks` | `red`, `green` or `none` (both) | `output_networks` | Send to | all that have the word |
 | `read-charge` | `true` or `false` (`true`) | `read_charge` | Read charge | all that have the word |
 | `output-signal` | signal (the prototype's `default_output_signal`) | `output_signal` | Charge signal | `accumulator` |
-| `when` | comparison (not in use) | `circuit_condition`, in use with `circuit_enabled` | Enable/disable | `agricultural-tower`, `ammo-turret`, `artillery-turret`, `assembling-machine`, `asteroid-collector`, `boiler`, `electric-turret`, `fluid-turret`, `furnace`, `inserter`, `land-mine`, `loader`, `loader-1x1`, `mining-drill`, `offshore-pump`, `power-switch`, `pump`, `train-stop`, `transport-belt` |
-| `logistic when` | comparison (not in use) | `logistic_condition`, in use with `connect_to_logistic_network` | Logistic network condition | all that have the word |
+| `when` | comparison or `unset` (not in use) | `circuit_condition`, in use with `circuit_enabled` | Enable/disable | `agricultural-tower`, `ammo-turret`, `artillery-turret`, `assembling-machine`, `asteroid-collector`, `boiler`, `electric-turret`, `fluid-turret`, `furnace`, `inserter`, `land-mine`, `loader`, `loader-1x1`, `mining-drill`, `offshore-pump`, `power-switch`, `pump`, `train-stop`, `transport-belt` |
+| `logistic when` | comparison or `unset` (not in use) | `logistic_condition`, in use with `connect_to_logistic_network` | Logistic network condition | all that have the word |
 | `networks` | `red`, `green` or `none` (both) | `input_networks` | Read from | all that have the word |
-| `harvest when` | comparison (not in use) | `harvesting_condition`, in use with `enable_harvesting_condition` | Harvest | all that have the word |
-| `plant when` | comparison (not in use) | `planting_condition`, in use with `enable_planting_condition` | Plant | all that have the word |
+| `harvest when` | comparison or `unset` (not in use) | `harvesting_condition`, in use with `enable_harvesting_condition` | Harvest | all that have the word |
+| `plant when` | comparison or `unset` (not in use) | `planting_condition`, in use with `enable_planting_condition` | Plant | all that have the word |
 | `read-contents` | `true` or `false` (`false`) | `read_contents` | Read contents | `agricultural-tower`, `assembling-machine`, `furnace`, `lab` |
-| `ignore-unlisted when` | comparison (not in use) | `ignore_unlisted_targets_condition`, in use with `set_ignore_unlisted_targets` | Ignore unlisted targets | all that have the word |
+| `ignore-unlisted when` | comparison or `unset` (not in use) | `ignore_unlisted_targets_condition`, in use with `set_ignore_unlisted_targets` | Ignore unlisted targets | all that have the word |
 | `read-ammo` | `true` or `false` (`false`) | `read_ammo` | Read ammunition | `ammo-turret`, `electric-turret`, `fluid-turret` |
 | `set-priority-list` | `true` or `false` (`false`) | `set_priority_list` | Set priority list | all that have the word |
 | `read-ammo` | `true` or `false` (`true`) | `read_ammo` | Read ammunition | `artillery-turret` |
@@ -372,7 +385,7 @@ The settings per prototype type, and the words with their values, defaults and t
 | `set-requests` | `true` or `false` (`false`) | `set_requests` | Set requests | all that have the word |
 | `read-temperature` | `true` or `false` (`false`) | `read_temperature` | Read temperature | all that have the word |
 | `temperature-signal` | signal (the prototype's `default_temperature_signal`) | `temperature_signal` | Temperature signal | `heat-pipe`, `reactor` |
-| `when` | comparison (not in use) | `circuit_condition`, in use with `circuit_condition_enabled` | Enable/disable the logistic connection | `infinity-container`, `logistic-container` |
+| `when` | comparison or `unset` (not in use) | `circuit_condition`, in use with `circuit_condition_enabled` | Enable/disable the logistic connection | `infinity-container`, `logistic-container` |
 | `read-contents` | `none`, `contents` or `segment-contents` (`contents`) | `circuit_mode_of_operation` | Read contents | `infinity-pipe`, `pipe`, `pipe-to-ground`, `storage-tank` |
 | `temperature-signal` | signal (the prototype's `default_fluid_temperature_signal`) | `temperature_signal` | Temperature signal | `infinity-pipe`, `pipe`, `pipe-to-ground`, `storage-tank` |
 | `read-hand` | `none`, `pulse` or `hold` (`none`) | `circuit_hand_read_mode`; `none` is `circuit_read_hand_contents` off | Read hand contents | all that have the word |
@@ -387,7 +400,7 @@ The settings per prototype type, and the words with their values, defaults and t
 | `set-filter` | `true` or `false` (`false`) | `set_filter` | Set filter | all that have the word |
 | `mode` | `surface` or `universe` (`surface`) | `mode` | Mode | all that have the word |
 | `channel` | signal (none) | `universe_channel` | Universe channel | all that have the word |
-| `close when` | comparison (not in use) | `circuit_condition`, in use with `circuit_close_signal` | Close signal | all that have the word |
+| `close when` | comparison or `unset` (not in use) | `circuit_condition`, in use with `circuit_close_signal` | Close signal | all that have the word |
 | `read-signal` | `true` or `false` (`true`) | `circuit_read_signal` | Read signal | all that have the word |
 | `red-signal` | signal (the prototype's `default_red_output_signal`) | `red_output_signal` | Red signal | all that have the word |
 | `orange-signal` | signal (the prototype's `default_orange_output_signal`) | `orange_output_signal` | Yellow signal | all that have the word |
@@ -410,10 +423,10 @@ The settings per prototype type, and the words with their values, defaults and t
 | `speed-signal` | signal (the prototype's `default_speed_signal`) | `speed_signal` | Speed signal | all that have the word |
 | `read-damage-taken` | `true` or `false` (`false`) | `read_damage_taken` | Read damage taken | all that have the word |
 | `damage-taken-signal` | signal (the prototype's `default_damage_taken_signal`) | `damage_taken_signal` | Damage taken signal | all that have the word |
-| `input-left when` | comparison (not in use; while the other one of its side is, the game has `signal-I < 0` here) | `input_left_condition`, in use with `set_input_side` | Input priority left | all that have the word |
-| `input-right when` | comparison (not in use; while the other one of its side is, the game has `signal-I > 0` here) | `input_right_condition`, in use with `set_input_side` | Input priority right | all that have the word |
-| `output-left when` | comparison (not in use; while the other one of its side is, the game has `signal-O < 0` here) | `output_left_condition`, in use with `set_output_side` | Output priority left | all that have the word |
-| `output-right when` | comparison (not in use; while the other one of its side is, the game has `signal-O > 0` here) | `output_right_condition`, in use with `set_output_side` | Output priority right | all that have the word |
+| `input-left when` | comparison or `unset` (not in use; while the other one of its side is, the game has `signal-I < 0` here) | `input_left_condition`, in use with `set_input_side` | Input priority left | all that have the word |
+| `input-right when` | comparison or `unset` (not in use; while the other one of its side is, the game has `signal-I > 0` here) | `input_right_condition`, in use with `set_input_side` | Input priority right | all that have the word |
+| `output-left when` | comparison or `unset` (not in use; while the other one of its side is, the game has `signal-O < 0` here) | `output_left_condition`, in use with `set_output_side` | Output priority left | all that have the word |
+| `output-right when` | comparison or `unset` (not in use; while the other one of its side is, the game has `signal-O > 0` here) | `output_right_condition`, in use with `set_output_side` | Output priority right | all that have the word |
 | `send-to-train` | `true` or `false` (`true`) | `send_to_train` | Send to train | all that have the word |
 | `read-from-train` | `true` or `false` (`false`) | `read_from_train` | Read train contents | all that have the word |
 | `read-stopped-train` | `true` or `false` (`false`) | `read_stopped_train` | Read stopped train | all that have the word |
@@ -425,7 +438,7 @@ The settings per prototype type, and the words with their values, defaults and t
 | `set-priority` | `true` or `false` (`false`) | `set_priority` | Set priority | all that have the word |
 | `priority-signal` | signal (the prototype's `default_priority_signal`) | `priority_signal` | Priority signal | all that have the word |
 | `read-contents` | `none`, `pulse`, `hold` or `entire-belt-hold` (`none`) | `circuit_contents_read_mode`; `none` is `circuit_read_hand_contents` off | Read belt contents | `transport-belt` |
-| `open-gate when` | comparison (not in use) | `circuit_condition`, in use with `circuit_open_gate` | Open gate | all that have the word |
+| `open-gate when` | comparison or `unset` (not in use) | `circuit_condition`, in use with `circuit_open_gate` | Open gate | all that have the word |
 | `read-sensor` | `true` or `false` (`false`) | `circuit_read_sensor` | Read gate sensor | all that have the word |
 | `output-signal` | signal (the prototype's `default_output_signal`) | `output_signal` | Gate sensor signal | `wall` |
 <!-- entity-settings:end -->
@@ -465,7 +478,7 @@ between the braces of a circuit in a text editor; names then stay as they are an
 
 ## Diagnostics
 
-Errors (block simulation and graphical edits until fixed; the last valid graph stays visible): syntax errors, duplicate entity names, a wire to a name that no declaration has (`unknown-entity`; a wire to a declaration that is no entity is left out without an error of its own), an unknown terminal in a wire, a terminal the entity does not have (`.in` of a constant combinator, `.out` of a lamp, `.in` of a pole or a chest, the bare name of a combinator, a lamp or a speaker; `invalid-terminal` says how the entity is wired), a wire from a terminal to itself, integers outside int32, illegal wildcard use, duplicate or contradictory statements (two `when`, two expressions), unknown property or enum value, a declaration whose word is no entity of the game data in use (`unknown-prototype`) or one the editor does not support (`unsupported-prototype`), a speaker with both `when` and `pitch`, a `volume` outside 0 to 100, a setting or a condition that the prototype of the entity does not have, a `blueprint-data` that is not the JSON text of an object.
+Errors (block simulation and graphical edits until fixed; the last valid graph stays visible): syntax errors, duplicate entity names, a wire to a name that no declaration has (`unknown-entity`; a wire to a declaration that is no entity is left out without an error of its own), an unknown terminal in a wire, a terminal the entity does not have (`.in` of a constant combinator, `.out` of a lamp, `.in` of a pole or a chest, the bare name of a combinator, a lamp or a speaker; `invalid-terminal` says how the entity is wired), a wire from a terminal to itself, integers outside int32, illegal wildcard use, duplicate or contradictory statements (two `when`, two expressions), unknown property or enum value, a declaration whose word is no entity of the game data in use (`unknown-prototype`) or one the editor does not support (`unsupported-prototype`), a speaker with both `when` and `pitch`, a `volume` outside 0 to 100, a setting or a condition that the prototype of the entity does not have, `unset` with anything after it or in a decider combinator or a speaker, a `blueprint-data` that is not the JSON text of an object.
 
 Warnings (do not block): duplicate or reversed declarations of the same wire (rendered and simulated once), signals unknown to the enabled catalog or belonging to a disabled module/group, an instrument or note the game's speaker does not have (`unknown-instrument`, `unknown-note`), unconfigured combinators and speakers, unused `else output` without `when`, a `tile` that is not on the tile grid for its entity and the direction it faces (`tile-off-grid`), entities whose tiles overlap (`tile-overlap`, on each of them), `facing` on an entity that cannot turn: a lamp, a speaker, a pole, a chest (`unused-facing`), a wire between entities that are further apart than the wire may span (`wire-too-long`). The placement warnings and `wire-too-long` are given for a circuit, not for a fragment.
 

@@ -1,7 +1,7 @@
 // The generic entity: every prototype of the game without a kind of its own, declared like every entity by its name in the
 // game. Its settings are the table of the model (`ENTITY_SETTINGS`), which these tests walk row by row.
 import {
-  BOTH_NETWORKS, conditionRole, DEFAULT_ENTITY, ENTITY_SETTINGS, entityTable, newEntity, normalizedSettings, prototypesOf, settingDefault, settingSpecsOf, signalKey,
+  BOTH_NETWORKS, conditionRole, DEFAULT_ENTITY, ENTITY_SETTINGS, entityTable, newEntity, normalizedSettings, prototypesOf, settingDefault, settingSpecsOf, signalKey, UNSET_CONDITION,
   type Condition, type Entity, type EntityOfKind, type SettingSpec, type SettingValue, type SignalId,
 } from "@face/model";
 import { describe, expect, it } from "vitest";
@@ -143,6 +143,35 @@ describe("declaration", () => {
     expect(entity("inserter i { read-hand = hold when item:iron-plate < 100 networks = none logistic when item:iron-plate < 100 }").settings).toEqual({ when: BELOW, "logistic-when": BELOW, networks: { red: false, green: false }, "read-hand": "hold" });
   });
 
+  it("reads 'when unset' as a condition that is in use and names no signal, for every condition a prototype has", () => {
+    expect(entity("express-transport-belt belt1 at (0, 0) {\n    when unset\n}").settings).toEqual({ when: UNSET_CONDITION });
+    expect(entity("fast-inserter i { logistic when unset when item:iron-plate < 100 }").settings).toEqual({ when: BELOW, "logistic-when": UNSET_CONDITION });
+    expect(entity("stone-wall w { open-gate when unset }").settings).toEqual({ "open-gate-when": UNSET_CONDITION });
+    expect(entity("splitter s { input-left when unset output-right when item:iron-plate < 100 }").settings).toEqual({ "input-left-when": UNSET_CONDITION, "output-right-when": BELOW });
+    for (const prototype of prototypesOf("entity")) {
+      const conditions = settingSpecsOf(prototype).filter((spec) => spec.type === "condition");
+      if (conditions.length === 0) continue;
+      const statements = conditions.map((spec) => `${[conditionRole(spec.key), "when"].filter(Boolean).join(" ")} unset`);
+      const settings = Object.fromEntries(conditions.map((spec) => [spec.key, UNSET_CONDITION]));
+      const read = entity(`${prototype} e {\n${statements.join("\n")}\n}`);
+      expect(read.settings, prototype).toEqual(settings);
+      // The printer writes the same statements, and they read back.
+      expect(printEntity(read).split("\n").slice(1, -1).map((line) => line.trim()), prototype).toEqual(statements);
+      expect(checkEntity(read), prototype).toEqual({ ok: true });
+    }
+    // The word means this only in the place of a comparison: it is no keyword and no signal, and a name like any other.
+    expect(isKeyword("unset")).toBe(false);
+    expect(tokenize("when unset").filter((token) => token.kind !== "whitespace").map((token) => token.kind)).toEqual(["keyword", "ident"]);
+    const named = valid(circuit("transport-belt unset { when unset }\nconstant-combinator c { virtual:unset = 1 }\nwire red c.out <-> unset")).circuit;
+    expect(named.entities.map((one) => one.name)).toEqual(["unset", "c"]);
+    expect((named.entities[0] as Generic).settings).toEqual({ when: UNSET_CONDITION });
+    expect(entity("transport-belt b { when virtual:unset > 0 }").settings).toEqual({ when: { first: { kind: "virtual", name: "unset" }, comparator: ">", second: { type: "constant", value: 0 } } });
+    expect(entity("transport-belt b { when anything > 0 logistic when everything > 0 }").settings).toMatchObject({ when: { first: { name: "signal-anything" } }, "logistic-when": { first: { name: "signal-everything" } } });
+    // Before the next statement and before the next declaration, with or without a line break.
+    expect(entity("transport-belt b { when unset read-contents = hold logistic when unset networks = red }").settings).toEqual({ when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION, networks: { red: true, green: false }, "read-contents": "hold" });
+    expect(valid(circuit("transport-belt b { when unset } small-lamp l { when unset } transport-belt b2 { logistic when unset }")).circuit.entities).toHaveLength(3);
+  });
+
   it("keeps the blueprint data byte for byte", () => {
     const texts = ["{}", '{"recipe":"iron-gear-wheel"}', '{ "spaced" : [1, 2.50, -0, 1e3], "nested": {"a": null} }', '{"text":"line\\nbreak \\"quoted\\" back\\\\slash \\u00fc tab\\t Grüße 日本語 → 𝒜 // no comment /* none */"}'];
     for (const text of texts) {
@@ -218,6 +247,37 @@ describe("diagnostics", () => {
     // A role in front of `when` belongs to a generic entity only.
     expect(diagnostics(circuit("small-lamp l { logistic when item:a > 1 }"))).toEqual([["invalid-statement", "A lamp has no 'logistic when' condition; write 'when'"]]);
     expect(codes(circuit("decider-combinator d { close when item:a > 1 output item:a = 1 }"))).toEqual(["unconfigured", "invalid-statement"]);
+  });
+
+  it("lets 'unset' stand alone, and only where the condition has a switch", () => {
+    const belt = (statements: string) => circuit(`transport-belt e { ${statements} }`);
+    const alone = "'unset' is the condition without a signal and stands alone: nothing is compared. Remove this, or name a signal in the place of 'unset'";
+    for (const rest of ["> 5", "= 0", "< virtual:signal-A", "and item:a > 1", "or unset", "> 5 and item:a > 1"]) {
+      const source = belt(`when unset ${rest}`);
+      const found = analyze(source).diagnostics;
+      expect(found.map((d) => [d.code, d.message]), rest).toEqual([["syntax-error", alone]]);
+      expect(source.slice(found[0]!.from, found[0]!.to), rest).toBe(rest);
+    }
+    expect(diagnostics(belt("logistic when unset > 5"))).toEqual([["syntax-error", alone]]);
+    expect(diagnostics(circuit("small-lamp l { when unset >= 1 }"))).toEqual([["syntax-error", alone]]);
+    expect(diagnostics(belt("when unset >"))).toEqual([["syntax-error", alone]]);
+    // As the second comparison it is one too many, like any other.
+    expect(diagnostics(belt("when item:a > 1 and unset"))).toEqual([["syntax-error", "An entity condition is a single comparison"]]);
+    expect(diagnostics(belt("when unset when unset"))).toEqual([["duplicate-statement", "Duplicate 'when' condition"]]);
+    expect(diagnostics(belt("when"))).toEqual([["syntax-error", "Expected a signal or 'unset' but found '}'"]]);
+    // It is no operand and no value.
+    expect(codes(belt("when item:a > unset"))).toEqual(["syntax-error"]);
+    expect(codes(circuit("steel-chest c { empty-slots-signal = unset }"))).toEqual(["invalid-value"]);
+    // A decider combinator has no switch per condition, and a speaker none at all: without 'when' its condition is the blank one.
+    const decider = "A decider combinator has no switch for a condition, so none of its conditions is 'unset'; name a signal";
+    expect(diagnostics(circuit("decider-combinator d { when unset output item:a = 1 }"))).toEqual([["invalid-statement", decider]]);
+    expect(diagnostics(circuit("decider-combinator d { when item:a > 1 and unset output item:a = 1 }"))).toEqual([["invalid-statement", decider]]);
+    expect(diagnostics(circuit("decider-combinator d { when unset > 5 or item:a > 1 output item:a = 1 }"))).toEqual([["invalid-statement", decider]]);
+    expect(diagnostics(circuit("programmable-speaker s { when unset }"))).toEqual([
+      ["invalid-statement", "A programmable speaker has no switch for its condition, so there is no 'unset' to write: without a 'when' statement its condition has no signal"],
+    ]);
+    expect(diagnostics(circuit("small-lamp l { open when unset }"))).toEqual([["invalid-statement", "A lamp has no 'open when' condition; write 'when'"]]);
+    expect(diagnostics(circuit("steel-chest c { when unset }")).map(([code]) => code)).toEqual(["invalid-statement"]);
   });
 
   it("wants the blueprint data to be the JSON text of an object", () => {
@@ -396,6 +456,15 @@ describe("commands", () => {
     const { "read-hand": _mode, when: _when, ...rest } = feederOf(valid(SOURCE)).settings;
     expect(update((feeder) => ({ ...feeder, settings: rest }))).toBe(SOURCE.replace("        when item:iron-plate < 100 // stop when full\n", "").replace("read-hand = pulse", "read-hand = none"));
     expect(update((feeder) => feeder)).toBe(SOURCE);
+  });
+
+  it("writes a condition that loses its signal as 'when unset', and one that gets a signal as the comparison", () => {
+    const unset = update((feeder) => ({ ...feeder, settings: { ...feeder.settings, when: UNSET_CONDITION } }));
+    expect(unset).toBe(SOURCE.replace("when item:iron-plate < 100", "when unset"));
+    expect(update((feeder) => ({ ...feeder, settings: { ...feeder.settings, when: BELOW } }), unset)).toBe(SOURCE);
+    expect(update((feeder) => ({ ...feeder, settings: normalizedSettings(feeder.prototype, { ...feeder.settings, "logistic-when": UNSET_CONDITION }) }))).toBe(SOURCE.replace("// stop when full\n", "// stop when full\n        logistic when unset\n"));
+    const { when: _when, ...rest } = feederOf(valid(unset)).settings;
+    expect(update((feeder) => ({ ...feeder, settings: rest }), unset)).toBe(SOURCE.replace("        when item:iron-plate < 100 // stop when full\n", ""));
   });
 
   it("changes the blueprint data and the prototype", () => {

@@ -210,7 +210,7 @@ export class Fields {
   }
 }
 
-/** A circuit condition as every entity with one connector has it. Undefined without a left side: the language has no blank condition. */
+/** A circuit condition as every entity with one connector has it. Undefined without a left side: what that means is up to the entity (unset behind a switch that is on). */
 export function circuitCondition(fields: Fields | undefined): Condition | undefined {
   if (!fields) return undefined;
   const first = fields.signal("first_signal");

@@ -1,5 +1,5 @@
-import { BOTH_NETWORKS, gamePrototype, isSettingValue, settingSpecsOf, type Condition, type ConditionSetting, type GenericEntity, type NetworkSelection, type SignalId } from "@face/model";
-import { AGGREGATE, UNBOUND, conditionHolds, planCondition, type ConditionPlan } from "./decider.ts";
+import { BOTH_NETWORKS, gamePrototype, isSettingValue, settingSpecsOf, type ConditionSetting, type ConditionValue, type GenericEntity, type NetworkSelection, type SignalId } from "@face/model";
+import { AGGREGATE, UNBOUND, conditionHolds, planCircuitCondition, type ConditionPlan } from "./decider.ts";
 import type { InputView, SignalTable } from "./signals.ts";
 import type { ConditionStates } from "./types.ts";
 
@@ -10,13 +10,16 @@ export interface EntityPlan {
 
 export const NO_CONDITIONS: EntityPlan = { evaluate: () => undefined };
 
-/** The conditions of a generic entity that the circuit network decides, with their keys, in the order of the settings table. G-LOGISTIC: not the logistic one. */
-export function circuitConditions(entity: GenericEntity): (readonly [key: string, condition: Condition])[] {
+/**
+ * The conditions of a generic entity that the circuit network decides, with their keys, in the order of the settings table: a
+ * comparison, or the unset condition, which is in use and never holds. G-LOGISTIC: not the logistic one.
+ */
+export function circuitConditions(entity: GenericEntity): (readonly [key: string, condition: ConditionValue])[] {
   return settingSpecsOf(entity.prototype)
     .filter((spec): spec is ConditionSetting => spec.type === "condition" && !spec.logistic)
-    .flatMap((spec): (readonly [string, Condition])[] => {
+    .flatMap((spec): (readonly [string, ConditionValue])[] => {
       const value = entity.settings[spec.key];
-      return isSettingValue(spec, value) ? [[spec.key, value as Condition]] : [];
+      return isSettingValue(spec, value) ? [[spec.key, value as ConditionValue]] : [];
     });
 }
 
@@ -43,10 +46,7 @@ export function radarGroup(entity: GenericEntity): string | undefined {
  */
 export function planEntity(entity: GenericEntity, signals: SignalTable): EntityPlan {
   const networks = inputNetworksOf(entity);
-  const plans: (readonly [string, ConditionPlan])[] = circuitConditions(entity).map(([key, condition]) => [
-    key,
-    planCondition({ first: condition.first, firstNetworks: networks, comparator: condition.comparator, second: condition.second.type === "signal" ? { ...condition.second, networks } : condition.second }, signals),
-  ]);
+  const plans: (readonly [string, ConditionPlan])[] = circuitConditions(entity).map(([key, condition]) => [key, planCircuitCondition(condition, networks, signals)]);
   if (plans.length === 0) return NO_CONDITIONS;
 
   let last: ConditionStates | undefined;

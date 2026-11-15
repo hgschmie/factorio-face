@@ -2,12 +2,14 @@
 // type makes of the entity and of the source, the prototypes an entity can become, what it keeps from a blueprint, and the lines
 // and notes per prototype type.
 import { loadStandardCatalog } from "@face/catalog";
-import { ENTITY_SETTINGS, entityTable, PROTOTYPES, settingSpecsOf, signal, type Condition, type GenericEntity, type SettingSpec, type SettingValue } from "@face/model";
+import { ENTITY_SETTINGS, entityTable, PROTOTYPES, settingSpecsOf, signal, UNSET_CONDITION, type Condition, type ConditionValue, type GenericEntity, type Lamp, type SettingSpec, type SettingValue } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { alternativePrototypes, enumOptions, incompleteCondition, keptFields, newCondition, settingValue, shownSettings, withPrototype, withSetting, wordLabel } from "../src/entities/genericSettings.ts";
 import { entityDescription } from "../src/entities/kindInfo.ts";
 import { entityRegistry } from "../src/entities/registry.ts";
+import { conditionLines, summaryLines } from "../src/entities/summary.ts";
 import { describeSettings, prototypeNotes, TYPE_DESCRIPTIONS, TYPE_NOTES, typeDescription } from "../src/entities/typeInfo.ts";
+import { BLANK_CONDITION, editedCondition, shownCondition } from "../src/inspector/conditionEdits.ts";
 import { checkDraft } from "../src/session/drafts.ts";
 import { createSession, entityNamed, errorsOf, idOf } from "./session/helpers.ts";
 
@@ -110,6 +112,58 @@ describe("an edit of one setting", () => {
     expect(incompleteCondition(enabled)).toBeUndefined();
   });
 
+  it("shows a condition in use without a signal as one with an empty signal, and makes it a comparison or unset again by its signal", () => {
+    const when = spec("express-transport-belt", "when");
+    const full: Condition = { first: IRON, comparator: ">=", second: { type: "constant", value: 100 } };
+    const { first: _first, ...emptied } = full;
+    expect(shownCondition(UNSET_CONDITION)).toEqual({ comparator: "<", second: { type: "constant", value: 0 } });
+    expect(shownCondition(UNSET_CONDITION)).toBe(BLANK_CONDITION);
+    expect(shownCondition(full)).toBe(full);
+    // The signal is filled in: a comparison with what the fields showed behind it.
+    expect(editedCondition(UNSET_CONDITION, { ...BLANK_CONDITION, first: A })).toEqual({ first: A, comparator: "<", second: { type: "constant", value: 0 } });
+    // The signal is taken out: unset, and what stood behind it is not kept.
+    expect(editedCondition(full, emptied)).toBe(UNSET_CONDITION);
+    // Any other edit of a comparison is that edit.
+    expect(editedCondition(full, { ...full, comparator: "<" })).toEqual({ ...full, comparator: "<" });
+    // A change behind a signal that is still missing waits for the signal, as a draft; the signal then completes it.
+    const waiting = editedCondition(UNSET_CONDITION, { ...BLANK_CONDITION, comparator: ">" });
+    expect(waiting).toEqual({ comparator: ">", second: { type: "constant", value: 0 } });
+    expect(editedCondition(waiting, { ...(waiting as Condition), second: { type: "constant", value: 7 } })).toEqual({ comparator: ">", second: { type: "constant", value: 7 } });
+    expect(editedCondition(waiting, { ...(waiting as Condition), first: A })).toEqual({ first: A, comparator: ">", second: { type: "constant", value: 0 } });
+
+    // The unset condition is complete: the entity holds it, the language writes it, and nothing asks for a signal.
+    const unset = withSetting(entity("express-transport-belt"), when, UNSET_CONDITION);
+    expect(unset.settings).toEqual({ when: UNSET_CONDITION });
+    expect(settingValue(unset, when)).toBe(UNSET_CONDITION);
+    expect(incompleteCondition(unset)).toBeUndefined();
+    expect(checkDraft(unset)).toEqual({ ok: true });
+    const draft = withSetting(unset, when, waiting);
+    expect(incompleteCondition(draft)?.key).toBe("when");
+    expect(checkDraft(draft)).toMatchObject({ ok: false, message: 'The condition "Enable/disable" needs a signal.' });
+    // Switching the condition off takes it away, as any other.
+    expect(withSetting(unset, when, undefined).settings).toEqual({});
+    // It stays with the entity when the prototype changes, and it is no default of any.
+    expect(withPrototype(unset, "transport-belt").settings).toEqual({ when: UNSET_CONDITION });
+    const left = spec("splitter", "input-left-when");
+    expect(withSetting(entity("splitter"), left, UNSET_CONDITION).settings).toEqual({ "input-left-when": UNSET_CONDITION });
+    // A lamp has the same switch.
+    const lamp: Lamp = { id: "l", name: "l", kind: "lamp", prototype: "small-lamp", position: { x: 0, y: 0 }, inputNetworks: { red: true, green: true }, alwaysOn: false, useColors: false, colorMode: "mapping", condition: UNSET_CONDITION };
+    expect(checkDraft(lamp)).toEqual({ ok: true });
+    expect(checkDraft({ ...lamp, condition: emptied })).toMatchObject({ ok: false, message: "The light condition needs a signal." });
+  });
+
+  it("says 'unset' on the card in the place of the comparison", () => {
+    expect(summaryLines(entity("express-transport-belt", { when: UNSET_CONDITION }))).toEqual(["unset"]);
+    expect(summaryLines(entity("express-transport-belt", { when: UNSET_CONDITION, "read-contents": "hold" }))).toEqual(["unset", "read-contents: hold"]);
+    expect(summaryLines(entity("stone-wall", { "open-gate-when": UNSET_CONDITION }))).toEqual(["open-gate unset"]);
+    expect(conditionLines(entity("agricultural-tower", { when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION, "harvest-when": { first: A, comparator: ">", second: { type: "constant", value: 0 } }, "plant-when": UNSET_CONDITION }))).toEqual([
+      "unset", "logistic unset", "harvest A > 0", "plant unset",
+    ]);
+    const lamp: Lamp = { id: "l", name: "l", kind: "lamp", prototype: "small-lamp", position: { x: 0, y: 0 }, inputNetworks: { red: true, green: true }, alwaysOn: true, useColors: false, colorMode: "mapping", condition: UNSET_CONDITION };
+    expect(summaryLines(lamp)).toEqual(["unset"]);
+    expect(summaryLines({ ...lamp, condition: undefined })).toEqual(["always on"]);
+  });
+
   it("offers the modes of the table by their words", () => {
     const hand = spec("inserter", "read-hand");
     const belt = spec("transport-belt", "read-contents");
@@ -192,6 +246,102 @@ describe("through the session", () => {
     session.commands.updateEntity(withSetting(session.state.draft!.entity as GenericEntity, spec("inserter", "when"), { ...blank, first: A }));
     expect(session.state.draft).toBeNull();
     expect(body(session.document.text, "feeder")).toEqual(["when virtual:signal-A > 5"]);
+  });
+
+  it("writes a condition whose signal is taken out as 'when unset', shows the entity as disabled while a wire is on it, and writes the comparison once the signal is back", () => {
+    const { session } = createSession(`circuit "Unset" {
+    inserter feeder at (40, 80) tile (0.5, 0.5) {
+        when item:iron-plate < 100
+    }
+
+    constant-combinator source at (40, 300) tile (0.5, 2.5) {
+        item:iron-plate = 5
+    }
+
+    small-lamp light at (280, 300) tile (2.5, 2.5) {
+        when item:iron-plate > 0
+        always-on = true
+    }
+
+    wire red source.out <-> feeder
+    wire red source.out <-> light.in
+}
+`);
+    expect(errorsOf(session)).toEqual([]);
+    const feeder = (): GenericEntity => entityNamed(session, "feeder") as GenericEntity;
+    const light = (): Lamp => entityNamed(session, "light") as Lamp;
+    const when = spec("inserter", "when");
+    const status = (name: string) => session.state.simulation.entityStatus.get(idOf(session, name))!;
+    const edit = (next: Condition): void => session.commands.updateEntity(withSetting(feeder(), when, editedCondition(feeder().settings.when as ConditionValue, next)));
+    expect([status("feeder").label, status("light").label]).toEqual(["enabled", "lit"]);
+    session.commands.select([feeder().id]);
+
+    // The user empties the signal field of the condition.
+    const { first: _first, ...emptied } = feeder().settings.when as Condition;
+    edit(emptied);
+    expect(session.state.draft).toBeNull();
+    expect(body(session.document.text, "feeder")).toEqual(["when unset"]);
+    expect(feeder().settings).toEqual({ when: UNSET_CONDITION });
+    expect(errorsOf(session)).toEqual([]);
+    expect(session.state.diagnostics).toEqual([]);
+    expect(summaryLines(feeder())).toEqual(["unset"]);
+    expect(status("feeder")).toMatchObject({ label: "disabled", enabled: false, conditions: [{ key: "when", holds: false }] });
+    expect(session.state.simulation.traces.find((row) => row.label === "feeder condition")).toMatchObject({ current: "disabled", condition: { what: "condition", holds: false } });
+    // A comparator chosen before the signal waits for it; the source keeps saying unset.
+    edit({ ...shownCondition(UNSET_CONDITION), comparator: ">=" });
+    expect(session.state.draft).toMatchObject({ message: 'The condition "Enable/disable" needs a signal.' });
+    expect(body(session.document.text, "feeder")).toEqual(["when unset"]);
+    const waiting = session.state.draft!.entity as GenericEntity;
+    session.commands.updateEntity(withSetting(waiting, when, editedCondition(waiting.settings.when as ConditionValue, { ...(waiting.settings.when as Condition), first: A })));
+    expect(session.state.draft).toBeNull();
+    expect(body(session.document.text, "feeder")).toEqual(["when virtual:signal-A >= 0"]);
+    expect(status("feeder").label).toBe("enabled");
+    session.commands.undo();
+    expect(body(session.document.text, "feeder")).toEqual(["when unset"]);
+    // Without the wire nothing is disabled, and the checkbox takes the condition away.
+    session.commands.setSource(session.document.text.replace("    wire red source.out <-> feeder\n", ""));
+    expect(status("feeder").label).toBe("");
+    session.commands.updateEntity(withSetting(feeder(), when, undefined));
+    expect(body(session.document.text, "feeder")).toEqual([]);
+
+    // The lamp: the same edit, the same word, and it is dark although it is always on.
+    const { first: _signal, ...dark } = light().condition as Condition;
+    session.commands.updateEntity({ ...light(), condition: editedCondition(light().condition!, dark) });
+    expect(body(session.document.text, "light")).toEqual(["when unset", "always-on = true"]);
+    expect(light().condition).toBe(UNSET_CONDITION);
+    expect(status("light")).toMatchObject({ label: "off", active: false });
+    expect(summaryLines(light())).toEqual(["unset"]);
+    session.commands.updateEntity({ ...light(), condition: editedCondition(light().condition!, { ...shownCondition(light().condition!), first: IRON }) });
+    expect(body(session.document.text, "light")).toEqual(["when item:iron-plate < 0", "always-on = true"]);
+    expect(errorsOf(session)).toEqual([]);
+  });
+
+  it("reads 'when unset' from the source, for the lamp and for every condition of an entity", () => {
+    const { session } = createSession(`circuit "Unset" {
+    express-transport-belt belt1 at (0, 0) {
+        when unset
+    }
+
+    small-lamp lamp1 at (200, 0) {
+        when unset
+    }
+
+    stone-wall wall1 at (400, 0) {
+        open-gate when unset
+    }
+
+    wire red belt1 <-> lamp1.in
+    wire red belt1 <-> wall1
+}
+`);
+    expect(errorsOf(session)).toEqual([]);
+    expect((entityNamed(session, "belt1") as GenericEntity).settings).toEqual({ when: UNSET_CONDITION });
+    expect((entityNamed(session, "lamp1") as Lamp).condition).toBe(UNSET_CONDITION);
+    expect(session.state.circuit.entities.map((one) => summaryLines(one))).toEqual([["unset"], ["unset"], ["open-gate unset"]]);
+    const status = (name: string) => session.state.simulation.entityStatus.get(idOf(session, name))!;
+    expect([status("belt1").label, status("lamp1").label, status("wall1").label]).toEqual(["disabled", "off", "open-gate disabled"]);
+    expect([status("belt1").enabled, status("wall1").enabled]).toEqual([false, undefined]);
+    for (const one of session.state.circuit.entities) expect(checkDraft(one)).toEqual({ ok: true });
   });
 
   it("changes the prototype within its type and keeps the settings and what the blueprint had", () => {

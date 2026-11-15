@@ -138,6 +138,12 @@ describe("picker data and completion", () => {
 
     expect(labels('circuit "c" {\n  selector-combinator s at (0, 0) {\n    operation = \n  }\n}\n', "operation = ")).toEqual(expect.arrayContaining(["select", "count", "quality-filter"]));
     expect(labels('circuit "c" {\n  decider-combinator d at (0, 0) {\n    when \n  }\n}\n', "when ")).toEqual(expect.arrayContaining(["each", "anything", "everything", "virtual:signal-A"]));
+    // Where a condition has a switch, `unset` comes first and says what it is; a decider combinator has none.
+    const lamp = 'circuit "c" {\n  small-lamp l at (0, 0) {\n    when \n  }\n}\n';
+    expect(labels(lamp, "when ").slice(0, 3)).toEqual(["unset", "anything", "everything"]);
+    expect(completionCandidates(completionContext(analyze(lamp), lamp.indexOf("when ") + 5), new CatalogService(catalog, ALL))[0]).toEqual({ label: "unset", type: "keyword", detail: "in use without a signal: never holds" });
+    expect(labels('circuit "c" {\n  express-transport-belt b at (0, 0) {\n    logistic when \n  }\n}\n', "when ")[0]).toBe("unset");
+    expect(labels('circuit "c" {\n  decider-combinator d at (0, 0) {\n    when \n  }\n}\n', "when ")).not.toContain("unset");
     expect(labels('circuit "c" {\n  constant-combinator a at (0, 0) { }\n  small-lamp b at (0, 0) { }\n  wire red \n}\n', "wire red ")).toEqual(["a.out", "b.in"]);
     expect(labels('circuit "c" {\n  small-lamp b at (0, 0) { }\n  \n}\n', "{ }\n  ")).toEqual(expect.arrayContaining(["wire", "constant-combinator", "small-lamp", "big-electric-pole", "steel-chest"]));
     expect(labels('circuit "c" {\n  selector-combinator s at (0, 0) {\n    operation = quality-filter\n    quality = \n  }\n}\n', "quality = ")).toEqual(expect.arrayContaining(["uncommon", "legendary"]));

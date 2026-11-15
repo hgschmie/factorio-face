@@ -8,7 +8,7 @@ import type {
 } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import { declaredPrototype } from "./names.ts";
-import { ARITHMETIC_OPERATORS, NO_NETWORK, SIGNAL_SLOTS } from "./schema.ts";
+import { ARITHMETIC_OPERATORS, NO_NETWORK, SIGNAL_SLOTS, takesUnset, UNSET_WORD } from "./schema.ts";
 import { decodeString, encodeString, isTrivia, lex, type Range, type Token } from "./tokens.ts";
 
 /** What the grammar accepts at the end of a source prefix; the raw material for completion. */
@@ -476,8 +476,8 @@ class Parser {
     for (;;) {
       const condition = this.condition(kind, join);
       conditions.push(condition);
-      if (!condition.second) break;
-      if (kind === "decider") this.keywords("and", "or");
+      if (!condition.second && !condition.unset) break;
+      if (kind === "decider" && !condition.unset) this.keywords("and", "or");
       if (!this.is("and") && !this.is("or")) break;
       join = this.next();
     }
@@ -485,20 +485,31 @@ class Parser {
   }
 
   private condition(kind: EntityKind, join: Token | undefined): CstCondition {
+    const unsettable = takesUnset(kind) && !join;
     this.note({ type: "signal", wildcards: slot(kind, "condition") });
-    if (!isSignalToken(this.tok)) {
-      this.expected("a signal");
+    if (unsettable) this.keywords(UNSET_WORD);
+    // `unset` is a plain word that only has this meaning here. It is read wherever a condition stands, so that the analysis can say where it does not belong.
+    const unset = this.tok.kind === "ident" && this.tok.text === UNSET_WORD && !this.startsEntity() ? this.next() : undefined;
+    if (!unset && !isSignalToken(this.tok)) {
+      this.expected(unsettable ? `a signal or '${UNSET_WORD}'` : "a signal");
       return { from: join?.from ?? this.lastEnd, to: this.lastEnd, join };
     }
-    const first = this.sigref();
+    const first = unset ? undefined : this.sigref();
+    const compares = (): boolean => this.tok.kind === "op" && COMPARATOR_SET.has(this.tok.text);
     let comparator: Token | undefined;
     let second: CstOperand | undefined;
-    this.keywords(...COMPARATORS);
-    if (this.tok.kind === "op" && COMPARATOR_SET.has(this.tok.text)) {
-      comparator = this.next();
-      second = this.operand(kind);
-    } else this.expected("a comparator (<, >, =, !=, <=, >=)");
-    return { from: join?.from ?? first.from, to: this.lastEnd, join, first, comparator, second };
+    if (unset) {
+      // Nothing belongs behind it. A comparison that stands there is read with it and is the one error of the analysis.
+      if (compares()) comparator = this.next();
+      if (comparator && (this.tok.kind === "int" || isSignalToken(this.tok))) second = this.operand(kind);
+    } else {
+      this.keywords(...COMPARATORS);
+      if (compares()) {
+        comparator = this.next();
+        second = this.operand(kind);
+      } else this.expected("a comparator (<, >, =, !=, <=, >=)");
+    }
+    return { from: join?.from ?? (unset ?? first!).from, to: this.lastEnd, join, unset, first, comparator, second };
   }
 
   private output(kind: EntityKind, elseToken?: Token): CstOutput {

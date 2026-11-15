@@ -1730,7 +1730,7 @@ The 38 concepts have 105 distinct fields: 52 booleans, 28 signals, 9 conditions,
 The editor has five field types: boolean, signal, condition, enum and network selection. A row of `ENTITY_SETTINGS` (`packages/model/src/entitySettings.ts`) per prototype type lists the settings of that type; a further type is a further row.
 Two kinds of boolean are not settings of their own but part of another one:
 
-- The boolean that says a condition is in use (`circuit_enabled` for `circuit_condition`, `connect_to_logistic_network` for `logistic_condition`, `set_input_side` for the two input conditions of a splitter). The condition is a setting exactly while that boolean is on.
+- The boolean that says a condition is in use (`circuit_enabled` for `circuit_condition`, `connect_to_logistic_network` for `logistic_condition`, `set_input_side` for the two input conditions of a splitter). The condition is a setting exactly while that boolean is on; one that is on without a first signal is the unset condition of the model (`when unset`), which is never fulfilled (6.7, fixture F-29).
 - The checkbox in front of a choice of modes (`circuit_read_hand_contents` before pulse or hold). It is the word `none` of the enum.
 
 In the table, "in use of" names the settings such a boolean belongs to. Every default and every number of a mode is the game's (F-01): "[api]" says that the reference states the same default, "[api: x]" that it states another, "[game]" that it states none;
@@ -1800,7 +1800,7 @@ Settled [game: F-01]:
 
 - The numbers of the seven enums (14.1). The roboport's `read_items_mode` is a number in a blueprint, as its class says, not the boolean of the blueprint concept; the importer reads both.
 - The defaults: all as the table had them but `read_ammo` of the artillery turret and `include_hands` of the asteroid collector, which are on (the reference states `false` for the second). The folded checkboxes are off for the inserter and the belt and on for the mining drill (this miner).
-- Two defaults are not blank: the open-gate flag of a wall is on, and the four conditions of a splitter are set (12.2). The settings table has them as `flagOnByDefault` and `gameDefault` of the condition.
+- Two defaults are not blank: the open-gate flag of a wall is on, and the four conditions of a splitter are set (12.2). The settings table has them as `flagOnByDefault` and `gameDefault` of the condition. A wall whose blueprint has the flag on without a first signal has `open-gate when unset`; one whose blueprint does not name the flag has no condition in the editor.
 - The game writes no setting at its default and reads a missing field as its default; an entity whose settings are all at their defaults has no `control_behavior` (seen without a wire; a display panel has its empty message there).
 - An entity without a circuit wire keeps its control behaviour in a blueprint and through a build (lamps and speakers of the samples; the generic samples are all wired).
 - `infinity-pipe` and `linked-container` have the behaviours of 14.1.

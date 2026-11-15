@@ -1,4 +1,4 @@
-import { wildcardOf, type DeciderCombinator, type DeciderCondition, type DeciderOutput, type SignalId } from "@face/model";
+import { UNSET_CONDITION, wildcardOf, type ConditionValue, type DeciderCombinator, type DeciderCondition, type DeciderOutput, type NetworkSelection, type SignalId } from "@face/model";
 import { COMPARE, toInt32, type Comparison } from "./int32.ts";
 import { SILENT, type Evaluator, type PlanContext } from "./plan.ts";
 import { RULES } from "./rules.ts";
@@ -60,6 +60,16 @@ export function planCondition(condition: Omit<DeciderCondition, "join">, signals
     secondConstant: condition.second.type === "constant" ? toInt32(condition.second.value) : 0,
     secondSelection: condition.second.type === "signal" ? selectionOf(condition.second.networks) : NONE,
   };
+}
+
+/**
+ * The condition of an entity with one connector, both sides read from `networks`. The unset condition is one without a first
+ * signal (L-BLANK, G-CONDITION): what stands behind the blank signal does not count.
+ */
+export function planCircuitCondition(condition: ConditionValue, networks: NetworkSelection, signals: SignalTable): ConditionPlan {
+  if (condition === UNSET_CONDITION) return planCondition({ firstNetworks: networks, comparator: "<", second: { type: "constant", value: 0 } }, signals);
+  const { first, comparator, second } = condition;
+  return planCondition({ first, firstNetworks: networks, comparator, second: second.type === "signal" ? { ...second, networks } : second }, signals);
 }
 
 /**

@@ -2,7 +2,7 @@
 // The tests over all types are driven by `ENTITY_SETTINGS`, so a further row is covered without a further test.
 import { analyze, checkEntity, printCircuit } from "@face/language";
 import {
-  ENTITY_SETTINGS, entityTable, facingOf, PROTOTYPES, prototypesOf, settingDefault, settingFields, settingSpecsOf, signal, tileCenter,
+  ENTITY_SETTINGS, entityTable, facingOf, PROTOTYPES, prototypesOf, settingDefault, settingFields, settingSpecsOf, signal, tileCenter, UNSET_CONDITION,
   type Circuit, type Condition, type Direction, type Entity, type EntityOfKind, type EntityPrototype, type EntitySettings, type NetworkSelection, type SettingSpec, type SettingValue, type SignalId,
 } from "@face/model";
 import { describe, expect, it } from "vitest";
@@ -174,22 +174,47 @@ describe("generic entities: settings by example", () => {
     expect(recordOf(generic("steel-chest", { "empty-slots-signal": signal("item", "iron-plate", "rare") }))).toEqual({ control_behavior: { empty_slots_signal: { name: "iron-plate", quality: "rare" } } });
   });
 
-  it("has a condition exactly while its flag is on and it has a left side, and says what it did otherwise", () => {
+  it("has a condition exactly while its flag is on, unset where it has no left side, and says when one is kept while it is off", () => {
     const blank = { comparator: "<", constant: 0 };
+    const unset = (prototype: string, key = "when") => ({ entity: { kind: "entity", prototype, settings: { [key]: UNSET_CONDITION } }, notes: [] });
     expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: true, circuit_condition: when } }).entity.settings).toEqual({ when: JSON.parse(JSON.stringify(condition)) });
-    expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: true, circuit_condition: blank } })).toEqual({ entity: { kind: "entity", prototype: "transport-belt", settings: {} }, notes: ["changed control_behavior.circuit_enabled"] });
-    expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: true } }).notes).toEqual(["changed control_behavior.circuit_enabled"]);
+    // On without a condition, as the game writes it (fixture F-29), or with one without a left side, whatever stands behind the blank signal: nothing to say.
+    for (const written of [undefined, blank, { comparator: "=", constant: 0 }, { second_signal: B, comparator: "≥" }, {}]) {
+      expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: true, circuit_condition: written } }), JSON.stringify(written)).toEqual(unset("transport-belt"));
+    }
     expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: false, circuit_condition: when } })).toEqual({ entity: { kind: "entity", prototype: "transport-belt", settings: {} }, notes: ["changed control_behavior.circuit_condition"] });
     // A blank condition next to a flag that is off is what an untouched entity may have: nothing to say.
-    expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: false, circuit_condition: blank, connect_to_logistic_network: false, logistic_condition: blank } }).notes).toEqual([]);
+    expect(importedEntity("transport-belt", { control_behavior: { circuit_enabled: false, circuit_condition: blank, connect_to_logistic_network: false, logistic_condition: blank } })).toEqual({ entity: { kind: "entity", prototype: "transport-belt", settings: {} }, notes: [] });
     expect(importedEntity("requester-chest", { control_behavior: { circuit_condition_enabled: true, circuit_condition: when } }).entity.settings).toEqual({ when: JSON.parse(JSON.stringify(condition)) });
     expect(importedEntity("stone-wall", { control_behavior: { circuit_open_gate: true, circuit_condition: when } }).entity.settings).toEqual({ "open-gate-when": JSON.parse(JSON.stringify(condition)) });
     expect(importedEntity("rail-signal", { control_behavior: { circuit_close_signal: true, circuit_condition: when, circuit_read_signal: false } }).entity.settings).toEqual({ "close-when": JSON.parse(JSON.stringify(condition)), "read-signal": false });
+    // Every condition has its own switch, and each is unset by itself.
+    expect(importedEntity("requester-chest", { control_behavior: { circuit_condition_enabled: true } })).toEqual(unset("requester-chest"));
+    expect(importedEntity("rail-signal", { control_behavior: { circuit_close_signal: true } })).toEqual(unset("rail-signal", "close-when"));
+    expect(importedEntity("fast-inserter", { control_behavior: { connect_to_logistic_network: true, circuit_enabled: true, circuit_condition: when } }).entity.settings).toEqual({ when: JSON.parse(JSON.stringify(condition)), "logistic-when": UNSET_CONDITION });
+    expect(importedEntity("agricultural-tower", { control_behavior: { enable_harvesting_condition: true, enable_planting_condition: true, planting_condition: when } }).entity.settings).toEqual({ "harvest-when": UNSET_CONDITION, "plant-when": JSON.parse(JSON.stringify(condition)) });
+  });
+
+  it("writes the unset condition as the game does: the flag, and no condition", () => {
+    // What the game writes for each of them with the switch on and the condition blank (fixture F-29, `exported`).
+    expect(recordOf(generic("express-transport-belt", { when: UNSET_CONDITION }))).toEqual({ control_behavior: { circuit_enabled: true } });
+    expect(recordOf(generic("stone-wall", { "open-gate-when": UNSET_CONDITION }))).toEqual({ control_behavior: { circuit_open_gate: true } });
+    expect(recordOf(generic("rail-signal", { "close-when": UNSET_CONDITION }))).toEqual({ control_behavior: { circuit_close_signal: true } });
+    expect(recordOf(generic("fast-inserter", { when: condition, "logistic-when": UNSET_CONDITION }))).toEqual({ control_behavior: { circuit_enabled: true, circuit_condition: when, connect_to_logistic_network: true } });
+    for (const prototype of prototypesOf("entity")) {
+      const settings: EntitySettings = Object.fromEntries(settingSpecsOf(prototype).flatMap((spec) => (spec.type === "condition" ? [[spec.key, UNSET_CONDITION]] : [])));
+      if (Object.keys(settings).length === 0) continue;
+      const entity = generic(prototype, settings);
+      const record = recordOf(entity);
+      expect(checkEntity(entity), prototype).toEqual({ ok: true });
+      expect(importedEntity(prototype, record), prototype).toEqual({ entity: { kind: "entity", prototype, settings }, notes: [] });
+      expect(recordOf({ ...entity, settings: importedEntity(prototype, record).entity.settings as EntitySettings }), prototype).toEqual(record);
+    }
   });
 
   it("shares the flag of a splitter side between its two conditions", () => {
     const left = { first_signal: A, constant: 1, comparator: "=" };
-    const one = importedEntity("splitter", { control_behavior: { set_input_side: true, input_left_condition: left, input_right_condition: { comparator: "<" }, set_output_side: true } });
+    const one = importedEntity("splitter", { control_behavior: { set_input_side: true, input_left_condition: left, set_output_side: true } });
     // A side that is on without a condition has the one the game gives it: its signal below 0 for left, above 0 for right.
     const side = (name: string, comparator: string) => ({ first: { kind: "virtual", name }, comparator, second: { type: "constant", value: 0 } });
     expect(one.entity.settings).toEqual({
@@ -206,14 +231,27 @@ describe("generic entities: settings by example", () => {
     expect(importedEntity("splitter", record)).toEqual({ entity: { kind: "entity", prototype: "splitter", settings: JSON.parse(JSON.stringify({ ...both, "output-left-when": side("signal-O", "<") })) }, notes: [] });
   });
 
+  it("tells a side of a splitter that is written without a left side from one that is not written: unset, not the game's own", () => {
+    const blank = importedEntity("splitter", { control_behavior: { set_input_side: true, input_left_condition: { comparator: "=", constant: 3 }, input_right_condition: { comparator: "<" } } });
+    expect(blank).toEqual({ entity: { kind: "entity", prototype: "splitter", settings: { "input-left-when": UNSET_CONDITION, "input-right-when": UNSET_CONDITION } }, notes: [] });
+    // A missing condition stands for the game's own, so the unset one is written: as a condition without a left side.
+    const record = recordOf(generic("splitter", blank.entity.settings as EntitySettings, { direction: "north" }));
+    expect(record).toEqual({ control_behavior: { set_input_side: true, input_left_condition: { constant: 0, comparator: "<" }, input_right_condition: { constant: 0, comparator: "<" } } });
+    expect(importedEntity("splitter", record)).toEqual(blank);
+  });
+
   it("says that the open-gate flag of a wall is off where the wall has no such condition, because the game has it on in a new one", () => {
     expect(recordOf(generic("stone-wall", { "read-sensor": true }))).toEqual({ control_behavior: { circuit_open_gate: false, circuit_read_sensor: true } });
     expect(recordOf(generic("stone-wall", { "open-gate-when": condition, "read-sensor": true }))).toEqual({ control_behavior: { circuit_open_gate: true, circuit_read_sensor: true, circuit_condition: when } });
     expect(recordOf(generic("stone-wall"))).toEqual({});
     expect(importedEntity("stone-wall", { control_behavior: { circuit_open_gate: false, circuit_read_sensor: true } })).toEqual({ entity: { kind: "entity", prototype: "stone-wall", settings: { "read-sensor": true } }, notes: [] });
-    // On with a blank condition, as the game writes a wall nobody touched: the editor has no blank condition.
-    expect(importedEntity("stone-wall", { control_behavior: { circuit_open_gate: true, circuit_read_sensor: true } }).notes).toEqual(["changed control_behavior.circuit_open_gate"]);
-    expect(importedEntity("stone-wall", { control_behavior: { circuit_read_sensor: true } }).notes).toEqual([]);
+    // On with a blank condition, as the game writes a wall with a wire that nobody touched (fixture F-29): the unset condition.
+    const untouched = { control_behavior: { circuit_open_gate: true, circuit_read_sensor: false } };
+    expect(importedEntity("stone-wall", untouched)).toEqual({ entity: { kind: "entity", prototype: "stone-wall", settings: { "open-gate-when": UNSET_CONDITION } }, notes: [] });
+    expect(importedEntity("stone-wall", { control_behavior: { circuit_read_sensor: true, circuit_condition: { comparator: "=", constant: 0 } } }).entity.settings).toEqual({ "open-gate-when": UNSET_CONDITION, "read-sensor": true });
+    // A blueprint that does not name the flag says nothing about the gate, although the game has the flag on then: no condition.
+    expect(importedEntity("stone-wall", { control_behavior: { circuit_read_sensor: true } })).toEqual({ entity: { kind: "entity", prototype: "stone-wall", settings: { "read-sensor": true } }, notes: [] });
+    expect(importedEntity("stone-wall", {})).toEqual({ entity: { kind: "entity", prototype: "stone-wall", settings: {} }, notes: [] });
   });
 
   it("writes the fields of a control behaviour in the order of the game: the network selections first", () => {

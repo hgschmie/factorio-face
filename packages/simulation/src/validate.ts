@@ -1,7 +1,7 @@
 // Static checks per entity. A note with severity "error" silences the entity; the evaluators rely on that and do not re-check.
 
 import {
-  gamePrototype, signalKey, wildcardOf,
+  gamePrototype, signalKey, UNSET_CONDITION, wildcardOf,
   type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type GenericEntity, type Lamp, type SelectorCombinator, type SignalId, type Speaker,
 } from "@face/model";
 import { circuitConditions, radarGroup } from "./entity.ts";
@@ -96,7 +96,8 @@ function checkSelector(entity: SelectorCombinator, env: SimulationEnvironment, r
 
 function checkLamp(entity: Lamp, report: Report): void {
   const condition = entity.condition;
-  if (condition) {
+  if (condition === UNSET_CONDITION) report("info", "unconfigured", "The condition is unset: it never holds.");
+  else if (condition) {
     if (isEach(condition.first)) report("error", "invalid-wildcard", "A lamp condition accepts no each signal.", condition.first);
     if (condition.second.type === "signal" && isWildcard(condition.second.signal)) {
       report("error", "invalid-wildcard", "Wildcards are not supported on the right-hand side of a condition.", condition.second.signal);
@@ -135,6 +136,10 @@ function checkSpeaker(entity: Speaker, env: SimulationEnvironment, report: Repor
 
 function checkGeneric(entity: GenericEntity, report: Report): void {
   for (const [key, condition] of circuitConditions(entity)) {
+    if (condition === UNSET_CONDITION) {
+      report("info", "unconfigured", `The condition '${key}' is unset: it never holds.`);
+      continue;
+    }
     // G-WILDCARD: as for a lamp.
     if (isEach(condition.first)) report("error", "invalid-wildcard", `The condition '${key}' accepts no each signal.`, condition.first);
     if (condition.second.type === "signal" && isWildcard(condition.second.signal)) {

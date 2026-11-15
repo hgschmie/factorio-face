@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { Comparator, Lamp, SignalId } from "@face/model";
+import { UNSET_CONDITION, type Comparator, type Lamp, type SignalId } from "@face/model";
+import { compile, semanticFingerprint } from "../src/index.ts";
 import { MAPPING_COLORS, colorComponent, unpackRgb } from "../src/lamp.ts";
-import { ANYTHING, EVERYTHING, GREEN, NEITHER, RED, arithmetic, circuit, constant, lamp, lampState, sig, simulate, wire } from "./helpers.ts";
+import { ANYTHING, EVERYTHING, GREEN, NEITHER, RED, arithmetic, circuit, constant, lamp, lampState, sig, simulate, wire, type Feed } from "./helpers.ts";
 
 const when = (first: string | SignalId | undefined, comparator: Comparator, second: number | string): Lamp["condition"] => ({
   ...(first !== undefined && { first: sig(first) }),
@@ -34,6 +35,22 @@ describe("lamp lighting", () => {
   it("F-21 assumption: the default condition (no first signal) is false", () => {
     expect(lampState(lamp("l", { condition: when(undefined, "<", 0) }), { red: { A: 5 } })).toEqual(OFF);
     expect(lampState(lamp("l", { condition: when(undefined, "=", 0), alwaysOn: true }), { red: { A: 5 } })).toEqual(OFF);
+  });
+
+  it("L-BLANK, L-UNWIRED (F-29): the unset condition never holds: a wired lamp is dark whatever it reads, one without a wire follows always-on", () => {
+    const feeds: readonly Feed[] = [{ red: { A: 5 } }, { green: { A: -5 } }, { red: {} }];
+    for (const feed of feeds) {
+      expect(lampState(lamp("l", { condition: UNSET_CONDITION }), feed)).toEqual(OFF);
+      expect(lampState(lamp("l", { condition: UNSET_CONDITION, alwaysOn: true, useColors: true, inputNetworks: NEITHER }), feed)).toEqual(OFF);
+    }
+    expect(lampState(lamp("l", { condition: UNSET_CONDITION }))).toEqual(OFF);
+    expect(lampState(lamp("l", { condition: UNSET_CONDITION, alwaysOn: true }))).toEqual(ON);
+    const c = circuit([constant("c", { A: 1 }), lamp("l", { condition: UNSET_CONDITION, alwaysOn: true })], [wire("green", "c.out", "l.in")]);
+    expect(compile(c).notes).toEqual([{ severity: "info", code: "unconfigured", message: "The condition is unset: it never holds.", entity: "l" }]);
+    expect(simulate(c, 3).snapshot().totals.lampsLit).toBe(0);
+    const variants: readonly Lamp["condition"][] = [undefined, UNSET_CONDITION, when("A", "<", 0), when(undefined, "<", 0)];
+    const prints = variants.map((condition) => semanticFingerprint(circuit([lamp("l", condition ? { condition } : {})])));
+    expect(new Set(prints).size).toBe(4);
   });
 
   it("F-21 assumption: everything and anything work in the enable condition as in a decider", () => {

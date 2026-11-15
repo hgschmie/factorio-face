@@ -4,7 +4,7 @@
 // (`GenericEntity.blueprintData`) and written back with the modelled fields over it.
 
 import {
-  BOTH_NETWORKS, canRotate, DIRECTIONS, ENTITY_SETTINGS, facingOf, gamePrototype, NORMAL_QUALITY, normalizedSettings, sameSetting, settingDefault, settingFields, settingSpecsOf,
+  BOTH_NETWORKS, canRotate, DIRECTIONS, ENTITY_SETTINGS, facingOf, gamePrototype, NORMAL_QUALITY, normalizedSettings, sameSetting, settingDefault, settingFields, settingSpecsOf, UNSET_CONDITION,
   type Condition, type ConditionSetting, type Direction, type EntityConfig, type EntityOfKind, type EnumSetting, type NetworkSelection, type PrototypeName, type SettingValue, type SignalId,
 } from "@face/model";
 import { circuitCondition, Fields, isObject, type Json, type NoteSink } from "./reader.ts";
@@ -16,6 +16,9 @@ type GenericSettings = Omit<EntityConfig<"entity">, "placement" | "description">
 const STRUCTURAL: ReadonlySet<string> = new Set(["entity_number", "name", "position"]);
 /** Wires as an entity record of an older format has them; the editor reads the wires of the blueprint. */
 const WIRING: ReadonlySet<string> = new Set(["wires", "connections", "neighbours"]);
+
+/** A condition without a left side as the game has it in a new entity. */
+const BLANK_CONDITION: Condition = { comparator: "<", second: { type: "constant", value: 0 } };
 
 const NETWORK_FIELDS: ReadonlySet<string> = new Set(["input_networks", "output_networks"]);
 
@@ -71,22 +74,27 @@ function readEnum(spec: EnumSetting, behavior: Fields | undefined, note: NoteSin
 }
 
 /**
- * The conditions of the specs: each is in the settings exactly when its flag is on and it has a left side. Where the game has a
- * condition of its own for one that a blueprint leaves out (the sides of a splitter), that one stands in.
+ * The conditions of the specs: each is in the settings exactly when its flag is on. One that is on without a left side is the
+ * unset condition, whatever stands behind the blank signal. So is one that is on and not written, with two exceptions: where the
+ * game has a condition of its own for one that a blueprint leaves out (the sides of a splitter), that one stands in; and a flag
+ * the blueprint does not name, on because the game has it on in a new entity (the open-gate flag of a wall), is no condition.
  */
 function readConditions(specs: readonly ConditionSetting[], behavior: Fields | undefined, values: Record<string, SettingValue>): void {
   const byFlag = new Map<string, ConditionSetting[]>();
   for (const spec of specs) byFlag.set(spec.flag, [...(byFlag.get(spec.flag) ?? []), spec]);
   for (const [flag, group] of byFlag) {
-    // A flag the game has on in a new entity (the open-gate flag of a wall) is on with a blank condition where nothing is said: nothing to report.
     const said = behavior?.has(flag) ?? false;
     const on = behavior?.boolean(flag, group.some((spec) => spec.flagOnByDefault)) ?? false;
-    const read = group.map((spec) => ({ spec, written: circuitCondition(behavior?.fields(spec.field)) }));
-    const conditions = read.map(({ spec, written }) => ({ spec, written, condition: written ?? (on ? spec.gameDefault : undefined) }));
-    if (on && said && conditions.every(({ condition }) => !condition)) behavior?.changed(flag, "is on with a blank condition; the editor has no blank condition and takes it as off");
-    for (const { spec, written, condition } of conditions) {
-      if (on && condition) values[spec.key] = condition;
-      else if (written) behavior?.changed(spec.field, "is set while it is not in use; the editor keeps a condition only when it is in use");
+    for (const spec of group) {
+      const fields = behavior?.fields(spec.field);
+      const written = circuitCondition(fields);
+      if (!on) {
+        if (written) behavior?.changed(spec.field, "is set while it is not in use; the editor keeps a condition only when it is in use");
+        continue;
+      }
+      const unwritten = spec.gameDefault ?? (said ? UNSET_CONDITION : undefined);
+      const condition = written ?? (fields ? UNSET_CONDITION : unwritten);
+      if (condition !== undefined) values[spec.key] = condition;
     }
   }
 }
@@ -211,7 +219,10 @@ export function writeGeneric(entity: EntityOfKind<"entity">, kept: Json, writers
       const inUse = specs.some((other) => other.type === "condition" && other.flag === spec.flag && entity.settings[other.key] !== undefined);
       // Two conditions may share their flag. One that is the game's own for a missing condition is left out, as the game leaves it out.
       if (inUse && !settings.some(([field]) => field === spec.flag)) settings.push([spec.flag, true]);
-      if (value !== undefined && !(spec.gameDefault && sameSetting(spec, value, spec.gameDefault))) settings.push([spec.field, writers.condition(value as Condition)]);
+      // The unset condition is the flag alone, as the game writes it; where a missing condition stands for the game's own, it is one without a left side.
+      if (value === UNSET_CONDITION) {
+        if (spec.gameDefault) settings.push([spec.field, writers.condition(BLANK_CONDITION)]);
+      } else if (value !== undefined && !(spec.gameDefault && sameSetting(spec, value, spec.gameDefault))) settings.push([spec.field, writers.condition(value as Condition)]);
       if (!inUse && spec.flagOnByDefault) off.push([spec.flag, false]);
       continue;
     }

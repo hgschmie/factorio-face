@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import {
   ARITHMETIC_OPERATIONS, BOTH_NETWORKS, COMPARATORS, DIRECTIONS, ENTITY_KINDS, LAMP_COLOR_MODES, SELECTOR_OPERATIONS, SIGNAL_KINDS, SPEAKER_PLAYBACK_MODES, TERMINALS, normalizedSettings, prototypesOf, settingSpecsOf, signal,
-  wildcardSignal, wireKey,
-  type Circuit, type Condition, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityKind, type EntitySettings, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec,
+  UNSET_CONDITION, wildcardSignal, wireKey,
+  type Circuit, type Condition, type ConditionValue, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityKind, type EntitySettings, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec,
   type SettingValue, type SignalId, type Wire,
 } from "@face/model";
 import { analyze, type ParseResult } from "../src/index.ts";
@@ -140,13 +140,18 @@ export class Generator {
     return { first: this.pick([this.signal(), wildcardSignal("anything"), wildcardSignal("everything")]), comparator: this.pick(COMPARATORS), second: this.chance() ? { type: "constant", value: this.int32() } : { type: "signal", signal: this.signal() } };
   }
 
+  /** The same behind a switch (of a lamp, of a generic entity), where it may be in use without a signal. */
+  switchedCondition(): ConditionValue {
+    return this.chance(0.2) ? UNSET_CONDITION : this.condition();
+  }
+
   setting(spec: SettingSpec): SettingValue {
     switch (spec.type) {
       case "boolean": return this.chance();
       case "enum": return this.pick(spec.values).word;
       case "signal": return this.signal();
       case "networks": return this.networks();
-      case "condition": return this.condition();
+      case "condition": return this.switchedCondition();
     }
   }
 
@@ -212,9 +217,7 @@ export class Generator {
         return {
           ...base,
           kind,
-          ...(this.chance(0.7)
-            ? { condition: { first: this.pick([this.signal(), wildcardSignal("anything"), wildcardSignal("everything")]), comparator: this.pick(COMPARATORS), second: this.chance() ? { type: "constant" as const, value: this.int32() } : { type: "signal" as const, signal: this.signal() } } }
-            : {}),
+          ...(this.chance(0.7) ? { condition: this.switchedCondition() } : {}),
           inputNetworks: this.networks(),
           alwaysOn: this.chance(0.3),
           useColors,

@@ -92,10 +92,12 @@ src/
                        combinator or a lamp where a mod adds one), and which one of its prototype type a generic entity is
                        (`compact`: icons in a row, also for a kind with more than four prototypes)
     speakerEdits.ts    instrument and note of a speaker against the game's lists: what is a default and is not written   (pure)
+    conditionEdits.ts  a condition with a switch (lamp, generic entity): the unset one as its fields show it, and what an edit makes of it   (pure)
     instruments.ts     `InstrumentsContext`: the speaker's instruments and notes from the catalog, for the form and the cards
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
     fields.tsx         text, integer, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
-    formParts.tsx      sections, list items, the operand and the circuit condition (`ConditionFields`: lamp and speaker)
+    formParts.tsx      sections, list items, the operand and the circuit condition (`ConditionFields`: speaker; `SwitchedConditionFields`:
+                       lamp and generic entity, where a condition in use without a signal is the unset one)
     immutable.ts, validation.ts
   picker/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
@@ -288,7 +290,7 @@ simulation (`run`, `pause`,
   command (`deleteEntities` with `wires`), which is one undo step. The simulation dock follows the entity selection only.
 - **Inspector drafts.** Forms emit complete entities. `drafts.ts` first sets fields without meaning to what the language implies (the
   output constant while copying the input count, the join of the first condition, ...). If the result is still not expressible (a
-  condition without signal, an expression without output, a signal twice in a section), it is kept in `state.draft` with a hint; the
+  comparison without signal, an expression without output, a signal twice in a section), it is kept in `state.draft` with a hint; the
   inspector shows the draft instead of the entity, and the next edit that makes it valid writes all of it as one step. A draft is dropped
   when the selection moves on, when it is discarded, or when its entity changes in the source.
 - **Diagnostics** go to `state.diagnostics` and, as a separate effect-only transaction, to the lint extension. Highlighting uses the tokens
@@ -1158,8 +1160,9 @@ prototype. What there is:
   a storage tank (`placeFacing`, `turnedTool`: north and east), and do nothing for an entity that does not turn; H and V mirror the same way.
   A new entity is named after its prototype (`fast_inserter1`, `assembling_machine1`).
 - **Card** (`entities/summary.ts`, `canvas/EntityCard.tsx`): the heading is the game's name. The summary has at most two lines: the circuit
-  conditions it holds (the one that enables it as it is, every other one behind what it decides, `close A > 0`; the first of several with the count
-  of the others; "no condition" where its type has one and none is set), and under them what it reads and sets in the words of the language
+  conditions it holds (the one that enables it as it is, every other one behind what it decides, `close A > 0`; `unset` in the place of the comparison
+  for one in use without a signal, `open-gate unset`; the first of several with the count of the others; "no condition" where its type has one
+  and none is set), and under them what it reads and sets in the words of the language
   (`activeSettings`: the switches that are on and the modes, set or by default, `read-contents`, `read-hand: pulse`; as many as fit, then `+N`).
   An entity whose type has no condition has both lines for that. The two input rows show the networks on its one connection point; the third
   row (`data-row="conditions"`) has its circuit conditions while the simulation reports them (with a condition and a wire): each a mark that is
@@ -1179,8 +1182,13 @@ prototype. What there is:
   splitter, the first virtual signal above zero otherwise; the logistic condition says that it is kept and not evaluated). A setting that
   belongs to another one shows only while that one has its value (`shownWhile` of the table, `settingShown`: the signal of "read empty slots", the
   channel of a radar in universe mode). An edit is `withSetting`: a value at its default is not held, so the source does not get it; a statement
-  that is in the source already has its value patched, as for every kind. A condition without its signal is a draft with the hint 'The condition
-  "Enable/disable" needs a signal.' (`session/drafts.ts`). Above the form: the choice of the prototype among those of its prototype type that the
+  that is in the source already has its value patched, as for every kind. A condition in use without a signal is the unset condition
+  (`when unset`; `inspector/conditionEdits.ts`): its fields show an empty signal with `<` and 0 behind it, as the game does, and a note that it never
+  holds. Taking the signal out of a condition makes it unset, and what stood behind the signal goes with it; putting a signal in makes it a
+  comparison. A comparator or a number changed while the signal is still missing is a draft with the hint 'The condition "Enable/disable" needs a
+  signal.' (`session/drafts.ts`), written once the signal is there. The checkbox takes the condition away, unset or not. The lamp's form does
+  the same with its one condition, and its card says `unset`. In the simulation an entity with an unset enable condition and a circuit wire is
+  `disabled` like one whose condition is false, and a lamp is off. Above the form: the choice of the prototype among those of its prototype type that the
   project can place, as icons in the game's order with the chosen one named under them (`PrototypeField` with `compact`; `alternativePrototypes`,
   `withPrototype`; the same two functions give an entity of any other kind the prototypes of its kind, which with the built-in data is a choice
   for a pole only and with data of a modded game for every kind a mod adds a prototype to), refused on the board when the new footprint would cover a tile of another entity ("Not changed: maker would stand on a tile of
