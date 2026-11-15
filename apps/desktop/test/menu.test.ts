@@ -17,8 +17,8 @@ const flatten = (items: readonly MenuItemConstructorOptions[]): MenuItemConstruc
 const menu = (template: readonly MenuItemConstructorOptions[], label: string): MenuItemConstructorOptions[] => itemsOf(template.find((item) => item.label === label)!);
 const names = (items: readonly MenuItemConstructorOptions[]): string[] => items.map((item) => (item.type === "separator" ? "-" : (item.label ?? `role:${item.role}`)));
 const click = (item: MenuItemConstructorOptions): void => (item.click as () => void)();
-/** The blueprint group of the File menu: in from a file or the clipboard, out to a file or a dialog to copy from. */
-const BLUEPRINT_ITEMS = ["Import Blueprint...", "Paste Blueprint String...", "Export Blueprint...", "Show Blueprint String"];
+/** The blueprint group of the File menu, two submenus: in from a file or the clipboard, out to a file or a dialog to copy from. */
+const BLUEPRINT_ITEMS = ["Import Blueprint", "Export Blueprint"];
 
 describe("application menu", () => {
   it("has the application menu first on macOS only", () => {
@@ -29,7 +29,7 @@ describe("application menu", () => {
   it("has the required items in the File, Edit and Simulation menus", () => {
     const { template } = build({ platform: "darwin" });
     expect(names(menu(template, "File"))).toEqual(["New Project", "Open Project...", "Open Recent", "Open Example", "-", "Save", "Save As...", "-", ...BLUEPRINT_ITEMS, "-", "role:close"]);
-    expect(names(menu(template, "Edit"))).toEqual(["Undo", "Redo", "-", "role:cut", "role:copy", "role:paste", "Paste Blueprint String...", "Delete", "Select All"]);
+    expect(names(menu(template, "Edit"))).toEqual(["Undo", "Redo", "-", "role:cut", "role:copy", "role:paste", "Delete", "Select All"]);
     expect(names(menu(template, "Simulation"))).toEqual(["Run / Pause", "Step", "Reset"]);
     // The system adds its search field to the menu with the help role.
     expect(template.find((item) => item.label === "Help")?.role).toBe("help");
@@ -92,7 +92,7 @@ describe("application menu", () => {
     expect(sent.map((command) => command.id)).toEqual([
       "app.settings",
       "file.new", "file.open", "file.save", "file.saveAs", "file.importBlueprint", "file.pasteBlueprint", "file.exportBlueprint", "file.showBlueprint",
-      "edit.undo", "edit.redo", "edit.pasteBlueprint", "edit.delete", "edit.selectAll",
+      "edit.undo", "edit.redo", "edit.delete", "edit.selectAll",
       "view.circuit", "view.source", "view.split", "view.zoomIn", "view.zoomOut", "view.zoomReset", "view.fit",
       "simulation.toggleRun", "simulation.step", "simulation.reset",
       "help.shortcuts",
@@ -125,17 +125,18 @@ describe("application menu", () => {
     }
   });
 
-  it("has the blueprint commands in the File menu with their keys, and the paste dialog in the Edit menu without one", () => {
+  it("has the blueprint commands in two submenus of the File menu with their keys, and nowhere else", () => {
     for (const platform of ["darwin", "linux", "win32"] as const) {
       const { template, sent } = build({ platform });
       const file = menu(template, "File");
-      const items = BLUEPRINT_ITEMS.map((label) => file.find((item) => item.label === label)!);
+      expect(names(menu(file, "Import Blueprint"))).toEqual(["From File...", "Paste Blueprint..."]);
+      expect(names(menu(file, "Export Blueprint"))).toEqual(["As File...", "Show Blueprint"]);
+      const items = BLUEPRINT_ITEMS.flatMap((label) => menu(file, label));
       expect(items.map((item) => item.accelerator)).toEqual(["CmdOrCtrl+Shift+O", "CmdOrCtrl+Shift+B", "CmdOrCtrl+Shift+E", "CmdOrCtrl+Shift+C"]);
-      // Next to Paste, where a user looks for it; the key belongs to the item of the File menu, so it is registered once.
-      const pasteInEdit = menu(template, "Edit").find((item) => item.label === "Paste Blueprint String...")!;
-      expect(pasteInEdit.accelerator).toBeUndefined();
-      for (const item of [...items, pasteInEdit]) click(item);
-      expect(sent).toEqual([{ id: "file.importBlueprint" }, { id: "file.pasteBlueprint" }, { id: "file.exportBlueprint" }, { id: "file.showBlueprint" }, { id: "edit.pasteBlueprint" }]);
+      for (const item of items) click(item);
+      expect(sent).toEqual([{ id: "file.importBlueprint" }, { id: "file.pasteBlueprint" }, { id: "file.exportBlueprint" }, { id: "file.showBlueprint" }]);
+      // The two submenus and the two of their items that name the blueprint: no blueprint item anywhere else, the Edit menu included.
+      expect(flatten(template).filter((item) => /blueprint/i.test(item.label ?? ""))).toHaveLength(4);
     }
   });
 

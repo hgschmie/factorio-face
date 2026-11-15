@@ -591,7 +591,7 @@ export class ProjectSession {
         const written = this.unwrap(await api.exportBlueprintFile({ name: this.settings.name, text: exported.string }));
         if (!written) return false;
         const warnings = exported.warnings.length;
-        this.change(() => this.show(`Blueprint exported to ${written.path}${warnings === 0 ? "" : `, with ${warnings} ${warnings === 1 ? "warning" : "warnings"}: File > Show Blueprint String lists ${warnings === 1 ? "it" : "them"}`}.`));
+        this.change(() => this.show(`Blueprint exported to ${written.path}${warnings === 0 ? "" : `, with ${warnings} ${warnings === 1 ? "warning" : "warnings"}: File > Export Blueprint > Show Blueprint lists ${warnings === 1 ? "it" : "them"}`}.`));
         return true;
       },
     };

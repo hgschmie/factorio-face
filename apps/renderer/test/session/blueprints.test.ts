@@ -383,7 +383,7 @@ describe("the export of a circuit", () => {
     desktop.blueprintPath = "/blueprints/counter.txt";
     expect(await session.commands.saveBlueprintFile(exported)).toBe(true);
     expect(desktop.blueprintExports).toEqual([{ name: "My counter", text: exported.string }]);
-    expect(session.state.error).toBe("Blueprint exported to /blueprints/counter.txt, with 1 warning: File > Show Blueprint String lists it.");
+    expect(session.state.error).toBe("Blueprint exported to /blueprints/counter.txt, with 1 warning: File > Export Blueprint > Show Blueprint lists it.");
     // An export saves nothing of the project.
     expect(session.state.project).toMatchObject({ path: null, dirty: true });
     expect(desktop.disk.size).toBe(0);

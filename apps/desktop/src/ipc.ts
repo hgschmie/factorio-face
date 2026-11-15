@@ -272,8 +272,6 @@ export const SIMPLE_MENU_COMMANDS = [
   "file.showBlueprint",
   "edit.undo",
   "edit.redo",
-  // The same dialog as "file.pasteBlueprint", next to Paste; the key is on the item of the File menu.
-  "edit.pasteBlueprint",
   "edit.delete",
   "edit.selectAll",
   "view.circuit",

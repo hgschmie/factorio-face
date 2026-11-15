@@ -851,7 +851,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 | Zoom In, Zoom Out, Fit to Content | `⌘+`, `⌘-`, `⌘0` | `Ctrl++`, `Ctrl+-`, `Ctrl+0` | menu |
 | Run / Pause, Step, Reset | `⌘R`, `⌘T`, `⇧⌘R` | `Ctrl+R`, `Ctrl+T`, `Ctrl+Shift+R` | menu |
 | New, Open, Save, Save As | `⌘N`, `⌘O`, `⌘S`, `⇧⌘S` | `Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `Ctrl+Shift+S` | menu |
-| Import Blueprint, Paste Blueprint String, Export Blueprint, Show Blueprint String | `⇧⌘O`, `⇧⌘B`, `⇧⌘E`, `⇧⌘C` | `Ctrl+Shift+O`, `Ctrl+Shift+B`, `Ctrl+Shift+E`, `Ctrl+Shift+C` | menu |
+| Import Blueprint > From File, Paste Blueprint; Export Blueprint > As File, Show Blueprint | `⇧⌘O`, `⇧⌘B`, `⇧⌘E`, `⇧⌘C` | `Ctrl+Shift+O`, `Ctrl+Shift+B`, `Ctrl+Shift+E`, `Ctrl+Shift+C` | menu |
 | Application settings (Settings... in the application menu on macOS, in the File menu elsewhere) | `⌘,` | `Ctrl+,` | menu |
 
 - **Scopes.** `circuit`: handled by `Workbench` with one `keydown` listener on the document, wherever the focus is while the
@@ -913,9 +913,9 @@ as `?r=<n>` (`revisionQuery`; nothing for revision 0, the installation found at 
 
 ## Blueprints of the game
 
-The File menu has a group of four commands (`menu.ts`; the keys are in the table above): Import Blueprint... (`file.importBlueprint`),
-Paste Blueprint String... (`file.pasteBlueprint`, and once more in the Edit menu under Paste as `edit.pasteBlueprint`, without a key),
-Export Blueprint... (`file.exportBlueprint`) and Show Blueprint String (`file.showBlueprint`). The format, the mapping and what an import
+The File menu has two submenus with two commands each (`menu.ts`; the keys are in the table above): Import Blueprint with From File...
+(`file.importBlueprint`) and Paste Blueprint... (`file.pasteBlueprint`), Export Blueprint with As File... (`file.exportBlueprint`) and
+Show Blueprint (`file.showBlueprint`). They are in no other menu. The format, the mapping and what an import
 drops are the business of `@face/blueprints`; `session/blueprints.ts` (pure) turns its results into what the dialogs show, and the
 session has five commands for it. `Workbench` holds which of the four dialogs is on show (`BlueprintDialog`, one at a time).
 
@@ -936,7 +936,7 @@ session has five commands for it. `Workbench` holds which of the four dialogs is
   its depth (`bookRows`: label or "Blueprint without a label", "12 entities, 4 known to the editor", `importable`). The blueprints
   are radio buttons (`role="radiogroup"` "Blueprints of the book"); one without an entity the editor knows, a planner and a book
   are listed and cannot be chosen. The first importable one is chosen at the start.
-- **A file** (Import Blueprint...): `chooseBlueprintFile()` has the main process show the file dialog and read the file; the renderer
+- **A file** (Import Blueprint > From File...): `chooseBlueprintFile()` has the main process show the file dialog and read the file; the renderer
   gets the text and the file name. One blueprint opens at once, without a dialog. A book or an error is shown in the same dialog
   ("Import blueprint"), with the name of the file in place of the text box.
 - **Nothing to open.** A blueprint without an entity the editor knows (or without entities) is an error of the dialog: "The editor
@@ -952,10 +952,10 @@ session has five commands for it. `Workbench` holds which of the four dialogs is
   report to 50 lines (`REPORT_LINES`), a book to 1000 rows (`BOOK_ROWS`). Everything is rendered as text.
 - **Out.** `exportBlueprint()` gives the blueprint string of the circuit with the game version it is written for and the warnings
   of the export, or the problems (`BlueprintExport`); while the source has errors the one problem is that (`invalid-source`), because
-  the circuit on show is not the circuit of the source. Show Blueprint String opens `BlueprintString`: the string in a read-only box,
+  the circuit on show is not the circuit of the source. Show Blueprint opens `BlueprintString`: the string in a read-only box,
   in focus and selected, "Copy" (a copy of the selection through `document.execCommand("copy")`, the mechanism of the canvas menu:
   the clipboard API is refused by the app's permission handlers), "Factorio 2.1.24" (`[data-fact="version"]`) and the warnings.
-  Export Blueprint... calls `saveBlueprintFile(exported)`: the main process shows the save dialog (suggested name from the project
+  Export Blueprint > As File... calls `saveBlueprintFile(exported)`: the main process shows the save dialog (suggested name from the project
   name, `.txt`) and writes the string; the toast then says where it went and how many warnings there are.
 - **Problems.** Neither is produced while something is in the way: `ExportProblems` (dialog "No blueprint yet") lists the problems
   of the package with the entity names (`[data-problem="no-tile|off-grid|overlap|custom-signal|..."]`). For entities without a tile

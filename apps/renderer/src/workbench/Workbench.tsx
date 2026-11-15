@@ -364,7 +364,6 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
         case "file.importBlueprint":
           return void importBlueprintFile();
         case "file.pasteBlueprint":
-        case "edit.pasteBlueprint":
           return setBlueprintDialog({ type: "import" });
         case "file.exportBlueprint":
           return exportBlueprint("file");

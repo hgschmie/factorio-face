@@ -51,7 +51,7 @@ async function placeExample(page: Page): Promise<string> {
 /** Opens the paste dialog from the Edit menu and pastes `text` into its box with the window's own paste, as Cmd+V does. */
 async function pasteBlueprint(app: ElectronApplication, page: Page, text: string): Promise<void> {
   await writeClipboard(app, text);
-  await clickMenu(app, "Edit", "Paste Blueprint String...");
+  await clickMenu(app, "File", "Import Blueprint", "Paste Blueprint...");
   await expect(pasteDialog(page).getByRole("textbox", { name: "Blueprint string" })).toBeFocused();
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.paste());
 }
@@ -125,7 +125,7 @@ test("shows the blueprint string of the example and takes it back through the pa
   const before = await projectState(page);
   await writeClipboard(app, "");
 
-  await clickMenu(app, "File", "Show Blueprint String");
+  await clickMenu(app, "File", "Export Blueprint", "Show Blueprint");
   const shown = dialog(page, "Blueprint string");
   const box = shown.getByRole("textbox", { name: "Blueprint string" });
   await expect(box).toHaveValue(string);
@@ -184,7 +184,7 @@ test("exports the blueprint to a file and imports it from that file", async ({ a
   const path = await blueprintPath("feedback");
   await stubDialogs(app, { savePath: path, openPath: `${path}.txt`, unsavedChoice: DISCARD });
 
-  await clickMenu(app, "File", "Export Blueprint...");
+  await clickMenu(app, "File", "Export Blueprint", "As File...");
   // A name without an extension gets the one of blueprint files.
   await expect(toast(page)).toHaveText(`Blueprint exported to ${path}.txt.`);
   let calls = await dialogCalls(app);
@@ -196,7 +196,7 @@ test("exports the blueprint to a file and imports it from that file", async ({ a
   // Exporting saved nothing: the project is as unsaved as before.
   await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
 
-  await clickMenu(app, "File", "Import Blueprint...");
+  await clickMenu(app, "File", "Import Blueprint", "From File...");
   await expect.poll(() => entityNames(page)).toEqual(["constant1", "decider1", "arithmetic1", "lamp1"]);
   calls = await dialogCalls(app);
   expect(calls).toMatchObject({ open: 1, openOptions: { properties: ["openFile"] } });
@@ -210,12 +210,12 @@ test("exports the blueprint to a file and imports it from that file", async ({ a
 
 test("says what is in the way of a blueprint and offers the board for entities without a tile", async ({ app, page }) => {
   await stubDialogs(app, { savePath: await blueprintPath("never.txt") });
-  for (const item of ["Show Blueprint String", "Export Blueprint..."]) {
-    await clickMenu(app, "File", item);
+  for (const item of ["Show Blueprint", "As File..."]) {
+    await clickMenu(app, "File", "Export Blueprint", item);
     const problems = dialog(page, "No blueprint yet");
     await expect(problems.locator("[data-problem]")).toHaveText(["4 entities have no place in the game (no 'tile'): 'source', 'gate', 'twice', 'light'. Place every entity on the blueprint board first."]);
     await expect(problems.getByRole("button", { name: "Show blueprint board" })).toBeFocused();
-    if (item === "Show Blueprint String") {
+    if (item === "Show Blueprint") {
       await page.screenshot({ path: resolve(SHOTS, "export-problems.png") });
       await page.keyboard.press("Escape");
       await expect(problems).toHaveCount(0);
@@ -238,7 +238,7 @@ test("says what is in the way of a blueprint and offers the board for entities w
     window.faceSession!.commands.setSource(source.replace("virtual:signal-A = 1", "custom:my-signal = 1"));
   });
   await expect.poll(() => exportedString(page)).toBeUndefined();
-  await clickMenu(app, "File", "Show Blueprint String");
+  await clickMenu(app, "File", "Export Blueprint", "Show Blueprint");
   await expect(dialog(page, "No blueprint yet").locator('[data-problem="custom-signal"]')).toContainText("'source'");
   await expect(dialog(page, "No blueprint yet").getByRole("button", { name: "Show blueprint board" })).toHaveCount(0);
   await expect(dialog(page, "No blueprint yet").getByRole("button", { name: "Close" }).last()).toBeFocused();
@@ -282,7 +282,7 @@ test("lists the blueprints of a book and imports the chosen one", async ({ app, 
   // The plain JSON, as the game also takes it, in a file.
   await writeFile(path, JSON.stringify(BOOK, null, 2));
   await stubDialogs(app, { openPath: path });
-  await clickMenu(app, "File", "Import Blueprint...");
+  await clickMenu(app, "File", "Import Blueprint", "From File...");
 
   const book = dialog(page, "Import blueprint");
   await expect(book.locator(".blueprint-file")).toHaveText("File book.json");
@@ -310,7 +310,7 @@ test("lists the blueprints of a book and imports the chosen one", async ({ app, 
 });
 
 test("shows why a text is not a blueprint and keeps the dialog open", async ({ app, page }) => {
-  await clickMenu(app, "File", "Paste Blueprint String...");
+  await clickMenu(app, "File", "Import Blueprint", "Paste Blueprint...");
   const paste = pasteDialog(page);
   const box = paste.getByRole("textbox", { name: "Blueprint string" });
   const error = paste.locator('[data-message="error"]');
@@ -354,14 +354,14 @@ test("reports a file that is not text or too large, and reads or writes no path 
   const binary = await blueprintPath("binary.txt");
   await writeFile(binary, new Uint8Array([0x30, 0xff, 0xfe, 0x00, 0x80]));
   await stubDialogs(app, { openPath: binary });
-  await clickMenu(app, "File", "Import Blueprint...");
+  await clickMenu(app, "File", "Import Blueprint", "From File...");
   await expect(toast(page)).toHaveText(`Not a text file: ${binary}`);
   await toast(page).getByRole("button", { name: "Dismiss message" }).click();
 
   const large = await blueprintPath("large.txt");
   await writeFile(large, new Uint8Array(16 * 1024 * 1024 + 1).fill(0x41));
   await stubDialogs(app, { openPath: large });
-  await clickMenu(app, "File", "Import Blueprint...");
+  await clickMenu(app, "File", "Import Blueprint", "From File...");
   await expect(toast(page)).toHaveText(`The file is too large for a blueprint (limit 16 MiB): ${large}`);
 
   // The two calls take no path. Whatever the page passes, the file comes from the dialog (here: cancelled) and the text must be a blueprint string.

@@ -71,10 +71,8 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         command("Save As...", "file.saveAs"),
         separator,
         // A blueprint of the game comes in as a new project and goes out as its string: from and to a text file, or the clipboard.
-        command("Import Blueprint...", "file.importBlueprint"),
-        command("Paste Blueprint String...", "file.pasteBlueprint"),
-        command("Export Blueprint...", "file.exportBlueprint"),
-        command("Show Blueprint String", "file.showBlueprint"),
+        { label: "Import Blueprint", submenu: [command("From File...", "file.importBlueprint"), command("Paste Blueprint...", "file.pasteBlueprint")] },
+        { label: "Export Blueprint", submenu: [command("As File...", "file.exportBlueprint"), command("Show Blueprint", "file.showBlueprint")] },
         separator,
         ...(isMac ? [{ role: "close" } as const] : [settings, separator, { role: "quit" } as const]),
       ],
@@ -89,7 +87,6 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         { role: "cut" },
         { role: "copy" },
         { role: "paste" },
-        command("Paste Blueprint String...", "edit.pasteBlueprint"),
         // No accelerator: a registered Delete or Backspace key would be taken away from text fields.
         command("Delete", "edit.delete"),
         command("Select All", "edit.selectAll"),

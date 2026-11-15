@@ -56,7 +56,7 @@ const dialog = (page: Page, name: string) => page.getByRole("dialog", { name });
 
 async function pasteBlueprint(app: ElectronApplication, page: Page, text: string): Promise<void> {
   await app.evaluate(({ clipboard }, value) => clipboard.writeText(value), text);
-  await clickMenu(app, "Edit", "Paste Blueprint String...");
+  await clickMenu(app, "File", "Import Blueprint", "Paste Blueprint...");
   await expect(dialog(page, "Paste blueprint string").getByRole("textbox", { name: "Blueprint string" })).toBeFocused();
   await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.paste());
 }
@@ -129,8 +129,8 @@ test("a pasted blueprint of chest, inserters, belt, assembling machine and train
 
   await page.screenshot({ path: resolve(SHOTS, "board.png") });
 
-  // Show Blueprint String gives the blueprint back: the same entities with their settings and with the fields the editor only kept.
-  await clickMenu(app, "File", "Show Blueprint String");
+  // Show Blueprint gives the blueprint back: the same entities with their settings and with the fields the editor only kept.
+  await clickMenu(app, "File", "Export Blueprint", "Show Blueprint");
   const shown = dialog(page, "Blueprint string");
   const decoded = decodeBlueprintString(await shown.getByRole("textbox", { name: "Blueprint string" }).inputValue());
   if (!decoded.ok) throw new Error(decoded.message);
