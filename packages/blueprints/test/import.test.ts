@@ -305,10 +305,10 @@ describe("import: common fields", () => {
   });
 
   it("names the first few entities of a note and counts all, each entity once", () => {
-    const filters = [{ index: 1, ...A, count: 1, max_count: 5 }, { index: 2, ...B, count: 1, max_count: 5 }];
+    const filters = [{ index: 1, ...A, count: 1, future_field: 5 }, { index: 2, ...B, count: 1, future_field: 5 }];
     const entities = Array.from({ length: 8 }, (_, i) => ({ entity_number: i + 1, name: "constant-combinator", ...at(i + 0.5, 0.5), control_behavior: { sections: { sections: [{ index: 1, filters }, { index: 2, filters }] } } }));
     expect(imported(blueprintOf(entities)).report.settings).toEqual([
-      { prototype: "constant-combinator", field: "control_behavior.sections.sections[].filters[].max_count", kind: "ignored", message: "is something the editor does not have", count: 8, entities: ["constant1", "constant2", "constant3", "constant4", "constant5"] },
+      { prototype: "constant-combinator", field: "control_behavior.sections.sections[].filters[].future_field", kind: "ignored", message: "is something the editor does not have", count: 8, entities: ["constant1", "constant2", "constant3", "constant4", "constant5"] },
     ]);
   });
 });
@@ -379,11 +379,10 @@ describe("import: constant combinator", () => {
     expect(notes).toEqual(["changed control_behavior.sections.sections[].filters[].name", "changed control_behavior.sections.sections[].filters[].name", "changed control_behavior.sections.sections[].filters[].comparator"]);
   });
 
-  it("reports what a logistic request has and a constant combinator does not, and values of the wrong type", () => {
-    const { entity, notes } = read({ is_on: "no", sections: { trash_not_requested: true, sections: [{ index: 1, active: 1, multiplier: "2", group: 5, filters: [{ index: 1, ...A, count: 1.5, import_from: "nauvis" }, { index: 2, type: "plasma", name: "x", count: 1 }, "text"] }, 7] } });
+  it("drops the request fields of a filter without a note, and reports the request flag of the entity and values of the wrong type", () => {
+    const { entity, notes } = read({ is_on: "no", sections: { trash_not_requested: true, sections: [{ index: 1, active: 1, multiplier: "2", group: 5, filters: [{ index: 1, ...A, count: 1.5, import_from: "nauvis", max_count: 5, minimum_delivery_count: 2 }, { index: 2, type: "plasma", name: "x", count: 1 }, "text"] }, 7] } });
     expect(entity).toEqual({ kind: "constant", prototype: "constant-combinator", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: SA, count: 0 }] }] });
     expect(notes.sort()).toEqual([
-      "ignored control_behavior.sections.sections[].filters[].import_from",
       "ignored control_behavior.sections.trash_not_requested",
       "invalid control_behavior.is_on",
       "invalid control_behavior.sections.sections[]",

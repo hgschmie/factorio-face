@@ -67,7 +67,7 @@ export interface DroppedEntities {
 /** A setting of known entities that did not arrive as it was, summed up over the entities of one prototype. */
 export interface ImportNote {
   readonly prototype: PrototypeName;
-  /** Where in the entity record, list positions left out: `control_behavior.sections.sections[].filters[].max_count`. */
+  /** Where in the entity record, list positions left out: `control_behavior.sections.sections[].filters[].comparator`. */
   readonly field: string;
   readonly kind: NoteKind;
   readonly message: string;
@@ -209,6 +209,8 @@ function readConstant(entity: Fields): Settings<"constant"> {
       const filters = new Map<string, ConstantFilter>();
       const slots = section.list("filters").map((filter, position) => ({ filter, index: filter.number("index", position + 1) })).sort((a, b) => a.index - b.index);
       for (const { filter } of slots) {
+        // What a logistic request has, when the section is a group shared with one. A combinator sends the same signals with or without them.
+        filter.skip("max_count", "minimum_delivery_count", "import_from");
         const id = filter.ownSignal();
         const count = filter.int32("count", 0);
         // A constant combinator sends a signal of one quality; the comparator belongs to a logistic request.
