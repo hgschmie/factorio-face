@@ -16,6 +16,12 @@ These rules are binding for all work in this repository.
 - Do not create git commits, branches or stashes. The coordinator commits.
 - Stay inside the directories assigned to your work package. If a shared contract (`packages/model`, `docs/dsl.md`) needs to change, report it instead of editing it, unless your brief says otherwise.
 
+## Tests that open windows
+
+- The user works on this machine. Run nothing that opens a window unless the user said so for that run: `make e2e`, `npx playwright test`, the native check app, `make run` (user, 2026-11-15: "only run tests that open windows if I tell you").
+- `make test` (vitest) opens no window and is run before every code commit as before.
+- A change that touches end-to-end tests without such a go-ahead is reported as "updated, not run", and the coordinator asks the user for a run.
+
 ## Review before every code commit
 
 - The review is for code changes. A commit that only touches documentation (Markdown files) needs none.
