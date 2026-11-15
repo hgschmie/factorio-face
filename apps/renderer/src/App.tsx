@@ -28,8 +28,9 @@ export function App({ data }: AppProps) {
   const gameData = useGameData(api, controller.commands.reloadWindow, appSettings?.state);
   // Another installation of the game: the same icon ids have other images, which a new revision in the URLs makes the views fetch.
   const iconRevision = appSettings?.state?.iconRevision ?? 0;
-  const resolveEntityIcon = useCatalogEntityIcons(api?.catalogAssetUrl, iconRevision);
-  const { iconUrl, status: iconStatus } = useCatalogIcons(api?.catalogAssetUrl, iconRevision);
+  // Which icons there are is part of the data: no view asks for one the main process cannot draw (an icon of a mod).
+  const resolveEntityIcon = useCatalogEntityIcons(api?.catalogAssetUrl, iconRevision, data.icons);
+  const { iconUrl, status: iconStatus } = useCatalogIcons(api?.catalogAssetUrl, iconRevision, data.icons);
   // The game's wire items carry the icons of its wire tools.
   const resolveWireIcon = useCallback<WireIconResolver>((color) => iconUrl(`item/${color}-wire`), [iconUrl]);
   const catalog = controller.state.catalog;

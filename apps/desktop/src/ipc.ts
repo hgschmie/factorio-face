@@ -247,6 +247,12 @@ export interface GameDataInUse {
   readonly catalog: CatalogData | null;
   /** As `packages/model/data/entities-<version>.json`. */
   readonly entities: Readonly<Record<string, unknown>> | null;
+  /**
+   * The ids of the icons the app can draw for this data, built in or read: the ones of its icon table, which is all the asset
+   * scheme answers. A catalog of a game with mods names icons beside them (a mod's own images); the renderer asks for none
+   * of those and shows a name.
+   */
+  readonly icons: readonly string[];
 }
 
 /** Every invoke returns a result instead of rejecting, so errors cross the process boundary as plain data. */

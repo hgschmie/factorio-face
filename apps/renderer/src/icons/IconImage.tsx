@@ -12,8 +12,9 @@ interface IconImageProps {
 }
 
 /**
- * An icon of the catalog by its URL. Game data read from a game with mods names icons the app cannot draw, and the request for
- * such an icon fails: `fallback` is shown in its place then (in a `span.icon-fallback`), never the browser's broken image.
+ * An icon of the catalog by its URL. An icon the app cannot draw (a mod's) has no URL in the first place (`useCatalogIcons`),
+ * so this is the safety net for an image that fails all the same: `fallback` is shown in its place then (in a
+ * `span.icon-fallback`), never the browser's broken image.
  */
 export function IconImage({ src, size, className, lazy = false, fallback = null }: IconImageProps) {
   const [failed, setFailed] = useState<string>();

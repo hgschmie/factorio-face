@@ -11,11 +11,21 @@ export interface DataInUse {
   readonly mods: readonly GameMod[];
   /** Why data read from the game is not in use although there is some. */
   readonly problem: string | null;
+  /**
+   * The ids of the icons the main process can draw; no other one is asked for. A game with mods has signals, groups and
+   * entities whose icon is not among them. Null when the main process did not say: every icon is then asked for.
+   */
+  readonly icons: ReadonlySet<string> | null;
 }
 
-export function builtInData(problem: string | null = null): DataInUse {
+export function builtInData(problem: string | null = null, icons: ReadonlySet<string> | null = null): DataInUse {
   const mods = loadStandardCatalog().modules.map(({ name, version }) => ({ name, version }));
-  return { source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, mods, problem };
+  return { source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, mods, problem, icons };
+}
+
+/** The icon ids as they came over IPC; null for anything but a list of strings. */
+export function parseIconIds(value: unknown): ReadonlySet<string> | null {
+  return Array.isArray(value) && value.every((id) => typeof id === "string") ? new Set<string>(value) : null;
 }
 
 const FALLBACK = "The built-in data is in use.";
@@ -25,21 +35,23 @@ const FALLBACK = "The built-in data is in use.";
  * it, so this is a defect or a file changed under it) leaves the built-in data in place, with the reason.
  */
 export function applyData(given: GameDataInUse): DataInUse {
+  // Whatever tables the editor ends up with, the main process draws the icons of the data it handed over.
+  const icons = parseIconIds(given.icons);
   if (given.catalog === null || given.entities === null) {
     setEntityTable(STANDARD_ENTITY_TABLE);
     setCatalog(undefined);
-    return builtInData(given.problem);
+    return builtInData(given.problem, icons);
   }
   try {
     const catalog = createCatalog(given.catalog);
     // Throws, and changes nothing, for a table without one of the editor's own prototypes.
     setEntityTable(parseEntityTable(given.entities));
     setCatalog(catalog);
-    return { source: given.source, mods: given.mods, problem: given.problem };
+    return { source: given.source, mods: given.mods, problem: given.problem, icons };
   } catch (error) {
     setEntityTable(STANDARD_ENTITY_TABLE);
     setCatalog(undefined);
-    return builtInData(`The data read from your game cannot be used: ${error instanceof Error ? error.message : String(error)}. ${FALLBACK}`);
+    return builtInData(`The data read from your game cannot be used: ${error instanceof Error ? error.message : String(error)}. ${FALLBACK}`, icons);
   }
 }
 

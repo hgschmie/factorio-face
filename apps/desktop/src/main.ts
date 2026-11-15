@@ -134,7 +134,7 @@ async function start(): Promise<void> {
   const gameData = new GameDataService({
     cache: gameDataCache,
     cached,
-    builtInVersion: standardIcons.game.version,
+    builtInIcons: standardIcons,
     installation: () => gameSettings.installation(),
     host,
     confirm: (confirmation) => confirmGameRead(window, confirmation),

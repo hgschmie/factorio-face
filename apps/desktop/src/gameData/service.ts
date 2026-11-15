@@ -39,8 +39,8 @@ export interface GameDataServiceOptions {
   readonly cache: GameDataCache;
   /** What the cache held at start, through `usableGameData`. */
   readonly cached: CachedGameData;
-  /** The release of the data that comes with the build. */
-  readonly builtInVersion: string;
+  /** The icon table of the data that comes with the build; its release is the one of that data. */
+  readonly builtInIcons: IconTable;
   /** The installation in use, once it is known (`GameSettings.installation`). */
   installation(): Promise<GameInstallation | undefined>;
   readonly host: Host;
@@ -89,13 +89,17 @@ export class GameDataService {
   }
 
   private sourceOf(loaded: Loaded | undefined): GameDataSource {
-    return loaded ? gameDataSource(loaded.data) : { kind: "built-in", version: this.options.builtInVersion };
+    return loaded ? gameDataSource(loaded.data) : { kind: "built-in", version: this.options.builtInIcons.game.version };
   }
 
-  /** What a window works with. */
+  /**
+   * What a window works with. Its icons are the ids of the icon table in use, the one the asset scheme answers from: a game
+   * with mods has a catalog that names more (`GameData.skippedIcons` of them), and the table is what the cache file holds.
+   */
   current(): GameDataInUse {
     const { inUse } = this;
-    return { source: this.sourceOf(inUse), problem: this.problem, mods: inUse?.data.mods ?? [], catalog: inUse?.data.catalog ?? null, entities: inUse?.data.entities ?? null };
+    const icons = [...(inUse?.iconTable ?? this.options.builtInIcons).icons.keys()];
+    return { source: this.sourceOf(inUse), problem: this.problem, mods: inUse?.data.mods ?? [], catalog: inUse?.data.catalog ?? null, entities: inUse?.data.entities ?? null, icons };
   }
 
   /** Looks at the installation and the user's mods, which starts nothing. Never rejects. */

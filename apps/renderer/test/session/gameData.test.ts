@@ -23,7 +23,7 @@ const MODDED_CIRCUIT = `circuit "Modded" {
 }
 `;
 
-afterEach(() => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null }));
+afterEach(() => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
 
 /** A session on the modded data, which is applied as a window does at start. */
 function modded(source = EMPTY_SOURCE, options: ConstructorParameters<typeof ProjectSession>[0] = {}): TestSession & { readonly data: DataInUse } {

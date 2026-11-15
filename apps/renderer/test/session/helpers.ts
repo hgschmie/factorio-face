@@ -165,7 +165,7 @@ export function fakeDesktop(): FakeDesktop {
       chooseGameFolder: () => ok(null),
       resetGameFolder: () => ok(NO_GAME),
       onAppSettingsChanged: () => () => undefined,
-      getGameData: () => ok({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null }),
+      getGameData: () => ok({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] }),
       getGameDataStatus: () => ok(BUILT_IN_DATA),
       readGameData: () => ok(BUILT_IN_DATA),
       cancelGameDataRead: () => ok(BUILT_IN_DATA),

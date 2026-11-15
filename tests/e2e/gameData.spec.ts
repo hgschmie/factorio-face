@@ -22,6 +22,8 @@ const CONFIRMATION = "Run Factorio to read its entities and signals?";
 const READ_SOURCE = /^Read from your game on .+: 2\.1\.24 with 1 mod$/;
 const BUILT_IN_SOURCE = "Built in, Factorio 2.1.24";
 const ICON_WARNING = "3 icons of mods are not shown: the app reads icons from the game's own files only.";
+/** Where the page asks for the icons of the catalog. */
+const CATALOG_ICONS = "face-asset://catalog/icons/";
 
 const settingsDialog = (page: Page): Locator => page.getByRole("dialog", { name: "Application settings" });
 const section = (page: Page): Locator => settingsDialog(page).getByRole("region", { name: "Game data" });
@@ -32,9 +34,33 @@ const builtInButton = (page: Page): Locator => section(page).getByRole("button",
 const palette = (page: Page): Locator => page.getByRole("complementary", { name: "Components" });
 const paletteEntry = (page: Page, prototype: string): Locator => palette(page).locator(`.palette-item[data-prototype="${prototype}"]`);
 
+/** The requests for catalog icons the windows of an app made since it was launched. */
+interface IconRequests {
+  /** The addresses that were answered, whatever with. */
+  readonly answered: string[];
+  /** The addresses that were answered with an error or not at all, each with what went wrong. */
+  readonly failed: string[];
+}
+
 interface Game extends RunningApp {
   readonly program: FakeProgram;
   readonly dataDirectory: string;
+  readonly icons: IconRequests;
+}
+
+/** Records the requests for catalog icons of every window of the app, from now on. */
+function watchIconRequests(app: ElectronApplication, requests: IconRequests): void {
+  const context = app.context();
+  context.on("response", (response) => {
+    if (!response.url().startsWith(CATALOG_ICONS)) return;
+    requests.answered.push(response.url());
+    if (!response.ok()) requests.failed.push(`${response.status()} ${response.url()}`);
+  });
+  context.on("requestfailed", (request) => {
+    const reason = request.failure()?.errorText ?? "failed";
+    // A window that is loaded again drops the requests it has open; that is no answer.
+    if (request.url().startsWith(CATALOG_ICONS) && reason !== "net::ERR_ABORTED") requests.failed.push(`${reason} ${request.url()}`);
+  });
 }
 
 /** The app with an installation whose program is the stand-in, and the mod directory of a user with one mod. */
@@ -42,8 +68,9 @@ async function launchWithGame(options: { readonly userData?: string; readonly be
   const game = options.folder === undefined ? await writeFakeGame({ bundle: process.platform === "darwin" }) : undefined;
   const program = options.program ?? (await addFakeProgram(game!, options.dump, options.behaviour));
   const folder = options.folder ?? game!.folder;
-  const running = await launchApp({ open: "start", userData: options.userData, env: { FACE_GAME_DIR: folder, FACE_GAME_MODS_DIR: program.modDirectory } });
-  return { ...running, program, dataDirectory: game?.dataDirectory ?? "" };
+  const icons: IconRequests = { answered: [], failed: [] };
+  const running = await launchApp({ open: "start", userData: options.userData, env: { FACE_GAME_DIR: folder, FACE_GAME_MODS_DIR: program.modDirectory }, onLaunch: (app) => watchIconRequests(app, icons) });
+  return { ...running, program, dataDirectory: game?.dataDirectory ?? "", icons };
 }
 
 interface MessageBoxes {
@@ -79,7 +106,7 @@ async function openSettings(app: ElectronApplication, page: Page): Promise<void>
   await expect(settingsDialog(page)).toBeVisible();
 }
 
-/** The images on the page whose loading has ended without a picture, by address: none, since an icon that fails gives way to a name. */
+/** The images on the page whose loading has ended without a picture, by address: none, since an icon the app cannot draw is not asked for and one that fails all the same gives way to a name. */
 function brokenImages(page: Page): Promise<string[]> {
   return page.evaluate(() => Array.from(document.images).filter((image) => image.complete && image.naturalWidth === 0).map((image) => image.src));
 }
@@ -125,7 +152,11 @@ test("the settings say that the built-in data is in use, and whether the game ca
     await expect(section(page).getByRole("alert")).toHaveCount(0);
     await expect(section(page)).toContainText("The app asks before it starts the game and never starts it by itself.");
     expect(await status(page)).toEqual({ inUse: { kind: "built-in", version: "2.1.24" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
-    expect(await dataInUse(page)).toEqual({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null });
+    const builtIn = await dataInUse(page);
+    expect(builtIn).toEqual({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: expect.any(Array) as string[] });
+    // The icons the app can draw are those of the icon table that comes with the build.
+    expect(builtIn.icons.length).toBeGreaterThan(1000);
+    expect(builtIn.icons).toContain("virtual/signal-A");
     await page.screenshot({ path: resolve(SHOTS, "section-built-in.png") });
 
     // The keyboard stays in the dialog and reaches the section: Close, Choose, Read, and round again.
@@ -197,7 +228,11 @@ test("reads the game after the confirmation, shows the steps, loads the window a
 
     const current = await status(page);
     expect(current).toMatchObject({ inUse: { kind: "game", version: "2.1.24", build: 87808, mods: 1 }, pending: null, stale: false, unavailable: null, problem: null, discardable: true, run: { state: "done" } });
-    expect((await dataInUse(page)).mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
+    const read = await dataInUse(page);
+    expect(read.mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
+    // The window is told which icons the app can draw: those made of the game's own files, not the mod's.
+    expect(read.icons).toEqual(expect.arrayContaining(["virtual/signal-A", "item/constant-combinator", "group/g"]));
+    expect([`virtual/${MOD_SIGNAL}`, `item/${MOD_ENTITY}`, "item/gadget"].filter((id) => read.icons.includes(id))).toEqual([]);
     expect(existsSync(join(userData, "game-data.json"))).toBe(true);
     expect(await runFolders(userData)).toEqual([]);
     // Nothing was written beside the user's mods.
@@ -214,7 +249,7 @@ test("reads the game after the confirmation, shows the steps, loads the window a
 });
 
 test("what a mod brings is in the selector and the picker, is placed, saved and reopened, and the project file records the mods", async () => {
-  const { app, page, userData, program } = await launchWithGame();
+  const { app, page, userData, program, icons } = await launchWithGame();
   const projectPath = await newProjectPath("Modded");
   try {
     await readGame(app, page);
@@ -226,6 +261,7 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     const crate = paletteEntry(page, MOD_ENTITY);
     await expect(crate).toHaveAccessibleName("Mod crate");
     await expect(crate).toHaveAttribute("data-kind", "entity");
+    await expect(crate.locator("img")).toHaveCount(0);
     await crate.click();
     const spot = await clientPointOf(page, { x: 400, y: 200 });
     await page.mouse.click(spot.x, spot.y);
@@ -245,15 +281,25 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     await picker.getByLabel("Search signals").fill("mod sig");
     const entry = picker.locator(`[data-signal="virtual:${MOD_SIGNAL}"]`);
     await expect(entry).toHaveAttribute("aria-label", "Mod signal");
-    // The app cannot draw the icon of a mod: the tile shows the name in its place, never a broken image.
-    await expect(entry.locator(".icon-fallback")).toHaveText(MOD_SIGNAL);
+    // The app cannot draw the icon of a mod and knows it: the tile shows the name, as every tile does without icons, and asks for no image.
+    await expect(entry).toHaveClass(/(^| )text( |$)/);
+    await expect(entry).toHaveText(MOD_SIGNAL);
+    await expect(entry.locator("img, .icon-fallback")).toHaveCount(0);
     expect(await brokenImages(page)).toEqual([]);
     await entry.click();
     await expect(picker).toHaveCount(0);
     expect(await sourceText(page)).toContain(`        virtual:${MOD_SIGNAL} = 1\n`);
     // The same in the inspector's signal field and in the signal history, which show an icon where there is one.
     await expect(page.locator(".trace-signal", { hasText: MOD_SIGNAL })).toBeVisible();
+    await expect(inspector.locator(".signal-input img")).toHaveCount(0);
     expect(await brokenImages(page)).toEqual([]);
+    // And on the card: the row of what the combinator sends has the signal by its short name, laid out as text, and no image.
+    const sent = card(page, "constant1").locator('.card-row[data-row="out"]');
+    await expect(sent.locator(".row-value")).toHaveText(`${MOD_SIGNAL} 1`);
+    await expect(sent.locator("image")).toHaveCount(0);
+    // Since the launch, with the built-in data and with the game's, the page asked for no icon the app does not have: every request was answered with an image.
+    expect(icons.answered).toContain(`${CATALOG_ICONS}virtual/signal-A.png`);
+    expect(icons.failed).toEqual([]);
     // Both are of the game the data was read from: nothing is flagged.
     expect(await page.evaluate(() => window.faceSession!.getState().diagnostics)).toEqual([]);
     await page.screenshot({ path: resolve(SHOTS, "modded-circuit.png") });

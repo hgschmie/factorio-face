@@ -2,12 +2,12 @@
 // the names, the footprints and pins on the board, placing and changing an entity in a session, and completion.
 import { createCatalog } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
-import { prototypeOf, type Entity } from "@face/model";
+import { PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypeOf, type Entity } from "@face/model";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { arrangeBoard, boardPinOffset } from "../src/canvas/board.ts";
 import { blueprintLayout } from "../src/canvas/layout.ts";
 import { alternativePrototypes, withPrototype } from "../src/entities/genericSettings.ts";
-import { entityDescription, entityNoun, entityTitle, prototypeFacts } from "../src/entities/kindInfo.ts";
+import { capitalized, entityDescription, entityNoun, entityTitle, prototypeFacts, prototypeLabel } from "../src/entities/kindInfo.ts";
 import { entriesInUse, keyedKindOf, searchEntries, type EntityRegistry } from "../src/entities/registry.ts";
 import { TYPE_DESCRIPTIONS } from "../src/entities/typeInfo.ts";
 import { applyData } from "../src/gameData/dataInUse.ts";
@@ -63,7 +63,7 @@ const SOURCE = `circuit "Modded kinds" {
 }
 `;
 
-const reset = (): unknown => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null });
+const reset = (): unknown => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] });
 /** A session on the modded data, which is applied as a window does at start. */
 const modded = (source = EMPTY_SOURCE): TestSession => createSession(source, { data: applyData(moddedKindsData()) });
 
@@ -266,6 +266,39 @@ describe("modded prototypes of the kinds of the editor", () => {
     expect(detail('circuit "t" {\n    entity e {\n        |\n    }\n}\n')).toBe("Which entity of the game this is, by its name in a blueprint (required)");
     expect(detail('circuit "t" {\n    speaker s {\n        |\n    }\n}\n')).toBeUndefined();
     expect(at('circuit "t" {\n    lamp l {\n        prototype = |\n    }\n}\n').map((candidate) => candidate.label)).toEqual(["small-lamp", "5d-lamp", "mod-hidden-lamp", "mod-lamp"]);
+  });
+});
+
+describe("the name a mod gives its prototype", () => {
+  afterAll(reset);
+
+  it("is shown as the game writes it where it stands by itself, and in lower case inside a sentence", () => {
+    const { session } = createSession(EMPTY_SOURCE, { data: applyData(moddedKindsData({ "mod-constant": "LTN Combinator", "mod-loader": "AAI Loader (Mk2)" })) });
+    const registry = session.state.catalog.entities();
+    const ltn = { kind: "constant", prototype: "mod-constant" } as const;
+    // The tile of the selector and its popup, the Type field of the inspector, the title of the inspector and the heading of the card.
+    expect(registry.entry("mod-constant")!.label).toBe("LTN Combinator");
+    expect(prototypeLabel(ltn)).toBe("LTN Combinator");
+    expect(entityTitle(ltn)).toBe("LTN Combinator");
+    expect(entityTitle({ kind: "entity", prototype: "mod-loader" })).toBe("AAI Loader (Mk2)");
+    // The standard prototype of the kind beside it keeps its name.
+    expect(entityTitle({ kind: "constant" })).toBe("Constant combinator");
+    // In a sentence the name is a noun like any other.
+    expect(prototypeData(ltn).label).toBe("ltn combinator");
+    expect(entityNoun(ltn)).toBe("a ltn combinator");
+    // The search of the selector does not mind the case.
+    const found = (query: string): string[] => searchEntries(registry.groups, query).flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries.map((entry) => entry.prototype)));
+    expect([found("ltn comb"), found("LTN"), found("mk2")]).toEqual([["mod-constant"], ["mod-constant"], ["mod-loader"]]);
+  });
+
+  it("leaves every name of the standard game as it was: the first letter in capitals, the rest as the game has it", () => {
+    reset();
+    expect(PROTOTYPE_NAMES.length).toBeGreaterThan(90);
+    for (const prototype of PROTOTYPE_NAMES) {
+      const shape = { kind: PROTOTYPES[prototype]!.kind, prototype };
+      expect(prototypeLabel(shape), prototype).toBe(capitalized(prototypeData(shape).label));
+    }
+    expect(["small-lamp", "big-electric-pole", "programmable-speaker", "decider-combinator"].map((prototype) => prototypeLabel({ kind: PROTOTYPES[prototype]!.kind, prototype }))).toEqual(["Lamp", "Big electric pole", "Programmable speaker", "Decider combinator"]);
   });
 });
 

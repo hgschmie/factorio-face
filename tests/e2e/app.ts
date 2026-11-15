@@ -51,6 +51,8 @@ export interface LaunchOptions {
    * an empty project and then, in a profile that has one, the project that was open last (the caller waits for it).
    */
   readonly open?: "example" | "start";
+  /** Called with the app once its process runs and before its window is there: for what has to watch from the first request of the page on. */
+  readonly onLaunch?: (app: ElectronApplication) => void;
 }
 
 export interface RunningApp {
@@ -68,6 +70,7 @@ export async function launchApp(options: LaunchOptions = {}): Promise<RunningApp
     env: { ...(process.env as Record<string, string>), FACE_USER_DATA: userData, FACE_GAME_DIR: NO_GAME_DIR, FACE_GAME_MODS_DIR: NO_MODS_DIR, ...options.env },
   });
   processes.set(app, app.process());
+  options.onLaunch?.(app);
   const page = await app.firstWindow();
   await page.waitForSelector(".app-shell");
   if ((options.open ?? "example") === "example") {

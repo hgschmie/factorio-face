@@ -1,5 +1,5 @@
 // Display metadata per entity kind, shared by palette, canvas and inspector, and the names an entity goes by.
-import { prototypeData, prototypeOf, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
+import { gamePrototype, prototypeData, prototypeOf, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
 import { typeDescription } from "./typeInfo.ts";
 
 export interface KindInfo {
@@ -27,9 +27,13 @@ export function capitalized(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
-/** The name of the entity in the game: "Big electric pole", "Decider combinator", "Lamp". */
+/**
+ * The name of the entity in the game, as the game writes it: "Big electric pole", "Decider combinator", "Lamp", and a mod's
+ * "LTN Combinator". For where the name stands by itself: a title, a tile, a field. Inside a sentence it is the lower-case
+ * `label` of the prototype (`entityNoun`).
+ */
 export function prototypeLabel(entity: EntityShape): string {
-  return capitalized(prototypeData(entity).label);
+  return gamePrototype(entity).displayName;
 }
 
 /**

@@ -7,7 +7,7 @@ import { compareMods, describeRecord, modsNotice, modsRecord } from "../../src/g
 const GAME_MODULES = ["base", "elevated-rails", "recycler", "quality", "space-age"].map((name) => ({ name, version: "2.1.24" }));
 const game = (mods: readonly { name: string; version: string }[], version = "2.1.24"): DataInUse => {
   const loaded = [...GAME_MODULES.map((module) => ({ ...module, version })), ...mods];
-  return { source: { kind: "game", version, build: 87808, readAt: "2026-11-14T12:00:00.000Z", mods: mods.length }, mods: loaded, problem: null };
+  return { source: { kind: "game", version, build: 87808, readAt: "2026-11-14T12:00:00.000Z", mods: mods.length }, mods: loaded, problem: null, icons: null };
 };
 const MODDED = game([{ name: "alpha", version: "1.0.0" }, { name: "beta", version: "0.4.2" }]);
 const RECORD: ProjectMods = { gameVersion: "2.1.24", mods: [...GAME_MODULES, { name: "alpha", version: "1.0.0" }, { name: "beta", version: "0.4.2" }] };

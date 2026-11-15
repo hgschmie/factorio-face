@@ -1,5 +1,6 @@
 // The data in use while the app runs: what a start makes of the cache file, the one request to read the game with its
 // states (idle, confirming, running, done, failed, cancelled), and the text the user agrees to. The game is the fake one.
+import { loadStandardIconTable } from "@face/catalog/icons/standard";
 import { parseEntityTable } from "@face/model";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -19,6 +20,8 @@ import { useScratch } from "../support/scratch.ts";
 const scratch = useScratch("game-service");
 const BUILT_IN = { kind: "built-in", version: "2.1.24" } as const;
 const MODDED = { kind: "game", version: "2.1.24", build: 87808, mods: 1 } as const;
+/** What a window is told it can ask icons for with the built-in data: the ids of the icon table that comes with the build. */
+const BUILT_IN_ICONS = [...loadStandardIconTable().icons.keys()];
 
 interface Setup {
   readonly service: GameDataService;
@@ -61,7 +64,7 @@ async function setup(name: string, dump: CannedDump = {}, behaviour: Partial<Fak
   const options = async (): Promise<GameDataServiceOptions> => ({
     cache,
     cached: usableGameData(await cache.load()),
-    builtInVersion: "2.1.24",
+    builtInIcons: loadStandardIconTable(),
     installation: async () => inspection.installation,
     host,
     confirm: async (confirmation) => {
@@ -155,7 +158,9 @@ describe("reading the game", () => {
   it("is idle with the built-in data until it is asked", async () => {
     const { service, runs, control } = await setup("idle");
     expect(await service.status()).toEqual({ inUse: BUILT_IN, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
-    expect(service.current()).toEqual({ source: BUILT_IN, problem: null, mods: [], catalog: null, entities: null });
+    expect(service.current()).toEqual({ source: BUILT_IN, problem: null, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
+    expect(BUILT_IN_ICONS.length).toBeGreaterThan(1000);
+    expect(BUILT_IN_ICONS).toContain("virtual/signal-A");
     expect(service.busy).toBe(false);
     expect(service.activate()).toBe(false);
     expect(runs).toEqual([]);
@@ -196,6 +201,10 @@ describe("reading the game", () => {
     expect(current.catalog!.signals.virtual!.map((signal) => signal.name)).toEqual(["mod-signal", "signal-A"]);
     expect(service.iconTable!.icons.has("virtual/signal-A")).toBe(true);
     expect(service.iconTable!.icons.has("virtual/mod-signal")).toBe(false);
+    // The window is told which icons it can ask for: those of the icon table. The three the catalog names beside them are the mod's.
+    expect(current.icons).toEqual([...service.iconTable!.icons.keys()]);
+    expect(current.icons).toEqual(expect.arrayContaining(["virtual/signal-A", "item/plate", "item/constant-combinator", "group/g"]));
+    expect(["virtual/mod-signal", `item/${MOD_ENTITY}`, "item/gadget"].filter((id) => current.icons.includes(id))).toEqual([]);
     expect(await service.status()).toMatchObject({ inUse: MODDED, pending: null, stale: false, discardable: true });
 
     // The next start of the app has it at once.
@@ -311,7 +320,7 @@ describe("reading the game", () => {
     expect(existsSync(cacheFile)).toBe(false);
     expect(service.activate()).toBe(true);
     expect(activations).toEqual(["2.1.24", "built-in"]);
-    expect(service.current()).toEqual({ source: BUILT_IN, problem: null, mods: [], catalog: null, entities: null });
+    expect(service.current()).toEqual({ source: BUILT_IN, problem: null, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
     expect(service.iconTable).toBeUndefined();
     expect((await restart()).current().source).toEqual(BUILT_IN);
   });
@@ -325,11 +334,16 @@ describe("the cache at start", () => {
   }
 
   it("is used when it is fine", async () => {
-    const { restart, cache } = await stored("fine");
+    const { restart, cache, cacheFile } = await stored("fine");
     expect(usableGameData(await cache.load())).toMatchObject({ status: "ok" });
     const service = await restart();
     expect(service.current()).toMatchObject({ source: MODDED, problem: null });
     expect(service.iconTable).toBeDefined();
+    // Which icons can be drawn is no field of the file: it is the icon table the file has always held, so a file of an earlier version says it as well.
+    const file = JSON.parse(await readFile(cacheFile, "utf8")) as { icons: { icons: Record<string, unknown> } };
+    expect(Object.keys(file).sort()).toEqual(["catalog", "entities", "icons", "key", "keyId", "mods", "notes", "readAt", "skippedIcons", "version"]);
+    expect(service.current().icons).toEqual(Object.keys(file.icons.icons));
+    expect(service.current().icons).not.toContain("virtual/mod-signal");
   });
 
   it("falls back to the built-in data, with the reason, when the file is damaged; discarding removes it", async () => {
@@ -337,7 +351,7 @@ describe("the cache at start", () => {
     await writeFile(cacheFile, (await readFile(cacheFile, "utf8")).slice(0, 5000));
     const service = await restart();
     const problem = expect.stringMatching(/^The data read from your game cannot be used: .*\. The built-in data is in use\.$/) as string;
-    expect(service.current()).toEqual({ source: BUILT_IN, problem, mods: [], catalog: null, entities: null });
+    expect(service.current()).toEqual({ source: BUILT_IN, problem, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
     expect(await service.status()).toMatchObject({ inUse: BUILT_IN, pending: null, problem, discardable: true, run: { state: "idle" } });
     expect(service.activate()).toBe(false);
     expect(await service.discard()).toMatchObject({ problem: null, discardable: false, pending: null });
