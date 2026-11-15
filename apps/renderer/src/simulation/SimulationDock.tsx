@@ -1,6 +1,7 @@
 // Bottom dock: playback controls, signal traces, tick counter. Presentational; all data arrives as plain props.
 import { shortSignal } from "../entities/signalText.ts";
 import { Icon } from "../icons/Icon.tsx";
+import { IconImage } from "../icons/IconImage.tsx";
 import type { SignalDescriber } from "../inspector/SignalField.tsx";
 import type { SignalTrace, SimulationView } from "../workbench/controller.ts";
 import { sparkline } from "./sparkline.ts";
@@ -28,7 +29,7 @@ function TraceRow({ trace, index, capacity, describeSignal }: { readonly trace: 
       <th scope="row">
         <span className="trace-dot" style={trace.lamp?.color ? { background: trace.lamp.color } : undefined} />
         <span className="trace-entity">{trace.entityName}</span>
-        {info?.iconUrl && <img className="trace-icon" src={info.iconUrl} width={14} height={14} alt="" draggable={false} />}
+        {info?.iconUrl && <IconImage className="trace-icon" src={info.iconUrl} size={14} />}
         <span className="trace-signal">{what}</span>
       </th>
       <td className="trace-plot">

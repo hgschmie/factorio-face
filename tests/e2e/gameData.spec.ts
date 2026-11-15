@@ -79,6 +79,11 @@ async function openSettings(app: ElectronApplication, page: Page): Promise<void>
   await expect(settingsDialog(page)).toBeVisible();
 }
 
+/** The images on the page whose loading has ended without a picture, by address: none, since an icon that fails gives way to a name. */
+function brokenImages(page: Page): Promise<string[]> {
+  return page.evaluate(() => Array.from(document.images).filter((image) => image.complete && image.naturalWidth === 0).map((image) => image.src));
+}
+
 async function status(page: Page): Promise<GameDataStatus> {
   const result = await page.evaluate(() => window.face!.getGameDataStatus());
   if (!result.ok) throw new Error(result.error);
@@ -240,9 +245,15 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     await picker.getByLabel("Search signals").fill("mod sig");
     const entry = picker.locator(`[data-signal="virtual:${MOD_SIGNAL}"]`);
     await expect(entry).toHaveAttribute("aria-label", "Mod signal");
+    // The app cannot draw the icon of a mod: the tile shows the name in its place, never a broken image.
+    await expect(entry.locator(".icon-fallback")).toHaveText(MOD_SIGNAL);
+    expect(await brokenImages(page)).toEqual([]);
     await entry.click();
     await expect(picker).toHaveCount(0);
     expect(await sourceText(page)).toContain(`        virtual:${MOD_SIGNAL} = 1\n`);
+    // The same in the inspector's signal field and in the signal history, which show an icon where there is one.
+    await expect(page.locator(".trace-signal", { hasText: MOD_SIGNAL })).toBeVisible();
+    expect(await brokenImages(page)).toEqual([]);
     // Both are of the game the data was read from: nothing is flagged.
     expect(await page.evaluate(() => window.faceSession!.getState().diagnostics)).toEqual([]);
     await page.screenshot({ path: resolve(SHOTS, "modded-circuit.png") });

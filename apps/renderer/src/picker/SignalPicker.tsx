@@ -5,6 +5,7 @@ import { NORMAL_QUALITY, signal, signalKey, type SignalId, type Wildcard } from 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { shortSignal } from "../entities/signalText.ts";
 import { Icon } from "../icons/Icon.tsx";
+import { IconImage } from "../icons/IconImage.tsx";
 import type { QualityOption } from "../workbench/controller.ts";
 
 export interface SignalPickerPanelProps {
@@ -117,7 +118,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
           const available = shown.some((candidate) => candidate.group.name === group.name);
           return (
             <button key={group.name} type="button" role="tab" aria-selected={needle === "" && tab === group.name} aria-label={group.displayName} title={group.displayName} disabled={!available} onClick={() => (setTab(group.name), setQuery(""))}>
-              {url ? <img src={url} width={28} height={28} alt="" draggable={false} /> : <span>{group.displayName}</span>}
+              {url ? <IconImage src={url} size={28} fallback={group.displayName} /> : <span>{group.displayName}</span>}
             </button>
           );
         })}
@@ -142,7 +143,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
                       title={`${entry.displayName}\n${entry.wildcard ?? entry.key}`}
                       onClick={() => pick(entry)}
                     >
-                      {url ? <img src={url} width={28} height={28} alt="" loading="lazy" draggable={false} /> : shortSignal(entry.id)}
+                      {url ? <IconImage src={url} size={28} lazy fallback={shortSignal(entry.id)} /> : shortSignal(entry.id)}
                     </button>
                   );
                 })}
@@ -159,7 +160,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
             const url = iconUrl(option.icon);
             return (
               <button key={option.name} type="button" role="radio" aria-checked={quality === option.name} aria-label={option.displayName} title={option.displayName} style={{ borderBottomColor: option.color }} onClick={() => setQuality(option.name)}>
-                {url ? <img src={url} width={20} height={20} alt="" draggable={false} /> : option.displayName}
+                {url ? <IconImage src={url} size={20} fallback={option.displayName} /> : option.displayName}
               </button>
             );
           })}

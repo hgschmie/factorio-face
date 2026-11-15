@@ -10,6 +10,7 @@ import { HoverIntent } from "../canvas/hover.ts";
 import { entriesInUse, keyedKindOf, searchEntries, type EntityRegistry, type PaletteEntry, type PaletteGroup } from "../entities/registry.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon } from "../icons/Icon.tsx";
+import { IconImage } from "../icons/IconImage.tsx";
 import { shortcutLabel } from "../shortcuts/shortcuts.ts";
 import { sameTool, SELECT_TOOL, type Tool } from "./controller.ts";
 import { browserStore, IN_USE_KEY, readCircuitListOpen, readSearch, readSectionOpen, readTab, windowStore, writeCircuitListOpen, writeSearch, writeSectionOpen, writeTab } from "./paletteGroups.ts";
@@ -341,7 +342,7 @@ export function Palette({ registry, tool, canPlace, entities, selection, resolve
                     changeSearch("");
                   }}
                 >
-                  {url ? <img src={url} width={TAB_ICON} height={TAB_ICON} alt="" draggable={false} /> : <span>{group.label}</span>}
+                  {url ? <IconImage src={url} size={TAB_ICON} fallback={group.label} /> : <span>{group.label}</span>}
                 </button>
               );
             })}

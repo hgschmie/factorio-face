@@ -4,6 +4,7 @@
 import type { SignalId, Wildcard } from "@face/model";
 import { createContext, useContext, useId, useState, type ReactNode } from "react";
 import { formatSignal } from "../entities/signalText.ts";
+import { IconImage } from "../icons/IconImage.tsx";
 import { Field, useDraft } from "./fields.tsx";
 import { parseSignalField, SIGNAL_FORMAT_HINT } from "./validation.ts";
 
@@ -66,7 +67,7 @@ export function SignalField({ label, ariaLabel = label, value, required = false,
   return (
     <Field label={label} htmlFor={id} wide={wide} error={draft.error}>
       <span className="signal-input">
-        {info?.iconUrl && <img className="signal-icon" src={info.iconUrl} width={20} height={20} alt="" draggable={false} />}
+        {info?.iconUrl && <IconImage className="signal-icon" src={info.iconUrl} size={20} />}
         <input
           id={id}
           type="text"

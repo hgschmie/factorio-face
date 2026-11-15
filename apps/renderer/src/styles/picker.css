@@ -92,7 +92,9 @@
   background: var(--surface-inset);
 }
 
-.picker-signal.text {
+/* Without an icon the tile shows the name: where there are no icons at all, and where the one of a mod does not load. */
+.picker-signal.text,
+.picker-signal:has(.icon-fallback) {
   width: auto;
   padding: 0 7px;
   font-family: var(--font-mono);
