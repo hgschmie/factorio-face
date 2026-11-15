@@ -224,18 +224,16 @@ simulation (`run`, `pause`,
   anything to flip: one of the entities can turn, or at least two are mirrored (on the board: two with a `tile`). It is what
   greys out the two menu items and stops the keys for a single lamp or pole. The simulation does not see a flip.
 - **Placing with a direction.** A place tool says what it places and holds its direction: `Tool` is
-  `{ type: "place", kind, prototype?, facing? }`. It is an `EntityShape` of the model: the first prototype of the kind without
-  `prototype` (the tools of the digit keys have none, the entries of the palette always name theirs), east without `facing`
-  (`placeFacing(tool)`; always east for an entity that does not turn: a lamp, a speaker, a pole). `R` and `Shift+R` turn it
+  `{ type: "place", prototype, facing? }`. It is an `EntityShape` of the model, the game's name of what it places (the tools of
+  the digit keys name the standard prototype of their kind, `standardPrototype`), east without `facing` (`placeFacing(tool)`; always east for an entity that does not turn: a lamp, a speaker, a pole). `R` and `Shift+R` turn it
   while the tool is active (`turnedTool(tool, turn)`, set with `setTool`), and `H` and `V` flip it (`flippedTool(tool, axis)`),
   in both display modes, instead of acting on the selection; a tool for an entity that does not turn is left alone and the
-  keys then do nothing. `sameTool` compares the kind
-  and the prototype and does not look at the direction (it is the same button of the palette), but `setTool` does: the tool
+  keys then do nothing. `sameTool` compares the prototype and does not look at the direction (it is the same button of the palette), but `setTool` does: the tool
   picked again by its key, or after another tool, comes without `facing` and so faces east again. A click that places nothing
-  (a taken tile) keeps the tool and its direction. `placeEntity(kind, position, facing?, prototype?)` and
-  `placeEntityOnTile(kind, tile, facing?, prototype?)` pass all of it to the language command `addEntity`, which writes
-  ` facing <direction>` behind `at` or `tile` for every direction but east (a new entity that faces east has no clause, as
-  before; never for an entity that does not turn) and `prototype = <name>` for every prototype but the first of its kind.
+  (a taken tile) keeps the tool and its direction. `placeEntity(prototype, position, facing?)` and
+  `placeEntityOnTile(prototype, tile, facing?)` pass all of it to the language command `addEntity`, which declares the entity
+  by the name of its prototype and writes ` facing <direction>` behind `at` or `tile` for every direction but east (a new entity
+  that faces east has no clause, as before; never for an entity that does not turn).
   The hint line names the entity (`entityNoun`: "to place a big electric pole") and, where it turns, the direction and the
   key ("to place a decider facing south (R turns it)"); on the edit canvas that is the only sign of it before the click, on
   the board the outline has the footprint of the prototype and turns as well.
@@ -294,8 +292,10 @@ simulation (`run`, `pause`,
   inspector shows the draft instead of the entity, and the next edit that makes it valid writes all of it as one step. A draft is dropped
   when the selection moves on, when it is discarded, or when its entity changes in the source.
 - **Diagnostics** go to `state.diagnostics` and, as a separate effect-only transaction, to the lint extension. Highlighting uses the tokens
-  of the analysis the session already has; completion maps the language's `completionContext` to keywords, properties, enum values,
-  entity terminals and the catalog signals of the enabled modules.
+  of the analysis the session already has, and the word of an entity declaration, which is a name of the game and no keyword, has
+  the class of a keyword (`declarationWords` of the language); completion maps the language's `completionContext` to keywords, at the
+  start of a member the entities of the game data in use with their names in the game, properties, enum values, entity terminals and
+  the catalog signals of the enabled modules.
 - **Catalog.** `CatalogService` is rebuilt when the project's module list changes. It is the language's `SignalResolver` (unknown and
   disabled signals are warnings; text is never touched), the source of names and icon ids, and the picker tree. `SignalField` receives
   the wildcards its slot accepts (`SIGNAL_SLOTS` of the language) and the picker offers no others.
@@ -465,7 +465,7 @@ stands at a derived place, gives way to the others and is never in the way. `at`
 - Session commands (`WorkbenchCommands`), each one undo step: `setTiles(tiles: { id, tile }[])` with the centers as the `tile`
   clause holds them (blocked: nothing happens; a center off the grid: refused by the language and reported), `nudgeTiles(delta)`
   for the selection in whole tiles from where the board shows it, `placeHere(ids?)` (all entities without `ids`),
-  `unplace(ids)`, `placeEntityOnTile(kind, tile, facing?, prototype?)`. `rotateEntities` and `faceEntities` apply the turn rule
+  `unplace(ids)`, `placeEntityOnTile(prototype, tile, facing?)`. `rotateEntities` and `faceEntities` apply the turn rule
   while the display mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light.";
   `flipEntities` applies the flip rule: "Not flipped: source would stand on a tile of gate."
   `updateEntity` does the same for another prototype: "Not changed: p would stand on a tile of light." Both messages go
@@ -895,7 +895,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 
 ## Icons
 
-`EntityIcon` / `EntityIconSvg` take an entity (or just its kind and prototype) and an `EntityIconResolver`
+`EntityIcon` / `EntityIconSvg` take an entity (or just its prototype) and an `EntityIconResolver`
 (`(prototype) => url | undefined`). `icons/catalogEntityIcons.ts` probes one item icon per prototype of `PROTOTYPES`
 (`prototypeIconId` of the registry: the item that places the prototype, `item/<prototype name>` for all that have one) of the generated catalog through
 `face-asset://catalog/icons/item/<name>.png` and resolves only those that load, so each pole shows its own item.
@@ -1004,8 +1004,8 @@ in a native dialog of its own before it starts the game.
   use: mods and modules the data lacks, mods in another version (a module of the game only counts when it is missing), a game
   version that differs. The sentence is the message of the toast and stays in the project settings (`ProjectView.modsNotice`,
   `[data-note="mods-notice"]`, with `[data-note="made-with"]` for the record itself). The project opens all the same and its source
-  is not changed; an unknown prototype is an error of the language, so the circuit of a project with an entity of a missing mod is
-  not drawn until the game is read with that mod.
+  is not changed; a declaration of an entity the data in use does not have is an error of the language (`unknown-prototype`), so the
+  circuit of a project with an entity of a missing mod is not drawn until the game is read with that mod.
 - **The section** "Game data" of the application settings (`GameDataSection.tsx`, `gameDataView`, `useGameData`). It shows the
   source in words (`.game-data-source`, `data-source="built-in|game"`: "Built in, Factorio 2.1.24" or "Read from your game on
   <date>: 2.1.24 with N mods", from `describeGameDataSource` of the main process's pure module), a notice when the game or its mods
@@ -1026,7 +1026,7 @@ in a native dialog of its own before it starts the game.
   disabled (Read by Cancel, Cancel by Read) the one that takes its place gets the focus.
 - **What a mod brings** is in the selector, the signal picker, completion and the language like anything of the game. Its icons are
   not rendered: the icon table has no entry for them, so the views show the name and their pictogram. Names of mods get through the
-  language quoted where they are not one word (`prototype = "5d-chest"`, `item:"my item"`; `test/gameData/modNames.test.ts`); the
+  language quoted where they are not one word (`"5d-chest" box { }`, `item:"my item"`; `test/gameData/modNames.test.ts`); the
   signal field of the inspector takes typed keys of the plain form only, so a signal with a name outside `[A-Za-z0-9_.-]` is chosen
   in the picker or written in the source.
 
@@ -1125,9 +1125,8 @@ a `KIND_INFO` row, a summary line and, if it has settings, a form.
 - A pole (`pole`, four prototypes) has one connection point (`io`), no settings and no state. Its card names the pole in the
   heading and shows its reach, its tiles and the signals on its red and on its green network. The inspector has the choice of
   the prototype (`.prototype-field`, a group named "Pole" with one `aria-pressed` button per prototype: icon, name, tiles and
-  reach) and a note on what a pole does; changing it is `updateEntity` with the rule "Another prototype" of the board. A
-  statement `prototype = ...` that is in the source stays when the choice returns to the small pole: `updateEntity` of the
-  language patches the value of a statement and does not remove a statement for its value, for every kind.
+  reach) and a note on what a pole does; changing it is `updateEntity` with the rule "Another prototype" of the board, and in
+  the source the word of the declaration is replaced (`small-electric-pole p` becomes `big-electric-pole p`), nothing else.
 - A speaker (`speaker`) reads on its one input. `SpeakerForm` has every setting of the language (`docs/dsl.md`): "Plays when"
   (a condition, edited with the `ConditionFields` the lamp uses, or "Signal value is pitch" with the pitch signal; the signal
   goes along when the mode changes, and a condition whose signal is taken out is no condition), instrument and note as

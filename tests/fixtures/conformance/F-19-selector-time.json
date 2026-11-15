@@ -9,7 +9,7 @@
   "circuit": {
     "name": "F-19-selector-time",
     "entities": [
-      {"id": "s", "name": "s", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "time", "gameTick": {"kind": "virtual", "name": "signal-T"}, "dayTick": {"kind": "virtual", "name": "signal-D"}, "dayLength": {"kind": "virtual", "name": "signal-L"}}}
+      {"id": "s", "name": "s", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "time", "gameTick": {"kind": "virtual", "name": "signal-T"}, "dayTick": {"kind": "virtual", "name": "signal-D"}, "dayLength": {"kind": "virtual", "name": "signal-L"}}}
     ],
     "wires": [
     ]

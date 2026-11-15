@@ -154,11 +154,11 @@ describe("project lifecycle", () => {
     expect(session.state).toMatchObject({ source: EMPTY_SOURCE, selection: [], canUndo: false, error: null });
     expect(session.state.simulation.tick).toBe(1);
 
-    session.commands.placeEntity("constant", { x: 40, y: 80 });
+    session.commands.placeEntity("constant-combinator", { x: 40, y: 80 });
     expect(session.state.circuit.entities.map((entity) => entity.kind)).toEqual(["constant"]);
     expect(session.state.selection).toEqual([session.state.circuit.entities[0]!.id]);
     session.commands.setDisplayMode("blueprint");
-    session.commands.placeEntityOnTile("lamp", { x: 4.5, y: 0.5 });
+    session.commands.placeEntityOnTile("small-lamp", { x: 4.5, y: 0.5 });
     const [constant, lamp] = session.state.circuit.entities;
     session.commands.addWire({ color: "red", a: { entity: constant!.id, side: "out" }, b: { entity: lamp!.id, side: "in" } });
     expect(session.state).toMatchObject({ editable: true, error: null });
@@ -343,7 +343,7 @@ describe("the start of the app", () => {
     expect(session.state.source).toBe(EMPTY_SOURCE);
     expect(session.state.error).toBe("The last project could not be reopened. Not a face project (no face.json): /projects/gone");
     // The message stays until it is dismissed, like that of a project that fails to open by hand.
-    session.commands.placeEntity("lamp", { x: 40, y: 80 });
+    session.commands.placeEntity("small-lamp", { x: 40, y: 80 });
     expect(session.state.error).toContain("could not be reopened");
     session.commands.dismissError();
     expect(session.state.error).toBeNull();
@@ -363,7 +363,7 @@ describe("the start of the app", () => {
     desktop.disk.set("/projects/last", project(IRREGULAR, { name: "Last" }).data);
     desktop.lastProject = "/projects/last";
     const starting = session.start();
-    session.commands.placeEntity("lamp", { x: 40, y: 80 });
+    session.commands.placeEntity("small-lamp", { x: 40, y: 80 });
     await starting;
     expect(session.state.project).toMatchObject({ name: "Untitled circuit", path: null, dirty: true });
     expect(session.state.circuit.entities).toHaveLength(1);

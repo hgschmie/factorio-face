@@ -3,9 +3,9 @@
 
 import { analyze, checkEntity, printCircuit } from "@face/language";
 import {
-  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, entityNameBase, facingOf, heldPrototype, isPrototypeName, LAMP_COLOR_MODES, NORMAL_QUALITY, normalizeWire, prototypeOf, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
+  ARITHMETIC_OPERATIONS, BOTH_NETWORKS, canRotate, DEFAULT_ENTITY, DIRECTIONS, entityNameBase, facingOf, isPrototypeName, LAMP_COLOR_MODES, newEntity, NORMAL_QUALITY, normalizeWire, PROTOTYPES, SELECTOR_OPERATIONS, signal, signalKey,
   SPEAKER_PLAYBACK_MODES, SPEAKER_VOLUME_RANGE, TERMINALS, tileOrigin, wildcardOf, wireKey,
-  type Circuit, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction, type Entity, type EntityKind, type EntityOfKind, type Operand, type Point,
+  type Circuit, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction, type Entity, type EntityConfig, type EntityKind, type Operand, type Point,
   type PrototypeName, type RgbColor, type SelectorMode, type SpeakerInstrument, type TerminalSide, type Wire, type WireColor,
 } from "@face/model";
 import { readGeneric } from "./generic.ts";
@@ -191,7 +191,7 @@ class Notes {
 // Settings per kind
 
 /** What a kind has of its own; distributes over a union of kinds. */
-type Settings<K extends EntityKind> = K extends EntityKind ? Omit<EntityOfKind<K>, "id" | "name" | "position" | "placement" | "description"> : never;
+type Settings<K extends EntityKind> = K extends EntityKind ? Omit<EntityConfig<K>, "placement" | "description"> : never;
 
 const SELECTOR_FIELDS = [
   "select_max", "index_signal", "index_constant", "index_comparator", "count_signal", "random_update_interval", "quality_filter", "select_highest_quality", "select_quality_from_signal", "quality_source_static",
@@ -442,14 +442,14 @@ function readSpeaker(entity: Fields, instruments: readonly SpeakerInstrument[] |
 }
 
 /** The settings of a prototype with a kind of its own. */
-function readSettings(kind: Exclude<EntityKind, "entity">, prototype: PrototypeName, entity: Fields, instruments: readonly SpeakerInstrument[] | undefined): Settings<EntityKind> {
+function readSettings(kind: Exclude<EntityKind, "entity">, entity: Fields, instruments: readonly SpeakerInstrument[] | undefined): Settings<EntityKind> {
   switch (kind) {
     case "constant": return readConstant(entity);
     case "arithmetic": return readArithmetic(entity);
     case "decider": return readDecider(entity);
     case "selector": return readSelector(entity);
     case "lamp": return readLamp(entity);
-    case "pole": return { kind: "pole", prototype };
+    case "pole": return { kind: "pole" };
     case "speaker": return readSpeaker(entity, instruments);
   }
 }
@@ -492,10 +492,8 @@ function expressible(entity: Entity, note: NoteSink): Entity {
   note("reset", "control_behavior", `cannot be kept by the editor (${check.message}); the entity has the settings of a new one`);
   const { id, name, position, placement } = entity;
   // A generic entity keeps what the blueprint said beyond its settings; that is data, not something the language has to express.
-  const fresh =
-    entity.kind === "entity" ? { ...DEFAULT_ENTITY.entity, prototype: entity.prototype, ...(entity.blueprintData !== undefined && { blueprintData: entity.blueprintData }) }
-    : { ...DEFAULT_ENTITY[entity.kind], ...(entity.prototype !== undefined && { prototype: entity.prototype }) };
-  return { ...fresh, id, name, position, ...(placement && { placement }) } as Entity;
+  const kept = entity.kind === "entity" && entity.blueprintData !== undefined ? { blueprintData: entity.blueprintData } : {};
+  return { ...newEntity(entity.prototype), ...kept, id, name, position, ...(placement && { placement }) } as Entity;
 }
 
 /** Id-free form of an entity for comparing what was built with what the language reads back. */
@@ -613,7 +611,7 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
       continue;
     }
     if (imported.length >= limits.maxEntities) return fail("too-many-entities", `The blueprint has more than ${limits.maxEntities} entities that the editor knows`);
-    const shape = { kind, prototype };
+    const shape = { prototype };
     // The naming rule of the editor for a new entity: what it is (`entityNameBase`) and the first free number.
     const base = entityNameBase(shape);
     const count = (counters.get(base) ?? 0) + 1;
@@ -631,7 +629,7 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
       direction = readDirection(fields, canRotate(shape));
       if (fields.boolean("mirror", false)) fields.changed("mirror", "is on; the editor does not mirror entities");
       fields.unsupported("quality", NORMAL_QUALITY);
-      settings = readSettings(kind, prototype, fields, options.instruments);
+      settings = readSettings(kind, fields, options.instruments);
       // The game has the description on the four combinators; anywhere else the field is not one of the entity.
       description = kind === "lamp" || kind === "pole" || kind === "speaker" ? undefined : fields.string("player_description");
       fields.done();
@@ -639,9 +637,7 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
     // East is what an entity faces without saying so; an entity of two directions faces north or east (`facingOf`).
     const facing = facingOf({ ...shape, placement: { direction } });
     const placement = { tile, ...(canRotate(shape) && facing !== "east" && { direction: facing }) };
-    // Which prototype of its kind it is: the first goes without saying.
-    const held = heldPrototype(kind, prototype);
-    const entity = { ...settings, ...(held !== undefined && { prototype: held }), id: `e${imported.length + 1}`, name, position: { x: 0, y: 0 }, placement, ...(description && { description }) } as Entity;
+    const entity = { ...settings, prototype, id: `e${imported.length + 1}`, name, position: { x: 0, y: 0 }, placement, ...(description && { description }) } as Entity;
     imported.push({ number, entity });
     byNumber.set(number, entity);
   }
@@ -657,7 +653,7 @@ export function importBlueprint(data: unknown, options: ImportOptions = {}): Imp
 
   const name = labelOf(blueprint);
   if (!printsExactly({ name, entities, wires: [] })) {
-    entities = entities.map((entity) => expressible(entity, notes.for(prototypeOf(entity), entity.name)));
+    entities = entities.map((entity) => expressible(entity, notes.for(entity.prototype, entity.name)));
   }
 
   const counts = { imported: 0, copper: 0, toDropped: 0, invalid: 0 };

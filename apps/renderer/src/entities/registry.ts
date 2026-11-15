@@ -3,7 +3,7 @@
 // there are, and the enabled modules which of them the project has. No prototype is named here: a further entity of the game is
 // its record in the two tables. The palette, its count, the digit keys and the icon probes read it. Pure.
 import { isAvailable, pickerTree, type Catalog } from "@face/catalog";
-import { entityTable, PROTOTYPES, prototypeOf, type EntityKind, type EntityShape, type EntityTable, type PrototypeName } from "@face/model";
+import { entityTable, PROTOTYPES, prototypeData, prototypesOf, type EntityKind, type EntityShape, type EntityTable, type PrototypeName } from "@face/model";
 import { entityDescription, prototypeFacts, prototypeLabel } from "./kindInfo.ts";
 
 /**
@@ -43,9 +43,14 @@ export interface PaletteGroup {
   readonly subgroups: readonly PaletteSubgroup[];
 }
 
+/** The prototype of the game itself among those of a kind with its own behaviour: `small-lamp` of the lamps, whatever a mod adds. */
+export function standardPrototype(kind: Exclude<EntityKind, "entity">): PrototypeName {
+  return prototypesOf(kind)[0]!;
+}
+
 /**
  * The kinds that are always on show above everything else, in this order: a decision of the user (the combinators stay in view).
- * Their prototypes are also in their subgroup of the game, like every other entity.
+ * Shown is the standard prototype of each; all their prototypes are also in their subgroup of the game, like every other entity.
  */
 export const PINNED_KINDS = ["constant", "arithmetic", "decider", "selector"] as const satisfies readonly EntityKind[];
 
@@ -68,8 +73,8 @@ export interface EntityRegistry {
 }
 
 function entryOf(prototype: PrototypeName): PaletteEntry {
-  const shape = { kind: PROTOTYPES[prototype]!.kind, prototype };
-  return { ...shape, label: prototypeLabel(shape), description: entityDescription(shape), facts: prototypeFacts(shape) };
+  const shape = { prototype };
+  return { kind: prototypeData(shape).kind, prototype, label: prototypeLabel(shape), description: entityDescription(shape), facts: prototypeFacts(shape) };
 }
 
 /**
@@ -114,7 +119,7 @@ export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: It
     }
     if (shown.length > 0) groups.push({ name: group.name, label: group.displayName, icon: group.icon, subgroups: shown });
   }
-  const pinned = PINNED_KINDS.map((kind) => entry(prototypeOf({ kind }))!);
+  const pinned = PINNED_KINDS.map((kind) => entry(standardPrototype(kind))!);
   const grouped = groups.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries));
   const unordered = table.entities.map((game) => game.name).filter((name) => !positions.has(name));
   return {
@@ -134,7 +139,7 @@ export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: It
  * selector does not offer (a hidden one from a blueprint, one of a module that is off) is among them: the circuit has it.
  */
 export function entriesInUse(registry: EntityRegistry, entities: readonly EntityShape[]): readonly PaletteEntry[] {
-  const used = [...new Set(entities.map(prototypeOf))].flatMap((prototype) => registry.entry(prototype) ?? []);
+  const used = [...new Set(entities.map((entity) => entity.prototype))].flatMap((prototype) => registry.entry(prototype) ?? []);
   return used.filter((entry) => !registry.pinned.includes(entry)).sort((a, b) => registry.position(a.prototype) - registry.position(b.prototype));
 }
 
@@ -159,7 +164,7 @@ export function searchEntries(groups: readonly PaletteGroup[], text: string): re
 export const KEYED_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp"] as const satisfies readonly EntityKind[];
 export type KeyedKind = (typeof KEYED_KINDS)[number];
 
-/** The kind whose key also places `entity`: the key of a kind places the first prototype of it. */
+/** The kind whose key also places `entity`: the key of a kind places the standard prototype of it. */
 export function keyedKindOf(entity: EntityShape): KeyedKind | undefined {
-  return KEYED_KINDS.find((kind) => kind === entity.kind && prototypeOf({ kind }) === prototypeOf(entity));
+  return KEYED_KINDS.find((kind) => standardPrototype(kind) === entity.prototype);
 }

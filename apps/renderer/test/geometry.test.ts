@@ -69,11 +69,11 @@ describe("connection pins of rotated entities", () => {
   it("faces east when no direction is given, exactly as before entities could be rotated", () => {
     expect(DEFAULT_FACING).toBe("east");
     for (const side of PLACES) for (const color of WIRE_COLORS) expect(pinPoint(position, side, color)).toEqual(pinPoint(position, side, color, "east"));
-    expect(facingOf({ kind: "decider" })).toBe("east");
-    expect(facingOf({ kind: "decider", placement: { tile: { x: 1, y: 2.5 } } })).toBe("east");
-    expect(facingOf({ kind: "decider", placement: { direction: "north" } })).toBe("north");
+    expect(facingOf({ prototype: "decider-combinator" })).toBe("east");
+    expect(facingOf({ prototype: "decider-combinator", placement: { tile: { x: 1, y: 2.5 } } })).toBe("east");
+    expect(facingOf({ prototype: "decider-combinator", placement: { direction: "north" } })).toBe("north");
     // A lamp does not rotate: its pins stay where an east-facing card has them, whatever its declaration says.
-    expect(facingOf({ kind: "lamp", placement: { direction: "north" } })).toBe("east");
+    expect(facingOf({ prototype: "small-lamp", placement: { direction: "north" } })).toBe("east");
   });
 
   it("puts the output on the edge the entity faces and the input on the opposite edge, for the one terminal a constant or a lamp has as well", () => {

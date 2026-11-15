@@ -122,16 +122,13 @@ describe("an edit of one setting", () => {
 
 describe("through the session", () => {
   const SOURCE = `circuit "Form" {
-    entity feeder at (40, 80) tile (0.5, 0.5) {
-        prototype = inserter
+    inserter feeder at (40, 80) tile (0.5, 0.5) {
     }
 
-    entity box at (280, 80) tile (2.5, 0.5) {
-        prototype = iron-chest
+    iron-chest box at (280, 80) tile (2.5, 0.5) {
     }
 
-    entity stop at (520, 80) {
-        prototype = train-stop
+    train-stop stop at (520, 80) {
         blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"
     }
 }
@@ -153,7 +150,7 @@ describe("through the session", () => {
     edit("logistic-when", { first: IRON, comparator: ">", second: { type: "signal", signal: A } });
     expect(errorsOf(session)).toEqual([]);
     expect(body(session.document.text, "feeder")).toEqual([
-      "prototype = inserter", "when item:iron-plate < 100", "logistic when item:iron-plate > virtual:signal-A", "networks = red", "set-filters = true", "read-hand = pulse", "stack-size-signal = virtual:signal-A",
+      "when item:iron-plate < 100", "logistic when item:iron-plate > virtual:signal-A", "networks = red", "set-filters = true", "read-hand = pulse", "stack-size-signal = virtual:signal-A",
     ]);
     expect(feeder().settings).toEqual({
       when: { first: IRON, comparator: "<", second: { type: "constant", value: 100 } },
@@ -171,17 +168,17 @@ describe("through the session", () => {
     edit("when", undefined);
     // The conditions and the network selection are gone. A switch, a mode and a signal that are written stay written and say the
     // default: the language patches the value of a statement and removes none for its value, as for every kind.
-    expect(body(session.document.text, "feeder")).toEqual(["prototype = inserter", "set-filters = false", "read-hand = none", "stack-size-signal = virtual:signal-S"]);
+    expect(body(session.document.text, "feeder")).toEqual(["set-filters = false", "read-hand = none", "stack-size-signal = virtual:signal-S"]);
     expect(feeder().settings).toEqual({});
     expect(errorsOf(session)).toEqual([]);
     // Each edit is a step of its own.
     for (let step = 0; step < 6; step++) session.commands.undo();
-    expect(body(session.document.text, "feeder")).toHaveLength(7);
+    expect(body(session.document.text, "feeder")).toHaveLength(6);
     for (let step = 0; step < 6; step++) session.commands.undo();
     expect(session.document.text).toBe(SOURCE);
     // A setting that is at its default and not in the source is not written by an edit of another one.
     edit("set-filters", true);
-    expect(body(session.document.text, "feeder")).toEqual(["prototype = inserter", "set-filters = true"]);
+    expect(body(session.document.text, "feeder")).toEqual(["set-filters = true"]);
   });
 
   it("keeps an incomplete condition as a draft and writes it once it has its signal", () => {
@@ -194,30 +191,34 @@ describe("through the session", () => {
     expect(session.document.text).toBe(SOURCE);
     session.commands.updateEntity(withSetting(session.state.draft!.entity as GenericEntity, spec("inserter", "when"), { ...blank, first: A }));
     expect(session.state.draft).toBeNull();
-    expect(body(session.document.text, "feeder")).toEqual(["prototype = inserter", "when virtual:signal-A > 5"]);
+    expect(body(session.document.text, "feeder")).toEqual(["when virtual:signal-A > 5"]);
   });
 
   it("changes the prototype within its type and keeps the settings and what the blueprint had", () => {
     const { session } = createSession(SOURCE);
     session.commands.updateEntity(withSetting(entityNamed(session, "feeder") as GenericEntity, spec("inserter", "read-hand"), "hold"));
+    const before = session.document.text;
     session.commands.updateEntity(withPrototype(entityNamed(session, "feeder") as GenericEntity, "fast-inserter"));
-    expect(body(session.document.text, "feeder")).toEqual(["prototype = fast-inserter", "read-hand = hold"]);
+    // The word of the declaration is the prototype: nothing else changes, in one step.
+    expect(session.document.text).toBe(before.replace("    inserter feeder at", "    fast-inserter feeder at"));
+    session.commands.undo();
+    expect(session.document.text).toBe(before);
+    session.commands.redo();
+    expect(body(session.document.text, "feeder")).toEqual(["read-hand = hold"]);
     expect(entityNamed(session, "feeder")).toMatchObject({ prototype: "fast-inserter", settings: { "read-hand": "hold" }, placement: { tile: { x: 0.5, y: 0.5 } } });
     const stop = entityNamed(session, "stop") as GenericEntity;
     session.commands.updateEntity(withSetting(stop, spec("train-stop", "read-from-train"), true));
-    expect(body(session.document.text, "stop")).toEqual(["prototype = train-stop", "read-from-train = true", 'blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"']);
+    expect(body(session.document.text, "stop")).toEqual(["read-from-train = true", 'blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"']);
     expect(keptFields(entityNamed(session, "stop") as GenericEntity)).toEqual(["station", "manual_trains_limit"]);
     expect(errorsOf(session)).toEqual([]);
   });
 
   it("refuses a prototype whose footprint would cover a tile of another entity on the board, and takes it on the edit canvas", () => {
     const source = `circuit "Tight" {
-    entity maker at (40, 80) tile (1.5, 1.5) {
-        prototype = assembling-machine-1
+    assembling-machine-1 maker at (40, 80) tile (1.5, 1.5) {
     }
 
-    entity box at (280, 80) tile (4.5, 3.5) {
-        prototype = iron-chest
+    iron-chest box at (280, 80) tile (4.5, 3.5) {
     }
 }
 `;
@@ -291,10 +292,10 @@ describe("what a type is for", () => {
   });
 
   it("describes an entity by its prototype type, and a type without a line by its settings", () => {
-    expect(entityDescription({ kind: "entity", prototype: "bulk-inserter" })).toBe(TYPE_DESCRIPTIONS.inserter);
-    expect(entityDescription({ kind: "entity", prototype: "steel-chest" })).toBe("Read what a chest holds");
-    expect(entityDescription({ kind: "decider" })).toBe("Compare and decide");
-    for (const name of Object.keys(PROTOTYPES)) expect(entityDescription({ kind: PROTOTYPES[name]!.kind, prototype: name }).length, name).toBeGreaterThan(8);
+    expect(entityDescription({ prototype: "bulk-inserter" })).toBe(TYPE_DESCRIPTIONS.inserter);
+    expect(entityDescription({ prototype: "steel-chest" })).toBe("Read what a chest holds");
+    expect(entityDescription({ prototype: "decider-combinator" })).toBe("Compare and decide");
+    for (const name of Object.keys(PROTOTYPES)) expect(entityDescription({ prototype: name }).length, name).toBeGreaterThan(8);
     expect(typeDescription("no-such-entity")).toBe("An entity of the game on the circuit network");
     expect(describeSettings(settingSpecsOf("inserter"))).toBe("Act on a circuit condition, take settings from signals, send what it reads");
     expect(describeSettings(settingSpecsOf("iron-chest"))).toBe("Send what it reads");

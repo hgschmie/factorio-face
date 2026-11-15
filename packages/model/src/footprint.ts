@@ -124,7 +124,7 @@ export function tileHalves(entity: EntityShape, direction: Direction, center: Po
   const whole = { ...origin, width, height };
   const sideways = direction === "east" || direction === "west";
   const along = sideways ? width : height;
-  if (TERMINALS[entity.kind].length < 2 || along < 2) return { input: whole, output: whole };
+  if (TERMINALS[prototypeData(entity).kind].length < 2 || along < 2) return { input: whole, output: whole };
   const half = along / 2;
   const [first, last] = sideways ? [{ ...whole, width: half }, { ...whole, x: origin.x + half, width: half }] : [{ ...whole, height: half }, { ...whole, y: origin.y + half, height: half }];
   return direction === "east" || direction === "south" ? { input: first, output: last } : { input: last, output: first };

@@ -2,7 +2,7 @@
 // the names, the footprints and pins on the board, placing and changing an entity in a session, and completion.
 import { createCatalog } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
-import { PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypeOf, type Entity } from "@face/model";
+import { PROTOTYPE_NAMES, prototypeData, type Entity } from "@face/model";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { arrangeBoard, boardPinOffset } from "../src/canvas/board.ts";
 import { blueprintLayout } from "../src/canvas/layout.ts";
@@ -20,37 +20,31 @@ import { createSession, EMPTY_SOURCE, entityNamed, type TestSession } from "./se
 const COMBINATORS = ["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"];
 
 const SOURCE = `circuit "Modded kinds" {
-    constant source at (40, 80) tile (0.5, 0.5) {
-        prototype = mod-constant
+    mod-constant source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 3
     }
 
-    arithmetic double at (280, 80) tile (2.5, 0.5) {
-        prototype = mod-arithmetic
+    mod-arithmetic double at (280, 80) tile (2.5, 0.5) {
         virtual:signal-A = virtual:signal-A * 2
     }
 
-    decider gate at (520, 80) tile (5, 1) facing north {
-        prototype = mod-decider
+    mod-decider gate at (520, 80) tile (5, 1) facing north {
         when virtual:signal-A > 5
         output virtual:signal-A = 1
     }
 
-    pole relay at (760, 80) tile (9, 1) {
-        prototype = mod-pole
+    mod-pole relay at (760, 80) tile (9, 1) {
     }
 
-    lamp light at (1000, 80) tile (13, 1) {
-        prototype = mod-lamp
+    mod-lamp light at (1000, 80) tile (13, 1) {
         when virtual:signal-A > 0
     }
 
-    lamp small at (1000, 300) tile (16.5, 0.5) {
+    small-lamp small at (1000, 300) tile (16.5, 0.5) {
         when virtual:signal-A > 0
     }
 
-    entity feed at (1240, 80) tile (18.5, 0.5) {
-        prototype = mod-loader
+    mod-loader feed at (1240, 80) tile (18.5, 0.5) {
         when virtual:signal-A > 0
     }
 
@@ -96,10 +90,10 @@ describe("modded prototypes of the kinds of the editor", () => {
     expect(registry.pinned.map((entry) => entry.prototype)).toEqual(COMBINATORS);
     expect(registry.entries.slice(0, 4)).toEqual(registry.pinned);
     expect(registry.entries.filter((entry) => keyedKindOf(entry) !== undefined).map((entry) => entry.prototype)).toEqual([...COMBINATORS, "small-lamp"]);
-    expect([keyedKindOf({ kind: "lamp", prototype: "mod-lamp" }), keyedKindOf({ kind: "lamp" }), keyedKindOf({ kind: "arithmetic", prototype: "mod-arithmetic" })]).toEqual([undefined, "lamp", undefined]);
+    expect([keyedKindOf({ prototype: "mod-lamp" }), keyedKindOf({ prototype: "small-lamp" }), keyedKindOf({ prototype: "mod-arithmetic" })]).toEqual([undefined, "lamp", undefined]);
     // The place tool of a modded prototype is another tool than the one of the kind.
-    expect(sameTool({ type: "place", kind: "arithmetic" }, { type: "place", kind: "arithmetic", prototype: "arithmetic-combinator" })).toBe(true);
-    expect(sameTool({ type: "place", kind: "arithmetic" }, { type: "place", kind: "arithmetic", prototype: "mod-arithmetic" })).toBe(false);
+    expect(sameTool({ type: "place", prototype: "arithmetic-combinator" }, { type: "place", prototype: "arithmetic-combinator" })).toBe(true);
+    expect(sameTool({ type: "place", prototype: "arithmetic-combinator" }, { type: "place", prototype: "mod-arithmetic" })).toBe(false);
   });
 
   it("have an entry with the name, the tiles and the reach of the game, and the line of their kind or type", () => {
@@ -110,18 +104,18 @@ describe("modded prototypes of the kinds of the editor", () => {
     expect(facts("mod-lamp")).toEqual(["Big lamp", "2 x 2 tiles", "See a condition light up"]);
     expect(facts("mod-pole")).toEqual(["Huge electric pole", "2 x 2 tiles, wire reach 48", "Relay signals over a distance"]);
     expect(facts("mod-loader")).toEqual(["Miniloader", "1 tile", TYPE_DESCRIPTIONS.loader]);
-    expect(entityDescription({ kind: "entity", prototype: "mod-loader" })).toBe(TYPE_DESCRIPTIONS["loader-1x1"]);
+    expect(entityDescription({ prototype: "mod-loader" })).toBe(TYPE_DESCRIPTIONS["loader-1x1"]);
     expect(searchEntries(registry.groups, "tiny").flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries.map((entry) => entry.prototype)))).toEqual(["mod-arithmetic", "mod-selector", "mod-constant"]);
   });
 
   it("names an entity by its prototype where the game data has several of its kind", () => {
-    expect(entityTitle({ kind: "arithmetic", prototype: "mod-arithmetic" })).toBe("Tiny arithmetic combinator");
-    expect(entityTitle({ kind: "arithmetic" })).toBe("Arithmetic combinator");
-    expect(entityTitle({ kind: "lamp", prototype: "mod-lamp" })).toBe("Big lamp");
-    expect(entityNoun({ kind: "pole", prototype: "mod-pole" })).toBe("a huge electric pole");
+    expect(entityTitle({ prototype: "mod-arithmetic" })).toBe("Tiny arithmetic combinator");
+    expect(entityTitle({ prototype: "arithmetic-combinator" })).toBe("Arithmetic combinator");
+    expect(entityTitle({ prototype: "mod-lamp" })).toBe("Big lamp");
+    expect(entityNoun({ prototype: "mod-pole" })).toBe("a huge electric pole");
     // The speaker has one prototype, with mods as without.
-    expect(entityTitle({ kind: "speaker" })).toBe("Speaker");
-    expect(prototypeFacts({ kind: "lamp", prototype: "mod-lamp" })).toBe("2 x 2 tiles");
+    expect(entityTitle({ prototype: "programmable-speaker" })).toBe("Speaker");
+    expect(prototypeFacts({ prototype: "mod-lamp" })).toBe("2 x 2 tiles");
   });
 
   it("lists the entities in use by their prototype, the modded ones among them", () => {
@@ -129,7 +123,7 @@ describe("modded prototypes of the kinds of the editor", () => {
     expect(session.state.diagnostics).toEqual([]);
     expect(entriesInUse(registry, session.state.circuit.entities).map((entry) => entry.prototype)).toEqual(["mod-loader", "mod-pole", "small-lamp", "mod-lamp", "mod-arithmetic", "mod-decider", "mod-constant"]);
     // A standard combinator is pinned and therefore not among them; a modded one of the same kind is.
-    expect(entriesInUse(registry, [{ kind: "arithmetic" }, { kind: "arithmetic", prototype: "mod-arithmetic" }]).map((entry) => entry.prototype)).toEqual(["mod-arithmetic"]);
+    expect(entriesInUse(registry, [{ prototype: "arithmetic-combinator" }, { prototype: "mod-arithmetic" }]).map((entry) => entry.prototype)).toEqual(["mod-arithmetic"]);
   });
 
   describe("the choice of the prototype in the inspector", () => {
@@ -143,20 +137,16 @@ describe("modded prototypes of the kinds of the editor", () => {
       // One prototype: nothing to choose, so the inspector shows no field.
       expect(choices("programmable-speaker")).toEqual(["programmable-speaker"]);
       expect(choices("mod-loader")).toEqual(["mod-loader"]);
-      // Without the registry: the first of the kind first, the others by name.
+      // Without the registry: the standard one of the kind first, the others by name.
       expect(alternativePrototypes("mod-lamp")).toEqual(["small-lamp", "5d-lamp", "mod-lamp"]);
-      expect(alternativePrototypes("no-such-thing")).toEqual([]);
     });
 
-    it("makes the entity another prototype of its kind and keeps its settings; the first of the kind goes without saying", () => {
+    it("makes the entity another prototype of its kind and keeps its settings", () => {
       const { session } = modded(SOURCE);
       const light = entityNamed(session, "light");
       expect(withPrototype(light, "5d-lamp")).toEqual({ ...light, prototype: "5d-lamp" });
-      const { prototype: _prototype, ...plain } = light;
-      expect(withPrototype(light, "small-lamp")).toEqual(plain);
-      expect("prototype" in withPrototype(light, "small-lamp")).toBe(false);
+      expect(withPrototype(light, "small-lamp")).toEqual({ ...light, prototype: "small-lamp" });
       expect(withPrototype(entityNamed(session, "small"), "mod-lamp")).toMatchObject({ kind: "lamp", prototype: "mod-lamp", condition: { comparator: ">" } });
-      // A pole always says which one it is.
       expect(withPrototype(entityNamed(session, "relay"), "small-electric-pole")).toMatchObject({ kind: "pole", prototype: "small-electric-pole" });
     });
   });
@@ -178,7 +168,7 @@ describe("modded prototypes of the kinds of the editor", () => {
       });
       expect(blueprintLayout(entities).rect(entityNamed(session, "gate"))).toEqual({ x: 320, y: 0, width: 160, height: 160 });
       // A combinator without a `tile` takes the tiles of its prototype at its derived place too.
-      const derived = arrangeBoard(modded('circuit "t" {\n    arithmetic a at (0, 0) {\n        prototype = mod-arithmetic\n    }\n\n    arithmetic b at (0, 0) {\n    }\n}\n').session.state.circuit.entities);
+      const derived = arrangeBoard(modded('circuit "t" {\n    mod-arithmetic a at (0, 0) {\n    }\n\n    arithmetic-combinator b at (0, 0) {\n    }\n}\n').session.state.circuit.entities);
       expect([...derived.values()].map((placement) => placement.size)).toEqual([{ width: 1, height: 1 }, { width: 2, height: 1 }]);
     });
 
@@ -194,10 +184,10 @@ describe("modded prototypes of the kinds of the editor", () => {
       expect([boardPinOffset(wide, "north", "in", "red"), boardPinOffset(wide, "north", "out", "red")]).toEqual([{ x: 70, y: 148 }, { x: 70, y: 12 }]);
       expect([boardPinOffset(wide, "south", "in", "red"), boardPinOffset(wide, "south", "out", "red")]).toEqual([{ x: 90, y: 12 }, { x: 90, y: 148 }]);
       // A lamp of two by two has its input in the middle of its left end, a modded pole its point in the middle of the top end.
-      expect(boardPinOffset({ kind: "lamp", prototype: "mod-lamp" }, "east", "in", "red")).toEqual({ x: 12, y: 70 });
-      expect(boardPinOffset({ kind: "pole", prototype: "mod-pole" }, "east", "io", "green")).toEqual({ x: 90, y: 12 });
+      expect(boardPinOffset({ prototype: "mod-lamp" }, "east", "in", "red")).toEqual({ x: 12, y: 70 });
+      expect(boardPinOffset({ prototype: "mod-pole" }, "east", "io", "green")).toEqual({ x: 90, y: 12 });
       // The standard combinator keeps its pins.
-      expect(boardPinOffset({ kind: "decider" }, "east", "out", "green")).toEqual({ x: 148, y: 50 });
+      expect(boardPinOffset({ prototype: "decider-combinator" }, "east", "out", "green")).toEqual({ x: 148, y: 50 });
     });
   });
 
@@ -214,16 +204,16 @@ describe("modded prototypes of the kinds of the editor", () => {
 
     it("places an entity of the prototype of its tool, on the cards and on the tiles of the prototype", () => {
       const { session } = modded();
-      session.commands.placeEntity("arithmetic", { x: 40, y: 40 }, undefined, "mod-arithmetic");
-      session.commands.placeEntity("arithmetic", { x: 280, y: 40 });
-      session.commands.placeEntity("lamp", { x: 520, y: 40 }, undefined, "5d-lamp");
+      session.commands.placeEntity("mod-arithmetic", { x: 40, y: 40 });
+      session.commands.placeEntity("arithmetic-combinator", { x: 280, y: 40 });
+      session.commands.placeEntity("5d-lamp", { x: 520, y: 40 });
       expect(session.document.text).toBe(
-        'circuit "Untitled circuit" {\n    arithmetic arithmetic1 at (40, 40) {\n        prototype = mod-arithmetic\n    }\n\n    arithmetic arithmetic2 at (280, 40) {\n    }\n\n    lamp lamp1 at (520, 40) {\n        prototype = "5d-lamp"\n    }\n}\n',
+        'circuit "Untitled circuit" {\n    mod-arithmetic arithmetic1 at (40, 40) {\n    }\n\n    arithmetic-combinator arithmetic2 at (280, 40) {\n    }\n\n    "5d-lamp" lamp1 at (520, 40) {\n    }\n}\n',
       );
       session.commands.setDisplayMode("blueprint");
       // One tile for the modded combinator, facing north; two by two for the big lamp.
-      session.commands.placeEntityOnTile("arithmetic", { x: 10.5, y: 10.5 }, "north", "mod-arithmetic");
-      session.commands.placeEntityOnTile("lamp", { x: 13, y: 11 }, undefined, "mod-lamp");
+      session.commands.placeEntityOnTile("mod-arithmetic", { x: 10.5, y: 10.5 }, "north");
+      session.commands.placeEntityOnTile("mod-lamp", { x: 13, y: 11 });
       expect(session.state.error).toBeNull();
       expect(entityNamed(session, "arithmetic3")).toMatchObject({ prototype: "mod-arithmetic", placement: { tile: { x: 10.5, y: 10.5 }, direction: "north" } });
       expect(entityNamed(session, "lamp2")).toMatchObject({ prototype: "mod-lamp", placement: { tile: { x: 13, y: 11 } } });
@@ -238,34 +228,41 @@ describe("modded prototypes of the kinds of the editor", () => {
       session.commands.updateEntity(withPrototype(named("small"), "mod-lamp"));
       expect(session.state.error).toBeNull();
       expect(named("small")).toMatchObject({ prototype: "mod-lamp", placement: { tile: { x: 17, y: 1 } } });
-      expect(session.document.text).toContain("    lamp small at (1000, 300) tile (17, 1) {\n        prototype = mod-lamp\n        when virtual:signal-A > 0\n    }");
-      // And back: the statement stays and names the lamp of the game.
+      expect(session.document.text).toContain("    mod-lamp small at (1000, 300) tile (17, 1) {\n        when virtual:signal-A > 0\n    }");
+      // And back: the word of the declaration is the lamp of the game again.
       session.commands.updateEntity(withPrototype(named("small"), "small-lamp"));
+      expect(session.document.text).toContain("    small-lamp small at (1000, 300) tile (16.5, 0.5) {\n        when virtual:signal-A > 0\n    }");
       expect(named("small")).toMatchObject({ kind: "lamp", placement: { tile: { x: 16.5, y: 0.5 } } });
-      expect(prototypeOf(named("small"))).toBe("small-lamp");
+      expect(named("small").prototype).toBe("small-lamp");
       // The standard arithmetic combinator is two tiles long: the tiny one at (2, 0) would reach onto (3, 0), which is free, ...
       session.commands.updateEntity(withPrototype(named("double"), "arithmetic-combinator"));
       expect(named("double")).toMatchObject({ kind: "arithmetic", placement: { tile: { x: 3, y: 0.5 } } });
-      expect(prototypeOf(named("double"))).toBe("arithmetic-combinator");
+      expect(named("double").prototype).toBe("arithmetic-combinator");
       // ... but a lamp on the tile left of the lamp `small` cannot grow into it.
-      session.commands.placeEntityOnTile("lamp", { x: 15.5, y: 0.5 });
+      session.commands.placeEntityOnTile("small-lamp", { x: 15.5, y: 0.5 });
       session.commands.updateEntity(withPrototype(named("lamp1"), "mod-lamp"));
       expect(session.state.error).toBe("Not changed: lamp1 would stand on a tile of small.");
-      expect(prototypeOf(named("lamp1"))).toBe("small-lamp");
+      expect(named("lamp1").prototype).toBe("small-lamp");
     });
   });
 
-  it("describes the property of the kind it is offered for, and offers the prototypes of that kind", () => {
+  it("offers the entities of the game data at the start of a member, as the source writes them and with their names in the game", () => {
     const data = moddedKindsData();
     applyData(data);
     const service = new CatalogService(createCatalog(data.catalog!), data.mods.map((mod) => mod.name));
     const at = (text: string) => completionCandidates(completionContext(analyze(text.replace("|", "")), text.indexOf("|")), service);
-    const detail = (text: string): string | undefined => at(text).find((candidate) => candidate.label === "prototype")?.detail;
-    expect(detail('circuit "t" {\n    lamp l {\n        |\n    }\n}\n')).toBe("Which lamp of the game this is, by its name in a blueprint (default: the standard one)");
-    expect(detail('circuit "t" {\n    pole p {\n        |\n    }\n}\n')).toBe("Which electric pole of the game this is, by its name in a blueprint (default: the standard one)");
-    expect(detail('circuit "t" {\n    entity e {\n        |\n    }\n}\n')).toBe("Which entity of the game this is, by its name in a blueprint (required)");
-    expect(detail('circuit "t" {\n    speaker s {\n        |\n    }\n}\n')).toBeUndefined();
-    expect(at('circuit "t" {\n    lamp l {\n        prototype = |\n    }\n}\n').map((candidate) => candidate.label)).toEqual(["small-lamp", "5d-lamp", "mod-hidden-lamp", "mod-lamp"]);
+    const members = at('circuit "t" {\n    small-lamp l {\n    }\n    |\n}\n');
+    expect(members[0]).toEqual({ label: "wire", type: "keyword" });
+    expect(members.slice(1).map((candidate) => candidate.type)).toEqual(PROTOTYPE_NAMES.map(() => "entity"));
+    const entity = (label: string) => members.find((candidate) => candidate.label === label);
+    expect(entity("small-lamp")).toEqual({ label: "small-lamp", type: "entity", detail: "Lamp" });
+    expect(entity("mod-arithmetic")).toEqual({ label: "mod-arithmetic", type: "entity", detail: "Tiny arithmetic combinator" });
+    expect(entity("steel-chest")).toEqual({ label: "steel-chest", type: "entity", detail: "Steel chest" });
+    // A name that does not read as one word is offered in its quotes, and one the editor does not support not at all.
+    expect(entity('"5d-lamp"')).toEqual({ label: '"5d-lamp"', type: "entity", detail: "Fifth lamp" });
+    expect(entity("5d-lamp") ?? entity("mod-speaker")).toBeUndefined();
+    // No property says which entity it is.
+    for (const body of ["small-lamp l", "small-electric-pole p", "mod-loader m"]) expect(at(`circuit "t" {\n    ${body} {\n        |\n    }\n}\n`).map((candidate) => candidate.label)).not.toContain("prototype");
   });
 });
 
@@ -280,9 +277,9 @@ describe("the name a mod gives its prototype", () => {
     expect(registry.entry("mod-constant")!.label).toBe("LTN Combinator");
     expect(prototypeLabel(ltn)).toBe("LTN Combinator");
     expect(entityTitle(ltn)).toBe("LTN Combinator");
-    expect(entityTitle({ kind: "entity", prototype: "mod-loader" })).toBe("AAI Loader (Mk2)");
+    expect(entityTitle({ prototype: "mod-loader" })).toBe("AAI Loader (Mk2)");
     // The standard prototype of the kind beside it keeps its name.
-    expect(entityTitle({ kind: "constant" })).toBe("Constant combinator");
+    expect(entityTitle({ prototype: "constant-combinator" })).toBe("Constant combinator");
     // In a sentence the name is a noun like any other.
     expect(prototypeData(ltn).label).toBe("ltn combinator");
     expect(entityNoun(ltn)).toBe("a ltn combinator");
@@ -295,10 +292,10 @@ describe("the name a mod gives its prototype", () => {
     reset();
     expect(PROTOTYPE_NAMES.length).toBeGreaterThan(90);
     for (const prototype of PROTOTYPE_NAMES) {
-      const shape = { kind: PROTOTYPES[prototype]!.kind, prototype };
+      const shape = { prototype };
       expect(prototypeLabel(shape), prototype).toBe(capitalized(prototypeData(shape).label));
     }
-    expect(["small-lamp", "big-electric-pole", "programmable-speaker", "decider-combinator"].map((prototype) => prototypeLabel({ kind: PROTOTYPES[prototype]!.kind, prototype }))).toEqual(["Lamp", "Big electric pole", "Programmable speaker", "Decider combinator"]);
+    expect(["small-lamp", "big-electric-pole", "programmable-speaker", "decider-combinator"].map((prototype) => prototypeLabel({ prototype }))).toEqual(["Lamp", "Big electric pole", "Programmable speaker", "Decider combinator"]);
   });
 });
 
@@ -310,6 +307,6 @@ describe("with the built-in data", () => {
     const choices = (prototype: string): readonly string[] => alternativePrototypes(prototype, registry.offers, registry.position);
     expect(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "programmable-speaker"].map((name) => choices(name).length)).toEqual([1, 1, 1, 1, 1, 1]);
     expect(choices("big-electric-pole")).toEqual(["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"]);
-    expect(entityTitle({ kind: "arithmetic" })).toBe("Arithmetic");
+    expect(entityTitle({ prototype: "arithmetic-combinator" })).toBe("Arithmetic");
   });
 });

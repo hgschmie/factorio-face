@@ -2,11 +2,11 @@
 // for every circuit the language can express (see `checkEntity` in commands.ts for the exceptions).
 
 import {
-  conditionRole, DEFAULT_ENTITY, entityTable, isValidSignalName, NORMAL_QUALITY, prototypeOf, prototypesOf, settingDefault, settingSpecsOf, wildcardOf,
+  conditionRole, DEFAULT_ENTITY, entityTable, isValidSignalName, NORMAL_QUALITY, settingDefault, settingSpecsOf, wildcardOf,
   type Circuit, type Condition, type ConstantSection, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec, type SettingValue, type SignalId,
   type TerminalRef, type TerminalSide, type WireColor,
 } from "@face/model";
-import { BLUEPRINT_DATA_PROPERTY, NO_NETWORK, PROTOTYPE_PROPERTY } from "./schema.ts";
+import { BLUEPRINT_DATA_PROPERTY, NO_NETWORK } from "./schema.ts";
 import { encodeString, isKeyword } from "./tokens.ts";
 
 export interface PrintOptions {
@@ -44,7 +44,10 @@ export function printNumber(value: number): string {
   return text.includes("e") ? value.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 20 }) : text;
 }
 
-/** A name from the game data: bare where it reads as one word, quoted otherwise ("F#3"). */
+/**
+ * A name from the game data, as the word of an entity declaration or as a value: bare where it reads as one word of the language
+ * that is not reserved (`small-lamp`, `piano`), quoted otherwise ("5d-lamp", "F#3", "wire").
+ */
 export function printName(name: string): string {
   return BARE_WORD.test(name) && !isKeyword(name) ? name : encodeString(name);
 }
@@ -187,9 +190,6 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
   const unit = options.unit ?? "    ";
   const items: StatementItem[] = [];
   if (entity.description !== undefined) items.push(property("description", encodeString(entity.description)));
-  // An entity says which game prototype of its kind it is; the first of the kind goes without saying, except for a generic entity.
-  if (entity.kind === "entity") items.push(property(PROTOTYPE_PROPERTY, printName(entity.prototype)));
-  else items.push(property(PROTOTYPE_PROPERTY, printName(prototypeOf(entity)), prototypeOf(entity) === prototypesOf(entity.kind)[0]));
   const signal = (key: string, id: SignalId | undefined) => {
     if (id) items.push(property(key, printSignal(id)));
   };
@@ -269,11 +269,11 @@ export function printAt(position: { readonly x: number; readonly y: number }): s
   return ` at (${printInteger(Math.round(position.x))}, ${printInteger(Math.round(position.y))})`;
 }
 
-/** Canonical declaration of one entity, starting in column 0. */
+/** Canonical declaration of one entity, starting in column 0: the game's name of the entity, its name in the circuit, where it is and what it is set to. */
 export function printEntity(entity: Entity, options: PrintOptions = {}): string {
   const unit = options.unit ?? "    ";
   const statements = entityItems(entity, { unit }).filter((item) => !item.implicit).map((item) => indent(item.text, unit));
-  return [`${entity.kind} ${entity.name}${printClauses(entity)} {`, ...statements, "}"].join("\n");
+  return [`${printName(entity.prototype)} ${entity.name}${printClauses(entity)} {`, ...statements, "}"].join("\n");
 }
 
 /** A wire end as the language writes it: `name.in`, `name.out`, or the bare name for the one connection point of a pole or a generic entity (`io`). */

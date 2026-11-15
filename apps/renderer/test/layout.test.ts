@@ -16,11 +16,11 @@ function circuitOf(source: string): Circuit {
 }
 
 const BOARD = `circuit "Board" {
-    constant source at (40, 80) tile (0.5, 0.5) { virtual:signal-A = 1 }
-    decider gate at (300, 80) tile (3, 0.5) { }
-    arithmetic down at (300, 260) tile (5.5, 1) facing south { }
-    lamp light at (560, 80) tile (7.5, 0.5) { }
-    selector loose at (184, 276) { }
+    constant-combinator source at (40, 80) tile (0.5, 0.5) { virtual:signal-A = 1 }
+    decider-combinator gate at (300, 80) tile (3, 0.5) { }
+    arithmetic-combinator down at (300, 260) tile (5.5, 1) facing south { }
+    small-lamp light at (560, 80) tile (7.5, 0.5) { }
+    selector-combinator loose at (184, 276) { }
     wire red source.out <-> gate.in
     wire green gate.out <-> gate.in
     wire red gate.out <-> gate.in
@@ -114,10 +114,10 @@ describe("blueprint layout", () => {
 
   it("keeps a red and a green wire between two poles apart: beside the pins in a row, straight in a column and on a diagonal", () => {
     const poles = circuitOf(`circuit "Poles" {
-    pole a at (0, 0) tile (0.5, 0.5) { }
-    pole b at (0, 0) tile (3.5, 0.5) { }
-    pole c at (0, 0) tile (0.5, 3.5) { }
-    pole d at (0, 0) tile (4, 4) { prototype = big-electric-pole }
+    small-electric-pole a at (0, 0) tile (0.5, 0.5) { }
+    small-electric-pole b at (0, 0) tile (3.5, 0.5) { }
+    small-electric-pole c at (0, 0) tile (0.5, 3.5) { }
+    big-electric-pole d at (0, 0) tile (4, 4) { }
     wire red a <-> b
     wire green a <-> b
     wire red a <-> c

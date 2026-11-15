@@ -4,7 +4,7 @@
 // own. And every prototype of the editor with the attributes of its control behaviour, which the game is asked for as it places
 // the entity. Bundled with esbuild by blueprints.mjs, because the language package is not plain enough for Node's type stripping.
 
-import { canRotate, ENTITY_SETTINGS, entityTable, facingOf, gamePrototype, PROTOTYPE_NAMES, PROTOTYPES, prototypeOf, settingFields, TERMINALS, type Circuit, type Entity, type EntityOfKind, type Point } from "@face/model";
+import { canRotate, ENTITY_SETTINGS, entityTable, facingOf, gamePrototype, PROTOTYPE_NAMES, PROTOTYPES, settingFields, TERMINALS, type Circuit, type Entity, type EntityOfKind, type Point } from "@face/model";
 import type { BlueprintEntity, BlueprintFile, BlueprintSection, LampControlBehavior, SpeakerControlBehavior } from "../../../packages/blueprints/src/index.ts";
 import { ENUM_DEFINES, runtimeAttribute } from "../../../packages/blueprints/test/gameNames.ts";
 import { exportedSamples, sampleCircuit, SAMPLES } from "../../../packages/blueprints/test/samples.ts";
@@ -83,7 +83,7 @@ function nativeBehavior(entity: EntityOfKind<"entity">, record: BlueprintEntity)
 
 function nativeEntity(entity: Entity, record: BlueprintEntity): NativeEntity {
   const base = {
-    name: prototypeOf(entity),
+    name: entity.prototype,
     position: record.position,
     ...(canRotate(entity) && { direction: facingOf(entity) }),
     ...(record.player_description !== undefined && { description: record.player_description }),

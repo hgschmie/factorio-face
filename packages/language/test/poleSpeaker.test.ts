@@ -27,15 +27,14 @@ function run(source: string, command: (parsed: ReturnType<typeof valid>) => Edit
 
 const CHAIN = circuit(
   [
-    "    constant source tile (0.5, 0.5) {",
+    "    constant-combinator source tile (0.5, 0.5) {",
     "        virtual:signal-A = 1",
     "    }",
-    "    pole p1 tile (4.5, 0.5) {",
+    "    small-electric-pole p1 tile (4.5, 0.5) {",
     "    }",
-    "    pole p2 tile (10, 1) {",
-    "        prototype = big-electric-pole",
+    "    big-electric-pole p2 tile (10, 1) {",
     "    }",
-    "    lamp light tile (14.5, 0.5) {",
+    "    small-lamp light tile (14.5, 0.5) {",
     "        when virtual:signal-A > 0",
     "    }",
     "    wire red source.out <-> p1",
@@ -45,45 +44,47 @@ const CHAIN = circuit(
 );
 
 describe("reserved words", () => {
-  it("reserves the two kind words", () => {
-    expect([isKeyword("pole"), isKeyword("speaker")]).toEqual([true, true]);
-    expect(codes(circuit("lamp pole { }"))).toEqual(["syntax-error"]);
-    expect(diagnostics(circuit("lamp speaker { }"))[0]![1]).toBe("'speaker' is a reserved keyword and cannot be used as an entity name");
-    // The names of their properties are not reserved.
-    expect(codes(circuit("lamp prototype { }\nlamp pitch { }\nlamp note { }\nlamp volume { }"))).toEqual([]);
+  it("reserves none of the words that once named a kind, and none of the property names", () => {
+    const kinds = ["constant", "arithmetic", "decider", "selector", "lamp", "pole", "speaker", "entity"];
+    expect(kinds.filter(isKeyword)).toEqual([]);
+    // Each is a name an entity may have, and none is an entity of the game.
+    expect(codes(circuit(kinds.map((kind) => `small-lamp ${kind} { }`).join("\n")))).toEqual([]);
+    expect(diagnostics(circuit("pole p { }"))).toEqual([["unknown-prototype", "Unknown entity 'pole'; did you mean small-electric-pole, medium-electric-pole, big-electric-pole?"]]);
+    expect(diagnostics(circuit("speaker s { when virtual:signal-A > 0 }"))).toEqual([["unknown-prototype", "Unknown entity 'speaker'; did you mean programmable-speaker?"]]);
+    expect(codes(circuit("small-lamp prototype { }\nsmall-lamp pitch { }\nsmall-lamp note { }\nsmall-lamp volume { }"))).toEqual([]);
   });
 });
 
 describe("pole", () => {
-  it("is a small electric pole unless it says which prototype it is", () => {
-    expect(entity("pole p at (20, 40) { }", "pole")).toEqual({ id: "e1", name: "p", position: { x: 20, y: 40 }, kind: "pole", prototype: "small-electric-pole" });
-    for (const prototype of prototypesOf("pole")) expect(entity(`pole p { prototype = ${prototype} }`, "pole").prototype).toBe(prototype);
-    expect(entity('pole p tile (2, 2) { prototype = substation description = "hub" }', "pole")).toMatchObject({ prototype: "substation", description: "hub", placement: { tile: { x: 2, y: 2 } } });
+  it("is the electric pole its word names", () => {
+    expect(entity("small-electric-pole p at (20, 40) { }", "pole")).toEqual({ id: "e1", name: "p", position: { x: 20, y: 40 }, kind: "pole", prototype: "small-electric-pole" });
+    for (const prototype of prototypesOf("pole")) expect(entity(`${prototype} p { }`, "pole").prototype).toBe(prototype);
+    expect(entity('substation p tile (2, 2) { description = "hub" }', "pole")).toMatchObject({ prototype: "substation", description: "hub", placement: { tile: { x: 2, y: 2 } } });
     // No configuration is needed: an empty pole is complete.
-    expect(codes(circuit("pole p { }"))).toEqual([]);
+    expect(codes(circuit("small-electric-pole p { }"))).toEqual([]);
   });
 
-  it("rejects an unknown prototype and everything a pole does not take", () => {
-    expect(diagnostics(circuit("pole p { prototype = small-lamp }"))).toEqual([["invalid-value", "'small-lamp' is a lamp, not an electric pole: declare it as 'lamp <name> { ... }'"]]);
-    expect(diagnostics(circuit("pole p { prototype = steel-chest }"))).toEqual([["invalid-value", "'steel-chest' is not an electric pole: declare it as 'entity <name> { prototype = steel-chest }'"]]);
-    expect(diagnostics(circuit("pole p { prototype = huge-pole }"))).toEqual([["invalid-value", "Unknown prototype 'huge-pole' for an electric pole; the game data has small-electric-pole, medium-electric-pole, big-electric-pole, substation"]]);
-    expect(diagnostics(circuit("pole p { prototype = 5 }"))).toEqual([["invalid-value", "Invalid value '5' for 'prototype'; expected a prototype name"]]);
-    expect(diagnostics(circuit("pole p { prototype = big-electric-pole prototype = substation }"))).toEqual([["duplicate-statement", "Duplicate property 'prototype'"]]);
-    expect(diagnostics(circuit("pole p { enabled = true }"))).toEqual([["unknown-property", "Unknown property 'enabled' in an electric pole; expected one of description, prototype"]]);
-    expect(diagnostics(circuit("pole p { when virtual:signal-A > 1 }"))).toEqual([["invalid-statement", "An electric pole does not take a 'when' statement"]]);
-    expect(diagnostics(circuit("pole p { virtual:signal-A = 1 }"))).toEqual([["invalid-statement", "An electric pole does not take signal assignments"]]);
-    // A kind with one prototype in the game data takes the word too, though nothing offers it: its one prototype, and no other.
-    expect(codes(circuit("lamp l { prototype = small-lamp }\nspeaker s { prototype = programmable-speaker when virtual:signal-A > 0 }"))).toEqual([]);
-    expect(diagnostics(circuit("lamp l { prototype = big-lamp }"))).toEqual([["invalid-value", "Unknown prototype 'big-lamp' for a lamp; the game data has small-lamp"]]);
-    expect(diagnostics(circuit("lamp l { size = 2 }"))).toEqual([["unknown-property", "Unknown property 'size' in a lamp; expected one of description, networks, always-on, colors, red, green, blue, rgb, color"]]);
+  it("rejects an unknown name and everything a pole does not take", () => {
+    expect(diagnostics(circuit("huge-pole p { }"))).toEqual([
+      ["unknown-prototype", "Unknown entity 'huge-pole': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)"],
+    ]);
+    expect(diagnostics(circuit("big-electric-pol p { }"))).toEqual([["unknown-prototype", "Unknown entity 'big-electric-pol'; did you mean big-electric-pole?"]]);
+    expect(diagnostics(circuit("big-electric-pole p { prototype = substation }"))).toEqual([["unknown-property", "Unknown property 'prototype' in an electric pole; expected one of description"]]);
+    expect(diagnostics(circuit("small-electric-pole p { enabled = true }"))).toEqual([["unknown-property", "Unknown property 'enabled' in an electric pole; expected one of description"]]);
+    expect(diagnostics(circuit("small-electric-pole p { when virtual:signal-A > 1 }"))).toEqual([["invalid-statement", "An electric pole does not take a 'when' statement"]]);
+    expect(diagnostics(circuit("small-electric-pole p { virtual:signal-A = 1 }"))).toEqual([["invalid-statement", "An electric pole does not take signal assignments"]]);
+    expect(diagnostics(circuit("big-lamp l { }"))).toEqual([["unknown-prototype", "Unknown entity 'big-lamp': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)"]]);
+    expect(diagnostics(circuit("small-lamp l { size = 2 }"))).toEqual([["unknown-property", "Unknown property 'size' in a lamp; expected one of description, networks, always-on, colors, red, green, blue, rgb, color"]]);
   });
 
-  it("prints the prototype unless it is the default", () => {
+  it("prints the prototype as the word of the declaration", () => {
     const parsed = valid(CHAIN);
-    expect(printCircuit(parsed.circuit).split("\n\n").slice(1, 3)).toEqual(["    pole p1 at (280, 40) tile (4.5, 0.5) {\n    }", "    pole p2 at (520, 40) tile (10, 1) {\n        prototype = big-electric-pole\n    }"]);
+    expect(printCircuit(parsed.circuit).split("\n\n").slice(1, 3)).toEqual(["    small-electric-pole p1 at (280, 40) tile (4.5, 0.5) {\n    }", "    big-electric-pole p2 at (520, 40) tile (10, 1) {\n    }"]);
     expect(printCircuit(parsed.circuit)).toContain("\n\n    wire red source.out <-> p1\n    wire red p1 <-> p2\n    wire red p2 <-> light.in\n}\n");
     expect(valid(printCircuit(parsed.circuit)).circuit.entities.map((e) => (e.kind === "pole" ? e.prototype : e.kind))).toEqual(["constant", "small-electric-pole", "big-electric-pole", "lamp"]);
     expect(checkEntity({ ...DEFAULT_ENTITY.pole, id: "x", name: "p", position: { x: 0, y: 0 }, prototype: "substation" })).toEqual({ ok: true });
+    // The kind is the one of the prototype.
+    expect(checkEntity({ ...DEFAULT_ENTITY.pole, id: "x", name: "p", position: { x: 0, y: 0 }, prototype: "small-lamp" })).toMatchObject({ ok: false });
   });
 });
 
@@ -105,13 +106,13 @@ describe("the terminal of a pole", () => {
   });
 
   it("joins both colors and takes several wires of one color", () => {
-    const parsed = valid(circuit("pole a { }\npole b { }\nlamp l { }\nwire red a <-> b\nwire green a <-> b\nwire red a <-> l.in\nwire green l.in <-> a"));
+    const parsed = valid(circuit("small-electric-pole a { }\nsmall-electric-pole b { }\nsmall-lamp l { }\nwire red a <-> b\nwire green a <-> b\nwire red a <-> l.in\nwire green l.in <-> a"));
     expect(parsed.circuit.wires).toHaveLength(4);
     expect(parsed.diagnostics).toEqual([]);
   });
 
   it("says how each kind is wired when the form does not fit", () => {
-    const source = "pole p { }\nlamp l { }\nconstant c { item:a = 1 }\nselector s { }\n";
+    const source = "small-electric-pole p { }\nsmall-lamp l { }\nconstant-combinator c { item:a = 1 }\nselector-combinator s { }\n";
     expect(diagnostics(circuit(`${source}wire red p.in <-> l.in`))).toEqual([["invalid-terminal", "An electric pole has no 'in' terminal; write the bare name 'p'"]]);
     expect(diagnostics(circuit(`${source}wire red c.out <-> p.out`))).toEqual([["invalid-terminal", "An electric pole has no 'out' terminal; write the bare name 'p'"]]);
     expect(diagnostics(circuit(`${source}wire red p <-> l`))).toEqual([["invalid-terminal", "A lamp is wired at a terminal: write 'l.in'"]]);
@@ -132,30 +133,29 @@ describe("the terminal of a pole", () => {
       const source = text.replace("|", "");
       return completionContext(analyze(source), offset).expected;
     };
-    const source = "pole p { }\nlamp l { }\n";
+    const source = "small-electric-pole p { }\nsmall-lamp l { }\n";
     expect(at(circuit(`${source}wire red |`))).toEqual([{ type: "terminal", entities: [{ name: "p", kind: "pole", sides: ["io"] }, { name: "l", kind: "lamp", sides: ["in"] }] }]);
     expect(at(circuit(`${source}wire red p |`))).toEqual([{ type: "keyword", values: ["<->"] }]);
     expect(at(circuit(`${source}wire red p <-> |`))).toMatchObject([{ type: "terminal" }]);
     // Behind a dot only `in` and `out` are written; a pole has neither.
     expect(at(circuit(`${source}wire red p.|`))).toEqual([{ type: "side", entity: "p", sides: [] }]);
     expect(at(circuit(`${source}wire red nope.|`))).toEqual([{ type: "side", entity: "nope", sides: ["in", "out"] }]);
-    expect(at(circuit("pole p { prototype = | }"))).toEqual([{ type: "enum", property: "prototype", values: ["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"] }]);
-    expect(at(circuit("pole p { | }"))).toEqual([{ type: "property", kind: "pole", names: ["description", "prototype"] }]);
+    expect(at(circuit("small-electric-pole p { | }"))).toEqual([{ type: "property", kind: "pole", names: ["description"] }]);
   });
 });
 
 describe("placement of poles and speakers", () => {
   it("puts a 2x2 pole on whole coordinates and names what it needs", () => {
-    const big = (tile: string, prototype = "big-electric-pole") => circuit(`pole p tile ${tile} { prototype = ${prototype} }`);
+    const big = (tile: string, prototype = "big-electric-pole") => circuit(`${prototype} p tile ${tile} { }`);
     expect(codes(big("(4, -1)"))).toEqual([]);
     expect(diagnostics(big("(4.5, -1.5)"))).toEqual([["tile-off-grid", "Not on the tile grid: the center of this big electric pole, which covers 2 x 2 tiles, needs a whole x and a whole y; the nearest is (5, -1)"]]);
     expect(diagnostics(big("(0.5, 1)", "substation"))).toEqual([["tile-off-grid", "Not on the tile grid: the center of this substation, which covers 2 x 2 tiles, needs a whole x and a whole y; the nearest is (1, 1)"]]);
     expect(diagnostics(big("(4, -1)", "small-electric-pole"))).toEqual([["tile-off-grid", "Not on the tile grid: the center of this small electric pole needs x and y ending in .5; the nearest is (4.5, -0.5)"]]);
-    expect(diagnostics(circuit("speaker s tile (1, 1.5) { when virtual:signal-A > 0 }"))).toEqual([["tile-off-grid", "Not on the tile grid: the center of this programmable speaker needs x and y ending in .5; the nearest is (1.5, 1.5)"]]);
+    expect(diagnostics(circuit("programmable-speaker s tile (1, 1.5) { when virtual:signal-A > 0 }"))).toEqual([["tile-off-grid", "Not on the tile grid: the center of this programmable speaker needs x and y ending in .5; the nearest is (1.5, 1.5)"]]);
   });
 
   it("counts all four tiles of a big pole for an overlap", () => {
-    const source = circuit("pole big tile (1, 1) { prototype = big-electric-pole }\nlamp a tile (1.5, 1.5) { }\nlamp b tile (2.5, 0.5) { }\nspeaker c tile (0.5, 0.5) { when virtual:signal-A > 0 }");
+    const source = circuit("big-electric-pole big tile (1, 1) { }\nsmall-lamp a tile (1.5, 1.5) { }\nsmall-lamp b tile (2.5, 0.5) { }\nprogrammable-speaker c tile (0.5, 0.5) { when virtual:signal-A > 0 }");
     expect(diagnostics(source)).toEqual([
       ["tile-overlap", "Stands on a tile that 'c' and 'a' stand on as well; in the game two entities cannot share a tile"],
       ["tile-overlap", "Stands on a tile that 'big' stands on as well; in the game two entities cannot share a tile"],
@@ -164,13 +164,13 @@ describe("placement of poles and speakers", () => {
   });
 
   it("warns about facing on an entity that does not turn", () => {
-    expect(diagnostics(circuit("pole p facing north { }"))).toEqual([["unused-facing", "An electric pole cannot be rotated; 'facing' is ignored"]]);
-    expect(diagnostics(circuit("speaker s facing west { when virtual:signal-A > 0 }"))).toEqual([["unused-facing", "A programmable speaker cannot be rotated; 'facing' is ignored"]]);
+    expect(diagnostics(circuit("small-electric-pole p facing north { }"))).toEqual([["unused-facing", "An electric pole cannot be rotated; 'facing' is ignored"]]);
+    expect(diagnostics(circuit("programmable-speaker s facing west { when virtual:signal-A > 0 }"))).toEqual([["unused-facing", "A programmable speaker cannot be rotated; 'facing' is ignored"]]);
   });
 });
 
 describe("wire reach with poles", () => {
-  const wired = (pole: string, lamp: string, prototype = "small-electric-pole") => circuit(`pole p tile ${pole} { prototype = ${prototype} }\nlamp l tile ${lamp} { }\nwire red p <-> l.in`);
+  const wired = (pole: string, lamp: string, prototype = "small-electric-pole") => circuit(`${prototype} p tile ${pole} { }\nsmall-lamp l tile ${lamp} { }\nwire red p <-> l.in`);
 
   it("gives a wire to a small pole the pole's 7.5 tiles and says so", () => {
     expect(codes(wired("(0.5, 0.5)", "(8.5, 0.5)"))).toEqual([]);
@@ -184,7 +184,7 @@ describe("wire reach with poles", () => {
   it("limits a wire from a big pole to another entity by the project, and one between two big poles by the poles", () => {
     expect(diagnostics(wired("(1, 1)", "(12.5, 0.5)", "big-electric-pole"))).toEqual([["wire-too-long", "Wire from 'p' to 'l.in': the entities are 10 tiles apart; the wire reach of the project is 9"]]);
     expect(codes(wired("(1, 1)", "(11.5, 0.5)", "big-electric-pole"))).toEqual([]);
-    const poles = (x: number, a = "big-electric-pole", b = "big-electric-pole") => circuit(`pole a tile (1, 1) { prototype = ${a} }\npole b tile (${x}, 1) { prototype = ${b} }\nwire green a <-> b`);
+    const poles = (x: number, a = "big-electric-pole", b = "big-electric-pole") => circuit(`${a} a tile (1, 1) { }\n${b} b tile (${x}, 1) { }\nwire green a <-> b`);
     // Two poles are measured from center to center, not between their tiles.
     for (const wireReach of [9, 0, 2]) expect(codes(poles(33), { wireReach })).toEqual([]);
     expect(diagnostics(poles(34))).toEqual([["wire-too-long", "Wire from 'a' to 'b': the poles are 33 tiles apart from center to center; the wire reach of a big electric pole is 32"]]);
@@ -199,16 +199,16 @@ describe("wire reach with poles", () => {
 
 describe("speaker", () => {
   it("has the defaults of a new speaker in the game", () => {
-    expect(entity("speaker s at (0, 0) { when virtual:signal-A > 0 }", "speaker")).toEqual({
-      id: "e1", name: "s", position: { x: 0, y: 0 }, kind: "speaker", condition: { first: A, comparator: ">", second: { type: "constant", value: 0 } },
+    expect(entity("programmable-speaker s at (0, 0) { when virtual:signal-A > 0 }", "speaker")).toEqual({
+      id: "e1", name: "s", position: { x: 0, y: 0 }, kind: "speaker", prototype: "programmable-speaker", condition: { first: A, comparator: ">", second: { type: "constant", value: 0 } },
       volume: 100, playbackMode: "local", allowPolyphony: false, stopPlayingSounds: false, showAlert: false, showOnMap: true, alertMessage: "",
     });
-    expect(diagnostics(circuit("speaker s { }"))).toEqual([["unconfigured", "This programmable speaker has neither a 'when' condition nor a 'pitch' signal; it never plays"]]);
+    expect(diagnostics(circuit("programmable-speaker s { }"))).toEqual([["unconfigured", "This programmable speaker has neither a 'when' condition nor a 'pitch' signal; it never plays"]]);
   });
 
   it("reads every setting", () => {
     const speaker = entity(
-      'speaker s { when anything <= virtual:signal-B instrument = piano note = "F#3" volume = 62.5 volume-signal = virtual:signal-V playback = global polyphony = true stop-playing-sounds = true show-alert = true show-on-map = false alert-icon = item:iron-plate alert-message = "Out of\\nplates" }',
+      'programmable-speaker s { when anything <= virtual:signal-B instrument = piano note = "F#3" volume = 62.5 volume-signal = virtual:signal-V playback = global polyphony = true stop-playing-sounds = true show-alert = true show-on-map = false alert-icon = item:iron-plate alert-message = "Out of\\nplates" }',
       "speaker",
     );
     expect(speaker).toMatchObject({
@@ -217,20 +217,20 @@ describe("speaker", () => {
       showAlert: true, showOnMap: false, alertIcon: { kind: "item", name: "iron-plate" }, alertMessage: "Out of\nplates",
     });
     expect(speaker.pitchSignal).toBeUndefined();
-    const tune = entity("speaker t { pitch = virtual:signal-A instrument = \"drum-kit\" note = hat-1 playback = surface }", "speaker");
+    const tune = entity("programmable-speaker t { pitch = virtual:signal-A instrument = \"drum-kit\" note = hat-1 playback = surface }", "speaker");
     expect(tune).toMatchObject({ pitchSignal: A, instrument: "drum-kit", note: "hat-1", playbackMode: "surface" });
     expect(tune.condition).toBeUndefined();
   });
 
   it("prints canonically: defaults omitted, names bare where they are one word", () => {
     const speaker: Entity = {
-      ...DEFAULT_ENTITY.speaker, id: "x", name: "s", position: { x: 0, y: 0 }, condition: { first: A, comparator: ">", second: { type: "constant", value: 0 } },
+      ...DEFAULT_ENTITY.speaker, prototype: "programmable-speaker", id: "x", name: "s", position: { x: 0, y: 0 }, condition: { first: A, comparator: ">", second: { type: "constant", value: 0 } },
       instrument: "piano", note: "F#3", volume: 12.5, volumeSignal: A, playbackMode: "surface", allowPolyphony: true, stopPlayingSounds: true, showAlert: true, showOnMap: false, alertIcon: A, alertMessage: 'a "b"',
     };
-    expect(printCircuit({ name: "p", entities: [speaker, { ...DEFAULT_ENTITY.speaker, id: "y", name: "t", position: { x: 240, y: 0 }, pitchSignal: A, note: "true", instrument: "2 tone" }], wires: [] })).toBe(
+    expect(printCircuit({ name: "p", entities: [speaker, { ...DEFAULT_ENTITY.speaker, prototype: "programmable-speaker", id: "y", name: "t", position: { x: 240, y: 0 }, pitchSignal: A, note: "true", instrument: "2 tone" }], wires: [] })).toBe(
       [
         'circuit "p" {',
-        "    speaker s at (0, 0) {",
+        "    programmable-speaker s at (0, 0) {",
         "        when virtual:signal-A > 0",
         "        instrument = piano",
         '        note = "F#3"',
@@ -245,7 +245,7 @@ describe("speaker", () => {
         '        alert-message = "a \\"b\\""',
         "    }",
         "",
-        "    speaker t at (240, 0) {",
+        "    programmable-speaker t at (240, 0) {",
         "        pitch = virtual:signal-A",
         '        instrument = "2 tone"',
         '        note = "true"',
@@ -261,7 +261,7 @@ describe("speaker", () => {
   });
 
   it("reports what does not fit", () => {
-    const body = (text: string, options?: Parameters<typeof analyze>[2]) => diagnostics(circuit(`speaker s { ${text} }`), options);
+    const body = (text: string, options?: Parameters<typeof analyze>[2]) => diagnostics(circuit(`programmable-speaker s { ${text} }`), options);
     expect(body("when virtual:signal-A > 0 pitch = virtual:signal-B")).toEqual([["contradictory-statement", "'pitch' takes the place of the 'when' condition: the value of the signal picks the note; remove one of the two"]]);
     expect(body("when virtual:signal-A > 0 and virtual:signal-B > 1")).toEqual([["syntax-error", "A speaker condition is a single comparison"]]);
     expect(body("when virtual:signal-A[red] > 0")).toEqual([["syntax-error", "A speaker condition signal takes no network selection"]]);
@@ -276,12 +276,12 @@ describe("speaker", () => {
     expect(body('pitch = virtual:signal-A note = ""')).toEqual([["invalid-value", "Invalid value '\"\"' for 'note'; expected a note name"]]);
     expect(body("pitch = virtual:signal-A networks = red")).toMatchObject([["unknown-property", expect.stringContaining("in a programmable speaker")]]);
     expect(body("output virtual:signal-A = 1")).toMatchObject([["unconfigured", expect.any(String)], ["invalid-statement", "A programmable speaker does not take 'output' statements"]]);
-    expect(diagnostics(circuit("speaker s { pitch = virtual:signal-A }\nlamp l { }\nwire red s.out <-> l.in"))).toEqual([["invalid-terminal", "A programmable speaker has no 'out' terminal"]]);
-    expect(diagnostics(circuit("speaker s { pitch = virtual:signal-A }\npole p { }\nwire red p <-> s"))).toEqual([["invalid-terminal", "A programmable speaker is wired at a terminal: write 's.in'"]]);
+    expect(diagnostics(circuit("programmable-speaker s { pitch = virtual:signal-A }\nsmall-lamp l { }\nwire red s.out <-> l.in"))).toEqual([["invalid-terminal", "A programmable speaker has no 'out' terminal"]]);
+    expect(diagnostics(circuit("programmable-speaker s { pitch = virtual:signal-A }\nsmall-electric-pole p { }\nwire red p <-> s"))).toEqual([["invalid-terminal", "A programmable speaker is wired at a terminal: write 's.in'"]]);
   });
 
   it("checks instrument and note against the game data when it is given", () => {
-    const body = (text: string) => diagnostics(circuit(`speaker s { pitch = virtual:signal-A ${text} }`), { instruments: INSTRUMENTS });
+    const body = (text: string) => diagnostics(circuit(`programmable-speaker s { pitch = virtual:signal-A ${text} }`), { instruments: INSTRUMENTS });
     expect(body("instrument = piano note = \"F#3\"")).toEqual([]);
     expect(body("")).toEqual([]);
     expect(body("instrument = organ note = C4")).toEqual([["unknown-instrument", "Unknown instrument 'organ'; the game has alarms, piano"]]);
@@ -290,35 +290,34 @@ describe("speaker", () => {
     expect(body("note = siren")).toEqual([]);
     expect(body("note = F3")).toEqual([["unknown-note", "The instrument 'alarms' has no note 'F3'"]]);
     // Both are warnings: the circuit is there with the names as written. Without game data nothing is checked.
-    const parsed = analyze(circuit("speaker s { pitch = virtual:signal-A instrument = organ }"), undefined, { instruments: INSTRUMENTS });
+    const parsed = analyze(circuit("programmable-speaker s { pitch = virtual:signal-A instrument = organ }"), undefined, { instruments: INSTRUMENTS });
     expect(parsed.circuit?.entities[0]).toMatchObject({ instrument: "organ" });
-    expect(diagnostics(circuit("speaker s { pitch = virtual:signal-A instrument = organ note = x }"))).toEqual([]);
+    expect(diagnostics(circuit("programmable-speaker s { pitch = virtual:signal-A instrument = organ note = x }"))).toEqual([]);
   });
 
   it("completes its statements, the instrument and the notes of the instrument named", () => {
     const at = (text: string): readonly Completion[] => completionContext(analyze(text.replace("|", "")), text.indexOf("|")).expected;
-    expect(at(circuit("speaker s { | }"))).toMatchObject([{ type: "keyword", values: ["when"] }, { type: "property", kind: "speaker" }]);
-    expect(at(circuit("speaker s { when | }"))).toEqual([{ type: "signal", wildcards: ["anything", "everything"] }]);
-    expect(at(circuit("speaker s { instrument = | }"))).toEqual([{ type: "instrument" }]);
-    expect(at(circuit("speaker s { note = | }"))).toEqual([{ type: "note" }]);
-    expect(at(circuit('speaker s { instrument = "drum-kit" note = | }'))).toEqual([{ type: "note", instrument: "drum-kit" }]);
-    expect(at(circuit("speaker s { note = F| instrument = piano }"))).toEqual([{ type: "note", instrument: "piano" }]);
-    expect(at(circuit("speaker s { playback = | }"))).toEqual([{ type: "enum", property: "playback", values: ["local", "surface", "global"] }]);
-    expect(at(circuit("speaker s { volume = | }"))).toEqual([{ type: "literal", kind: "number" }]);
-    expect(at(circuit("speaker s { alert-message = | }"))).toEqual([{ type: "literal", kind: "string" }]);
+    expect(at(circuit("programmable-speaker s { | }"))).toMatchObject([{ type: "keyword", values: ["when"] }, { type: "property", kind: "speaker" }]);
+    expect(at(circuit("programmable-speaker s { when | }"))).toEqual([{ type: "signal", wildcards: ["anything", "everything"] }]);
+    expect(at(circuit("programmable-speaker s { instrument = | }"))).toEqual([{ type: "instrument" }]);
+    expect(at(circuit("programmable-speaker s { note = | }"))).toEqual([{ type: "note" }]);
+    expect(at(circuit('programmable-speaker s { instrument = "drum-kit" note = | }'))).toEqual([{ type: "note", instrument: "drum-kit" }]);
+    expect(at(circuit("programmable-speaker s { note = F| instrument = piano }"))).toEqual([{ type: "note", instrument: "piano" }]);
+    expect(at(circuit("programmable-speaker s { playback = | }"))).toEqual([{ type: "enum", property: "playback", values: ["local", "surface", "global"] }]);
+    expect(at(circuit("programmable-speaker s { volume = | }"))).toEqual([{ type: "literal", kind: "number" }]);
+    expect(at(circuit("programmable-speaker s { alert-message = | }"))).toEqual([{ type: "literal", kind: "string" }]);
   });
 });
 
 describe("edit commands", () => {
   it("adds a pole of a prototype, with a tile on the grid of that prototype", () => {
-    const added = run(CHAIN, () => ({ type: "addEntity", kind: "pole", position: { x: 20, y: 400 }, prototype: "substation", tile: { x: 20, y: 6 } }));
-    expect(added).toContain("    pole pole1 at (20, 400) tile (20, 6) {\n        prototype = substation\n    }\n");
-    expect(run(CHAIN, () => ({ type: "addEntity", kind: "pole", position: { x: 0, y: 0 }, tile: { x: 20.5, y: 6.5 } }))).toContain("pole pole1 at (0, 0) tile (20.5, 6.5) {\n    }");
-    expect(run(CHAIN, () => ({ type: "addEntity", kind: "speaker", position: { x: 0, y: 0 }, facing: "north" }))).toContain("speaker speaker1 at (0, 0) {\n    }");
+    const added = run(CHAIN, () => ({ type: "addEntity", prototype: "substation", position: { x: 20, y: 400 }, tile: { x: 20, y: 6 } }));
+    expect(added).toContain("    substation pole1 at (20, 400) tile (20, 6) {\n    }\n");
+    expect(run(CHAIN, () => ({ type: "addEntity", prototype: "small-electric-pole", position: { x: 0, y: 0 }, tile: { x: 20.5, y: 6.5 } }))).toContain("small-electric-pole pole1 at (0, 0) tile (20.5, 6.5) {\n    }");
+    expect(run(CHAIN, () => ({ type: "addEntity", prototype: "programmable-speaker", position: { x: 0, y: 0 }, facing: "north" }))).toContain("programmable-speaker speaker1 at (0, 0) {\n    }");
     const parsed = valid(CHAIN);
-    expect(executeCommand(parsed, { type: "addEntity", kind: "pole", position: { x: 0, y: 0 }, prototype: "big-electric-pole", tile: { x: 20.5, y: 6.5 } })).toEqual({ ok: false, code: "invalid-position", message: "tile (20.5, 6.5) is not on the tile grid for a new big electric pole" });
-    expect(executeCommand(parsed, { type: "addEntity", kind: "pole", position: { x: 0, y: 0 }, prototype: "small-lamp" })).toMatchObject({ ok: false, code: "invalid-entity" });
-    expect(executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 }, prototype: "substation" })).toMatchObject({ ok: false, code: "invalid-entity" });
+    expect(executeCommand(parsed, { type: "addEntity", prototype: "big-electric-pole", position: { x: 0, y: 0 }, tile: { x: 20.5, y: 6.5 } })).toEqual({ ok: false, code: "invalid-position", message: "tile (20.5, 6.5) is not on the tile grid for a new big electric pole" });
+    expect(executeCommand(parsed, { type: "addEntity", prototype: "pole", position: { x: 0, y: 0 } })).toEqual({ ok: false, code: "invalid-entity", message: "'pole' is not an entity of the game data in use" });
   });
 
   it("wires, renames and deletes a pole through its bare name", () => {
@@ -330,7 +329,7 @@ describe("edit commands", () => {
     expect(executeCommand(parsed, { type: "addWire", color: "red", a: { entity: idOf(parsed, "p2"), side: "io" }, b: { entity: idOf(parsed, "p1"), side: "io" } })).toEqual({ ok: true, changes: [] });
 
     const renamed = run(CHAIN, (p) => ({ type: "renameEntity", id: idOf(p, "p1"), name: "relay" }));
-    expect(renamed).toContain("pole relay tile (4.5, 0.5) {");
+    expect(renamed).toContain("small-electric-pole relay tile (4.5, 0.5) {");
     expect(renamed).toContain("    wire red source.out <-> relay\n    wire red relay <-> p2\n");
     expect(valid(renamed).circuit.wires).toHaveLength(3);
 
@@ -341,28 +340,29 @@ describe("edit commands", () => {
     expect(unwired).not.toContain("p1 <-> p2");
   });
 
-  it("changes the prototype and the settings of a speaker statement by statement", () => {
+  it("changes the prototype as the word of the declaration, and the settings of a speaker statement by statement", () => {
     const parsed = valid(CHAIN);
     const p1 = parsed.circuit.entities[1] as EntityOfKind<"pole">;
-    expect(run(CHAIN, () => ({ type: "updateEntity", id: p1.id, entity: { ...p1, prototype: "medium-electric-pole" } }))).toContain("    pole p1 tile (4.5, 0.5) {\n        prototype = medium-electric-pole\n    }");
+    // Nothing but the word changes.
+    expect(run(CHAIN, () => ({ type: "updateEntity", id: p1.id, entity: { ...p1, prototype: "medium-electric-pole" } }))).toBe(CHAIN.replace("small-electric-pole p1", "medium-electric-pole p1"));
     const p2 = parsed.circuit.entities[2] as EntityOfKind<"pole">;
-    // A statement that is there stays, also with the default.
-    expect(run(CHAIN, () => ({ type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "small-electric-pole" } }))).toContain("    pole p2 tile (10, 1) {\n        prototype = small-electric-pole\n    }");
-    expect(run(CHAIN, () => ({ type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "substation" } }))).toContain("        prototype = substation\n");
+    expect(run(CHAIN, () => ({ type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "substation" } }))).toBe(CHAIN.replace("big-electric-pole p2", "substation p2"));
+    expect(executeCommand(parsed, { type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "huge-pole" } })).toMatchObject({ ok: false, code: "invalid-entity" });
+    expect(executeCommand(parsed, { type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "small-lamp" } })).toMatchObject({ ok: false });
 
-    const source = circuit("    speaker s {\n        when virtual:signal-A > 0 // why\n        volume = 50\n    }");
+    const source = circuit("    programmable-speaker s {\n        when virtual:signal-A > 0 // why\n        volume = 50\n    }");
     const speaker = valid(source).circuit.entities[0] as EntityOfKind<"speaker">;
     const next = run(source, () => ({ type: "updateEntity", id: speaker.id, entity: { ...speaker, volume: 100, instrument: "piano", note: "F#3", showAlert: true, alertMessage: "now" } }));
-    expect(next).toBe(circuit('    speaker s {\n        when virtual:signal-A > 0 // why\n        instrument = piano\n        note = "F#3"\n        volume = 100\n        show-alert = true\n        alert-message = "now"\n    }'));
+    expect(next).toBe(circuit('    programmable-speaker s {\n        when virtual:signal-A > 0 // why\n        instrument = piano\n        note = "F#3"\n        volume = 100\n        show-alert = true\n        alert-message = "now"\n    }'));
     const pitched = run(source, () => ({ type: "updateEntity", id: speaker.id, entity: { ...speaker, condition: undefined, pitchSignal: A } }));
-    expect(pitched).toBe(circuit("    speaker s {\n        pitch = virtual:signal-A\n        volume = 50\n    }"));
+    expect(pitched).toBe(circuit("    programmable-speaker s {\n        pitch = virtual:signal-A\n        volume = 50\n    }"));
   });
 
   it("does not turn a pole or a speaker, and puts a tile on their grid", () => {
     const parsed = valid(CHAIN);
     const ids = ["p1", "p2"].map((name) => idOf(parsed, name));
     expect(executeCommand(parsed, { type: "faceEntities", facings: ids.map((id) => ({ id, direction: "north" as const })) })).toEqual({ ok: true, changes: [] });
-    expect(run(CHAIN, () => ({ type: "setTiles", tiles: [{ id: ids[1]!, tile: { x: 12, y: -3 } }] }))).toContain("pole p2 tile (12, -3) {");
+    expect(run(CHAIN, () => ({ type: "setTiles", tiles: [{ id: ids[1]!, tile: { x: 12, y: -3 } }] }))).toContain("big-electric-pole p2 tile (12, -3) {");
     expect(executeCommand(parsed, { type: "setTiles", tiles: [{ id: ids[1]!, tile: { x: 12.5, y: -3.5 } }] })).toMatchObject({ ok: false, code: "invalid-position" });
     expect(executeCommand(parsed, { type: "setTiles", tiles: [{ id: ids[0]!, tile: { x: 12, y: -3 } }] })).toMatchObject({ ok: false, code: "invalid-position" });
   });
@@ -370,11 +370,11 @@ describe("edit commands", () => {
   it("copies poles with the wires between them as a fragment", () => {
     const parsed = valid(CHAIN);
     const text = printFragment(extractFragment(parsed.circuit, ["p1", "p2", "light"].map((name) => idOf(parsed, name))));
-    expect(text).toBe("pole p1 at (280, 40) tile (4.5, 0.5) {\n}\n\npole p2 at (520, 40) tile (10, 1) {\n    prototype = big-electric-pole\n}\n\nlamp light at (760, 40) tile (14.5, 0.5) {\n    when virtual:signal-A > 0\n}\n\nwire red p1 <-> p2\nwire red p2 <-> light.in\n");
+    expect(text).toBe("small-electric-pole p1 at (280, 40) tile (4.5, 0.5) {\n}\n\nbig-electric-pole p2 at (520, 40) tile (10, 1) {\n}\n\nsmall-lamp light at (760, 40) tile (14.5, 0.5) {\n    when virtual:signal-A > 0\n}\n\nwire red p1 <-> p2\nwire red p2 <-> light.in\n");
     const fragment = analyzeFragment(text);
     expect(fragment.hasErrors).toBe(false);
     const pasted = run(CHAIN, () => ({ type: "pasteFragment", fragment: fragment.fragment!, shift: { x: 0, y: 200 } }));
-    expect(pasted).toContain("    pole p3 at (280, 240) {\n    }\n    pole p4 at (520, 240) {\n        prototype = big-electric-pole\n    }");
+    expect(pasted).toContain("    small-electric-pole p3 at (280, 240) {\n    }\n    big-electric-pole p4 at (520, 240) {\n    }");
     expect(pasted).toContain("    wire red p3 <-> p4\n    wire red p4 <-> light2.in\n");
     expect(valid(pasted).circuit.wires).toHaveLength(5);
   });

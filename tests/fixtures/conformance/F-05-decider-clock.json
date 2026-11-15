@@ -8,8 +8,8 @@
   "circuit": {
     "name": "F-05-decider-clock",
     "entities": [
-      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
-      {"id": "clock", "name": "clock", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": "<", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
+      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
+      {"id": "clock", "name": "clock", "position": {"x": 0, "y": 0}, "kind": "decider", "prototype": "decider-combinator", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": "<", "second": {"type": "constant", "value": 5}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
     ],
     "wires": [
       {"color": "red", "a": {"entity": "one", "side": "out"}, "b": {"entity": "clock", "side": "in"}},

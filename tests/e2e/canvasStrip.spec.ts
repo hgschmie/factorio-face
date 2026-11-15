@@ -65,7 +65,7 @@ test("the strip is a row of its own above the canvas with the title, the counts,
   await canvas(page).focus();
   await page.keyboard.press("Enter");
   await expect(strip(page).locator(".counts")).toHaveText("5 entities4 connections");
-  await setSource(page, 'circuit "One" {\n    lamp only at (0, 0) {\n    }\n}\n');
+  await setSource(page, 'circuit "One" {\n    small-lamp only at (0, 0) {\n    }\n}\n');
   await expect(strip(page).locator(".counts")).toHaveText("1 entity0 connections");
 });
 

@@ -9,8 +9,8 @@
   "circuit": {
     "name": "F-19-selector-random-single-input",
     "entities": [
-      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}]}]},
-      {"id": "r", "name": "r", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "random", "interval": 3}}
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}]}]},
+      {"id": "r", "name": "r", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "random", "interval": 3}}
     ],
     "wires": [
       {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "r", "side": "in"}}

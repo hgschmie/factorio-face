@@ -12,11 +12,10 @@ import { createSession, EMPTY_SOURCE, errorsOf, fakeDesktop, MANIFEST, project, 
 const RECORD: ProjectMods = { gameVersion: "2.1.24", mods: MODDED_MODS };
 const OTHER_RECORD: ProjectMods = { gameVersion: "2.1.20", mods: [{ name: "base", version: "2.1.20" }, { name: MOD, version: "1.0.0" }, { name: "gone-mod", version: "0.2.0" }] };
 const MODDED_CIRCUIT = `circuit "Modded" {
-    entity crate at (40, 80) {
-        prototype = ${MOD_ENTITY}
+    ${MOD_ENTITY} crate at (40, 80) {
     }
 
-    constant source at (300, 80) {
+    constant-combinator source at (300, 80) {
         virtual:${MOD_SIGNAL} = 1
         item:carbon-fiber = 2
     }
@@ -60,10 +59,10 @@ describe("with data read from the game", () => {
     const picked = session.state.catalog.picker().flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals.map((entry) => entry.key)));
     expect(picked).toContain(`virtual:${MOD_SIGNAL}`);
 
-    session.commands.placeEntity("entity", { x: 40, y: 80 }, undefined, MOD_ENTITY);
+    session.commands.placeEntity(MOD_ENTITY, { x: 40, y: 80 });
     expect(errorsOf(session)).toEqual([]);
     expect(session.state.circuit.entities).toMatchObject([{ name: "mod_crate1", kind: "entity", prototype: MOD_ENTITY }]);
-    expect(session.state.source).toContain(`        prototype = ${MOD_ENTITY}\n`);
+    expect(session.state.source).toContain(`    ${MOD_ENTITY} mod_crate1 at (40, 80) {\n    }\n`);
   });
 
   it("writes the record of the game and its mods on save, keeps the module list of the file, and reopens without a notice", async () => {
@@ -120,7 +119,7 @@ describe("with the built-in data", () => {
     expect(session.state.project).toMatchObject({ path: "/projects/modded.faceproj", dirty: false, madeWith: `Factorio 2.1.24 with ${MOD} 1.2.3` });
     // The source is as it was; the mod's entity is an error in it and the mod's signal a warning.
     expect(session.state.source).toBe(MODDED_CIRCUIT);
-    expect(session.state.diagnostics.map((diagnostic) => `${diagnostic.severity} ${diagnostic.code}`)).toEqual(["error invalid-value", "warning unknown-signal"]);
+    expect(session.state.diagnostics.map((diagnostic) => `${diagnostic.severity} ${diagnostic.code}`)).toEqual(["error unknown-prototype", "warning unknown-signal"]);
 
     session.commands.setProjectName("Still modded");
     session.commands.setWireReach(12);

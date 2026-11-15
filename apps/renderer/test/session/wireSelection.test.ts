@@ -183,7 +183,7 @@ describe("wire selection", () => {
     const { session } = createSession(IRREGULAR, { api: desktop.api });
     const red = key(session, "red", "src.out", "gate.in");
     session.commands.select([], [red]);
-    session.commands.placeEntity("lamp", { x: 800, y: 80 });
+    session.commands.placeEntity("small-lamp", { x: 800, y: 80 });
     expect(session.state.selection).toHaveLength(1);
     expect(session.state.wireSelection).toEqual([]);
 

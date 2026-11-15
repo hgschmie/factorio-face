@@ -6,20 +6,20 @@ import { createSession, entityNamed, idOf, replaceText } from "./helpers.ts";
 
 /** `source` on tile (0, 0), `gate` on (2, 0) and (3, 0); `twice` and `light` have no tile and are shown on (3, 3), (4, 3) and on (6, 1). */
 const BOARD = `circuit "Board" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    decider gate at (300, 80) tile (3, 0.5) {   // the counter
+    decider-combinator gate at (300, 80) tile (3, 0.5) {   // the counter
         when virtual:signal-A < 10
         output virtual:signal-A = input
     }
 
-    arithmetic twice at (300, 240) {
+    arithmetic-combinator twice at (300, 240) {
         virtual:signal-B = virtual:signal-A[red] * 2
     }
 
-    lamp light at (560, 80) {
+    small-lamp light at (560, 80) {
         when virtual:signal-B > 8
     }
 
@@ -65,7 +65,7 @@ describe("setTiles", () => {
     const before = positions();
     set({ source: at(0.5, 4.5), gate: at(3, 4.5), twice: at(6, 4.5) });
     expect(tiles()).toEqual({ source: at(0.5, 4.5), gate: at(3, 4.5), twice: at(6, 4.5), light: undefined });
-    expect(session.state.source).toContain("arithmetic twice at (300, 240) tile (6, 4.5) {");
+    expect(session.state.source).toContain("arithmetic-combinator twice at (300, 240) tile (6, 4.5) {");
     expect(positions()).toEqual(before);
     session.commands.undo();
     expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
@@ -92,7 +92,7 @@ describe("setTiles", () => {
   });
 
   it("repairs a conflict of the source, and a conflict elsewhere is in nobody's way", () => {
-    const broken = BOARD.replace("tile (3, 0.5)", "tile (0.5, 0.5)").replace("lamp light at (560, 80)", "lamp light at (560, 80) tile (0.5, 0.5)");
+    const broken = BOARD.replace("tile (3, 0.5)", "tile (0.5, 0.5)").replace("small-lamp light at (560, 80)", "small-lamp light at (560, 80) tile (0.5, 0.5)");
     const { session, set, tiles } = board(broken);
     const codes = (): string[] => session.state.diagnostics.map((diagnostic) => diagnostic.code).sort();
     expect(codes()).toEqual(["tile-off-grid", "tile-overlap", "tile-overlap", "tile-overlap"]);
@@ -127,7 +127,7 @@ describe("setTiles", () => {
     session.commands.nudgeTiles(at(1, 0));
     session.commands.placeHere();
     session.commands.unplace([idOf(session, "gate")]);
-    session.commands.placeEntityOnTile("lamp", at(9.5, 9.5));
+    session.commands.placeEntityOnTile("small-lamp", at(9.5, 9.5));
     expect(session.state).toMatchObject({ source: typed, error: null });
   });
 });
@@ -196,7 +196,7 @@ describe("placeHere and unplace", () => {
 
   it("snaps entities that are shown away from their own place to where they are shown", () => {
     // Both lamps want tile (0, 1); the second one is shown above it, on (0, 0).
-    const { session, tiles } = board('circuit "c" {\n    lamp a at (0, 92) { }\n    lamp b at (0, 92) { }\n}\n');
+    const { session, tiles } = board('circuit "c" {\n    small-lamp a at (0, 92) { }\n    small-lamp b at (0, 92) { }\n}\n');
     session.commands.placeHere([idOf(session, "b")]);
     expect(tiles()).toEqual({ a: undefined, b: at(0.5, 0.5) });
     session.commands.placeHere();
@@ -218,7 +218,7 @@ describe("placeHere and unplace", () => {
     // A facing stays where it is.
     session.commands.rotateEntities([idOf(session, "gate")], "clockwise");
     session.commands.unplace([idOf(session, "gate")]);
-    expect(session.state.source).toContain("decider gate at (300, 80) facing south {");
+    expect(session.state.source).toContain("decider-combinator gate at (300, 80) facing south {");
   });
 });
 
@@ -226,10 +226,10 @@ describe("placeEntityOnTile", () => {
   it("adds an entity with its tile and the edit position the tile is derived from, selects it and puts the tool back", () => {
     const { session, tiles } = board();
     session.commands.setDisplayMode("blueprint");
-    session.commands.setTool({ type: "place", kind: "decider" });
-    session.commands.placeEntityOnTile("decider", at(6, 3.5));
+    session.commands.setTool({ type: "place", prototype: "decider-combinator" });
+    session.commands.placeEntityOnTile("decider-combinator", at(6, 3.5));
     // The top-left tile (5, 3) is the card corner (460, 276), on the grid (460, 280).
-    expect(session.state.source).toContain("decider decider1 at (460, 280) tile (6, 3.5) {");
+    expect(session.state.source).toContain("decider-combinator decider1 at (460, 280) tile (6, 3.5) {");
     expect(session.state).toMatchObject({ tool: { type: "select" }, selection: [idOf(session, "decider1")], error: null });
     expect(tiles().gate).toEqual(at(3, 0.5));
     session.commands.undo();
@@ -239,12 +239,12 @@ describe("placeEntityOnTile", () => {
   it("refuses a taken tile without a word and keeps the tool; a tile under an entity without one is free", () => {
     const { session, tiles } = board();
     session.commands.setDisplayMode("blueprint");
-    session.commands.setTool({ type: "place", kind: "lamp" });
-    session.commands.placeEntityOnTile("lamp", at(0.5, 0.5));
-    session.commands.placeEntityOnTile("decider", at(2, 0.5));
-    expect(session.state).toMatchObject({ source: BOARD, tool: { type: "place", kind: "lamp" }, error: null, canUndo: false });
+    session.commands.setTool({ type: "place", prototype: "small-lamp" });
+    session.commands.placeEntityOnTile("small-lamp", at(0.5, 0.5));
+    session.commands.placeEntityOnTile("decider-combinator", at(2, 0.5));
+    expect(session.state).toMatchObject({ source: BOARD, tool: { type: "place", prototype: "small-lamp" }, error: null, canUndo: false });
     // Where `light` is shown.
-    session.commands.placeEntityOnTile("lamp", at(6.5, 1.5));
+    session.commands.placeEntityOnTile("small-lamp", at(6.5, 1.5));
     expect(tiles()).toMatchObject({ lamp1: at(6.5, 1.5), light: undefined });
   });
 
@@ -252,39 +252,39 @@ describe("placeEntityOnTile", () => {
     const { session, tiles } = board();
     session.commands.setDisplayMode("blueprint");
     // Upright on (4, 0) and (4, 1), next to the gate: the center has a whole y.
-    session.commands.placeEntityOnTile("decider", at(4.5, 1), "south");
-    expect(session.state.source).toContain("decider decider1 at (360, 0) tile (4.5, 1) facing south {");
+    session.commands.placeEntityOnTile("decider-combinator", at(4.5, 1), "south");
+    expect(session.state.source).toContain("decider-combinator decider1 at (360, 0) tile (4.5, 1) facing south {");
     expect(entityNamed(session, "decider1").placement).toEqual({ tile: at(4.5, 1), direction: "south" });
     expect(session.state).toMatchObject({ error: null, selection: [idOf(session, "decider1")] });
     session.commands.undo();
     expect(session.state).toMatchObject({ source: BOARD, canUndo: false });
     // Upright on (3, 0) and (3, 1) it would stand on the gate; lying on (4, 1) and (5, 1) an east-facing one is free there.
-    session.commands.placeEntityOnTile("arithmetic", at(3.5, 1), "north");
+    session.commands.placeEntityOnTile("arithmetic-combinator", at(3.5, 1), "north");
     expect(session.state).toMatchObject({ source: BOARD, error: null, canUndo: false });
-    session.commands.placeEntityOnTile("arithmetic", at(4, 1.5), "west");
-    expect(session.state.source).toContain("arithmetic arithmetic1 at (280, 100) tile (4, 1.5) facing west {");
+    session.commands.placeEntityOnTile("arithmetic-combinator", at(4, 1.5), "west");
+    expect(session.state.source).toContain("arithmetic-combinator arithmetic1 at (280, 100) tile (4, 1.5) facing west {");
     // East is not written, and a lamp is placed as it always is.
-    session.commands.placeEntityOnTile("selector", at(1, 5.5), "east");
-    session.commands.placeEntityOnTile("lamp", at(0.5, 7.5), "south");
-    expect(session.state.source).toMatch(/selector selector1 at \(-?\d+, \d+\) tile \(1, 5\.5\) \{/);
-    expect(session.state.source).toMatch(/lamp lamp1 at \(-?\d+, \d+\) tile \(0\.5, 7\.5\) \{/);
+    session.commands.placeEntityOnTile("selector-combinator", at(1, 5.5), "east");
+    session.commands.placeEntityOnTile("small-lamp", at(0.5, 7.5), "south");
+    expect(session.state.source).toMatch(/selector-combinator selector1 at \(-?\d+, \d+\) tile \(1, 5\.5\) \{/);
+    expect(session.state.source).toMatch(/small-lamp lamp1 at \(-?\d+, \d+\) tile \(0\.5, 7\.5\) \{/);
     expect(tiles()).toMatchObject({ gate: at(3, 0.5), arithmetic1: at(4, 1.5) });
     // A center that belongs to the other orientation is refused by the language.
-    session.commands.placeEntityOnTile("decider", at(8, 8.5), "south");
+    session.commands.placeEntityOnTile("decider-combinator", at(8, 8.5), "south");
     expect(session.state.error).toBe("tile (8, 8.5) is not on the tile grid for a new decider combinator facing south");
   });
 
   it("moves the edit position on while it is exactly the one of another entity, as a paste does", () => {
-    const { session } = board(BOARD.replace("lamp light at (560, 80)", "lamp light at (280, 100)"));
-    session.commands.placeEntityOnTile("constant", at(3.5, 1.5));
+    const { session } = board(BOARD.replace("small-lamp light at (560, 80)", "small-lamp light at (280, 100)"));
+    session.commands.placeEntityOnTile("constant-combinator", at(3.5, 1.5));
     expect(entityNamed(session, "constant1")).toMatchObject({ position: at(320, 140), placement: { tile: at(3.5, 1.5) } });
-    session.commands.placeEntityOnTile("constant", at(3.5, 2.5));
+    session.commands.placeEntityOnTile("constant-combinator", at(3.5, 2.5));
     expect(entityNamed(session, "constant2").position).toEqual(at(280, 180));
   });
 
   it("reports a center that is off the grid for the new entity", () => {
     const { session } = board();
-    session.commands.placeEntityOnTile("decider", at(8.5, 8.5));
+    session.commands.placeEntityOnTile("decider-combinator", at(8.5, 8.5));
     expect(session.state.error).toContain("not on the tile grid");
     expect(session.state.source).toBe(BOARD);
   });
@@ -292,7 +292,7 @@ describe("placeEntityOnTile", () => {
 
 describe("rotating on the board", () => {
   /** The gate lies on (2, 0) and (3, 0); turned a quarter it needs (2, 1), where the lamp stands. */
-  const TIGHT = BOARD.replace("lamp light at (560, 80)", "lamp light at (560, 80) tile (2.5, 1.5)");
+  const TIGHT = BOARD.replace("small-lamp light at (560, 80)", "small-lamp light at (560, 80) tile (2.5, 1.5)");
 
   it("refuses a turn onto a tile of another entity for the whole selection and says so", () => {
     const { session } = board(TIGHT);
@@ -367,7 +367,7 @@ describe("rotating on the board", () => {
     const { session } = board(TIGHT);
     session.commands.setDisplayMode("blueprint");
     session.commands.rotateEntities([idOf(session, "twice")], "clockwise");
-    expect(session.state.source).toContain("arithmetic twice at (300, 240) facing south {");
+    expect(session.state.source).toContain("arithmetic-combinator twice at (300, 240) facing south {");
     expect(session.state.error).toBeNull();
   });
 

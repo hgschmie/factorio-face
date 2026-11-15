@@ -5,7 +5,7 @@ import { boardGrabPoint, canvas, canvasView, card, clickCenter, committedPositio
 import { BOARD, bubble, committedTiles, dragOnBoard, footprint, hoverOnBoard, inspector, menu, openBoardProject as openBoard, placeAll, selectOnBoard, TILE, tilePoint, tool } from "./board.ts";
 
 /** The board with two entities that have no tile: `pick` is shown on (5, 3) and (6, 3), `light` on (8, 1). */
-const LOOSE = BOARD.replace("selector pick at (560, 260) tile (3, 2.5) facing west", "selector pick at (500, 300)").replace("lamp light at (560, 80) tile (7.5, 0.5)", "lamp light at (700, 80)");
+const LOOSE = BOARD.replace("selector-combinator pick at (560, 260) tile (3, 2.5) facing west", "selector-combinator pick at (500, 300)").replace("small-lamp light at (560, 80) tile (7.5, 0.5)", "small-lamp light at (700, 80)");
 
 const undo = (page: Page) => page.getByRole("button", { name: "Undo" });
 const redo = (page: Page) => page.getByRole("button", { name: "Redo" });
@@ -177,7 +177,7 @@ test("R, Shift+R, the context menu and the Facing control turn a 2x1 entity on t
   await selectOnBoard(page, "gate");
   const lying = (facing: string) => ({ tile: [2, 0], size: [2, 1], facing, placed: "true" });
   const upright = (facing: string) => ({ tile: [2, 0], size: [1, 2], facing, placed: "true" });
-  const declared = async () => /decider gate at \(300, 80\) (.*) \{/.exec(await sourceText(page))?.[1];
+  const declared = async () => /decider-combinator gate at \(300, 80\) (.*) \{/.exec(await sourceText(page))?.[1];
 
   // The top-left tile stays: lying on (2, 0) and (3, 0), upright on (2, 0) and (2, 1).
   await page.keyboard.press("r");
@@ -327,7 +327,7 @@ test("entities without a tile are placed with the button, the menu or a drag, un
   await openMenuOn(page, "pick");
   await expect(menu(page).getByRole("menuitem")).toHaveText([/Cut/, /Copy/, /Paste/, /Rotate clockwise/, /Rotate counter-clockwise/, /Flip horizontal/, /Flip vertical/, /^Place here$/, /Delete/]);
   await clickCenter(page, menu(page).getByRole("menuitem", { name: "Place here" }));
-  const snapped = LOOSE.replace("selector pick at (500, 300)", "selector pick at (500, 300) tile (6, 3.5)");
+  const snapped = LOOSE.replace("selector-combinator pick at (500, 300)", "selector-combinator pick at (500, 300) tile (6, 3.5)");
   await expect.poll(() => sourceText(page)).toBe(snapped);
   expect(await footprint(page, "pick")).toEqual({ tile: [5, 3], size: [2, 1], facing: "east", placed: "true" });
   await expect(card(page, "pick")).not.toHaveClass(/unplaced/);
@@ -359,7 +359,7 @@ test("entities without a tile are placed with the button, the menu or a drag, un
 
   // The button takes all of them, as one step, and goes away with nothing left to do.
   await placeAll(page).click();
-  const all = snapped.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 1.5)");
+  const all = snapped.replace("small-lamp light at (700, 80)", "small-lamp light at (700, 80) tile (8.5, 1.5)");
   await expect.poll(() => sourceText(page)).toBe(all);
   await expect(placeAll(page)).toHaveCount(0);
   await expect(page.locator("g.card.unplaced")).toHaveCount(0);
@@ -376,7 +376,7 @@ test("entities without a tile are placed with the button, the menu or a drag, un
     await expect(card(page, "light")).toHaveClass(/moving/);
     await expect(card(page, "light")).toHaveClass(/unplaced/);
   });
-  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 2.5)"));
+  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("small-lamp light at (700, 80)", "small-lamp light at (700, 80) tile (8.5, 2.5)"));
   await expect(card(page, "light")).not.toHaveClass(/unplaced/);
   await expect(placeAll(page)).toHaveText("Place all1");
 
@@ -401,7 +401,7 @@ test("entities without a tile are placed with the button, the menu or a drag, un
   await page.mouse.down();
   await page.mouse.move(lamp.x + 0.2 * tile, lamp.y - 0.2 * tile, { steps: 4 });
   await page.mouse.up();
-  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 1.5)"));
+  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("small-lamp light at (700, 80)", "small-lamp light at (700, 80) tile (8.5, 1.5)"));
   await expect(card(page, "light")).not.toHaveClass(/unplaced/);
   // A plain click only selects, and a drag of an entity that has its tile back onto it is still nothing.
   await selectOnBoard(page, "pick");
@@ -418,7 +418,7 @@ test("entities without a tile are placed with the button, the menu or a drag, un
   expect(await sourceText(page)).toBe(LOOSE);
   await expect(undo(page)).toBeDisabled();
   await dragOnBoard(page, "light", { x: 0, y: 1 });
-  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("lamp light at (700, 80)", "lamp light at (700, 80) tile (8.5, 2.5)"));
+  await expect.poll(() => sourceText(page)).toBe(LOOSE.replace("small-lamp light at (700, 80)", "small-lamp light at (700, 80) tile (8.5, 2.5)"));
 
   // An entity without a tile is no obstacle: the gate is dropped where the selector is shown, and that one gives way.
   await dragOnBoard(page, "gate", { x: 3, y: 3 }, async () => {
@@ -445,11 +445,11 @@ test("the palette places each kind on the tile under the pointer, and refuses a 
 
   // A 1x1 entity goes to the tile under the pointer, a 2x1 entity lies around it: the pointer is where its two tiles meet.
   const places = [
-    { kind: "constant", key: "1", click: [1, 4], tile: [1, 4], size: [1, 1], declared: "constant constant1 at (100, 360) tile (1.5, 4.5) {" },
-    { kind: "arithmetic", key: "2", click: [2.5, 4], tile: [2, 4], size: [2, 1], declared: "arithmetic arithmetic1 at (180, 360) tile (3, 4.5) {" },
-    { kind: "decider", key: "3", click: [6.5, 2], tile: [6, 2], size: [2, 1], declared: "decider decider1 at (560, 180) tile (7, 2.5) {" },
-    { kind: "selector", key: "4", click: [6.5, 3], tile: [6, 3], size: [2, 1], declared: "selector selector1 at (560, 280) tile (7, 3.5) {" },
-    { kind: "lamp", key: "5", click: [4, 1], tile: [4, 1], size: [1, 1], declared: "lamp lamp1 at (360, 100) tile (4.5, 1.5) {" },
+    { kind: "constant", key: "1", click: [1, 4], tile: [1, 4], size: [1, 1], declared: "constant-combinator constant1 at (100, 360) tile (1.5, 4.5) {" },
+    { kind: "arithmetic", key: "2", click: [2.5, 4], tile: [2, 4], size: [2, 1], declared: "arithmetic-combinator arithmetic1 at (180, 360) tile (3, 4.5) {" },
+    { kind: "decider", key: "3", click: [6.5, 2], tile: [6, 2], size: [2, 1], declared: "decider-combinator decider1 at (560, 180) tile (7, 2.5) {" },
+    { kind: "selector", key: "4", click: [6.5, 3], tile: [6, 3], size: [2, 1], declared: "selector-combinator selector1 at (560, 280) tile (7, 3.5) {" },
+    { kind: "lamp", key: "5", click: [4, 1], tile: [4, 1], size: [1, 1], declared: "small-lamp lamp1 at (360, 100) tile (4.5, 1.5) {" },
   ] as const;
   for (const [index, place] of places.entries()) {
     const name = `${place.kind}1`;
@@ -550,7 +550,7 @@ test("R and Shift+R turn what a place tool is about to place: the outline, the f
   await page.mouse.click(spot.x, spot.y);
   await expect(card(page, "decider1")).toHaveClass(/selected/);
   expect(await footprint(page, "decider1")).toEqual({ tile: [6, 2], size: [1, 2], facing: "north", placed: "true" });
-  expect(await sourceText(page)).toContain("decider decider1 at (560, 180) tile (6.5, 3) facing north {");
+  expect(await sourceText(page)).toContain("decider-combinator decider1 at (560, 180) tile (6.5, 3) facing north {");
   await expect(tool(page, "Select and move")).toHaveAttribute("aria-pressed", "true");
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
   await undo(page).click();
@@ -587,7 +587,7 @@ test("R and Shift+R turn what a place tool is about to place: the outline, the f
   await page.mouse.click(tight.x, tight.y);
   await expect(card(page, "decider1")).toHaveClass(/selected/);
   expect(await footprint(page, "decider1")).toEqual({ tile: [0, 1], size: [2, 1], facing: "west", placed: "true" });
-  expect(await sourceText(page)).toContain("decider decider1 at (0, 100) tile (1, 1.5) facing west {");
+  expect(await sourceText(page)).toContain("decider-combinator decider1 at (0, 100) tile (1, 1.5) facing west {");
 
   // A constant turns on its one tile; a lamp does not turn, and its outline has no arrow.
   await page.keyboard.press("1");
@@ -597,7 +597,7 @@ test("R and Shift+R turn what a place tool is about to place: the outline, the f
   await expect.poll(outline).toEqual({ tile: [1, 4], size: [1, 1], facing: "south" });
   await page.mouse.click(one.x, one.y);
   await expect(card(page, "constant1")).toHaveAttribute("data-facing", "south");
-  expect(await sourceText(page)).toContain("constant constant1 at (100, 360) tile (1.5, 4.5) facing south {");
+  expect(await sourceText(page)).toContain("constant-combinator constant1 at (100, 360) tile (1.5, 4.5) facing south {");
   await page.keyboard.press("5");
   await expect(hint).toHaveText("Click a free tile (or press Enter on the board) to place a lamp. Esc cancels.");
   await page.mouse.move(one.x + 1, one.y + 1);
@@ -707,6 +707,6 @@ test("a conflict of the source is repaired by dragging, and does not block the e
     await expect(card(page, "light")).toHaveClass(/blocked/);
   });
   expect(await committedTiles(page)).toMatchObject({ light: [1.5, 1.5] });
-  expect(await sourceText(page)).toBe(broken.replace("tile (0.5, 3)", "tile (1.5, 3)").replace("tile (3.5, 0.5)", "tile (4, 1.5)").replace("lamp light at (560, 80) tile (0.5, 0.5)", "lamp light at (560, 80) tile (1.5, 1.5)"));
+  expect(await sourceText(page)).toBe(broken.replace("tile (0.5, 3)", "tile (1.5, 3)").replace("tile (3.5, 0.5)", "tile (4, 1.5)").replace("small-lamp light at (560, 80) tile (0.5, 0.5)", "small-lamp light at (560, 80) tile (1.5, 1.5)"));
   expect(await committedPositions(page)).toEqual(positions);
 });

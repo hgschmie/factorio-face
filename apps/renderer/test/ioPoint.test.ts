@@ -108,10 +108,10 @@ describe("a wire to a connection point", () => {
 
 describe("a chain through poles on the edit canvas", () => {
   const circuit = analyze(`circuit "Chain" {
-    constant source at (40, 80) { virtual:signal-A = 1 }
-    pole p1 at (300, 80) { }
-    pole p2 at (560, 80) { prototype = big-electric-pole }
-    lamp light at (820, 80) { when virtual:signal-A > 0 }
+    constant-combinator source at (40, 80) { virtual:signal-A = 1 }
+    small-electric-pole p1 at (300, 80) { }
+    big-electric-pole p2 at (560, 80) { }
+    small-lamp light at (820, 80) { when virtual:signal-A > 0 }
     wire red source.out <-> p1
     wire red p1 <-> p2
     wire red p2 <-> light.in

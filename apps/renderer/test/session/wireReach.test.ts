@@ -6,17 +6,17 @@ import { createSession, fakeDesktop, idOf, MANIFEST, project, replaceText } from
 
 /** `far` is 11 tiles from `source` (the tiles between them), `near` 3; `loose` has no tile. */
 const SPREAD = `circuit "Spread" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    lamp near at (300, 80) tile (4.5, 0.5) {
+    small-lamp near at (300, 80) tile (4.5, 0.5) {
     }
 
-    lamp far at (560, 80) tile (12.5, 0.5) {
+    small-lamp far at (560, 80) tile (12.5, 0.5) {
     }
 
-    lamp loose at (4000, 80) {
+    small-lamp loose at (4000, 80) {
     }
 
     wire red source.out <-> near.in

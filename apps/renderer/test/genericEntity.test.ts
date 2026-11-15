@@ -18,39 +18,32 @@ import { conditionsText, conditionWord, hasTrace, tracedConditions } from "../sr
 import { createSession, entityNamed, errorsOf, idOf } from "./session/helpers.ts";
 
 const SOURCE = `circuit "Factory" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         item:iron-plate = 40
     }
 
-    entity box at (280, 80) tile (2.5, 0.5) {
-        prototype = iron-chest
+    iron-chest box at (280, 80) tile (2.5, 0.5) {
         read-empty-slots = true
     }
 
-    entity feeder at (520, 80) tile (4.5, 0.5) facing north {
-        prototype = fast-inserter
+    fast-inserter feeder at (520, 80) tile (4.5, 0.5) facing north {
         when item:iron-plate < 100
         read-hand = pulse
     }
 
-    entity belt at (760, 80) tile (6.5, 0.5) {
-        prototype = transport-belt
+    transport-belt belt at (760, 80) tile (6.5, 0.5) {
     }
 
-    entity heat at (40, 300) tile (1, 4.5) {
-        prototype = boiler
+    boiler heat at (40, 300) tile (1, 4.5) {
     }
 
-    entity silo at (280, 300) tile (8.5, 8.5) {
-        prototype = rocket-silo
+    rocket-silo silo at (280, 300) tile (8.5, 8.5) {
     }
 
-    entity tank at (520, 300) tile (15.5, 5.5) facing south {
-        prototype = storage-tank
+    storage-tank tank at (520, 300) tile (15.5, 5.5) facing south {
     }
 
-    entity station at (760, 300) tile (20, 1) {
-        prototype = train-stop
+    train-stop station at (760, 300) tile (20, 1) {
         blueprint-data = "{\\"station\\":\\"Iron\\"}"
     }
 
@@ -74,8 +67,8 @@ describe("what a generic entity is called and says", () => {
     expect(prototypeFacts(byName("silo"))).toBe("9 x 9 tiles");
     expect(prototypeFacts(byName("heat"))).toBe("3 x 2 tiles");
     expect(prototypeFacts(byName("box"))).toBe("1 tile");
-    expect(prototypeFacts({ kind: "entity", prototype: "power-switch" })).toBe("2 x 2 tiles, wire reach 10");
-    expect(prototypeFacts({ kind: "entity", prototype: "agricultural-tower" })).toBe("3 x 3 tiles, wire reach 30");
+    expect(prototypeFacts({ prototype: "power-switch" })).toBe("2 x 2 tiles, wire reach 10");
+    expect(prototypeFacts({ prototype: "agricultural-tower" })).toBe("3 x 3 tiles, wire reach 30");
   });
 
   it("sums up its conditions and what it reads and sets, in at most two lines", () => {
@@ -87,7 +80,7 @@ describe("what a generic entity is called and says", () => {
     expect(summaryLines(byName("silo"))).toEqual(["read-items"]);
     expect(summaryLines(byName("tank"))).toEqual(["read-contents"]);
     expect(summaryLines(byName("station"))).toEqual(["no condition", "send-to-train"]);
-    const settings = (prototype: string, source: string): Entity => entityNamed(createSession(`circuit "c" {\n entity e {\n prototype = ${prototype}\n ${source}\n }\n}\n`).session, "e");
+    const settings = (prototype: string, source: string): Entity => entityNamed(createSession(`circuit "c" {\n ${prototype} e {\n ${source}\n }\n}\n`).session, "e");
     expect(summaryLines(settings("splitter", "input-left when virtual:signal-I < 0\n output-right when virtual:signal-O > 5\n set-filter = true"))).toEqual(["input-left I <… +1", "set-filter"]);
     expect(summaryLines(settings("rail-signal", "close when virtual:signal-A > 0"))).toEqual(["close A > 0", "read-signal"]);
     expect(summaryLines(settings("train-stop", "when virtual:signal-A > 0\n read-from-train = true\n set-trains-limit = true\n read-trains-count = true"))).toEqual(["A > 0", "send-to-train +3"]);
@@ -144,27 +137,24 @@ describe("session", () => {
 
   it("reports every circuit condition of an entity with what it decides, and leaves the logistic one alone", () => {
     const source = `circuit "Conditions" {
-    constant source at (40, 80) {
+    constant-combinator source at (40, 80) {
         virtual:signal-I = -1
         virtual:signal-A = 3
     }
 
-    entity split at (280, 80) {
-        prototype = splitter
+    splitter split at (280, 80) {
         input-left when virtual:signal-I < 0
         input-right when virtual:signal-I > 0
         output-left when virtual:signal-A > 5
     }
 
-    entity farm at (520, 80) {
-        prototype = agricultural-tower
+    agricultural-tower farm at (520, 80) {
         when virtual:signal-A > 5
         logistic when item:wood < 10
         harvest when virtual:signal-A = 3
     }
 
-    entity gate at (760, 80) {
-        prototype = rail-signal
+    rail-signal gate at (760, 80) {
         close when virtual:signal-A > 0
     }
 
@@ -210,7 +200,7 @@ describe("session", () => {
     expect(session.document.text).toContain("    wire green source.out <-> launch\n    wire red launch <-> tank\n");
     // A boiler covers 3 x 2 tiles and turns: its top-left tile stays, the half tile moves to the other axis.
     session.commands.rotateEntities([idOf(session, "heat")], "clockwise");
-    expect(session.document.text).toContain("entity heat at (40, 300) tile (1.5, 4) facing south {");
+    expect(session.document.text).toContain("boiler heat at (40, 300) tile (1.5, 4) facing south {");
     // A chest and a silo do not turn.
     const before = session.document.text;
     session.commands.rotateEntities([idOf(session, "box"), idOf(session, "launch")], "clockwise");

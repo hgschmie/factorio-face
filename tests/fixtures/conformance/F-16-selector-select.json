@@ -8,14 +8,14 @@
   "circuit": {
     "name": "F-16-selector-select",
     "entities": [
-      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 9}, {"signal": {"kind": "virtual", "name": "signal-C"}, "count": -3}, {"signal": {"kind": "virtual", "name": "signal-D"}, "count": 7}]}]},
-      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}]}]},
-      {"id": "max-0", "name": "max-0", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 0}, "indexComparator": "="}},
-      {"id": "min-0", "name": "min-0", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": false, "index": {"type": "constant", "value": 0}, "indexComparator": "="}},
-      {"id": "max-1", "name": "max-1", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 1}, "indexComparator": "="}},
-      {"id": "out-of-range", "name": "out-of-range", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 4}, "indexComparator": "="}},
-      {"id": "top-2", "name": "top-2", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 2}, "indexComparator": "<"}},
-      {"id": "single", "name": "single", "position": {"x": 0, "y": 0}, "kind": "selector", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 5}, "indexComparator": "="}}
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 9}, {"signal": {"kind": "virtual", "name": "signal-C"}, "count": -3}, {"signal": {"kind": "virtual", "name": "signal-D"}, "count": 7}]}]},
+      {"id": "one", "name": "one", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}]}]},
+      {"id": "max-0", "name": "max-0", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 0}, "indexComparator": "="}},
+      {"id": "min-0", "name": "min-0", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "select", "max": false, "index": {"type": "constant", "value": 0}, "indexComparator": "="}},
+      {"id": "max-1", "name": "max-1", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 1}, "indexComparator": "="}},
+      {"id": "out-of-range", "name": "out-of-range", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 4}, "indexComparator": "="}},
+      {"id": "top-2", "name": "top-2", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 2}, "indexComparator": "<"}},
+      {"id": "single", "name": "single", "position": {"x": 0, "y": 0}, "kind": "selector", "prototype": "selector-combinator", "mode": {"operation": "select", "max": true, "index": {"type": "constant", "value": 5}, "indexComparator": "="}}
     ],
     "wires": [
       {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "max-0", "side": "in"}},

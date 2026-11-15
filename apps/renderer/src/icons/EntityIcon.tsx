@@ -1,6 +1,6 @@
 // Entity icons: the game's artwork per prototype where the catalog serves it, a pictogram in the app's style otherwise.
 // Pass an `EntityIconResolver` to swap in the images without touching the views.
-import { prototypeOf, type EntityKind, type EntityShape, type PrototypeName } from "@face/model";
+import { prototypeData, type EntityKind, type EntityShape, type PrototypeName } from "@face/model";
 import type { ReactNode } from "react";
 
 /** Returns an image URL for the prototype (for example `face-asset://catalog/...`), or undefined to use the pictogram. */
@@ -60,7 +60,7 @@ function Glyph({ kind, prototype }: { readonly kind: EntityKind; readonly protot
 }
 
 export interface EntityIconProps {
-  /** What to show: an entity, or just its kind and prototype. */
+  /** What to show: an entity, or just its prototype. */
   readonly entity: EntityShape;
   readonly size?: number;
   readonly resolveIcon?: EntityIconResolver;
@@ -68,12 +68,12 @@ export interface EntityIconProps {
 
 /** Icon for HTML contexts (palette, inspector). */
 export function EntityIcon({ entity, size = 38, resolveIcon }: EntityIconProps) {
-  const prototype = prototypeOf(entity);
+  const { prototype } = entity;
   const url = resolveIcon?.(prototype);
   if (url) return <img className="entity-icon" src={url} width={size} height={size} alt="" draggable={false} />;
   return (
     <svg className="entity-icon" width={size} height={size} viewBox={`0 0 ${GLYPH_SIZE} ${GLYPH_SIZE}`} aria-hidden="true">
-      <Glyph kind={entity.kind} prototype={prototype} />
+      <Glyph kind={prototypeData(entity).kind} prototype={prototype} />
     </svg>
   );
 }
@@ -85,12 +85,12 @@ export interface EntityIconSvgProps extends EntityIconProps {
 
 /** Icon for use inside the canvas SVG. */
 export function EntityIconSvg({ entity, x, y, size = 38, resolveIcon }: EntityIconSvgProps) {
-  const prototype = prototypeOf(entity);
+  const { prototype } = entity;
   const url = resolveIcon?.(prototype);
   if (url) return <image href={url} x={x} y={y} width={size} height={size} />;
   return (
     <svg x={x} y={y} width={size} height={size} viewBox={`0 0 ${GLYPH_SIZE} ${GLYPH_SIZE}`} aria-hidden="true">
-      <Glyph kind={entity.kind} prototype={prototype} />
+      <Glyph kind={prototypeData(entity).kind} prototype={prototype} />
     </svg>
   );
 }

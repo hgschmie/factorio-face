@@ -104,7 +104,7 @@ test("with a place tool R turns what is about to be placed, not the selection, a
   await expect(card(page, "decider1")).toHaveClass(/selected/);
   await expect(card(page, "decider1")).toHaveAttribute("data-facing", "north");
   await expect.poll(() => pinOffsets(page, "decider1")).toEqual(expectedPins("north"));
-  expect(await sourceText(page)).toContain("decider decider1 at (0, 500) facing north {");
+  expect(await sourceText(page)).toContain("decider-combinator decider1 at (0, 500) facing north {");
 
   // The tool picked again faces east; a lamp has no direction to turn, and the new decider, which is selected, stays as it is.
   await page.keyboard.press("3");
@@ -355,7 +355,7 @@ test("typing a direction in the source moves the pins", async ({ page }) => {
   await page.getByRole("navigation", { name: "Workbench mode" }).getByRole("button", { name: "Split", exact: true }).click();
   await expect(page.locator(".source-pane .cm-content")).toBeVisible();
   await page.getByRole("button", { name: "Fit", exact: true }).click();
-  const line = page.locator(".source-pane .cm-line", { hasText: "arithmetic twice at (300, 260) {" });
+  const line = page.locator(".source-pane .cm-line", { hasText: "arithmetic-combinator twice at (300, 260) {" });
   await line.click();
   await page.keyboard.press("End");
   await page.keyboard.press("ArrowLeft");
@@ -453,7 +453,7 @@ test("a copy keeps the direction, and so does a saved project", async ({ page })
     const session = window.faceSession!;
     return session.commands.copyEntities(session.getState().selection);
   });
-  expect(text).toContain("arithmetic twice at (300, 260) facing north {");
+  expect(text).toContain("arithmetic-combinator twice at (300, 260) facing north {");
   await page.evaluate((clipboard) => window.faceSession!.commands.pasteEntities(clipboard), text);
   await expect(card(page, "twice2")).toHaveAttribute("data-facing", "north");
   await expect.poll(() => pinOffsets(page, "twice2")).toEqual(expectedPins("north"));

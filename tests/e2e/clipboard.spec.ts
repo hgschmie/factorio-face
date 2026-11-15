@@ -6,11 +6,11 @@ import type { ElectronApplication, Page } from "@playwright/test";
 import { canvas, card, cardGrabPoint, CARET, clickCenter, clientPointOf, committedPositions, entityNames, expect, openExample, selectEntity, sourceText, test, wires } from "./app.ts";
 import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
-const SOURCE_AND_GATE = `constant source at (40, 80) {
+const SOURCE_AND_GATE = `constant-combinator source at (40, 80) {
     virtual:signal-A = 1
 }
 
-decider gate at (300, 80) {
+decider-combinator gate at (300, 80) {
     when virtual:signal-A < 10
     output virtual:signal-A = input
 }
@@ -20,11 +20,11 @@ wire green source.out <-> gate.in
 wire red gate.out <-> gate.in
 wire green gate.out <-> gate.in
 `;
-const TWICE_AND_PICK = `arithmetic twice at (300, 260) {
+const TWICE_AND_PICK = `arithmetic-combinator twice at (300, 260) {
     virtual:signal-B = virtual:signal-A[red] * 2
 }
 
-selector pick at (560, 260) {
+selector-combinator pick at (560, 260) {
     operation = select
     order = min
     index = virtual:signal-I
@@ -32,8 +32,8 @@ selector pick at (560, 260) {
 
 wire red twice.out <-> pick.in
 `;
-const LIGHT = "lamp light at (560, 80) {\n    when virtual:signal-B > 8\n}\n";
-const GATE = "decider gate at (300, 80) {\n    when virtual:signal-A < 10\n    output virtual:signal-A = input\n}\n\nwire red gate.out <-> gate.in\nwire green gate.out <-> gate.in\n";
+const LIGHT = "small-lamp light at (560, 80) {\n    when virtual:signal-B > 8\n}\n";
+const GATE = "decider-combinator gate at (300, 80) {\n    when virtual:signal-A < 10\n    output virtual:signal-A = input\n}\n\nwire red gate.out <-> gate.in\nwire green gate.out <-> gate.in\n";
 
 test.beforeEach(async ({ page, app }) => {
   await writeClipboard(app, "");
@@ -111,7 +111,7 @@ test("copies a group with its wires and pastes it under the pointer as one undo 
   await expect.poll(() => selectedNames(page)).toEqual(["source2", "gate2"]);
   await expect(page.getByRole("complementary", { name: "Inspector" }).getByRole("heading", { name: "2 entities selected" })).toBeVisible();
   const pasted = await sourceText(page);
-  expect(pasted).toContain("    decider gate2 at (300, 460) {\n        when virtual:signal-A < 10\n        output virtual:signal-A = input\n    }\n\n    wire red source.out <-> gate.in\n");
+  expect(pasted).toContain("    decider-combinator gate2 at (300, 460) {\n        when virtual:signal-A < 10\n        output virtual:signal-A = input\n    }\n\n    wire red source.out <-> gate.in\n");
   expect(pasted).toContain("    wire red twice.out <-> pick.in\n    wire red source2.out <-> gate2.in\n    wire green source2.out <-> gate2.in\n    wire red gate2.out <-> gate2.in\n    wire green gate2.out <-> gate2.in\n}\n");
 
   // One step back and forth.
@@ -326,7 +326,7 @@ test("pastes into another project with names that are free there, and ignores ot
   await expect(toast(page)).toHaveCount(0);
 
   // A declaration written by hand is as good as a copy.
-  await writeClipboard(app, "lamp extra at (0, 400) { when virtual:signal-A > 0 }");
+  await writeClipboard(app, "small-lamp extra at (0, 400) { when virtual:signal-A > 0 }");
   await page.keyboard.press("ControlOrMeta+v");
   await expect.poll(() => entityNames(page)).toEqual(["source", "gate", "twice", "light", "extra"]);
   await expect(toast(page)).toHaveCount(0);
@@ -365,11 +365,11 @@ test("text fields and the source editor keep their own cut, copy and paste", asy
   await page.keyboard.press("ControlOrMeta+c");
   await expect.poll(() => readClipboard(app)).toBe(FIVE_KINDS_SOURCE);
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
-  await writeClipboard(app, "    lamp extra at (40, 440) {\n    }\n");
+  await writeClipboard(app, "    small-lamp extra at (40, 440) {\n    }\n");
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ControlOrMeta+v");
-  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace(/\}\n$/, "    lamp extra at (40, 440) {\n    }\n}\n"));
+  await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace(/\}\n$/, "    small-lamp extra at (40, 440) {\n    }\n}\n"));
   await expect.poll(() => entityNames(page)).toEqual([...ALL, "extra"]);
 
   // Text left selected in the editor does not take the clipboard away from the canvas once the focus is there.

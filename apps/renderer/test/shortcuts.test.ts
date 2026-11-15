@@ -1,6 +1,6 @@
 // The shortcut table: one binding per key, a label on every platform, the native menu's accelerators all listed, and the matching
 // of key events including modifiers and physical keys.
-import { KEYED_KINDS } from "../src/entities/registry.ts";
+import { KEYED_KINDS, standardPrototype } from "../src/entities/registry.ts";
 import { describe, expect, it } from "vitest";
 import { MENU_ACCELERATORS, menuAccelerator, platformAccelerator } from "../../desktop/src/accelerators.ts";
 import { SIMPLE_MENU_COMMANDS } from "../../desktop/src/ipc.ts";
@@ -88,7 +88,8 @@ describe("shortcut table", () => {
     expect(KEYED_KINDS.map((kind) => shortcutLabel(`tool.place.${kind}`, true))).toEqual(["1", "2", "3", "4", "5"]);
     expect(ALL.filter((shortcut) => shortcut.id.startsWith("tool.place.")).map((shortcut) => shortcut.id)).toEqual(KEYED_KINDS.map((kind) => `tool.place.${kind}`));
     for (const digit of ["6", "7", "8", "9", "0"]) expect(shortcutFor(stroke(digit), false)).toBeUndefined();
-    KEYED_KINDS.forEach((kind, index) => expect(shortcutFor(stroke(String(index + 1)), false)?.tool).toEqual({ type: "place", kind }));
+    KEYED_KINDS.forEach((kind, index) => expect(shortcutFor(stroke(String(index + 1)), false)?.tool).toEqual({ type: "place", prototype: standardPrototype(kind) }));
+    expect(KEYED_KINDS.map(standardPrototype)).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp"]);
   });
 });
 

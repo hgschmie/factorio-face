@@ -18,7 +18,7 @@ describe("names of mods in the language", () => {
   afterAll(() => setEntityTable(STANDARD_ENTITY_TABLE));
 
   it.each(NAMES)("places an entity of the prototype %j and reads it back", (name) => {
-    const added = executeCommand(analyze(EMPTY), { type: "addEntity", kind: "entity", position: { x: 0, y: 0 }, prototype: name });
+    const added = executeCommand(analyze(EMPTY), { type: "addEntity", prototype: name, position: { x: 0, y: 0 } });
     expect(added).toMatchObject({ ok: true });
     if (!added.ok) return;
     const read = analyze(apply(EMPTY, added.changes));
@@ -31,7 +31,7 @@ describe("names of mods in the language", () => {
 
   it.each(NAMES)("writes the signal %j and reads it back, as an item and as a quality", (name) => {
     for (const id of [signal("item", name), signal("virtual", "signal-A", name)]) {
-      const read = analyze(`circuit "t" {\n    constant c at (0, 0) {\n        ${printSignal(id)} = 1\n    }\n}\n`);
+      const read = analyze(`circuit "t" {\n    constant-combinator c at (0, 0) {\n        ${printSignal(id)} = 1\n    }\n}\n`);
       expect(read.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
       const constant = read.circuit!.entities[0] as Entity & { sections: { filters: { signal: unknown }[] }[] };
       expect(constant.sections[0]!.filters[0]!.signal).toEqual(id);

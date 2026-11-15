@@ -266,8 +266,7 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     const spot = await clientPointOf(page, { x: 400, y: 200 });
     await page.mouse.click(spot.x, spot.y);
     await expect(card(page, "mod_crate1")).toHaveClass(/selected/);
-    expect(await sourceText(page)).toContain(`    entity mod_crate1 at (`);
-    expect(await sourceText(page)).toContain(`        prototype = ${MOD_ENTITY}\n`);
+    expect(await sourceText(page)).toContain(`    ${MOD_ENTITY} mod_crate1 at (`);
 
     // A constant combinator gets the mod's signal from the picker.
     await paletteEntry(page, "constant-combinator").click();
@@ -347,7 +346,7 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     expect(await sourceText(page)).toBe(savedSource);
     const flagged = await page.evaluate(() => window.faceSession!.getState().diagnostics.map((diagnostic) => `${diagnostic.severity}: ${diagnostic.message}`));
     expect(flagged).toEqual([
-      "error: Unknown prototype 'mod-crate'; the names are the game's, as a blueprint has them (steel-chest, fast-inserter, transport-belt)",
+      "error: Unknown entity 'mod-crate': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)",
       "warning: Unknown signal 'virtual:mod-signal'",
     ]);
     await page.locator("[data-settings-toggle]").click();
@@ -372,32 +371,27 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
 });
 
 const MODDED_KINDS_SOURCE = `circuit "Modded kinds" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 3
     }
 
-    arithmetic double at (280, 80) tile (2.5, 0.5) {
-        prototype = mod-arithmetic
+    mod-arithmetic double at (280, 80) tile (2.5, 0.5) {
         virtual:signal-A = virtual:signal-A * 2
     }
 
-    decider gate at (520, 80) tile (5, 1) facing north {
-        prototype = mod-decider
+    mod-decider gate at (520, 80) tile (5, 1) facing north {
         when virtual:signal-A > 5
         output virtual:signal-A = 1
     }
 
-    pole relay at (760, 80) tile (9, 1) {
-        prototype = mod-pole
+    mod-pole relay at (760, 80) tile (9, 1) {
     }
 
-    lamp light at (1000, 80) tile (13, 1) {
-        prototype = mod-lamp
+    mod-lamp light at (1000, 80) tile (13, 1) {
         when virtual:signal-A > 0
     }
 
-    entity feed at (1240, 80) tile (16.5, 0.5) {
-        prototype = mod-loader
+    mod-loader feed at (1240, 80) tile (16.5, 0.5) {
         when virtual:signal-A > 0
     }
 
@@ -427,13 +421,13 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     const pinned = palette(page).getByRole("group", { name: "Combinators" }).locator(".palette-item");
     expect(await pinned.evaluateAll((items) => items.map((item) => item.getAttribute("data-prototype")))).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"]);
 
-    // Placed from its tile: an arithmetic combinator that says which one it is.
+    // Placed from its tile: an arithmetic combinator of the mod, declared by its name.
     await paletteEntry(page, "mod-arithmetic").click();
     const spot = await clientPointOf(page, { x: 400, y: 200 });
     await page.mouse.click(spot.x, spot.y);
     await expect(card(page, "arithmetic1")).toHaveClass(/selected/);
     await expect(card(page, "arithmetic1")).toHaveAttribute("data-kind", "arithmetic");
-    expect(await sourceText(page)).toMatch(/    arithmetic arithmetic1 at \(\d+, \d+\) \{\n        prototype = mod-arithmetic\n    \}/);
+    expect(await sourceText(page)).toMatch(/    mod-arithmetic arithmetic1 at \(\d+, \d+\) \{\n    \}/);
 
     // The inspector has the form of the kind, and above it the choice among the prototypes of the kind.
     const choice = inspector(page).getByRole("group", { name: "Arithmetic" });
@@ -442,9 +436,9 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     await expect(inspector(page).locator(".muted-note.prototype-note")).toHaveCount(0);
     await choice.locator('[data-prototype="arithmetic-combinator"]').click();
     await expect(choice.getByRole("button", { pressed: true })).toHaveText(/Arithmetic combinator.*1 x 2 tiles/);
-    expect(await sourceText(page)).toContain("        prototype = arithmetic-combinator\n");
+    expect(await sourceText(page)).toMatch(/    arithmetic-combinator arithmetic1 at \(\d+, \d+\) \{\n    \}/);
     await choice.locator('[data-prototype="mod-arithmetic"]').click();
-    expect(await sourceText(page)).toContain("        prototype = mod-arithmetic\n");
+    expect(await sourceText(page)).toMatch(/    mod-arithmetic arithmetic1 at \(\d+, \d+\) \{\n    \}/);
     await page.screenshot({ path: resolve(SHOTS, "modded-kinds-inspector.png") });
 
     // A circuit of modded prototypes is free of problems, and on the board each stands on the tiles of its prototype.
@@ -473,7 +467,7 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     const decoded = decodeBlueprintString(exported ?? "");
     expect(decoded.ok && (decoded.data as { blueprint: { entities: { name: string }[] } }).blueprint.entities.map((entity) => entity.name)).toEqual(["constant-combinator", "mod-arithmetic", "mod-decider", "mod-pole", "mod-lamp", "mod-loader"]);
 
-    // Saved and opened with the built-in data: the project comes back, and each prototype of the mod is named as unknown for its kind.
+    // Saved and opened with the built-in data: the project comes back, and each entity of the mod is named as unknown.
     await app.evaluate(({ dialog }, path) => {
       dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as typeof dialog.showSaveDialog;
     }, projectPath);
@@ -485,13 +479,10 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     await page.keyboard.press("Escape");
     expect(await sourceText(page)).toBe(MODDED_KINDS_SOURCE);
     const flagged = await page.evaluate(() => window.faceSession!.getState().diagnostics.filter((diagnostic) => diagnostic.severity === "error").map((diagnostic) => diagnostic.message));
-    expect(flagged).toEqual([
-      "Unknown prototype 'mod-arithmetic' for an arithmetic combinator; the game data has arithmetic-combinator",
-      "Unknown prototype 'mod-decider' for a decider combinator; the game data has decider-combinator",
-      "Unknown prototype 'mod-pole' for an electric pole; the game data has small-electric-pole, medium-electric-pole, big-electric-pole, substation",
-      "Unknown prototype 'mod-lamp' for a lamp; the game data has small-lamp",
-      "Unknown prototype 'mod-loader'; did you mean loader?",
-    ]);
+    const missing = (name: string): string => `Unknown entity '${name}': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)`;
+    expect(flagged.slice(0, 5)).toEqual([missing("mod-arithmetic"), missing("mod-decider"), missing("mod-pole"), missing("mod-lamp"), "Unknown entity 'mod-loader'; did you mean loader?"]);
+    // They are no entities: every end of a wire at one of them finds nothing of its name.
+    expect(flagged.slice(5)).toEqual(["double", "double", "gate", "gate", "relay", "relay", "light", "relay", "feed"].map((name) => `Unknown entity '${name}'`));
   } finally {
     await closeApp(app);
   }
@@ -642,7 +633,7 @@ test("data that was read is in use at the next start, and unsaved changes are as
     await expect(page.locator(".data-hint")).toHaveCount(0);
 
     // An unsaved change, and the user keeps the window: the data waits, and the dialog offers to load the window again.
-    await setSource(page, 'circuit "Kept" {\n    constant keep at (40, 80) {\n    }\n}\n');
+    await setSource(page, 'circuit "Kept" {\n    constant-combinator keep at (40, 80) {\n    }\n}\n');
     await answerMessageBoxes(app, { run: true, unsaved: 2 });
     await openSettings(app, page);
     await expect(source(page)).toHaveText(READ_SOURCE);

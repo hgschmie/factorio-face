@@ -123,16 +123,16 @@ test("the inspector edits on the board, and a turn keeps the top-left tile of th
   const facing = inspector(page).getByRole("group", { name: "Facing" });
   await facing.locator('[data-direction="south"]').click();
   await expect.poll(() => footprint(page, "gate")).toEqual({ tile: [2, 0], size: [1, 2], facing: "south", placed: "true" });
-  expect(await sourceText(page)).toContain("decider gate at (300, 80) tile (2.5, 1) facing south {");
+  expect(await sourceText(page)).toContain("decider-combinator gate at (300, 80) tile (2.5, 1) facing south {");
   // A half turn keeps both tiles and swaps the ends.
   expect(await pinOffsets(page, "gate")).toMatchObject({ "in red": [50, 12], "out red": [50, 148] });
   await facing.locator('[data-direction="north"]').click();
   await expect.poll(() => footprint(page, "gate")).toEqual({ tile: [2, 0], size: [1, 2], facing: "north", placed: "true" });
-  expect(await sourceText(page)).toContain("decider gate at (300, 80) tile (2.5, 1) facing north {");
+  expect(await sourceText(page)).toContain("decider-combinator gate at (300, 80) tile (2.5, 1) facing north {");
   expect(await pinOffsets(page, "gate")).toMatchObject({ "in red": [30, 148], "out red": [30, 12] });
   await facing.locator('[data-direction="east"]').click();
   await expect.poll(() => footprint(page, "gate")).toEqual({ tile: [2, 0], size: [2, 1], facing: "east", placed: "true" });
-  expect(await sourceText(page)).toContain("decider gate at (300, 80) tile (3, 0.5) facing east {");
+  expect(await sourceText(page)).toContain("decider-combinator gate at (300, 80) tile (3, 0.5) facing east {");
 
   const name = inspector(page).getByLabel("Entity name");
   await name.fill("door");
@@ -162,14 +162,14 @@ test("an entity without a tile stands at a derived place, marked as not placed, 
   await expect(page.getByTestId("save-state")).toHaveText("No changes");
 
   // A placed entity keeps its tile and a derived one gives way: the lamp takes the left tile of the gate, which moves up.
-  await setSource(page, source.replace("lamp light at (560, 80)", "lamp light at (560, 80) tile (3.5, 1.5)"));
+  await setSource(page, source.replace("small-lamp light at (560, 80)", "small-lamp light at (560, 80) tile (3.5, 1.5)"));
   await expect.poll(() => footprint(page, "light")).toEqual({ tile: [3, 1], size: [1, 1], facing: "east", placed: "true" });
   expect(await footprint(page, "gate")).toEqual({ tile: [3, 0], size: [2, 1], facing: "east", placed: "false" });
   await expect(card(page, "light")).not.toHaveClass(/unplaced|conflict/);
   expect(await card(page, "light").locator(".card-body").evaluate((body) => getComputedStyle(body).strokeDasharray)).toBe("none");
 
   // Two entities on one tile, and a tile that is off the grid: drawn where the tile says, marked as conflicts.
-  await setSource(page, source.replace("lamp light at (560, 80)", "lamp light at (560, 80) tile (3.5, 1.5)").replace("constant source at (40, 80)", "constant source at (40, 80) tile (3.5, 1.5)").replace("arithmetic twice at (300, 240)", "arithmetic twice at (300, 240) tile (8.5, 4.5)"));
+  await setSource(page, source.replace("small-lamp light at (560, 80)", "small-lamp light at (560, 80) tile (3.5, 1.5)").replace("constant-combinator source at (40, 80)", "constant-combinator source at (40, 80) tile (3.5, 1.5)").replace("arithmetic-combinator twice at (300, 240)", "arithmetic-combinator twice at (300, 240) tile (8.5, 4.5)"));
   await expect(card(page, "light")).toHaveAttribute("data-conflict", "true");
   await expect(card(page, "source")).toHaveClass(/conflict/);
   expect(await footprint(page, "source")).toMatchObject({ tile: [3, 1], placed: "true" });
@@ -185,10 +185,10 @@ test("wires are straight lines from pin to pin, a feedback wire bends around its
   const feed = await wireKeyOf(page, "red", "source.out", "gate.in");
   const down = await wireKeyOf(page, "green", "twice.out", "light.in");
   const loop = await wireKeyOf(page, "green", "gate.out", "gate.in");
-  // From the red output pin of the constant on tile (0, 0) to the red input pin of the decider on tile (2, 0).
+  // From the red output pin of the constant-combinator on tile (0, 0) to the red input pin of the decider-combinator on tile (2, 0).
   await expect(wire(page, feed).locator("path.wire-core")).toHaveAttribute("d", "M 68 30 L 172 30");
   await expect(wire(page, feed)).toHaveAttribute("data-color", "red");
-  // From the bottom of the arithmetic combinator on tiles (5, 0) and (5, 1) up to the lamp on tile (7, 0).
+  // From the bottom of the arithmetic combinator on tiles (5, 0) and (5, 1) up to the small-lamp on tile (7, 0).
   await expect(wire(page, down).locator("path.wire-core")).toHaveAttribute("d", "M 430 148 L 572 50");
   for (const part of ["wire-hit", "wire-casing", "wire-core"]) await expect(wire(page, down).locator(`path.${part}`)).toHaveAttribute("d", "M 430 148 L 572 50");
   // Output to input of one entity: an arc that leaves the footprint on the side of the green pins and stays in sight.
@@ -461,7 +461,7 @@ test("paste and duplicate on the board give copies without a tile, selected, as 
   await page.keyboard.press("ControlOrMeta+d");
   await unplaced("pick2");
   await expect(page.locator("g.card.selected")).toHaveCount(1);
-  const copy = "    selector pick2 at (600, 300) facing west {\n        operation = select\n        order = min\n        index = virtual:signal-I\n    }\n\n";
+  const copy = "    selector-combinator pick2 at (600, 300) facing west {\n        operation = select\n        order = min\n        index = virtual:signal-I\n    }\n\n";
   expect(await sourceText(page)).toBe(BOARD.replace("    wire red source.out", `${copy}    wire red source.out`));
   expect(await footprint(page, "pick")).toMatchObject({ tile: [2, 2], placed: "true" });
   await expect(placeAll(page)).toHaveText("Place all1");
@@ -485,7 +485,7 @@ test("paste and duplicate on the board give copies without a tile, selected, as 
   await unplaced("gate2");
   expect(await at("gate2")).toEqual({ x: 340, y: 120 });
   await expect(wires(page)).toHaveCount(6);
-  expect(await sourceText(page)).toContain("decider gate2 at (340, 120) {");
+  expect(await sourceText(page)).toContain("decider-combinator gate2 at (340, 120) {");
   // Paste by the menu of the empty board: the next copy, one step further on.
   await page.mouse.click(far.x, far.y, { button: "right" });
   await expect(menu(page).getByRole("menuitem", { name: /Paste/ })).toBeEnabled();
@@ -506,14 +506,14 @@ test("paste and duplicate on the board give copies without a tile, selected, as 
   await expect(card(page, "pick")).toHaveCount(0);
   await page.keyboard.press("ControlOrMeta+v");
   await unplaced("pick");
-  expect(await sourceText(page)).toContain("selector pick at (560, 260) facing west {");
+  expect(await sourceText(page)).toContain("selector-combinator pick at (560, 260) facing west {");
 
   // On the edit canvas a paste goes to the pointer, as before.
   await showDisplay(page, "edit");
   await canvas(page).focus();
   await page.keyboard.press("ControlOrMeta+v");
   await expect(page.locator("g.card")).toHaveCount(7);
-  expect(await sourceText(page)).toMatch(/selector pick2 at \(-?\d+, -?\d+\) facing west \{/);
+  expect(await sourceText(page)).toMatch(/selector-combinator pick2 at \(-?\d+, -?\d+\) facing west \{/);
 });
 
 test("each display mode has its own camera: the board is fitted when it is first shown, and both views are kept", async ({ page }) => {

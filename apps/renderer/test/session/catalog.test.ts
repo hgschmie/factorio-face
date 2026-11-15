@@ -14,7 +14,7 @@ const ALL = ["base", "elevated-rails", "recycler", "quality", "space-age"];
 
 const SPACE = `circuit "Space" {
     // carbon fiber is a Space Age item
-    constant stock at (0, 0) {
+    constant-combinator stock at (0, 0) {
         item:carbon-fiber = 5
         item:iron-plate@rare = 2
         virtual:signal-A = 1
@@ -130,17 +130,17 @@ describe("picker data and completion", () => {
       const offset = source.indexOf(marker) + marker.length;
       return completionCandidates(completionContext(analyze(source), offset), new CatalogService(catalog, modules)).map((candidate) => candidate.label);
     };
-    const inConstant = labels('circuit "c" {\n  constant a at (0, 0) {\n    it\n  }\n}\n', "    it");
+    const inConstant = labels('circuit "c" {\n  constant-combinator a at (0, 0) {\n    it\n  }\n}\n', "    it");
     expect(inConstant.slice(0, 3)).toEqual(["section", "description", "enabled"]);
     expect(inConstant).toEqual(expect.arrayContaining(["item:iron-plate", "item:carbon-fiber", "virtual:signal-A"]));
     expect(inConstant).not.toContain("each");
-    expect(labels('circuit "c" {\n  constant a at (0, 0) {\n    it\n  }\n}\n', "    it", ["base"])).not.toContain("item:carbon-fiber");
+    expect(labels('circuit "c" {\n  constant-combinator a at (0, 0) {\n    it\n  }\n}\n', "    it", ["base"])).not.toContain("item:carbon-fiber");
 
-    expect(labels('circuit "c" {\n  selector s at (0, 0) {\n    operation = \n  }\n}\n', "operation = ")).toEqual(expect.arrayContaining(["select", "count", "quality-filter"]));
-    expect(labels('circuit "c" {\n  decider d at (0, 0) {\n    when \n  }\n}\n', "when ")).toEqual(expect.arrayContaining(["each", "anything", "everything", "virtual:signal-A"]));
-    expect(labels('circuit "c" {\n  constant a at (0, 0) { }\n  lamp b at (0, 0) { }\n  wire red \n}\n', "wire red ")).toEqual(["a.out", "b.in"]);
-    expect(labels('circuit "c" {\n  lamp b at (0, 0) { }\n  \n}\n', "{ }\n  ")).toEqual(expect.arrayContaining(["constant", "lamp", "wire"]));
-    expect(labels('circuit "c" {\n  selector s at (0, 0) {\n    operation = quality-filter\n    quality = \n  }\n}\n', "quality = ")).toEqual(expect.arrayContaining(["uncommon", "legendary"]));
+    expect(labels('circuit "c" {\n  selector-combinator s at (0, 0) {\n    operation = \n  }\n}\n', "operation = ")).toEqual(expect.arrayContaining(["select", "count", "quality-filter"]));
+    expect(labels('circuit "c" {\n  decider-combinator d at (0, 0) {\n    when \n  }\n}\n', "when ")).toEqual(expect.arrayContaining(["each", "anything", "everything", "virtual:signal-A"]));
+    expect(labels('circuit "c" {\n  constant-combinator a at (0, 0) { }\n  small-lamp b at (0, 0) { }\n  wire red \n}\n', "wire red ")).toEqual(["a.out", "b.in"]);
+    expect(labels('circuit "c" {\n  small-lamp b at (0, 0) { }\n  \n}\n', "{ }\n  ")).toEqual(expect.arrayContaining(["wire", "constant-combinator", "small-lamp", "big-electric-pole", "steel-chest"]));
+    expect(labels('circuit "c" {\n  selector-combinator s at (0, 0) {\n    operation = quality-filter\n    quality = \n  }\n}\n', "quality = ")).toEqual(expect.arrayContaining(["uncommon", "legendary"]));
     expect(labels('circuit "c" {\n  // comment \n}\n', "comment")).toEqual([]);
   });
 });
@@ -207,7 +207,7 @@ describe("simulation environment from the catalog", () => {
   });
 
   it("feeds the selector's stack-size and rocket-capacity modes through the session", () => {
-    const source = (operation: string): string => `circuit "c" {\n  constant c at (0, 0) { item:iron-plate = 7  item:space-science-pack = 1 }\n  selector s at (300, 0) { operation = ${operation} }\n  wire red c.out <-> s.in\n}\n`;
+    const source = (operation: string): string => `circuit "c" {\n  constant-combinator c at (0, 0) { item:iron-plate = 7  item:space-science-pack = 1 }\n  selector-combinator s at (300, 0) { operation = ${operation} }\n  wire red c.out <-> s.in\n}\n`;
     const output = (operation: string, modules?: readonly string[]): string | undefined => {
       const { session } = createSession(source(operation));
       for (const name of ["space-age", "quality", "recycler", "elevated-rails"]) if (modules && !modules.includes(name)) session.commands.setModuleEnabled(name, false);
@@ -222,7 +222,7 @@ describe("simulation environment from the catalog", () => {
 
   it("is the environment the engine accepts", () => {
     const environment = createCatalogEnvironment(catalog, ["base", "space-age"]);
-    const circuit = analyze('circuit "c" {\n  constant c at (0, 0) { item:iron-plate = 1 }\n}\n').circuit!;
+    const circuit = analyze('circuit "c" {\n  constant-combinator c at (0, 0) { item:iron-plate = 1 }\n}\n').circuit!;
     const simulation = createSimulation(compile(circuit, environment), { environment });
     expect(simulation.snapshot().entities[circuit.entities[0]!.id]!.output).toMatchObject([{ key: "item:iron-plate", value: 1 }]);
   });

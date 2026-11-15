@@ -1,7 +1,7 @@
 // The tests that hold this package against the recording of the game (fixture F-01, tools/game-probe/blueprints.mjs): every
 // number, default, direction and shape the package has is compared with what the game itself wrote.
 import {
-  COMPARATORS, DEFAULT_ENTITY, entityTable, PROTOTYPE_NAMES, PROTOTYPES, settingDefault, settingFields, settingSpecsOf, signal,
+  COMPARATORS, DEFAULT_ENTITY, entityTable, newEntity, PROTOTYPE_NAMES, PROTOTYPES, settingDefault, settingFields, settingSpecsOf, signal,
   type Circuit, type Comparator, type Condition, type Entity, type PrototypeName, type SettingSpec, type SignalId, type StandardSignalKind,
 } from "@face/model";
 import { describe, expect, it } from "vitest";
@@ -79,8 +79,7 @@ function importOf(recorded: RecordedBlueprint): { circuit: Circuit; report: Impo
  * `omit` are prototypes to leave out with their wires: the ones the game did not take or did not build.
  */
 export function arrangement(circuit: Circuit, omit: ReadonlySet<string> = new Set()): { entities: unknown[]; wires: string[] } {
-  const prototype = (entity: Entity): string => entity.prototype ?? entity.kind;
-  const kept = circuit.entities.filter((entity) => !omit.has(prototype(entity)));
+  const kept = circuit.entities.filter((entity) => !omit.has(entity.prototype));
   const tiles = kept.map((entity) => entity.placement!.tile!);
   const corner = { x: Math.min(...tiles.map((tile) => tile.x)), y: Math.min(...tiles.map((tile) => tile.y)) };
   const place = (entity: Entity): string => `${entity.placement!.tile!.x - corner.x},${entity.placement!.tile!.y - corner.y}`;
@@ -177,8 +176,7 @@ const QUIET = { dropped: [], settings: [], warnings: [] };
 
 /** The entity of the editor for a prototype as the game places it: the defaults of its kind. */
 function freshEntity(prototype: PrototypeName): object {
-  const kind = PROTOTYPES[prototype]!.kind;
-  return JSON.parse(JSON.stringify(kind === "pole" || kind === "entity" ? { ...DEFAULT_ENTITY[kind], prototype } : DEFAULT_ENTITY[kind])) as object;
+  return JSON.parse(JSON.stringify(newEntity(prototype))) as object;
 }
 
 /** Defines the tests for a recording inside the current `describe`. */
@@ -280,11 +278,10 @@ export function recordingTests(recording: Recording): void {
         // What a generic entity keeps of its blueprint is not a setting of the editor (a train stop has a name, a chest a bar).
         const defaults = circuit.entities.map((entity) => {
           const { id: _id, name: _name, position: _position, placement: _placement, blueprintData: _kept, ...settings } = entity as Entity & { blueprintData?: string };
-          return ["prototype" in settings ? settings.prototype : settings.kind, JSON.parse(JSON.stringify(settings))];
+          return [settings.prototype, JSON.parse(JSON.stringify(settings))];
         });
         const placed = (fresh.blueprint.blueprint?.entities ?? []).map((entity) => entity.name as PrototypeName);
-        const named = (prototype: PrototypeName): string => (PROTOTYPES[prototype]!.kind === "pole" || PROTOTYPES[prototype]!.kind === "entity" ? prototype : PROTOTYPES[prototype]!.kind);
-        expect(defaults).toEqual(placed.map((prototype) => [named(prototype), freshEntity(prototype)]));
+        expect(defaults).toEqual(placed.map((prototype) => [prototype, freshEntity(prototype)]));
         // No entity as it is placed has a direction.
         expect((fresh.blueprint.blueprint?.entities ?? []).filter((entity) => entity.direction !== undefined)).toEqual([]);
         prototypes.push(...placed);

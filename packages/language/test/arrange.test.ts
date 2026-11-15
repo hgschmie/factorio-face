@@ -11,10 +11,10 @@ function arranged(parse: ParseResult, arrangements: readonly Named[]): string {
 
 const GROUP = circuit(
   [
-    "constant a at (0, 0) tile (0.5, 0.5) { virtual:signal-A = 1 } // first",
-    "decider b at (200, 0) tile (3, 0.5) facing west { when virtual:signal-A > 0 output virtual:signal-A = 1 }",
-    "lamp c at (400, 40) { }",
-    "arithmetic d { virtual:signal-B = virtual:signal-A + 1 }",
+    "constant-combinator a at (0, 0) tile (0.5, 0.5) { virtual:signal-A = 1 } // first",
+    "decider-combinator b at (200, 0) tile (3, 0.5) facing west { when virtual:signal-A > 0 output virtual:signal-A = 1 }",
+    "small-lamp c at (400, 40) { }",
+    "arithmetic-combinator d { virtual:signal-B = virtual:signal-A + 1 }",
     "wire red a.out <-> b.in",
   ].join("\n"),
 );
@@ -45,7 +45,7 @@ describe("arrangeEntities", () => {
   });
 
   it("inserts the clauses an entity lacks in their order: at, tile, facing", () => {
-    expect(arranged(parse, [{ name: "d", position: { x: 20, y: 40 }, tile: { x: 1.5, y: 2 }, direction: "south" }])).toBe(GROUP.replace("arithmetic d {", "arithmetic d at (20, 40) tile (1.5, 2) facing south {"));
+    expect(arranged(parse, [{ name: "d", position: { x: 20, y: 40 }, tile: { x: 1.5, y: 2 }, direction: "south" }])).toBe(GROUP.replace("arithmetic-combinator d {", "arithmetic-combinator d at (20, 40) tile (1.5, 2) facing south {"));
     expect(arranged(parse, [{ name: "c", tile: { x: 2.5, y: 2.5 } }])).toBe(GROUP.replace("c at (400, 40)", "c at (400, 40) tile (2.5, 2.5)"));
   });
 

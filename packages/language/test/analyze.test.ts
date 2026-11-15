@@ -1,6 +1,7 @@
 import { BOTH_NETWORKS, DEFAULT_ENTITY, SELECTOR_OPERATIONS, wildcardSignal, wireKey, type Entity, type SelectorCombinator, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type AnalyzeOptions, type DiagnosticCode, type SignalResolver } from "../src/index.ts";
+import { withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { circuit, codes, fixture, idOf, valid } from "./helpers.ts";
 
 const RED = { red: true, green: false };
@@ -50,7 +51,7 @@ describe("spec example", () => {
 
 describe("constant combinator", () => {
   it("collects bare filters into one anonymous section", () => {
-    const c = entity('constant c { item:iron-plate = 5 fluid:water = -3 item:"odd name"@"odd quality" = 0x10 virtual:signal-A@normal = 0 }', "constant");
+    const c = entity('constant-combinator c { item:iron-plate = 5 fluid:water = -3 item:"odd name"@"odd quality" = 0x10 virtual:signal-A@normal = 0 }', "constant");
     expect(c.enabled).toBe(true);
     expect(c.sections).toEqual([
       {
@@ -67,12 +68,12 @@ describe("constant combinator", () => {
   });
 
   it("reads enabled, description and an empty body", () => {
-    expect(entity('constant c { enabled = false description = "a\\nb \\"q\\"" }', "constant")).toMatchObject({ enabled: false, description: 'a\nb "q"', sections: [] });
-    expect(entity("constant c { }", "constant").sections).toEqual([]);
+    expect(entity('constant-combinator c { enabled = false description = "a\\nb \\"q\\"" }', "constant")).toMatchObject({ enabled: false, description: 'a\nb "q"', sections: [] });
+    expect(entity("constant-combinator c { }", "constant").sections).toEqual([]);
   });
 
   it("reads sections with group, active and decimal multiplier", () => {
-    const c = entity('constant c { section "Ore" { active = false multiplier = -0.5 item:a = 1 } section { item:a = 2 multiplier = 3 } section "" { } }', "constant");
+    const c = entity('constant-combinator c { section "Ore" { active = false multiplier = -0.5 item:a = 1 } section { item:a = 2 multiplier = 3 } section "" { } }', "constant");
     expect(c.sections).toEqual([
       { group: "Ore", active: false, multiplier: -0.5, filters: [{ signal: { kind: "item", name: "a" }, count: 1 }] },
       { active: true, multiplier: 3, filters: [{ signal: { kind: "item", name: "a" }, count: 2 }] },
@@ -81,37 +82,37 @@ describe("constant combinator", () => {
   });
 
   it("accepts every signal kind", () => {
-    const c = entity("constant c { item:a = 1 fluid:a = 1 virtual:a = 1 entity:a = 1 recipe:a = 1 space-location:a = 1 asteroid-chunk:a = 1 quality:a = 1 custom:a = 1 }", "constant");
+    const c = entity("constant-combinator c { item:a = 1 fluid:a = 1 virtual:a = 1 entity:a = 1 recipe:a = 1 space-location:a = 1 asteroid-chunk:a = 1 quality:a = 1 custom:a = 1 }", "constant");
     expect(c.sections[0]!.filters.map((f) => f.signal.kind)).toEqual(["item", "fluid", "virtual", "entity", "recipe", "space-location", "asteroid-chunk", "quality", "custom"]);
   });
 });
 
 describe("arithmetic combinator", () => {
   it.each(["*", "/", "+", "-", "%", "^", "<<", ">>", "AND", "OR", "XOR"] as const)("parses operation %s", (operation) => {
-    const a = entity(`arithmetic a { virtual:signal-B = virtual:signal-A[red] ${operation} -2 }`, "arithmetic");
+    const a = entity(`arithmetic-combinator a { virtual:signal-B = virtual:signal-A[red] ${operation} -2 }`, "arithmetic");
     expect(a).toMatchObject({ output: B, first: { type: "signal", signal: A, networks: RED }, operation, second: { type: "constant", value: -2 } });
   });
 
   it("supports each on both sides and network selections", () => {
-    const a = entity("arithmetic a { each = each[red] * each[green] }", "arithmetic");
+    const a = entity("arithmetic-combinator a { each = each[red] * each[green] }", "arithmetic");
     expect(a).toMatchObject({ output: wildcardSignal("each"), first: { signal: wildcardSignal("each"), networks: RED }, second: { signal: wildcardSignal("each"), networks: GREEN } });
-    expect(entity("arithmetic a { virtual:signal-B = 7 - each }", "arithmetic").second).toEqual({ type: "signal", signal: wildcardSignal("each"), networks: BOTH_NETWORKS });
-    expect(entity("arithmetic a { virtual:signal-B = virtual:signal-A[none] + each[none] }", "arithmetic")).toMatchObject({ first: { signal: A, networks: NONE }, second: { signal: wildcardSignal("each"), networks: NONE } });
+    expect(entity("arithmetic-combinator a { virtual:signal-B = 7 - each }", "arithmetic").second).toEqual({ type: "signal", signal: wildcardSignal("each"), networks: BOTH_NETWORKS });
+    expect(entity("arithmetic-combinator a { virtual:signal-B = virtual:signal-A[none] + each[none] }", "arithmetic")).toMatchObject({ first: { signal: A, networks: NONE }, second: { signal: wildcardSignal("each"), networks: NONE } });
   });
 
   it("uses model defaults when unconfigured", () => {
-    expect(entity("arithmetic a { }", "arithmetic")).toEqual({ id: "e1", name: "a", position: { x: 40, y: 40 }, ...DEFAULT_ENTITY.arithmetic });
+    expect(entity("arithmetic-combinator a { }", "arithmetic")).toEqual({ id: "e1", name: "a", position: { x: 40, y: 40 }, ...DEFAULT_ENTITY.arithmetic, prototype: "arithmetic-combinator" });
   });
 
   it("normalizes the literal wildcard form", () => {
-    expect(entity("arithmetic a { virtual:signal-each = virtual:signal-each + 1 }", "arithmetic").output).toEqual(wildcardSignal("each"));
+    expect(entity("arithmetic-combinator a { virtual:signal-each = virtual:signal-each + 1 }", "arithmetic").output).toEqual(wildcardSignal("each"));
   });
 });
 
 describe("decider combinator", () => {
   it("parses conditions, joins, networks, outputs and else outputs in order", () => {
     const d = entity(
-      `decider d {
+      `decider-combinator d {
         when each > 5 and virtual:signal-A[red] != virtual:signal-B[green] or anything <= -1 or everything = 0
         output each = input[red]
         output virtual:signal-A = 7
@@ -139,7 +140,7 @@ describe("decider combinator", () => {
   });
 
   it("reads [none] as a signal taken from neither network", () => {
-    const d = entity("decider d { when virtual:signal-A[none] > virtual:signal-B[none] and each[none] = 0 output each = input[none] else output virtual:signal-B = input[none] }", "decider");
+    const d = entity("decider-combinator d { when virtual:signal-A[none] > virtual:signal-B[none] and each[none] = 0 output each = input[none] else output virtual:signal-B = input[none] }", "decider");
     expect(d.conditions).toEqual([
       { join: "or", first: A, firstNetworks: NONE, comparator: ">", second: { type: "signal", signal: B, networks: NONE } },
       { join: "and", first: wildcardSignal("each"), firstNetworks: NONE, comparator: "=", second: { type: "constant", value: 0 } },
@@ -149,12 +150,12 @@ describe("decider combinator", () => {
   });
 
   it.each(["<", ">", "=", "!=", "<=", ">="] as const)("parses comparator %s", (comparator) => {
-    expect(entity(`decider d { when virtual:signal-A ${comparator} 1 output virtual:signal-A = 1 }`, "decider").conditions[0]!.comparator).toBe(comparator);
+    expect(entity(`decider-combinator d { when virtual:signal-A ${comparator} 1 output virtual:signal-A = 1 }`, "decider").conditions[0]!.comparator).toBe(comparator);
   });
 });
 
 describe("selector combinator", () => {
-  const mode = (body: string) => entity(`selector s { ${body} }`, "selector").mode;
+  const mode = (body: string) => entity(`selector-combinator s { ${body} }`, "selector").mode;
 
   it("defaults to select", () => {
     expect(mode("")).toEqual(DEFAULT_ENTITY.selector.mode);
@@ -192,12 +193,12 @@ describe("selector combinator", () => {
 
 describe("lamp", () => {
   it("uses defaults for an empty lamp", () => {
-    expect(entity("lamp l { }", "lamp")).toEqual({ id: "e1", name: "l", position: { x: 40, y: 40 }, ...DEFAULT_ENTITY.lamp });
+    expect(entity("small-lamp l { }", "lamp")).toEqual({ id: "e1", name: "l", position: { x: 40, y: 40 }, ...DEFAULT_ENTITY.lamp, prototype: "small-lamp" });
   });
 
   it("parses the condition and every property", () => {
     const l = entity(
-      "lamp l { when anything > virtual:signal-A networks = green always-on = true colors = packed-rgb red = virtual:signal-A green = virtual:signal-B blue = item:x rgb = item:y@rare color = #FF8000 }",
+      "small-lamp l { when anything > virtual:signal-A networks = green always-on = true colors = packed-rgb red = virtual:signal-A green = virtual:signal-B blue = item:x rgb = item:y@rare color = #FF8000 }",
       "lamp",
     );
     expect(l).toMatchObject({
@@ -212,25 +213,25 @@ describe("lamp", () => {
       rgbSignal: { kind: "item", name: "y", quality: "rare" },
       color: { r: 255, g: 128, b: 0 },
     });
-    expect(entity("lamp l { when everything <= -5 networks = red colors = mapping }", "lamp")).toMatchObject({ condition: { second: { type: "constant", value: -5 } }, inputNetworks: RED, useColors: true, colorMode: "mapping" });
+    expect(entity("small-lamp l { when everything <= -5 networks = red colors = mapping }", "lamp")).toMatchObject({ condition: { second: { type: "constant", value: -5 } }, inputNetworks: RED, useColors: true, colorMode: "mapping" });
   });
 
   it("reads no input network from networks = none", () => {
-    expect(entity("lamp l { networks = none }", "lamp").inputNetworks).toEqual(NONE);
+    expect(entity("small-lamp l { networks = none }", "lamp").inputNetworks).toEqual(NONE);
     // The word has this meaning only as the value of `networks`; a lamp may still be called none.
-    expect(entity("lamp none { networks = none always-on = true }", "lamp")).toMatchObject({ name: "none", inputNetworks: NONE, alwaysOn: true });
+    expect(entity("small-lamp none { networks = none always-on = true }", "lamp")).toMatchObject({ name: "none", inputNetworks: NONE, alwaysOn: true });
   });
 });
 
 describe("header clauses and placement", () => {
   it("reads at, tile and facing", () => {
-    expect(entity("lamp l at (-40, 60) tile (1.5, -2) facing west { }", "lamp")).toMatchObject({ position: { x: -40, y: 60 }, placement: { tile: { x: 1.5, y: -2 }, direction: "west" } });
-    expect(entity("lamp l facing north { }", "lamp").placement).toEqual({ direction: "north" });
-    expect("placement" in entity("lamp l { }", "lamp")).toBe(false);
+    expect(entity("small-lamp l at (-40, 60) tile (1.5, -2) facing west { }", "lamp")).toMatchObject({ position: { x: -40, y: 60 }, placement: { tile: { x: 1.5, y: -2 }, direction: "west" } });
+    expect(entity("small-lamp l facing north { }", "lamp").placement).toEqual({ direction: "north" });
+    expect("placement" in entity("small-lamp l { }", "lamp")).toBe(false);
   });
 
   it("auto-places entities without a position on free grid slots", () => {
-    const result = valid(circuit("lamp a { }\nlamp fixed at (40, 40) { }\nlamp b { }\nlamp c at (300, 100) { }\nlamp d { }\n" + Array.from({ length: 20 }, (_, i) => `lamp x${i} { }`).join("\n")));
+    const result = valid(circuit("small-lamp a { }\nsmall-lamp fixed at (40, 40) { }\nsmall-lamp b { }\nsmall-lamp c at (300, 100) { }\nsmall-lamp d { }\n" + Array.from({ length: 20 }, (_, i) => `small-lamp x${i} { }`).join("\n")));
     const positions = result.circuit.entities.map((e) => e.position);
     expect(positions.slice(0, 5)).toEqual([{ x: 520, y: 40 }, { x: 40, y: 40 }, { x: 760, y: 40 }, { x: 300, y: 100 }, { x: 1000, y: 40 }]);
     for (const p of positions) expect([p.x % 20, p.y % 20]).toEqual([0, 0]);
@@ -243,12 +244,12 @@ describe("header clauses and placement", () => {
 
 describe("wires", () => {
   it("resolves forward references and normalizes direction", () => {
-    const result = valid(circuit("wire red b.in <-> a.out\nconstant a { item:x = 1 }\nlamp b { }"));
+    const result = valid(circuit("wire red b.in <-> a.out\nconstant-combinator a { item:x = 1 }\nsmall-lamp b { }"));
     expect(result.circuit.wires).toEqual([{ color: "red", a: { entity: "e1", side: "out" }, b: { entity: "e2", side: "in" } }]);
   });
 
   it("collapses duplicate and reversed declarations into one wire and keeps all declarations in the source map", () => {
-    const source = circuit("arithmetic a { }\nlamp b { }\nwire green a.out <-> b.in\nwire green a.out <-> b.in // duplicate\nwire green b.in <-> a.out // reversed\nwire red a.out <-> b.in\nwire green a.in <-> b.in");
+    const source = circuit("arithmetic-combinator a { }\nsmall-lamp b { }\nwire green a.out <-> b.in\nwire green a.out <-> b.in // duplicate\nwire green b.in <-> a.out // reversed\nwire red a.out <-> b.in\nwire green a.in <-> b.in");
     const result = analyze(source);
     expect(result.hasErrors).toBe(false);
     expect(result.circuit!.wires).toHaveLength(3);
@@ -262,7 +263,7 @@ describe("wires", () => {
   });
 
   it("allows feedback between different terminals of one entity", () => {
-    expect(valid(circuit("decider d { }\nwire red d.out <-> d.in")).circuit.wires).toHaveLength(1);
+    expect(valid(circuit("decider-combinator d { }\nwire red d.out <-> d.in")).circuit.wires).toHaveLength(1);
   });
 });
 
@@ -282,15 +283,15 @@ describe("diagnostics", () => {
   };
 
   it("syntax-error", () => {
-    expectCodes('circuit "x" { lamp }', ["syntax-error"]);
-    expectCodes(circuit("lamp a { when virtual:signal-A[red] > 1 }"), ["syntax-error"]);
-    expectCodes(circuit("lamp a { when virtual:signal-A[none] > 1 }"), ["syntax-error"]);
-    expectCodes(circuit("decider a { when each[both] > 1 output each = 1 }"), ["syntax-error"]);
-    expectCodes(circuit("decider a { when each > 1 output each = 1[none] }"), ["syntax-error"]);
-    expectCodes(circuit("lamp a { when virtual:signal-A > 1 and virtual:signal-B > 2 }"), ["syntax-error"]);
-    expectCodes(circuit("arithmetic a { virtual:signal-A[red] = 1 + 1 }"), ["syntax-error"]);
-    expectCodes(circuit("decider a { when each > 1 output each[red] = 1 }"), ["syntax-error"]);
-    expectCodes(circuit("constant a { item:x[red] = 1 }"), ["syntax-error"]);
+    expectCodes('circuit "x" { small-lamp }', ["syntax-error"]);
+    expectCodes(circuit("small-lamp a { when virtual:signal-A[red] > 1 }"), ["syntax-error"]);
+    expectCodes(circuit("small-lamp a { when virtual:signal-A[none] > 1 }"), ["syntax-error"]);
+    expectCodes(circuit("decider-combinator a { when each[both] > 1 output each = 1 }"), ["syntax-error"]);
+    expectCodes(circuit("decider-combinator a { when each > 1 output each = 1[none] }"), ["syntax-error"]);
+    expectCodes(circuit("small-lamp a { when virtual:signal-A > 1 and virtual:signal-B > 2 }"), ["syntax-error"]);
+    expectCodes(circuit("arithmetic-combinator a { virtual:signal-A[red] = 1 + 1 }"), ["syntax-error"]);
+    expectCodes(circuit("decider-combinator a { when each > 1 output each[red] = 1 }"), ["syntax-error"]);
+    expectCodes(circuit("constant-combinator a { item:x[red] = 1 }"), ["syntax-error"]);
   });
 
   it("unsupported-feature", () => {
@@ -300,121 +301,121 @@ describe("diagnostics", () => {
   });
 
   it("duplicate-entity", () => {
-    const source = circuit("lamp a { }\nconstant a { item:x = 1 }");
+    const source = circuit("small-lamp a { }\nconstant-combinator a { item:x = 1 }");
     expectCodes(source, ["duplicate-entity"]);
     expect(report(source)).toEqual([["duplicate-entity", "a"]]);
     expect(analyze(source).diagnostics[0]!.from).toBe(source.lastIndexOf(" a ") + 1);
   });
 
   it("unknown-entity, unknown-terminal, invalid-terminal, self-wire", () => {
-    expect(report(circuit("lamp a { }\nwire red nope.out <-> a.in"))).toEqual([["unknown-entity", "nope"]]);
-    expect(report(circuit("lamp a { }\ndecider d { when each > 1 output each = 1 }\nwire red d.middle <-> a.in"))).toEqual([["unknown-terminal", "middle"]]);
-    expect(report(circuit("lamp a { }\nconstant c { item:x = 1 }\nwire red c.in <-> a.out"))).toEqual([["invalid-terminal", "c.in"], ["invalid-terminal", "a.out"]]);
-    expect(report(circuit("lamp a { }\nwire red a.in <-> a.in"))).toEqual([["self-wire", "wire red a.in <-> a.in"]]);
-    expectCodes(circuit("lamp a { }\nwire red nope.out <-> a.in"), ["unknown-entity"]);
-    expectCodes(circuit("lamp a { }\nwire red a.side <-> a.in"), ["unknown-terminal"]);
-    expectCodes(circuit("lamp a { }\nwire red a.out <-> a.in"), ["invalid-terminal"]);
-    expectCodes(circuit("lamp a { }\nwire red a.in <-> a.in"), ["self-wire"]);
+    expect(report(circuit("small-lamp a { }\nwire red nope.out <-> a.in"))).toEqual([["unknown-entity", "nope"]]);
+    expect(report(circuit("small-lamp a { }\ndecider-combinator d { when each > 1 output each = 1 }\nwire red d.middle <-> a.in"))).toEqual([["unknown-terminal", "middle"]]);
+    expect(report(circuit("small-lamp a { }\nconstant-combinator c { item:x = 1 }\nwire red c.in <-> a.out"))).toEqual([["invalid-terminal", "c.in"], ["invalid-terminal", "a.out"]]);
+    expect(report(circuit("small-lamp a { }\nwire red a.in <-> a.in"))).toEqual([["self-wire", "wire red a.in <-> a.in"]]);
+    expectCodes(circuit("small-lamp a { }\nwire red nope.out <-> a.in"), ["unknown-entity"]);
+    expectCodes(circuit("small-lamp a { }\nwire red a.side <-> a.in"), ["unknown-terminal"]);
+    expectCodes(circuit("small-lamp a { }\nwire red a.out <-> a.in"), ["invalid-terminal"]);
+    expectCodes(circuit("small-lamp a { }\nwire red a.in <-> a.in"), ["self-wire"]);
   });
 
   it("integer-range", () => {
-    expectCodes(circuit("constant c { item:x = 2147483648 }"), ["integer-range"]);
-    expectCodes(circuit("constant c { item:x = -2147483649 }"), ["integer-range"]);
-    expectCodes(circuit("constant c { item:x = 0x80000000 }"), ["integer-range"]);
-    expectCodes(circuit("constant c { item:x = 99999999999999999999999999 }"), ["integer-range"]);
-    expectCodes(circuit("lamp l at (3000000000, 0) { }"), ["integer-range"]);
-    expectCodes(circuit("selector s { operation = random interval = 4294967296 }"), ["integer-range"]);
-    expectCodes(circuit("constant c { item:x = 2147483647 item:y = -2147483648 item:z = 0x7fffffff }"), []);
+    expectCodes(circuit("constant-combinator c { item:x = 2147483648 }"), ["integer-range"]);
+    expectCodes(circuit("constant-combinator c { item:x = -2147483649 }"), ["integer-range"]);
+    expectCodes(circuit("constant-combinator c { item:x = 0x80000000 }"), ["integer-range"]);
+    expectCodes(circuit("constant-combinator c { item:x = 99999999999999999999999999 }"), ["integer-range"]);
+    expectCodes(circuit("small-lamp l at (3000000000, 0) { }"), ["integer-range"]);
+    expectCodes(circuit("selector-combinator s { operation = random interval = 4294967296 }"), ["integer-range"]);
+    expectCodes(circuit("constant-combinator c { item:x = 2147483647 item:y = -2147483648 item:z = 0x7fffffff }"), []);
   });
 
   it("illegal-wildcard", () => {
-    expectCodes(circuit("constant c { each = 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("constant c { virtual:signal-everything = 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("arithmetic a { each = virtual:signal-A + 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("arithmetic a { virtual:signal-A = anything + 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("arithmetic a { everything = each + 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("decider d { when virtual:signal-A > 1 output each = 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("decider d { when virtual:signal-A > 1 else output each = input }"), ["illegal-wildcard"]);
-    expectCodes(circuit("lamp l { when each > 1 }"), ["illegal-wildcard"]);
-    expectCodes(circuit("lamp l { when virtual:signal-A > anything }"), ["illegal-wildcard"]);
-    expectCodes(circuit("lamp l { red = each }"), ["illegal-wildcard"]);
-    expectCodes(circuit("selector s { index = each }"), ["illegal-wildcard"]);
-    expectCodes(circuit("selector s { operation = quality-transfer destination = anything }"), ["illegal-wildcard"]);
+    expectCodes(circuit("constant-combinator c { each = 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("constant-combinator c { virtual:signal-everything = 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("arithmetic-combinator a { each = virtual:signal-A + 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("arithmetic-combinator a { virtual:signal-A = anything + 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("arithmetic-combinator a { everything = each + 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("decider-combinator d { when virtual:signal-A > 1 output each = 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("decider-combinator d { when virtual:signal-A > 1 else output each = input }"), ["illegal-wildcard"]);
+    expectCodes(circuit("small-lamp l { when each > 1 }"), ["illegal-wildcard"]);
+    expectCodes(circuit("small-lamp l { when virtual:signal-A > anything }"), ["illegal-wildcard"]);
+    expectCodes(circuit("small-lamp l { red = each }"), ["illegal-wildcard"]);
+    expectCodes(circuit("selector-combinator s { index = each }"), ["illegal-wildcard"]);
+    expectCodes(circuit("selector-combinator s { operation = quality-transfer destination = anything }"), ["illegal-wildcard"]);
   });
 
   it("duplicate-statement", () => {
-    expectCodes(circuit("decider d { when each > 1 when each < 5 output each = 1 }"), ["duplicate-statement"]);
-    expectCodes(circuit("arithmetic a { virtual:signal-A = 1 + 1 virtual:signal-B = 2 + 2 }"), ["duplicate-statement"]);
-    expectCodes(circuit("constant c { enabled = true enabled = false item:x = 1 }"), ["duplicate-statement"]);
-    expectCodes(circuit("constant c { section { active = true active = true } }"), ["duplicate-statement"]);
-    expectCodes(circuit("lamp l { when virtual:signal-A > 1 when virtual:signal-A > 2 }"), ["duplicate-statement"]);
+    expectCodes(circuit("decider-combinator d { when each > 1 when each < 5 output each = 1 }"), ["duplicate-statement"]);
+    expectCodes(circuit("arithmetic-combinator a { virtual:signal-A = 1 + 1 virtual:signal-B = 2 + 2 }"), ["duplicate-statement"]);
+    expectCodes(circuit("constant-combinator c { enabled = true enabled = false item:x = 1 }"), ["duplicate-statement"]);
+    expectCodes(circuit("constant-combinator c { section { active = true active = true } }"), ["duplicate-statement"]);
+    expectCodes(circuit("small-lamp l { when virtual:signal-A > 1 when virtual:signal-A > 2 }"), ["duplicate-statement"]);
   });
 
   it("duplicate-signal", () => {
-    expect(report(circuit("constant c { item:x = 1 item:y = 2 item:x = 3 }"))).toEqual([["duplicate-signal", "item:x"]]);
-    expectCodes(circuit("constant c { item:x = 1 item:x@normal = 3 }"), ["duplicate-signal"]);
-    expectCodes(circuit("constant c { section { item:x = 1 item:x = 3 } }"), ["duplicate-signal"]);
-    expectCodes(circuit("constant c { section { item:x = 1 item:x@rare = 3 } section { item:x = 3 } }"), []);
+    expect(report(circuit("constant-combinator c { item:x = 1 item:y = 2 item:x = 3 }"))).toEqual([["duplicate-signal", "item:x"]]);
+    expectCodes(circuit("constant-combinator c { item:x = 1 item:x@normal = 3 }"), ["duplicate-signal"]);
+    expectCodes(circuit("constant-combinator c { section { item:x = 1 item:x = 3 } }"), ["duplicate-signal"]);
+    expectCodes(circuit("constant-combinator c { section { item:x = 1 item:x@rare = 3 } section { item:x = 3 } }"), []);
   });
 
   it("contradictory-statement", () => {
-    expectCodes(circuit("constant c { item:x = 1 section { item:y = 1 } }"), ["contradictory-statement"]);
-    expectCodes(circuit("selector s { operation = count interval = 5 }"), ["contradictory-statement"]);
-    expectCodes(circuit("selector s { order = highest }"), ["invalid-value"]);
-    expectCodes(circuit("selector s { interval = 5 }"), ["contradictory-statement"]);
-    expectCodes(circuit("selector s { operation = quality-transfer source = rare source-signal = item:x }"), ["contradictory-statement"]);
+    expectCodes(circuit("constant-combinator c { item:x = 1 section { item:y = 1 } }"), ["contradictory-statement"]);
+    expectCodes(circuit("selector-combinator s { operation = count interval = 5 }"), ["contradictory-statement"]);
+    expectCodes(circuit("selector-combinator s { order = highest }"), ["invalid-value"]);
+    expectCodes(circuit("selector-combinator s { interval = 5 }"), ["contradictory-statement"]);
+    expectCodes(circuit("selector-combinator s { operation = quality-transfer source = rare source-signal = item:x }"), ["contradictory-statement"]);
   });
 
   it("invalid-statement", () => {
-    expectCodes(circuit("constant c { when virtual:signal-A > 1 item:x = 1 }"), ["invalid-statement"]);
-    expectCodes(circuit("constant c { output virtual:signal-A = 1 item:x = 1 }"), ["invalid-statement"]);
-    expectCodes(circuit("arithmetic a { section { } virtual:signal-A = 1 + 1 }"), ["invalid-statement"]);
-    expectCodes(circuit("selector s { item:x = 1 }"), ["invalid-statement"]);
-    expectCodes(circuit("lamp l { output virtual:signal-A = 1 }"), ["invalid-statement"]);
-    expectCodes(circuit("lamp l { virtual:signal-A = 1 }"), ["invalid-statement"]);
-    expectCodes(circuit("decider d { virtual:signal-A = 1 when each > 1 output each = 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("constant-combinator c { when virtual:signal-A > 1 item:x = 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("constant-combinator c { output virtual:signal-A = 1 item:x = 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("arithmetic-combinator a { section { } virtual:signal-A = 1 + 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("selector-combinator s { item:x = 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("small-lamp l { output virtual:signal-A = 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("small-lamp l { virtual:signal-A = 1 }"), ["invalid-statement"]);
+    expectCodes(circuit("decider-combinator d { virtual:signal-A = 1 when each > 1 output each = 1 }"), ["invalid-statement"]);
   });
 
   it("unknown-property", () => {
-    expect(report(circuit("lamp l { brightness = 5 }"))).toEqual([["unknown-property", "brightness"]]);
-    expectCodes(circuit("constant c { item:x = 1 always-on = true }"), ["unknown-property"]);
-    expectCodes(circuit("constant c { section { enabled = true } }"), ["unknown-property"]);
-    expectCodes(circuit("constant c { item:x = 1 active = true }"), ["unknown-property"]);
-    expectCodes(circuit("decider d { output = virtual:signal-A when each > 1 output each = 1 }"), ["unknown-property"]);
+    expect(report(circuit("small-lamp l { brightness = 5 }"))).toEqual([["unknown-property", "brightness"]]);
+    expectCodes(circuit("constant-combinator c { item:x = 1 always-on = true }"), ["unknown-property"]);
+    expectCodes(circuit("constant-combinator c { section { enabled = true } }"), ["unknown-property"]);
+    expectCodes(circuit("constant-combinator c { item:x = 1 active = true }"), ["unknown-property"]);
+    expectCodes(circuit("decider-combinator d { output = virtual:signal-A when each > 1 output each = 1 }"), ["unknown-property"]);
   });
 
   it("invalid-value", () => {
-    expectCodes(circuit("selector s { operation = bogus }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l { colors = rainbow }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l { always-on = 1 }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l { color = #12 }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l { color = red }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l { description = plain }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l { networks = both }"), ["invalid-value"]);
-    expectCodes(circuit("lamp l at (1.5, 2) { }"), ["invalid-value"]);
-    expectCodes(circuit("constant c { item:x = item:y }"), ["invalid-value"]);
-    expectCodes(circuit("constant c { item:x = 1 + 2 }"), ["invalid-value"]);
-    expectCodes(circuit("selector s { operation = random interval = 1.5 }"), ["invalid-value"]);
-    expectCodes(circuit("selector s { index-comparator = max }"), ["invalid-value"]);
-    expectCodes(circuit('selector s { operation = quality-filter quality = "" }'), ["invalid-value"]);
-    expectCodes(circuit("constant c { section { multiplier = true } }"), ["invalid-value"]);
+    expectCodes(circuit("selector-combinator s { operation = bogus }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { colors = rainbow }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { always-on = 1 }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { color = #12 }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { color = red }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { description = plain }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { networks = both }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l at (1.5, 2) { }"), ["invalid-value"]);
+    expectCodes(circuit("constant-combinator c { item:x = item:y }"), ["invalid-value"]);
+    expectCodes(circuit("constant-combinator c { item:x = 1 + 2 }"), ["invalid-value"]);
+    expectCodes(circuit("selector-combinator s { operation = random interval = 1.5 }"), ["invalid-value"]);
+    expectCodes(circuit("selector-combinator s { index-comparator = max }"), ["invalid-value"]);
+    expectCodes(circuit('selector-combinator s { operation = quality-filter quality = "" }'), ["invalid-value"]);
+    expectCodes(circuit("constant-combinator c { section { multiplier = true } }"), ["invalid-value"]);
   });
 
   it("invalid-signal", () => {
-    expect(report(circuit("constant c { bogus:thing = 1 }"))).toEqual([["invalid-signal", "bogus:thing"]]);
-    expectCodes(circuit("constant c { item: = 1 }"), ["invalid-signal"]);
-    expectCodes(circuit("constant c { item:x@ = 1 }"), ["invalid-signal"]);
-    expectCodes(circuit('constant c { item:"" = 1 }'), ["invalid-signal"]);
-    expectCodes(circuit("lamp l { red = nope:x }"), ["invalid-signal"]);
+    expect(report(circuit("constant-combinator c { bogus:thing = 1 }"))).toEqual([["invalid-signal", "bogus:thing"]]);
+    expectCodes(circuit("constant-combinator c { item: = 1 }"), ["invalid-signal"]);
+    expectCodes(circuit("constant-combinator c { item:x@ = 1 }"), ["invalid-signal"]);
+    expectCodes(circuit('constant-combinator c { item:"" = 1 }'), ["invalid-signal"]);
+    expectCodes(circuit("small-lamp l { red = nope:x }"), ["invalid-signal"]);
   });
 
   it("duplicate-wire", () => {
-    expectCodes(circuit("decider a { when each > 1 output each = 1 }\nwire red a.out <-> a.in\nwire red a.in <-> a.out"), ["duplicate-wire"]);
+    expectCodes(circuit("decider-combinator a { when each > 1 output each = 1 }\nwire red a.out <-> a.in\nwire red a.in <-> a.out"), ["duplicate-wire"]);
   });
 
   it("unknown-signal and disabled-signal come from the injected resolver only", () => {
     const signals: SignalResolver = { status: (id) => (id.name === "missing" ? "unknown" : id.name === "off" || id.name === "epic" ? "disabled" : "known") };
-    const source = circuit("constant c { item:ok = 1 item:missing = 2 item:off@rare = 3 }\narithmetic a { each = each + fluid:missing }\nselector s { operation = quality-filter quality = epic }");
+    const source = circuit("constant-combinator c { item:ok = 1 item:missing = 2 item:off@rare = 3 }\narithmetic-combinator a { each = each + fluid:missing }\nselector-combinator s { operation = quality-filter quality = epic }");
     expect(analyze(source).diagnostics).toEqual([]);
     const result = analyze(source, undefined, { signals });
     expect(result.diagnostics.map((d) => [d.code, d.severity, source.slice(d.from, d.to)])).toEqual([
@@ -428,37 +429,37 @@ describe("diagnostics", () => {
   });
 
   it("unconfigured", () => {
-    expect(report(circuit("arithmetic a { }\ndecider d { }\nconstant c { }\ndecider e { when each > 1 }"))).toEqual([["unconfigured", "a"], ["unconfigured", "d"], ["unconfigured", "c"], ["unconfigured", "e"]]);
-    expectCodes(circuit("arithmetic a { }"), ["unconfigured"]);
-    expectCodes(circuit("lamp l { }\nselector s { }\nconstant c { section { } }"), []);
+    expect(report(circuit("arithmetic-combinator a { }\ndecider-combinator d { }\nconstant-combinator c { }\ndecider-combinator e { when each > 1 }"))).toEqual([["unconfigured", "a"], ["unconfigured", "d"], ["unconfigured", "c"], ["unconfigured", "e"]]);
+    expectCodes(circuit("arithmetic-combinator a { }"), ["unconfigured"]);
+    expectCodes(circuit("small-lamp l { }\nselector-combinator s { }\nconstant-combinator c { section { } }"), []);
   });
 
   it("unused-else-output", () => {
-    expectCodes(circuit("decider d { else output virtual:signal-A = 1 }"), ["unconfigured", "unused-else-output"]);
-    expect(codes(circuit("decider d { when each > 1 else output virtual:signal-A = 1 }"))).toEqual([]);
+    expectCodes(circuit("decider-combinator d { else output virtual:signal-A = 1 }"), ["unconfigured", "unused-else-output"]);
+    expect(codes(circuit("decider-combinator d { when each > 1 else output virtual:signal-A = 1 }"))).toEqual([]);
   });
 
   it("tile-off-grid", () => {
     // 1x1: both coordinates end in .5, whatever the direction.
-    expectCodes(circuit("constant c tile (0.5, -1.5) { item:a = 1 }\nconstant d tile (2.5, 0.5) facing north { item:a = 1 }\nlamp l tile (-3.5, 7.5) { }"), []);
-    expect(report(circuit("lamp l tile (1, 2.5) { }\nconstant c tile (4.5, 0.25) facing south { item:a = 1 }"))).toEqual([["tile-off-grid", "tile (1, 2.5)"], ["tile-off-grid", "tile (4.5, 0.25)"]]);
+    expectCodes(circuit("constant-combinator c tile (0.5, -1.5) { item:a = 1 }\nconstant-combinator d tile (2.5, 0.5) facing north { item:a = 1 }\nsmall-lamp l tile (-3.5, 7.5) { }"), []);
+    expect(report(circuit("small-lamp l tile (1, 2.5) { }\nconstant-combinator c tile (4.5, 0.25) facing south { item:a = 1 }"))).toEqual([["tile-off-grid", "tile (1, 2.5)"], ["tile-off-grid", "tile (4.5, 0.25)"]]);
     // 2x1: the half moves to the other axis with the direction; without a clause the entity faces east.
-    const long = (header: string) => circuit(`decider d ${header} { when each > 1 output each = 1 }`);
+    const long = (header: string) => circuit(`decider-combinator d ${header} { when each > 1 output each = 1 }`);
     for (const header of ["tile (1, 0.5)", "tile (1, 0.5) facing east", "tile (-3, 0.5) facing west", "tile (0.5, 1) facing north", "tile (6.5, -21) facing south"]) expectCodes(long(header), []);
     for (const header of ["tile (0.5, 1)", "tile (0.5, 0.5) facing east", "tile (1, 0.5) facing north", "tile (1, 1) facing south", "tile (1.5, 0.5) facing west"]) expectCodes(long(header), ["tile-off-grid"]);
-    for (const kind of ["arithmetic", "selector"]) expect(codes(circuit(`${kind} x tile (0.5, 0.5) { }`))).toContain("tile-off-grid");
+    for (const kind of ["arithmetic", "selector"]) expect(codes(circuit(`${kind}-combinator x tile (0.5, 0.5) { }`))).toContain("tile-off-grid");
     // The message says what the kind and direction need and where the nearest place is.
     const message = (source: string) => analyze(source).diagnostics.find((d) => d.code === "tile-off-grid")!.message;
     expect(message(long("tile (0.5, 1)"))).toBe("Not on the tile grid: facing east, the center of this decider combinator needs a whole x and a y ending in .5; the nearest is (1, 1.5)");
     expect(message(long("tile (1, 0.5) facing north"))).toBe("Not on the tile grid: facing north, the center of this decider combinator needs an x ending in .5 and a whole y; the nearest is (1.5, 1)");
-    expect(message(circuit("lamp l tile (1, 2.25) { }"))).toBe("Not on the tile grid: the center of this lamp needs x and y ending in .5; the nearest is (1.5, 2.5)");
+    expect(message(circuit("small-lamp l tile (1, 2.25) { }"))).toBe("Not on the tile grid: the center of this lamp needs x and y ending in .5; the nearest is (1.5, 2.5)");
     for (const name of ["example.face", "comments.face", "all-kinds.face"]) expect(codes(fixture(name)).filter((code) => code.startsWith("tile-"))).toEqual([]);
     // A warning: the circuit is there and the tile is kept as written.
     expect(valid(long("tile (0.5, 1)")).circuit.entities[0]!.placement).toEqual({ tile: { x: 0.5, y: 1 } });
   });
 
   it("tile-overlap", () => {
-    const two = circuit("lamp a tile (0.5, 0.5) { }\ndecider gate tile (1, 0.5) { when each > 1 output each = 1 }\nlamp free tile (2.5, 0.5) { }\nlamp none { }");
+    const two = circuit("small-lamp a tile (0.5, 0.5) { }\ndecider-combinator gate tile (1, 0.5) { when each > 1 output each = 1 }\nsmall-lamp free tile (2.5, 0.5) { }\nsmall-lamp none { }");
     expect(report(two)).toEqual([["tile-overlap", "tile (0.5, 0.5)"], ["tile-overlap", "tile (1, 0.5)"]]);
     expect(analyze(two).diagnostics.map((d) => d.message)).toEqual([
       "Stands on a tile that 'gate' stands on as well; in the game two entities cannot share a tile",
@@ -466,16 +467,16 @@ describe("diagnostics", () => {
     ]);
     expectCodes(two, ["tile-overlap", "tile-overlap"]);
     // Next to each other, and a 2x1 entity turned away, is no overlap.
-    expectCodes(circuit("lamp a tile (0.5, 0.5) { }\nlamp b tile (1.5, 0.5) { }\nselector s tile (0.5, 2) facing south { }\nselector t tile (1.5, 2) facing north { }"), []);
+    expectCodes(circuit("small-lamp a tile (0.5, 0.5) { }\nsmall-lamp b tile (1.5, 0.5) { }\nselector-combinator s tile (0.5, 2) facing south { }\nselector-combinator t tile (1.5, 2) facing north { }"), []);
     // One warning per entity, also when it shares both of its tiles or shares with several.
-    const several = circuit("selector s tile (1, 0.5) { }\nselector t tile (1, 0.5) facing west { }\nlamp l tile (1.5, 0.5) { }");
+    const several = circuit("selector-combinator s tile (1, 0.5) { }\nselector-combinator t tile (1, 0.5) facing west { }\nsmall-lamp l tile (1.5, 0.5) { }");
     expect(analyze(several).diagnostics.map((d) => d.message.replace(/ as well.*/, ""))).toEqual(["Stands on a tile that 't' and 'l' stand on", "Stands on a tile that 's' and 'l' stand on", "Stands on a tile that 's' and 't' stand on"]);
     // A tile off the grid counts where its nearest footprint is.
-    expect(codes(circuit("lamp a tile (0.5, 0.5) { }\nlamp b tile (0.4, 0.4) { }"))).toEqual(["tile-overlap", "tile-off-grid", "tile-overlap"]);
+    expect(codes(circuit("small-lamp a tile (0.5, 0.5) { }\nsmall-lamp b tile (0.4, 0.4) { }"))).toEqual(["tile-overlap", "tile-off-grid", "tile-overlap"]);
   });
 
   it("names a few entities of a pile on one tile and stays fast", () => {
-    const pile = circuit(Array.from({ length: 3000 }, (_, i) => `lamp l${i} tile (0.5, 0.5) { }`).join("\n"));
+    const pile = circuit(Array.from({ length: 3000 }, (_, i) => `small-lamp l${i} tile (0.5, 0.5) { }`).join("\n"));
     const started = performance.now();
     const result = analyze(pile);
     expect(performance.now() - started).toBeLessThan(2000);
@@ -485,16 +486,16 @@ describe("diagnostics", () => {
   });
 
   it("unused-facing", () => {
-    expect(report(circuit("lamp l facing south { }\nlamp m at (0, 0) tile (0.5, 0.5) facing east { }\nlamp n { }"))).toEqual([["unused-facing", "facing south"], ["unused-facing", "facing east"]]);
-    expectCodes(circuit("lamp l facing north { }"), ["unused-facing"]);
-    expect(analyze(circuit("lamp l facing north { }")).diagnostics[0]!.message).toBe("A lamp cannot be rotated; 'facing' is ignored");
+    expect(report(circuit("small-lamp l facing south { }\nsmall-lamp m at (0, 0) tile (0.5, 0.5) facing east { }\nsmall-lamp n { }"))).toEqual([["unused-facing", "facing south"], ["unused-facing", "facing east"]]);
+    expectCodes(circuit("small-lamp l facing north { }"), ["unused-facing"]);
+    expect(analyze(circuit("small-lamp l facing north { }")).diagnostics[0]!.message).toBe("A lamp cannot be rotated; 'facing' is ignored");
     // The clause is kept in the model, so that the text round-trips; every combinator may have one.
-    expect(valid(circuit("lamp l facing north { }")).circuit.entities[0]!.placement).toEqual({ direction: "north" });
-    expectCodes(circuit("constant c facing north { item:a = 1 }\nselector s facing west { }"), []);
+    expect(valid(circuit("small-lamp l facing north { }")).circuit.entities[0]!.placement).toEqual({ direction: "north" });
+    expectCodes(circuit("constant-combinator c facing north { item:a = 1 }\nselector-combinator s facing west { }"), []);
   });
 
   it("wire-too-long", () => {
-    const wired = (tiles: string, wires = "wire red c.out <-> l.in") => circuit(`constant c tile (0.5, 0.5) { item:a = 1 }\nlamp l ${tiles} { }\n${wires}`);
+    const wired = (tiles: string, wires = "wire red c.out <-> l.in") => circuit(`constant-combinator c tile (0.5, 0.5) { item:a = 1 }\nsmall-lamp l ${tiles} { }\n${wires}`);
     // The default reach is 9 tiles between the footprints: nine empty tiles between the two are fine, ten are not.
     expectCodes(wired("tile (1.5, 0.5)"), []);
     expectCodes(wired("tile (10.5, 0.5)"), []);
@@ -517,7 +518,7 @@ describe("diagnostics", () => {
     // A distance that rounds to the reach is shown with the digits that tell them apart.
     expect(messages(wired("tile (2.5, 2.5)"), 1.4)).toEqual(["Wire from 'c.out' to 'l.in': the entities are 1.41 tiles apart; the wire reach of the project is 1.4"]);
     // A 2x1 combinator counts with both of its tiles, lying or upright, whichever end is wired.
-    const gate = (placement: string, side = "in") => circuit(`constant c tile (0.5, 0.5) { item:a = 1 }\nselector d ${placement} { }\nwire red c.out <-> d.${side}`);
+    const gate = (placement: string, side = "in") => circuit(`constant-combinator c tile (0.5, 0.5) { item:a = 1 }\nselector-combinator d ${placement} { }\nwire red c.out <-> d.${side}`);
     for (const facing of ["east", "west"]) {
       expectCodes(gate(`tile (11, 0.5) facing ${facing}`), []);
       expectCodes(gate(`tile (-10, 0.5) facing ${facing}`, "out"), []);
@@ -540,20 +541,20 @@ describe("diagnostics", () => {
     // A wire is measured only between two entities with a tile, and a wire of an entity to itself is never too long.
     expectCodes(wired(""), []);
     expectCodes(wired("at (4000, 0)"), []);
-    expect(messages(circuit("selector s tile (1, 0.5) { }\nwire red s.out <-> s.in"), 0.5)).toEqual([]);
+    expect(messages(circuit("selector-combinator s tile (1, 0.5) { }\nwire red s.out <-> s.in"), 0.5)).toEqual([]);
     for (const name of ["example.face", "comments.face", "all-kinds.face"]) expect(codes(fixture(name))).not.toContain("wire-too-long");
     // A warning: the circuit is there with the wire.
     expect(valid(wired("tile (11.5, 0.5)")).circuit.wires).toHaveLength(1);
   });
 
   it("checks the placement of a circuit only: a fragment loses its tiles when it is pasted", () => {
-    expect(analyzeFragment("lamp a tile (0, 0) facing north { }\nlamp b tile (0, 0) { }").diagnostics).toEqual([]);
-    expect(analyzeFragment("constant c tile (0.5, 0.5) { item:a = 1 }\nlamp l tile (40.5, 0.5) { }\nwire red c.out <-> l.in").diagnostics).toEqual([]);
+    expect(analyzeFragment("small-lamp a tile (0, 0) facing north { }\nsmall-lamp b tile (0, 0) { }").diagnostics).toEqual([]);
+    expect(analyzeFragment("constant-combinator c tile (0.5, 0.5) { item:a = 1 }\nsmall-lamp l tile (40.5, 0.5) { }\nwire red c.out <-> l.in").diagnostics).toEqual([]);
   });
 
   it("unknown-instrument, unknown-note", () => {
     const instruments = [{ name: "piano", notes: ["F3", "F#3"] }];
-    const speaker = (settings: string) => circuit(`speaker s { pitch = virtual:signal-A ${settings} }`);
+    const speaker = (settings: string) => circuit(`programmable-speaker s { pitch = virtual:signal-A ${settings} }`);
     expectCodes(speaker("instrument = organ"), ["unknown-instrument"], { instruments });
     expectCodes(speaker('instrument = piano note = "C#9"'), ["unknown-note"], { instruments });
     expectCodes(speaker('instrument = piano note = "F#3"'), [], { instruments });
@@ -561,10 +562,30 @@ describe("diagnostics", () => {
     expectCodes(speaker("instrument = organ note = x"), []);
   });
 
-  it("missing-prototype", () => {
-    expectCodes(circuit("entity e { }"), ["missing-prototype"]);
-    expectCodes(circuit("entity e { read-contents = true when item:a > 1 }"), ["missing-prototype"]);
-    expectCodes(circuit("entity e { prototype = steel-chest }"), []);
+  it("unknown-prototype, unsupported-prototype", () => {
+    // One error on the word, whatever the declaration says; the old kind words are names the game does not have.
+    expect(report(circuit("steel-chest box { }\nironclad-chest e at (0, 0) { read-contents = true when item:a > 1 nonsense }\nsmall-lamp l { }"))).toEqual([["unknown-prototype", "ironclad-chest"]]);
+    expectCodes(circuit("lamp l { when item:a > 1 }"), ["unknown-prototype"]);
+    expectCodes(circuit('entity e { prototype = "steel-chest" }'), ["unknown-prototype"]);
+    expectCodes(circuit("steel-chest e { }"), []);
+    withModdedTable(() => {
+      expectCodes(circuit("mod-speaker s { when item:a > 1 }"), ["unsupported-prototype"]);
+      expectCodes(circuit("mod-oddity o { }\nmod-lamp l { }"), ["unsupported-prototype"]);
+    });
+  });
+
+  it("keeps the rest of the circuit around an entity the game does not have, and its id once the word is one of the game", () => {
+    const good = valid(circuit("small-lamp a { }\nsmall-lamp b { always-on = true }\nconstant-combinator c { item:x = 1 }\nwire red c.out <-> a.in\nwire red c.out <-> b.in"));
+    const broken = analyze(good.source.replace("small-lamp b", "smal-lamp b"), good);
+    expect(broken.diagnostics.map((d) => [d.code, d.message])).toEqual([["unknown-prototype", "Unknown entity 'smal-lamp'; did you mean small-lamp?"], ["unknown-entity", "Unknown entity 'b'"]]);
+    expect(broken.circuit).toBeUndefined();
+    // The other entities and the wire between them are there, under their ids.
+    expect([...broken.sourceMap.entities.values()].map((entity) => [entity.name, entity.id])).toEqual([["a", idOf(good, "a")], ["c", idOf(good, "c")]]);
+    expect(broken.sourceMap.wires.size).toBe(1);
+    const fixed = valid(broken.source.replace("smal-lamp", '"small-lamp"'), broken);
+    expect(idOf(fixed, "b")).toBe(idOf(good, "b"));
+    expect(fixed.circuit.entities.find((entity) => entity.name === "b")).toMatchObject({ kind: "lamp", prototype: "small-lamp", alwaysOn: true });
+    expect(fixed.circuit.wires).toHaveLength(2);
   });
 
   it("has a test for every diagnostic code", () => {
@@ -572,7 +593,7 @@ describe("diagnostics", () => {
   });
 
   it("sorts diagnostics by position", () => {
-    const result = analyze(circuit("wire red x.out <-> y.in\nlamp a { nope = 1 }\nlamp a { }"));
+    const result = analyze(circuit("wire red x.out <-> y.in\nsmall-lamp a { nope = 1 }\nsmall-lamp a { }"));
     expect(result.diagnostics.map((d) => d.from)).toEqual([...result.diagnostics.map((d) => d.from)].sort((a, b) => a - b));
     expect(result.diagnostics).toHaveLength(4);
   });
@@ -585,7 +606,7 @@ describe("source map", () => {
 
   it("maps entities to declaration, name, position, body and statements", () => {
     const twice = result.sourceMap.entities.get(idOf(result, "twice"))!;
-    expect(text(twice.range)).toMatch(/^arithmetic twice at \(300, 80\) \{[^]*\}$/);
+    expect(text(twice.range)).toMatch(/^arithmetic-combinator twice at \(300, 80\) \{[^]*\}$/);
     expect(text(twice.nameRange)).toBe("twice");
     expect([text(twice.at!.range), text(twice.at!.x), text(twice.at!.y)]).toEqual(["at (300, 80)", "300", "80"]);
     expect(twice.atInsert).toBe(twice.nameRange.to);
@@ -596,7 +617,7 @@ describe("source map", () => {
   });
 
   it("gives an insertion point when the at clause is absent", () => {
-    const other = valid(circuit("lamp a tile (1, 2) { }"));
+    const other = valid(circuit("small-lamp a tile (1, 2) { }"));
     const a = other.sourceMap.entities.get("e1")!;
     expect(a.at).toBeUndefined();
     expect(other.source.slice(0, a.atInsert)).toMatch(/lamp a$/);
@@ -604,7 +625,7 @@ describe("source map", () => {
 
   it("finds entities and wires by offset", () => {
     const twice = idOf(result, "twice");
-    expect(result.sourceMap.entityAt(source.indexOf("arithmetic twice"))).toBe(twice);
+    expect(result.sourceMap.entityAt(source.indexOf("arithmetic-combinator twice"))).toBe(twice);
     expect(result.sourceMap.entityAt(source.indexOf("doubles A"))).toBe(twice);
     expect(result.sourceMap.entityAt(source.indexOf("}", source.indexOf("doubles A")) + 1)).toBe(twice);
     expect(result.sourceMap.entityAt(source.indexOf("// A wire between"))).toBeUndefined();
@@ -615,11 +636,11 @@ describe("source map", () => {
     expect(result.sourceMap.wires.get(key)!.wire).toEqual({ color: "red", a: { entity: idOf(result, "source"), side: "out" }, b: { entity: twice, side: "in" } });
     expect(result.sourceMap.wireAt(source.indexOf("light.in") + 8)).toBe(wireKey({ color: "green", a: { entity: twice, side: "out" }, b: { entity: idOf(result, "light"), side: "in" } }));
     expect(result.sourceMap.wireAt(source.indexOf("// keep this"))).toBeUndefined();
-    expect(result.sourceMap.wireAt(source.indexOf("arithmetic twice"))).toBeUndefined();
+    expect(result.sourceMap.wireAt(source.indexOf("arithmetic-combinator twice"))).toBeUndefined();
   });
 
   it("is available for documents with errors", () => {
-    const broken = analyze(circuit("lamp a { nope = 1 }\nlamp b {"));
+    const broken = analyze(circuit("small-lamp a { nope = 1 }\nsmall-lamp b {"));
     expect(broken.circuit).toBeUndefined();
     expect([...broken.sourceMap.entities.values()].map((e) => e.name)).toEqual(["a", "b"]);
     expect(broken.sourceMap.entityAt(broken.source.indexOf("nope"))).toBe("e1");
@@ -628,7 +649,7 @@ describe("source map", () => {
 
 describe("identity", () => {
   const ids = (result: ReturnType<typeof analyze>) => Object.fromEntries([...result.sourceMap.entities.values()].map((e) => [e.name, e.id]));
-  const base = circuit("constant a { item:x = 1 }\nlamp b { }\nlamp c { }\nwire red a.out <-> b.in");
+  const base = circuit("constant-combinator a { item:x = 1 }\nsmall-lamp b { }\nsmall-lamp c { }\nwire red a.out <-> b.in");
 
   it("assigns deterministic ids from a counter", () => {
     expect(ids(analyze(base))).toEqual({ a: "e1", b: "e2", c: "e3" });
@@ -657,32 +678,32 @@ describe("identity", () => {
 
   it("keeps ids when declarations are reordered", () => {
     const first = analyze(base);
-    const reordered = analyze(circuit("lamp c { }\nwire red a.out <-> b.in\nlamp b { }\nconstant a { item:x = 1 }"), first);
+    const reordered = analyze(circuit("small-lamp c { }\nwire red a.out <-> b.in\nsmall-lamp b { }\nconstant-combinator a { item:x = 1 }"), first);
     expect(ids(reordered)).toEqual({ a: "e1", b: "e2", c: "e3" });
     expect(reordered.circuit!.entities.map((e) => e.id)).toEqual(["e3", "e2", "e1"]);
   });
 
   it("gives new entities fresh ids and never reuses deleted ones", () => {
     const first = analyze(base);
-    const added = analyze(base.replace("lamp c { }", "lamp c { }\nlamp d { }\ndecider e { when each > 1 output each = 1 }"), first);
+    const added = analyze(base.replace("small-lamp c { }", "small-lamp c { }\nsmall-lamp d { }\ndecider-combinator e { when each > 1 output each = 1 }"), first);
     expect(ids(added)).toEqual({ a: "e1", b: "e2", c: "e3", d: "e4", e: "e5" });
-    const removed = analyze(circuit("constant a { item:x = 1 }\nlamp c { }\nlamp d { }"), added);
+    const removed = analyze(circuit("constant-combinator a { item:x = 1 }\nsmall-lamp c { }\nsmall-lamp d { }"), added);
     expect(ids(removed)).toEqual({ a: "e1", c: "e3", d: "e4" });
-    const again = analyze(circuit("constant a { item:x = 1 }\nlamp c { }\nlamp d { }\nlamp z { }"), removed);
+    const again = analyze(circuit("constant-combinator a { item:x = 1 }\nsmall-lamp c { }\nsmall-lamp d { }\nsmall-lamp z { }"), removed);
     expect(ids(again)).toEqual({ a: "e1", c: "e3", d: "e4", z: "e6" });
   });
 
   it("does not hand a renamed id to an entity of another kind or position", () => {
     const first = analyze(base);
-    const replaced = analyze(circuit("constant a { item:x = 1 }\ndecider q { }\nlamp c { }"), first);
+    const replaced = analyze(circuit("constant-combinator a { item:x = 1 }\ndecider-combinator q { }\nsmall-lamp c { }"), first);
     expect(ids(replaced)).toEqual({ a: "e1", q: "e4", c: "e3" });
-    const moved = analyze(circuit("lamp q { }\nconstant a { item:x = 1 }\nlamp c { }"), first);
+    const moved = analyze(circuit("small-lamp q { }\nconstant-combinator a { item:x = 1 }\nsmall-lamp c { }"), first);
     expect(ids(moved)).toEqual({ q: "e4", a: "e1", c: "e3" });
   });
 
   it("matches by name before position when a new entity is inserted in front", () => {
     const first = analyze(base);
-    const inserted = analyze(base.replace("lamp b { }", "lamp fresh { }\nlamp b { }"), first);
+    const inserted = analyze(base.replace("small-lamp b { }", "small-lamp fresh { }\nsmall-lamp b { }"), first);
     expect(ids(inserted)).toEqual({ a: "e1", fresh: "e4", b: "e2", c: "e3" });
   });
 

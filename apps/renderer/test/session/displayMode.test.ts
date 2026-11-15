@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { DISPLAY_CAPABILITIES, DISPLAY_MODES, placeFacing, sameTool, toolAllowed, turnedTool, type Tool } from "../../src/workbench/controller.ts";
 import { createSession, idOf, IRREGULAR, project } from "./helpers.ts";
 
-const TOOLS: readonly Tool[] = [{ type: "select" }, { type: "wire", color: "red" }, { type: "wire", color: "green" }, { type: "place", kind: "lamp" }];
+const TOOLS: readonly Tool[] = [{ type: "select" }, { type: "wire", color: "red" }, { type: "wire", color: "green" }, { type: "place", prototype: "small-lamp" }];
 
 describe("display mode", () => {
   it("starts as edit and switches without touching document, history, selection or simulation", () => {
@@ -51,25 +51,25 @@ describe("display mode", () => {
   });
 
   it("turns a place tool with the keys of a rotation: the direction is part of the tool, and picking the tool again faces east", () => {
-    const decider: Tool = { type: "place", kind: "decider" };
+    const decider: Tool = { type: "place", prototype: "decider-combinator" };
     expect(placeFacing(decider)).toBe("east");
-    expect(turnedTool(decider, "clockwise")).toEqual({ type: "place", kind: "decider", facing: "south" });
-    expect(turnedTool(decider, "counterclockwise")).toEqual({ type: "place", kind: "decider", facing: "north" });
-    expect(turnedTool({ ...decider, facing: "north" }, "clockwise")).toEqual({ type: "place", kind: "decider", facing: "east" });
+    expect(turnedTool(decider, "clockwise")).toEqual({ type: "place", prototype: "decider-combinator", facing: "south" });
+    expect(turnedTool(decider, "counterclockwise")).toEqual({ type: "place", prototype: "decider-combinator", facing: "north" });
+    expect(turnedTool({ ...decider, facing: "north" }, "clockwise")).toEqual({ type: "place", prototype: "decider-combinator", facing: "east" });
     // The same button of the palette whatever the direction.
     expect(sameTool(decider, { ...decider, facing: "west" })).toBe(true);
     // A lamp does not rotate, and the other tools place nothing.
-    expect(turnedTool({ type: "place", kind: "lamp" }, "clockwise")).toBeUndefined();
-    expect(placeFacing({ type: "place", kind: "lamp", facing: "south" })).toBe("east");
+    expect(turnedTool({ type: "place", prototype: "small-lamp" }, "clockwise")).toBeUndefined();
+    expect(placeFacing({ type: "place", prototype: "small-lamp", facing: "south" })).toBe("east");
     expect(turnedTool({ type: "select" }, "clockwise")).toBeUndefined();
     expect(turnedTool({ type: "wire", color: "red" }, "clockwise")).toBeUndefined();
 
     const { session, notifications } = createSession(IRREGULAR);
     session.commands.setTool(decider);
     session.commands.setTool(turnedTool(session.state.tool, "clockwise")!);
-    expect(session.state.tool).toEqual({ type: "place", kind: "decider", facing: "south" });
+    expect(session.state.tool).toEqual({ type: "place", prototype: "decider-combinator", facing: "south" });
     const count = notifications();
-    session.commands.setTool({ type: "place", kind: "decider", facing: "south" });
+    session.commands.setTool({ type: "place", prototype: "decider-combinator", facing: "south" });
     expect(notifications()).toBe(count);
     // The mode keeps it; the tool picked again starts over.
     session.commands.setDisplayMode("blueprint");
@@ -89,7 +89,7 @@ describe("display mode", () => {
       expect(session.state.tool, JSON.stringify(tool)).toEqual(tool);
     }
     session.commands.setDisplayMode("edit");
-    expect(session.state.tool).toEqual({ type: "place", kind: "lamp" });
+    expect(session.state.tool).toEqual({ type: "place", prototype: "small-lamp" });
   });
 
   it("is edit again for every project that is loaded", () => {
@@ -104,7 +104,7 @@ describe("display mode", () => {
     session.commands.setDisplayMode("blueprint");
     const gate = idOf(session, "gate");
     session.commands.renameEntity(gate, "door");
-    expect(session.state.source).toContain("decider door");
+    expect(session.state.source).toContain("decider-combinator door");
     session.commands.deleteEntities([gate]);
     expect(session.state.circuit.entities.some((entity) => entity.id === gate)).toBe(false);
     expect(session.state).toMatchObject({ displayMode: "blueprint", error: null });

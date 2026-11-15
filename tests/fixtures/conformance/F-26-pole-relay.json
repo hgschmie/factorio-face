@@ -8,16 +8,16 @@
   "circuit": {
     "name": "F-26-pole-relay",
     "entities": [
-      {"id": "red", "name": "red", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 3}]}]},
-      {"id": "green", "name": "green", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}]},
+      {"id": "red", "name": "red", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 3}]}]},
+      {"id": "green", "name": "green", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 4}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}]},
       {"id": "p1", "name": "p1", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "small-electric-pole"},
       {"id": "p2", "name": "p2", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "big-electric-pole"},
       {"id": "p3", "name": "p3", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "substation"},
       {"id": "alone", "name": "alone", "position": {"x": 0, "y": 0}, "kind": "pole", "prototype": "medium-electric-pole"},
-      {"id": "plus", "name": "plus", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
-      {"id": "far", "name": "far", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": ">", "second": {"type": "constant", "value": 0}}},
-      {"id": "both", "name": "both", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 7}}},
-      {"id": "behind", "name": "behind", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 4}}}
+      {"id": "plus", "name": "plus", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "prototype": "arithmetic-combinator", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "far", "name": "far", "position": {"x": 0, "y": 0}, "kind": "lamp", "prototype": "small-lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": ">", "second": {"type": "constant", "value": 0}}},
+      {"id": "both", "name": "both", "position": {"x": 0, "y": 0}, "kind": "lamp", "prototype": "small-lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 7}}},
+      {"id": "behind", "name": "behind", "position": {"x": 0, "y": 0}, "kind": "lamp", "prototype": "small-lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping", "condition": {"first": {"kind": "virtual", "name": "signal-A"}, "comparator": "=", "second": {"type": "constant", "value": 4}}}
     ],
     "wires": [
       {"color": "red", "a": {"entity": "red", "side": "out"}, "b": {"entity": "p1", "side": "io"}},

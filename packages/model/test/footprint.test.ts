@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  canRotate, DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, findTileOverlaps, isTileCenter, occupiedTiles, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypeOf, prototypesOf, rotateTile, tileCenter,
+  canRotate, DEFAULT_FACING, DIRECTIONS, ENTITY_KINDS, facingOf, findTileOverlaps, isTileCenter, occupiedTiles, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypesOf, rotateTile, tileCenter,
   tileHalves, tileOrigin, tileSize, withArticle,
   type Direction, type EntityKind, type EntityShape, type PlacedEntity, type Point, type PrototypeName, type TileBox,
 } from "../src/index.ts";
@@ -9,24 +9,26 @@ const LONG: readonly EntityKind[] = ["arithmetic", "decider", "selector"];
 const CLOCKWISE: readonly Direction[] = ["east", "south", "west", "north"];
 const at = (x: number, y: number): Point => ({ x, y });
 const box = (x: number, y: number, width = 1, height = 1): TileBox => ({ x, y, width, height });
-const placed = (id: string, kind: EntityKind, tile?: Point, direction?: Direction): PlacedEntity => ({ id, kind, placement: tile || direction ? { tile, direction } : undefined });
-const pole = (prototype: PrototypeName): EntityShape => ({ kind: "pole", prototype });
+/** The standard prototype of a kind with its own behaviour. */
+const standard = (kind: EntityKind): EntityShape => ({ prototype: prototypesOf(kind)[0]! });
+const placed = (id: string, kind: EntityKind, tile?: Point, direction?: Direction): PlacedEntity => ({ id, ...standard(kind), placement: tile || direction ? { tile, direction } : undefined });
+const pole = (prototype: PrototypeName): EntityShape => ({ prototype });
 /** One shape per prototype of the table. */
-const SHAPES: readonly EntityShape[] = PROTOTYPE_NAMES.map((prototype) => ({ kind: PROTOTYPES[prototype]!.kind, prototype }));
-/** The kinds with a prototype of their own, which an entity is without saying which; a generic entity always says its prototype. */
+const SHAPES: readonly EntityShape[] = PROTOTYPE_NAMES.map((prototype) => ({ prototype }));
+/** The kinds with behaviour of their own; every other prototype is a generic entity. */
 const OWN_KINDS = ENTITY_KINDS.filter((kind) => kind !== "entity");
 /** The prototypes with a kind of their own, in the order of their kinds. */
 const OWN_NAMES = PROTOTYPE_NAMES.filter((name) => PROTOTYPES[name]!.kind !== "entity");
 
 describe("prototypes", () => {
-  it("names the game prototype of every kind, the first of a kind being its default", () => {
-    expect(OWN_KINDS.map((kind) => prototypeOf({ kind }))).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "small-electric-pole", "programmable-speaker"]);
+  it("names the game prototypes of every kind, the standard one of a kind first", () => {
+    expect(OWN_KINDS.map((kind) => prototypesOf(kind)[0])).toEqual(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "small-electric-pole", "programmable-speaker"]);
     expect(prototypesOf("pole")).toEqual(["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"]);
     expect(prototypesOf("lamp")).toEqual(["small-lamp"]);
     for (const kind of ENTITY_KINDS) expect(prototypesOf(kind).length).toBeGreaterThan(0);
-    expect(prototypeOf(pole("substation"))).toBe("substation");
-    // A prototype of another kind does not count.
-    expect(prototypeOf({ kind: "lamp", prototype: "big-electric-pole" })).toBe("small-lamp");
+    // The kind of an entity is the one of its prototype.
+    expect(OWN_KINDS.map((kind) => prototypeData(standard(kind)).kind)).toEqual(OWN_KINDS);
+    expect([prototypeData(pole("substation")).kind, prototypeData({ prototype: "steel-chest" }).kind]).toEqual(["pole", "entity"]);
   });
 
   it("has the sizes, the rotation and the wire reaches of the game data", () => {
@@ -55,10 +57,10 @@ describe("footprints", () => {
   it("gives the combinators with two terminals two tiles along their direction and every other default prototype one tile", () => {
     for (const kind of OWN_KINDS) {
       const long = LONG.includes(kind);
-      expect(tileSize({ kind })).toEqual(long ? { width: 2, height: 1 } : { width: 1, height: 1 });
-      expect(tileSize({ kind }, "west")).toEqual(tileSize({ kind }, "east"));
-      expect(tileSize({ kind }, "north")).toEqual(long ? { width: 1, height: 2 } : { width: 1, height: 1 });
-      expect(tileSize({ kind }, "south")).toEqual(tileSize({ kind }, "north"));
+      expect(tileSize(standard(kind))).toEqual(long ? { width: 2, height: 1 } : { width: 1, height: 1 });
+      expect(tileSize(standard(kind), "west")).toEqual(tileSize(standard(kind), "east"));
+      expect(tileSize(standard(kind), "north")).toEqual(long ? { width: 1, height: 2 } : { width: 1, height: 1 });
+      expect(tileSize(standard(kind), "south")).toEqual(tileSize(standard(kind), "north"));
     }
   });
 
@@ -68,8 +70,8 @@ describe("footprints", () => {
   });
 
   it("lets every combinator rotate and nothing else", () => {
-    expect(OWN_KINDS.filter((kind) => canRotate({ kind }))).toEqual(["constant", "arithmetic", "decider", "selector"]);
-    expect(SHAPES.filter((shape) => shape.kind === "pole").some(canRotate)).toBe(false);
+    expect(OWN_KINDS.filter((kind) => canRotate(standard(kind)))).toEqual(["constant", "arithmetic", "decider", "selector"]);
+    expect(SHAPES.filter((shape) => prototypeData(shape).kind === "pole").some(canRotate)).toBe(false);
   });
 
   it("faces east without a clause, and a lamp whatever its clause says", () => {
@@ -86,22 +88,22 @@ describe("footprints", () => {
 describe("centers and tiles", () => {
   it("puts the center of a 1x1 entity in the middle of its tile", () => {
     for (const direction of DIRECTIONS) {
-      expect(tileCenter({ kind: "lamp" }, direction, at(3, -2))).toEqual(at(3.5, -1.5));
-      expect(tileOrigin({ kind: "constant" }, direction, at(3.5, -1.5))).toEqual(at(3, -2));
-      expect(occupiedTiles({ kind: "constant" }, direction, at(3.5, -1.5))).toEqual([at(3, -2)]);
-      expect(tileHalves({ kind: "constant" }, direction, at(3.5, -1.5))).toEqual({ input: box(3, -2), output: box(3, -2) });
+      expect(tileCenter({ prototype: "small-lamp" }, direction, at(3, -2))).toEqual(at(3.5, -1.5));
+      expect(tileOrigin({ prototype: "constant-combinator" }, direction, at(3.5, -1.5))).toEqual(at(3, -2));
+      expect(occupiedTiles({ prototype: "constant-combinator" }, direction, at(3.5, -1.5))).toEqual([at(3, -2)]);
+      expect(tileHalves({ prototype: "constant-combinator" }, direction, at(3.5, -1.5))).toEqual({ input: box(3, -2), output: box(3, -2) });
     }
   });
 
   it("puts the center of a 2x1 entity on the edge between its two tiles", () => {
     // The selector of the audit (5.4): center (6.5, -21) facing south covers the tiles above and below y = -21.
-    expect(occupiedTiles({ kind: "selector" }, "south", at(6.5, -21))).toEqual([at(6, -22), at(6, -21)]);
-    expect(tileCenter({ kind: "selector" }, "south", at(6, -22))).toEqual(at(6.5, -21));
-    expect(tileCenter({ kind: "decider" }, "north", at(0, 0))).toEqual(at(0.5, 1));
-    expect(tileCenter({ kind: "decider" }, "east", at(0, 0))).toEqual(at(1, 0.5));
-    expect(tileCenter({ kind: "decider" }, "west", at(-2, -1))).toEqual(at(-1, -0.5));
-    expect(occupiedTiles({ kind: "arithmetic" }, "east", at(1, 0.5))).toEqual([at(0, 0), at(1, 0)]);
-    expect(occupiedTiles({ kind: "arithmetic" }, "west", at(-1, -0.5))).toEqual([at(-2, -1), at(-1, -1)]);
+    expect(occupiedTiles({ prototype: "selector-combinator" }, "south", at(6.5, -21))).toEqual([at(6, -22), at(6, -21)]);
+    expect(tileCenter({ prototype: "selector-combinator" }, "south", at(6, -22))).toEqual(at(6.5, -21));
+    expect(tileCenter({ prototype: "decider-combinator" }, "north", at(0, 0))).toEqual(at(0.5, 1));
+    expect(tileCenter({ prototype: "decider-combinator" }, "east", at(0, 0))).toEqual(at(1, 0.5));
+    expect(tileCenter({ prototype: "decider-combinator" }, "west", at(-2, -1))).toEqual(at(-1, -0.5));
+    expect(occupiedTiles({ prototype: "arithmetic-combinator" }, "east", at(1, 0.5))).toEqual([at(0, 0), at(1, 0)]);
+    expect(occupiedTiles({ prototype: "arithmetic-combinator" }, "west", at(-1, -0.5))).toEqual([at(-2, -1), at(-1, -1)]);
   });
 
   it("puts the center of a 2x2 entity on the corner its four tiles share", () => {
@@ -136,42 +138,42 @@ describe("centers and tiles", () => {
 
   it("points from the input half to the output half", () => {
     // Audit 3.1: facing north, the output is the northern tile and the input the southern one.
-    expect(tileHalves({ kind: "decider" }, "north", at(0.5, 1))).toEqual({ input: box(0, 1), output: box(0, 0) });
-    expect(tileHalves({ kind: "decider" }, "south", at(0.5, 1))).toEqual({ input: box(0, 0), output: box(0, 1) });
-    expect(tileHalves({ kind: "decider" }, "east", at(1, 0.5))).toEqual({ input: box(0, 0), output: box(1, 0) });
-    expect(tileHalves({ kind: "decider" }, "west", at(1, 0.5))).toEqual({ input: box(1, 0), output: box(0, 0) });
+    expect(tileHalves({ prototype: "decider-combinator" }, "north", at(0.5, 1))).toEqual({ input: box(0, 1), output: box(0, 0) });
+    expect(tileHalves({ prototype: "decider-combinator" }, "south", at(0.5, 1))).toEqual({ input: box(0, 0), output: box(0, 1) });
+    expect(tileHalves({ prototype: "decider-combinator" }, "east", at(1, 0.5))).toEqual({ input: box(0, 0), output: box(1, 0) });
+    expect(tileHalves({ prototype: "decider-combinator" }, "west", at(1, 0.5))).toEqual({ input: box(1, 0), output: box(0, 0) });
     // An entity with one connector has no halves.
-    for (const kind of ["lamp", "speaker", "constant"] as const) expect(tileHalves({ kind }, "east", at(0.5, 0.5))).toEqual({ input: box(0, 0), output: box(0, 0) });
+    for (const kind of ["lamp", "speaker", "constant"] as const) expect(tileHalves(standard(kind), "east", at(0.5, 0.5))).toEqual({ input: box(0, 0), output: box(0, 0) });
   });
 
   it("accepts exactly the centers the game uses", () => {
     for (const kind of ["constant", "lamp", "pole", "speaker"] as const) {
       for (const direction of DIRECTIONS) {
-        expect(isTileCenter({ kind }, direction, at(0.5, -0.5))).toBe(true);
-        for (const center of [at(0, 0.5), at(0.5, 0), at(1, 2), at(0.25, 0.5)]) expect(isTileCenter({ kind }, direction, center)).toBe(false);
+        expect(isTileCenter(standard(kind), direction, at(0.5, -0.5))).toBe(true);
+        for (const center of [at(0, 0.5), at(0.5, 0), at(1, 2), at(0.25, 0.5)]) expect(isTileCenter(standard(kind), direction, center)).toBe(false);
       }
     }
     for (const kind of LONG) {
       for (const direction of ["north", "south"] as const) {
-        expect(isTileCenter({ kind }, direction, at(6.5, -21))).toBe(true);
-        for (const center of [at(6, -21.5), at(6.5, -21.5), at(6, -21), at(6.5, -21.25)]) expect(isTileCenter({ kind }, direction, center)).toBe(false);
+        expect(isTileCenter(standard(kind), direction, at(6.5, -21))).toBe(true);
+        for (const center of [at(6, -21.5), at(6.5, -21.5), at(6, -21), at(6.5, -21.25)]) expect(isTileCenter(standard(kind), direction, center)).toBe(false);
       }
       for (const direction of ["east", "west"] as const) {
-        expect(isTileCenter({ kind }, direction, at(6, -21.5))).toBe(true);
-        for (const center of [at(6.5, -21), at(6.5, -21.5), at(6, -21), at(6.25, -21.5)]) expect(isTileCenter({ kind }, direction, center)).toBe(false);
+        expect(isTileCenter(standard(kind), direction, at(6, -21.5))).toBe(true);
+        for (const center of [at(6.5, -21), at(6.5, -21.5), at(6, -21), at(6.25, -21.5)]) expect(isTileCenter(standard(kind), direction, center)).toBe(false);
       }
     }
-    expect(isTileCenter({ kind: "lamp" }, "east", at(Number.NaN, 0.5))).toBe(false);
+    expect(isTileCenter({ prototype: "small-lamp" }, "east", at(Number.NaN, 0.5))).toBe(false);
   });
 
   it("gives a center off the grid the nearest footprint and never a negative zero", () => {
-    expect(tileOrigin({ kind: "lamp" }, "east", at(0.2, 0.9))).toEqual(at(0, 0));
-    expect(tileOrigin({ kind: "lamp" }, "east", at(1, 1))).toEqual(at(1, 1));
-    expect(tileOrigin({ kind: "decider" }, "east", at(0.5, 0.5))).toEqual(at(0, 0));
-    expect(tileOrigin({ kind: "decider" }, "north", at(0.5, 0.5))).toEqual(at(0, 0));
-    const origin = tileOrigin({ kind: "lamp" }, "east", at(0, 0));
+    expect(tileOrigin({ prototype: "small-lamp" }, "east", at(0.2, 0.9))).toEqual(at(0, 0));
+    expect(tileOrigin({ prototype: "small-lamp" }, "east", at(1, 1))).toEqual(at(1, 1));
+    expect(tileOrigin({ prototype: "decider-combinator" }, "east", at(0.5, 0.5))).toEqual(at(0, 0));
+    expect(tileOrigin({ prototype: "decider-combinator" }, "north", at(0.5, 0.5))).toEqual(at(0, 0));
+    const origin = tileOrigin({ prototype: "small-lamp" }, "east", at(0, 0));
     expect(Object.is(origin.x, 0) && Object.is(origin.y, 0)).toBe(true);
-    expect(occupiedTiles({ kind: "decider" }, "east", at(0.5, 0.5))).toEqual([at(0, 0), at(1, 0)]);
+    expect(occupiedTiles({ prototype: "decider-combinator" }, "east", at(0.5, 0.5))).toEqual([at(0, 0), at(1, 0)]);
   });
 });
 
@@ -179,16 +181,16 @@ describe("rotateTile", () => {
   it("keeps the top-left tile of the footprint on every turn", () => {
     // On the tiles (0, 0) and (1, 0), input on the left.
     const east = at(1, 0.5);
-    expect(rotateTile({ kind: "decider" }, east, "east", "south")).toEqual(at(0.5, 1));
-    expect(rotateTile({ kind: "decider" }, east, "east", "north")).toEqual(at(0.5, 1));
-    expect(rotateTile({ kind: "decider" }, east, "east", "west")).toEqual(east);
+    expect(rotateTile({ prototype: "decider-combinator" }, east, "east", "south")).toEqual(at(0.5, 1));
+    expect(rotateTile({ prototype: "decider-combinator" }, east, "east", "north")).toEqual(at(0.5, 1));
+    expect(rotateTile({ prototype: "decider-combinator" }, east, "east", "west")).toEqual(east);
     for (const kind of LONG) {
       for (const from of DIRECTIONS) {
-        const center = tileCenter({ kind }, from, at(3, -5));
+        const center = tileCenter(standard(kind), from, at(3, -5));
         for (const to of DIRECTIONS) {
-          const turned = rotateTile({ kind }, center, from, to);
-          expect(isTileCenter({ kind }, to, turned)).toBe(true);
-          expect(tileOrigin({ kind }, to, turned)).toEqual(at(3, -5));
+          const turned = rotateTile(standard(kind), center, from, to);
+          expect(isTileCenter(standard(kind), to, turned)).toBe(true);
+          expect(tileOrigin(standard(kind), to, turned)).toEqual(at(3, -5));
         }
       }
     }
@@ -196,33 +198,33 @@ describe("rotateTile", () => {
 
   it("keeps both tiles on a half turn and swaps the input and the output half", () => {
     const center = at(1, 0.5);
-    expect(tileHalves({ kind: "arithmetic" }, "east", center)).toEqual({ input: box(0, 0), output: box(1, 0) });
-    const flipped = rotateTile({ kind: "arithmetic" }, center, "east", "west");
-    expect(occupiedTiles({ kind: "arithmetic" }, "west", flipped)).toEqual(occupiedTiles({ kind: "arithmetic" }, "east", center));
-    expect(tileHalves({ kind: "arithmetic" }, "west", flipped)).toEqual({ input: box(1, 0), output: box(0, 0) });
-    const upright = rotateTile({ kind: "arithmetic" }, at(0.5, 1), "south", "north");
-    expect(tileHalves({ kind: "arithmetic" }, "north", upright)).toEqual({ input: box(0, 1), output: box(0, 0) });
+    expect(tileHalves({ prototype: "arithmetic-combinator" }, "east", center)).toEqual({ input: box(0, 0), output: box(1, 0) });
+    const flipped = rotateTile({ prototype: "arithmetic-combinator" }, center, "east", "west");
+    expect(occupiedTiles({ prototype: "arithmetic-combinator" }, "west", flipped)).toEqual(occupiedTiles({ prototype: "arithmetic-combinator" }, "east", center));
+    expect(tileHalves({ prototype: "arithmetic-combinator" }, "west", flipped)).toEqual({ input: box(1, 0), output: box(0, 0) });
+    const upright = rotateTile({ prototype: "arithmetic-combinator" }, at(0.5, 1), "south", "north");
+    expect(tileHalves({ prototype: "arithmetic-combinator" }, "north", upright)).toEqual({ input: box(0, 1), output: box(0, 0) });
   });
 
   it("comes back after four quarter turns", () => {
     let center = at(1, 0.5);
     const seen = [center];
     for (let i = 0; i < 4; i++) {
-      center = rotateTile({ kind: "arithmetic" }, center, CLOCKWISE[i]!, CLOCKWISE[(i + 1) % 4]!);
+      center = rotateTile({ prototype: "arithmetic-combinator" }, center, CLOCKWISE[i]!, CLOCKWISE[(i + 1) % 4]!);
       seen.push(center);
     }
     expect(seen).toEqual([at(1, 0.5), at(0.5, 1), at(1, 0.5), at(0.5, 1), at(1, 0.5)]);
   });
 
   it("leaves a 1x1 entity and an unchanged direction alone, and snaps a center off the grid first", () => {
-    expect(rotateTile({ kind: "constant" }, at(0.5, 0.5), "east", "south")).toEqual(at(0.5, 0.5));
-    expect(rotateTile({ kind: "lamp" }, at(1, 2), "east", "south")).toEqual(at(1, 2));
+    expect(rotateTile({ prototype: "constant-combinator" }, at(0.5, 0.5), "east", "south")).toEqual(at(0.5, 0.5));
+    expect(rotateTile({ prototype: "small-lamp" }, at(1, 2), "east", "south")).toEqual(at(1, 2));
     expect(rotateTile(pole("big-electric-pole"), at(1, 2), "east", "south")).toEqual(at(1, 2));
     expect(rotateTile(pole("substation"), at(0.5, 0.5), "east", "north")).toEqual(at(0.5, 0.5));
-    expect(rotateTile({ kind: "decider" }, at(0.5, 0.5), "east", "east")).toEqual(at(0.5, 0.5));
+    expect(rotateTile({ prototype: "decider-combinator" }, at(0.5, 0.5), "east", "east")).toEqual(at(0.5, 0.5));
     // (0.5, 0.5) facing east is taken as the footprint on tiles (0, 0) and (1, 0).
-    expect(rotateTile({ kind: "decider" }, at(0.5, 0.5), "east", "south")).toEqual(at(0.5, 1));
-    expect(rotateTile({ kind: "decider" }, at(0.5, 0.5), "east", "west")).toEqual(at(1, 0.5));
+    expect(rotateTile({ prototype: "decider-combinator" }, at(0.5, 0.5), "east", "south")).toEqual(at(0.5, 1));
+    expect(rotateTile({ prototype: "decider-combinator" }, at(0.5, 0.5), "east", "west")).toEqual(at(1, 0.5));
   });
 });
 

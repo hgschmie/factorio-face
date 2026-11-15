@@ -15,7 +15,7 @@
 
 import { facingOf, selectionBox, type PlacedShape, type TileBox } from "./footprint.ts";
 import { STANDARD_WIRE_REACH } from "./entityTable.ts";
-import { gamePrototype, prototypeData, prototypeOf, PROTOTYPES, withArticle, type EntityShape, type PrototypeName } from "./prototypes.ts";
+import { gamePrototype, prototypeData, PROTOTYPES, withArticle, type EntityShape, type PrototypeName } from "./prototypes.ts";
 
 /** The reach of a project that does not set one: the game's. */
 export const DEFAULT_WIRE_REACH = STANDARD_WIRE_REACH;
@@ -75,7 +75,7 @@ export interface WireReach {
 export function wireReachBetween(a: EntityShape, b: EntityShape, projectReach: number): WireReach {
   const [first, second] = [a, b].map((end): WireReach => {
     const own = prototypeData(end).wireReach;
-    return own === undefined ? { reach: projectReach, of: "project" } : { reach: own, of: prototypeOf(end) };
+    return own === undefined ? { reach: projectReach, of: "project" } : { reach: own, of: end.prototype };
   }) as [WireReach, WireReach];
   if (second.reach === UNLIMITED_WIRE_REACH) return first;
   if (first.reach === UNLIMITED_WIRE_REACH || second.reach < first.reach) return second;

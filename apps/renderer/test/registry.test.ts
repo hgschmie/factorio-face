@@ -187,24 +187,24 @@ describe("entities in use", () => {
 
   it("has one entry per prototype the circuit contains, in the order of the game, without the combinators", () => {
     expect(prototypes([])).toEqual([]);
-    expect(prototypes([{ kind: "constant" }, { kind: "decider" }, { kind: "arithmetic" }, { kind: "selector" }])).toEqual([]);
-    expect(prototypes([{ kind: "lamp" }, { kind: "decider" }, { kind: "lamp" }])).toEqual(["small-lamp"]);
-    // The order is the game's, whatever the order of the circuit; a pole without a prototype is the first of its kind.
-    expect(prototypes([{ kind: "pole", prototype: "substation" }, { kind: "speaker" }, { kind: "pole" }, { kind: "lamp" }, { kind: "pole", prototype: "substation" }])).toEqual(["small-electric-pole", "substation", "small-lamp", "programmable-speaker"]);
-    expect(prototypes([{ kind: "entity", prototype: "gun-turret" }, { kind: "entity", prototype: "rocket-silo" }, { kind: "entity", prototype: "fast-inserter" }, { kind: "entity", prototype: "iron-chest" }])).toEqual(["iron-chest", "fast-inserter", "rocket-silo", "gun-turret"]);
+    expect(prototypes([{ prototype: "constant-combinator" }, { prototype: "decider-combinator" }, { prototype: "arithmetic-combinator" }, { prototype: "selector-combinator" }])).toEqual([]);
+    expect(prototypes([{ prototype: "small-lamp" }, { prototype: "decider-combinator" }, { prototype: "small-lamp" }])).toEqual(["small-lamp"]);
+    // The order is the game's, whatever the order of the circuit.
+    expect(prototypes([{ prototype: "substation" }, { prototype: "programmable-speaker" }, { prototype: "small-electric-pole" }, { prototype: "small-lamp" }, { prototype: "substation" }])).toEqual(["small-electric-pole", "substation", "small-lamp", "programmable-speaker"]);
+    expect(prototypes([{ prototype: "gun-turret" }, { prototype: "rocket-silo" }, { prototype: "fast-inserter" }, { prototype: "iron-chest" }])).toEqual(["iron-chest", "fast-inserter", "rocket-silo", "gun-turret"]);
   });
 
   it("gives the entries of the selector themselves, so a tile in use is the same entry as the one in its group", () => {
-    const [lamp] = entriesInUse(spaceAge, [{ kind: "lamp" }]);
+    const [lamp] = entriesInUse(spaceAge, [{ prototype: "small-lamp" }]);
     expect(lamp).toBe(spaceAge.entries.find((entry) => entry.prototype === "small-lamp"));
     expect(keyedKindOf(lamp!)).toBe("lamp");
   });
 
   it("has what a circuit contains although the selector does not offer it: a hidden prototype, one of a module that is off", () => {
     // A loader and a chest of the game's editor from a blueprint; in a project without Space Age a stack inserter and a biolab.
-    expect(prototypes([{ kind: "entity", prototype: "loader" }, { kind: "entity", prototype: "red-chest" }, { kind: "lamp" }])).toEqual(["loader", "small-lamp", "red-chest"]);
-    expect(prototypes([{ kind: "entity", prototype: "stack-inserter" }, { kind: "entity", prototype: "biolab" }, { kind: "entity", prototype: "rocket-silo" }, { kind: "lamp" }], base)).toEqual(["small-lamp", "rocket-silo", "biolab", "stack-inserter"]);
-    expect(entriesInUse(spaceAge, [{ kind: "entity", prototype: "loader" }])[0]).toMatchObject({ kind: "entity", label: "Loader", facts: "1 x 2 tiles" });
+    expect(prototypes([{ prototype: "loader" }, { prototype: "red-chest" }, { prototype: "small-lamp" }])).toEqual(["loader", "small-lamp", "red-chest"]);
+    expect(prototypes([{ prototype: "stack-inserter" }, { prototype: "biolab" }, { prototype: "rocket-silo" }, { prototype: "small-lamp" }], base)).toEqual(["small-lamp", "rocket-silo", "biolab", "stack-inserter"]);
+    expect(entriesInUse(spaceAge, [{ prototype: "loader" }])[0]).toMatchObject({ kind: "entity", label: "Loader", facts: "1 x 2 tiles" });
   });
 
   it("can hold every entry that is not pinned, and no other", () => {
@@ -214,29 +214,29 @@ describe("entities in use", () => {
 });
 
 describe("place tool", () => {
-  const pole = (prototype?: "small-electric-pole" | "big-electric-pole"): PlaceTool => ({ type: "place", kind: "pole", ...(prototype && { prototype }) });
+  const pole = (prototype: "small-electric-pole" | "big-electric-pole" = "small-electric-pole"): PlaceTool => ({ type: "place", prototype });
 
-  it("is the same tool for the same prototype, said or not, and another one for another prototype", () => {
+  it("is the same tool for the same prototype and another one for another prototype", () => {
     expect(sameTool(pole(), pole("small-electric-pole"))).toBe(true);
     expect(sameTool(pole("big-electric-pole"), pole("big-electric-pole"))).toBe(true);
     expect(sameTool(pole(), pole("big-electric-pole"))).toBe(false);
-    expect(sameTool({ type: "place", kind: "lamp" }, { type: "place", kind: "lamp", prototype: "small-lamp" })).toBe(true);
-    expect(sameTool({ type: "place", kind: "lamp" }, { type: "place", kind: "speaker" })).toBe(false);
-    expect(sameTool({ type: "place", kind: "decider", facing: "south" }, { type: "place", kind: "decider", prototype: "decider-combinator" })).toBe(true);
+    expect(sameTool({ type: "place", prototype: "small-lamp" }, { type: "place", prototype: "small-lamp" })).toBe(true);
+    expect(sameTool({ type: "place", prototype: "small-lamp" }, { type: "place", prototype: "programmable-speaker" })).toBe(false);
+    expect(sameTool({ type: "place", prototype: "decider-combinator", facing: "south" }, { type: "place", prototype: "decider-combinator" })).toBe(true);
     expect(sameTool(pole(), SELECT_TOOL)).toBe(false);
   });
 
   it("does not turn what cannot rotate: a pole and a speaker face east like a lamp", () => {
-    const fixed: readonly PlaceTool[] = [pole(), pole("big-electric-pole"), { type: "place", kind: "speaker" }, { type: "place", kind: "lamp" }];
+    const fixed: readonly PlaceTool[] = [pole(), pole("big-electric-pole"), { type: "place", prototype: "programmable-speaker" }, { type: "place", prototype: "small-lamp" }];
     for (const tool of fixed) {
       expect(turnedTool(tool, "clockwise")).toBeUndefined();
       expect(placeFacing({ ...tool, facing: "south" })).toBe("east");
     }
-    expect(turnedTool({ type: "place", kind: "decider", prototype: "decider-combinator" }, "clockwise")).toEqual({ type: "place", kind: "decider", prototype: "decider-combinator", facing: "south" });
+    expect(turnedTool({ type: "place", prototype: "decider-combinator" }, "clockwise")).toEqual({ type: "place", prototype: "decider-combinator", facing: "south" });
   });
 
   it("turns a generic entity as the game builds it: four directions, two for a storage tank, none for a chest", () => {
-    const entity = (prototype: string, facing?: PlaceTool["facing"]): PlaceTool => ({ type: "place", kind: "entity", prototype, ...(facing && { facing }) });
+    const entity = (prototype: string, facing?: PlaceTool["facing"]): PlaceTool => ({ type: "place", prototype, ...(facing && { facing }) });
     const turns = (tool: PlaceTool, turn: "clockwise" | "counterclockwise", count: number): string[] => {
       const facings: string[] = [];
       let current: PlaceTool = tool;

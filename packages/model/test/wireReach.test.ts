@@ -2,17 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   boxDistance, clampWireReach, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, footprintBox, formatWireDistance, formatWireReach, isWireReach, selectionBox, tileCenter, tileUnit, UNLIMITED_WIRE_REACH,
   WIRE_REACH_RANGE, wireDistance, wireEndsNoun, wireMeasure, wireReachBetween, wireReachOwner, wireSpan,
-  type Direction, type EntityKind, type PlacedShape, type Point, type PrototypeName, type TileBox,
+  type Direction, type PlacedShape, type Point, type PrototypeName, type TileBox,
 } from "../src/index.ts";
 
 type Placed = PlacedShape;
-/** An entity of `kind` whose top-left tile is `origin`. */
-const standing = (kind: EntityKind, direction: Direction, origin: Point): Placed => ({ kind, placement: { tile: tileCenter({ kind }, direction, origin), direction } });
-const constant = (x: number, y: number): Placed => standing("constant", "east", { x, y });
-const pole = (prototype: PrototypeName, x: number, y: number): Placed => ({ kind: "pole", prototype, placement: { tile: tileCenter({ kind: "pole", prototype }, "east", { x, y }) } });
-/** A generic entity of `prototype` whose top-left tile is `origin`. */
-const generic = (prototype: string, direction: Direction, origin: Point): Placed => ({ kind: "entity", prototype, placement: { tile: tileCenter({ kind: "entity", prototype }, direction, origin), direction } });
-const unplaced: Placed = { kind: "decider", placement: { direction: "north" } };
+/** An entity of `prototype` whose top-left tile is `origin`. */
+const standing = (prototype: PrototypeName, direction: Direction, origin: Point): Placed => ({ prototype, placement: { tile: tileCenter({ prototype }, direction, origin), direction } });
+const constant = (x: number, y: number): Placed => standing("constant-combinator", "east", { x, y });
+const pole = (prototype: PrototypeName, x: number, y: number): Placed => ({ prototype, placement: { tile: tileCenter({ prototype }, "east", { x, y }) } });
+const generic = standing;
+const unplaced: Placed = { prototype: "decider-combinator", placement: { direction: "north" } };
 /** Whether a wire between the two is too long for a project with the reach 9, or `reach`. */
 const tooLong = (a: Placed, b: Placed, reach = 9): boolean => wireSpan(a, b, reach).tooLong;
 const box = (x: number, y: number, width = 1, height = 1): TileBox => ({ x, y, width, height });
@@ -52,38 +51,38 @@ describe("wire reach", () => {
     expect(wireDistance(constant(0, 0), constant(5, 0))).toBe(4);
     expect(wireDistance(constant(0, 0), constant(4, 5))).toBe(5);
     expect(wireDistance(constant(4, 5), constant(0, 0))).toBe(5);
-    expect(wireDistance(constant(-3, -1), standing("lamp", "east", { x: 1, y: -6 }))).toBe(5);
+    expect(wireDistance(constant(-3, -1), standing("small-lamp", "east", { x: 1, y: -6 }))).toBe(5);
   });
 
   it("measures a 2x1 combinator from the nearer of its tiles, whichever way it faces", () => {
-    const lamp = standing("lamp", "east", { x: 0, y: 0 });
+    const lamp = standing("small-lamp", "east", { x: 0, y: 0 });
     // Lying on the tiles (4, 0) and (5, 0): three empty tiles from the lamp, from either side.
     for (const direction of ["east", "west"] as const) {
-      expect(wireDistance(lamp, standing("decider", direction, { x: 4, y: 0 }))).toBe(3);
-      expect(wireDistance(standing("decider", direction, { x: -5, y: 0 }), lamp)).toBe(3);
+      expect(wireDistance(lamp, standing("decider-combinator", direction, { x: 4, y: 0 }))).toBe(3);
+      expect(wireDistance(standing("decider-combinator", direction, { x: -5, y: 0 }), lamp)).toBe(3);
     }
     // Upright on the tiles (4, 0) and (4, 1): the same three tiles, and the second tile is the nearer one from below.
     for (const direction of ["north", "south"] as const) {
-      expect(wireDistance(lamp, standing("arithmetic", direction, { x: 4, y: 0 }))).toBe(3);
-      expect(wireDistance(lamp, standing("arithmetic", direction, { x: 4, y: -1 }))).toBe(3);
-      expect(wireDistance(standing("lamp", "east", { x: 4, y: 6 }), standing("arithmetic", direction, { x: 4, y: 0 }))).toBe(4);
-      expect(wireDistance(standing("lamp", "east", { x: 0, y: 6 }), standing("arithmetic", direction, { x: 4, y: 0 }))).toBe(5);
+      expect(wireDistance(lamp, standing("arithmetic-combinator", direction, { x: 4, y: 0 }))).toBe(3);
+      expect(wireDistance(lamp, standing("arithmetic-combinator", direction, { x: 4, y: -1 }))).toBe(3);
+      expect(wireDistance(standing("small-lamp", "east", { x: 4, y: 6 }), standing("arithmetic-combinator", direction, { x: 4, y: 0 }))).toBe(4);
+      expect(wireDistance(standing("small-lamp", "east", { x: 0, y: 6 }), standing("arithmetic-combinator", direction, { x: 4, y: 0 }))).toBe(5);
     }
     // A lamp does not turn: its `facing` clause does not change its footprint.
-    expect(wireDistance({ kind: "lamp", placement: { tile: { x: 0.5, y: 0.5 }, direction: "north" } }, constant(0, 3))).toBe(2);
-    expect(wireDistance(standing("selector", "east", { x: 0, y: 0 }), standing("selector", "north", { x: 0, y: 3 }))).toBe(2);
+    expect(wireDistance({ prototype: "small-lamp", placement: { tile: { x: 0.5, y: 0.5 }, direction: "north" } }, constant(0, 3))).toBe(2);
+    expect(wireDistance(standing("selector-combinator", "east", { x: 0, y: 0 }), standing("selector-combinator", "north", { x: 0, y: 3 }))).toBe(2);
   });
 
   it("measures an entity that is off the grid from where it stands, not from the nearest tiles", () => {
-    expect(footprintBox({ kind: "decider" }, "east", { x: 1, y: 0.5 })).toEqual({ x: 0, y: 0, width: 2, height: 1 });
-    expect(footprintBox({ kind: "decider" }, "north", { x: 0.75, y: 1.25 })).toEqual({ x: 0.25, y: 0.25, width: 1, height: 2 });
-    expect(wireDistance(constant(0, 0), { kind: "constant", placement: { tile: { x: 10.75, y: 0.5 } } })).toBe(9.25);
-    expect(wireDistance(constant(0, 0), { kind: "decider", placement: { tile: { x: 10.5, y: 0.5 }, direction: "east" } })).toBe(8.5);
+    expect(footprintBox({ prototype: "decider-combinator" }, "east", { x: 1, y: 0.5 })).toEqual({ x: 0, y: 0, width: 2, height: 1 });
+    expect(footprintBox({ prototype: "decider-combinator" }, "north", { x: 0.75, y: 1.25 })).toEqual({ x: 0.25, y: 0.25, width: 1, height: 2 });
+    expect(wireDistance(constant(0, 0), { prototype: "constant-combinator", placement: { tile: { x: 10.75, y: 0.5 } } })).toBe(9.25);
+    expect(wireDistance(constant(0, 0), { prototype: "decider-combinator", placement: { tile: { x: 10.5, y: 0.5 }, direction: "east" } })).toBe(8.5);
   });
 
   it("measures an entity whose selection box is not its tiles from that box, which turns with the entity", () => {
     // Most boxes are the tiles; the table has the others in the game's 1/256 of a tile.
-    expect(selectionBox({ kind: "decider" }, "north", { x: 0.5, y: 1 })).toEqual(footprintBox({ kind: "decider" }, "north", { x: 0.5, y: 1 }));
+    expect(selectionBox({ prototype: "decider-combinator" }, "north", { x: 0.5, y: 1 })).toEqual(footprintBox({ prototype: "decider-combinator" }, "north", { x: 0.5, y: 1 }));
     const inserter = { kind: "entity", prototype: "inserter" } as const;
     const at = (direction: Direction): number[] => (({ x, y, width, height }) => [x, y, x + width, y + height])(selectionBox(inserter, direction, { x: 0, y: 0 }));
     expect(at("north")).toEqual([-0.3984375, -0.34765625, 0.3984375, 0.44921875]);
@@ -106,9 +105,9 @@ describe("wire reach", () => {
   });
 
   it("measures two electric poles from center to center, and a pole against anything else like any entity", () => {
-    expect(wireMeasure({ kind: "pole" }, { kind: "pole", prototype: "substation" })).toBe("centers");
-    expect(wireMeasure({ kind: "pole" }, { kind: "lamp" })).toBe("boxes");
-    expect(wireMeasure({ kind: "entity", prototype: "power-switch" }, { kind: "pole" })).toBe("boxes");
+    expect(wireMeasure({ prototype: "small-electric-pole" }, { prototype: "substation" })).toBe("centers");
+    expect(wireMeasure({ prototype: "small-electric-pole" }, { prototype: "small-lamp" })).toBe("boxes");
+    expect(wireMeasure({ prototype: "power-switch" }, { prototype: "small-electric-pole" })).toBe("boxes");
     expect(wireDistance(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 0, 8))).toBe(8);
     expect(wireDistance(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 3, 4))).toBe(5);
     // A big pole stands on four tiles; its center is their common corner.
@@ -128,7 +127,7 @@ describe("wire reach", () => {
     // Six and six empty tiles connect (8.49), seven and seven do not (9.90).
     expect(tooLong(constant(0, 0), constant(7, 7))).toBe(false);
     expect(tooLong(constant(0, 0), constant(8, 8))).toBe(true);
-    const offGrid: Placed = { kind: "constant", placement: { tile: { x: 10.51, y: 0.5 } } };
+    const offGrid: Placed = { prototype: "constant-combinator", placement: { tile: { x: 10.51, y: 0.5 } } };
     expect(wireDistance(constant(0, 0), offGrid)).toBeCloseTo(9.01, 10);
     expect(tooLong(constant(0, 0), offGrid)).toBe(true);
     expect(tooLong(constant(0, 0), offGrid, 9.5)).toBe(false);
@@ -147,13 +146,13 @@ describe("wire reach", () => {
   it("gives a wire with an end that is not placed no distance, and never flags it", () => {
     expect(wireDistance(constant(0, 0), unplaced)).toBeUndefined();
     expect(wireDistance(unplaced, constant(0, 0))).toBeUndefined();
-    expect(wireDistance({ kind: "lamp" }, { kind: "lamp" })).toBeUndefined();
+    expect(wireDistance({ prototype: "small-lamp" }, { prototype: "small-lamp" })).toBeUndefined();
     expect(wireSpan(constant(0, 0), unplaced, 1)).toEqual({ reach: 1, of: "project", measure: "boxes", tooLong: false });
     expect(wireSpan(pole("small-electric-pole", 0, 0), unplaced, 9)).toEqual({ reach: 7.5, of: "small-electric-pole", measure: "boxes", tooLong: false });
   });
 
   it("never flags a wire from an entity to itself", () => {
-    const gate = standing("decider", "east", { x: 40, y: 40 });
+    const gate = standing("decider-combinator", "east", { x: 40, y: 40 });
     expect(wireDistance(gate, gate)).toBe(0);
     expect(tooLong(gate, gate, 0.5)).toBe(false);
     expect(wireDistance(unplaced, unplaced)).toBeUndefined();
@@ -180,16 +179,16 @@ describe("wire reach", () => {
   });
 
   it("gives a pole its own reach and every other entity the reach of the project", () => {
-    const lamp = standing("lamp", "east", { x: 0, y: 0 });
+    const lamp = standing("small-lamp", "east", { x: 0, y: 0 });
     for (const [prototype, reach] of [["small-electric-pole", 7.5], ["medium-electric-pole", 9], ["big-electric-pole", 32], ["substation", 18]] as const) {
       expect(wireReachBetween(pole(prototype, 0, 0), pole(prototype, 5, 0), 9)).toEqual({ reach, of: prototype });
     }
     expect(wireReachBetween(lamp, constant(3, 0), 9)).toEqual({ reach: 9, of: "project" });
-    expect(wireReachBetween(lamp, { kind: "speaker" }, 12.5)).toEqual({ reach: 12.5, of: "project" });
+    expect(wireReachBetween(lamp, { prototype: "programmable-speaker" }, 12.5)).toEqual({ reach: 12.5, of: "project" });
   });
 
   it("takes the smaller reach of the two ends, from either side", () => {
-    const lamp = standing("lamp", "east", { x: 0, y: 0 });
+    const lamp = standing("small-lamp", "east", { x: 0, y: 0 });
     const small = pole("small-electric-pole", 0, 0);
     const big = pole("big-electric-pole", 0, 0);
     for (const [a, b] of [[lamp, small], [small, lamp]] as const) expect(wireReachBetween(a, b, 9)).toEqual({ reach: 7.5, of: "small-electric-pole" });
@@ -204,7 +203,7 @@ describe("wire reach", () => {
   });
 
   it("lets an unlimited end not limit: a pole keeps its reach in a project without one", () => {
-    const lamp = standing("lamp", "east", { x: 0, y: 0 });
+    const lamp = standing("small-lamp", "east", { x: 0, y: 0 });
     expect(wireReachBetween(lamp, pole("small-electric-pole", 0, 0), UNLIMITED_WIRE_REACH)).toEqual({ reach: 7.5, of: "small-electric-pole" });
     expect(wireReachBetween(pole("big-electric-pole", 0, 0), lamp, UNLIMITED_WIRE_REACH)).toEqual({ reach: 32, of: "big-electric-pole" });
     expect(tooLong(lamp, pole("small-electric-pole", 9, 0), UNLIMITED_WIRE_REACH)).toBe(true);
@@ -212,13 +211,13 @@ describe("wire reach", () => {
   });
 
   it("measures a wire to a pole against the reach that applies", () => {
-    const lamp = standing("lamp", "east", { x: 0, y: 0 });
+    const lamp = standing("small-lamp", "east", { x: 0, y: 0 });
     // Seven empty tiles to a small pole connect, eight do not; the pole's box ends a little before its tile does.
     expect(wireSpan(lamp, pole("small-electric-pole", 8, 0), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 7.1015625, measure: "boxes", tooLong: false });
     expect(wireSpan(lamp, pole("small-electric-pole", 9, 0), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 8.1015625, measure: "boxes", tooLong: true });
     // Off the grid, with its box exactly 7.5 tiles from the lamp, and a little further.
-    expect(tooLong(lamp, { kind: "pole", prototype: "small-electric-pole", placement: { tile: { x: 8.8984375, y: 0.5 } } })).toBe(false);
-    expect(tooLong(lamp, { kind: "pole", prototype: "small-electric-pole", placement: { tile: { x: 9, y: 0.5 } } })).toBe(true);
+    expect(tooLong(lamp, { prototype: "small-electric-pole", placement: { tile: { x: 8.8984375, y: 0.5 } } })).toBe(false);
+    expect(tooLong(lamp, { prototype: "small-electric-pole", placement: { tile: { x: 9, y: 0.5 } } })).toBe(true);
     // Two small poles in a column: seven tiles from center to center connect, eight do not, although only seven tiles are empty between them.
     expect(tooLong(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 0, 7))).toBe(false);
     expect(wireSpan(pole("small-electric-pole", 0, 0), pole("small-electric-pole", 0, 8), 9)).toEqual({ reach: 7.5, of: "small-electric-pole", distance: 8, measure: "centers", tooLong: true });
@@ -228,8 +227,8 @@ describe("wire reach", () => {
       expect(tooLong(pole("big-electric-pole", 0, 0), pole("big-electric-pole", 33, 0), reach)).toBe(true);
     }
     // A big pole and a lamp: the lamp's end has the project's reach.
-    expect(tooLong(pole("big-electric-pole", 0, 0), standing("lamp", "east", { x: 12, y: 0 }))).toBe(true);
-    expect(tooLong(pole("big-electric-pole", 0, 0), standing("lamp", "east", { x: 11, y: 0 }))).toBe(false);
+    expect(tooLong(pole("big-electric-pole", 0, 0), standing("small-lamp", "east", { x: 12, y: 0 }))).toBe(true);
+    expect(tooLong(pole("big-electric-pole", 0, 0), standing("small-lamp", "east", { x: 11, y: 0 }))).toBe(false);
     expect(tooLong(pole("substation", 0, 0), pole("substation", 18, 0))).toBe(false);
     expect(tooLong(pole("substation", 0, 0), pole("substation", 19, 0))).toBe(true);
   });

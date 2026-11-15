@@ -389,10 +389,10 @@ describe("generic entities: directions", () => {
 describe("generic entities: wires, places and the rest of a blueprint", () => {
   it("wires a generic entity at its one connector: 1 red, 2 green, in a blueprint and back", () => {
     const circuit = parse(`
-      constant c tile (0.5, 0.5) { virtual:signal-A = 1 }
-      entity chest tile (1.5, 0.5) { prototype = steel-chest }
-      entity arm tile (2.5, 0.5) { prototype = fast-inserter }
-      decider d tile (4, 1.5) { }
+      constant-combinator c tile (0.5, 0.5) { virtual:signal-A = 1 }
+      steel-chest chest tile (1.5, 0.5) { }
+      fast-inserter arm tile (2.5, 0.5) { }
+      decider-combinator d tile (4, 1.5) { }
       wire red c.out <-> chest
       wire green chest <-> arm
       wire red arm <-> d.in
@@ -439,7 +439,7 @@ describe("generic entities: wires, places and the rest of a blueprint", () => {
   });
 
   it("gives the blueprint the item that builds an entity as its icon, and the entity where no item does", () => {
-    const icons = (...prototypes: string[]) => exported(circuitOf(...prototypes.map((prototype, index) => ({ ...generic(prototype), placement: { tile: tileCenter({ kind: "entity", prototype }, "east", { x: index * 10, y: 0 }) } })))).blueprint.icons;
+    const icons = (...prototypes: string[]) => exported(circuitOf(...prototypes.map((prototype, index) => ({ ...generic(prototype), placement: { tile: tileCenter({ prototype }, "east", { x: index * 10, y: 0 }) } })))).blueprint.icons;
     expect(icons("stone-wall", "fast-inserter", "fast-inserter")).toEqual([{ signal: { name: "fast-inserter" }, index: 1 }, { signal: { name: "stone-wall" }, index: 2 }]);
     expect(entityTable().byName.get("red-chest")!.placedBy).toEqual([]);
     expect(icons("red-chest")).toEqual([{ signal: { type: "entity", name: "red-chest" }, index: 1 }]);

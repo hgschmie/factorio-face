@@ -6,32 +6,32 @@ export const TILE = 80;
 
 /** Every kind with a `tile`, the 2x1 entities in all four directions; ids follow declaration order. */
 export const BOARD = `circuit "Board" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    decider gate at (300, 80) tile (3, 0.5) {
+    decider-combinator gate at (300, 80) tile (3, 0.5) {
         description = "Counts up to ten.\\nThe green wire feeds the output back."
         when virtual:signal-A < 10
         output virtual:signal-A = input
     }
 
-    arithmetic twice at (300, 260) tile (5.5, 1) facing south {
+    arithmetic-combinator twice at (300, 260) tile (5.5, 1) facing south {
         virtual:signal-B = virtual:signal-A[red] * 2
     }
 
-    selector pick at (560, 260) tile (3, 2.5) facing west {
+    selector-combinator pick at (560, 260) tile (3, 2.5) facing west {
         operation = select
         order = min
         index = virtual:signal-I
     }
 
-    decider check at (40, 260) tile (0.5, 3) facing north {
+    decider-combinator check at (40, 260) tile (0.5, 3) facing north {
         when virtual:signal-A > 3
         output virtual:signal-C = 1
     }
 
-    lamp light at (560, 80) tile (7.5, 0.5) {
+    small-lamp light at (560, 80) tile (7.5, 0.5) {
         when virtual:signal-B > 8
     }
 
@@ -51,6 +51,11 @@ export const bubble = (page: Page) => page.locator(".entity-bubble");
 export const placeAll = (page: Page) => page.getByRole("button", { name: /^Place all/ });
 export const zoom = async (page: Page) => Number(await page.locator(".canvas").getAttribute("data-zoom"));
 
+/** How many entities a canonical source declares: the lines of a member that are no wire. */
+export function declarationCount(source: string): number {
+  return (source.match(/^ {4}(?!wire )"?[A-Za-z0-9_-]+"? \w+ (at|tile|facing|\{)/gm) ?? []).length;
+}
+
 export async function setSource(page: Page, source: string): Promise<void> {
   await page.evaluate((text) => window.faceSession!.commands.setSource(text), source);
   await expect.poll(() => sourceText(page)).toBe(source);
@@ -67,7 +72,7 @@ export async function openBoard(page: Page, source = BOARD): Promise<void> {
 export async function openBoardProject(page: Page, source = BOARD): Promise<void> {
   await openProject(page, await writeProject({ name: "Board", source }));
   await showDisplay(page, "blueprint");
-  await expect(page.locator("g.card.board-entity")).toHaveCount((source.match(/^ {4}(constant|arithmetic|decider|selector|lamp|pole|speaker|entity) /gm) ?? []).length);
+  await expect(page.locator("g.card.board-entity")).toHaveCount(declarationCount(source));
 }
 
 export interface Footprint {

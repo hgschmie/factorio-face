@@ -2,7 +2,7 @@
 // some): one button per prototype with its icon and what the choice decides, the tiles it covers and its wire reach. Where there
 // are many (the prototypes of the type of a generic entity, a kind with many modded ones) they are icons in a row (`compact`),
 // with the name and the facts of the chosen one under them.
-import { prototypeOf, prototypesOf, type Entity, type PrototypeName } from "@face/model";
+import { prototypesOf, type Entity, type PrototypeName } from "@face/model";
 import { KIND_INFO, prototypeFacts, prototypeLabel } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 
@@ -17,10 +17,10 @@ export interface PrototypeFieldProps {
 }
 
 export function PrototypeField({ entity, resolveIcon, prototypes = prototypesOf(entity.kind), compact = false, onChange }: PrototypeFieldProps) {
-  const current = prototypeOf(entity);
+  const current = entity.prototype;
   const label = KIND_INFO[entity.kind].label;
   const choices = prototypes.map((prototype) => {
-    const shape = { kind: entity.kind, prototype };
+    const shape = { prototype };
     const [name, facts] = [prototypeLabel(shape), prototypeFacts(shape)];
     return (
       <button key={prototype} type="button" data-prototype={prototype} aria-pressed={prototype === current} aria-label={compact ? name : undefined} title={compact ? `${name}: ${facts}` : undefined} onClick={() => prototype !== current && onChange(prototype)}>

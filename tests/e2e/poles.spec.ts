@@ -12,35 +12,33 @@ import { bubble, committedTiles, dragOnBoard, footprint, hoverOnBoard, inspector
  * reach of the project and well within their own.
  */
 const POLES = `circuit "Poles" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    pole p1 at (280, 80) tile (4.5, 0.5) {
+    small-electric-pole p1 at (280, 80) tile (4.5, 0.5) {
     }
 
-    pole p2 at (520, 80) tile (10.5, 0.5) {
+    small-electric-pole p2 at (520, 80) tile (10.5, 0.5) {
     }
 
-    lamp light at (760, 80) tile (14.5, 0.5) {
+    small-lamp light at (760, 80) tile (14.5, 0.5) {
         when virtual:signal-A > 0
     }
 
-    speaker alarm at (760, 300) tile (14.5, 2.5) {
+    programmable-speaker alarm at (760, 300) tile (14.5, 2.5) {
         when virtual:signal-A > 0
         instrument = alarms
         note = siren
     }
 
-    pole far at (520, 300) tile (13.5, 4.5) {
+    small-electric-pole far at (520, 300) tile (13.5, 4.5) {
     }
 
-    pole big1 at (40, 520) tile (1, 9) {
-        prototype = big-electric-pole
+    big-electric-pole big1 at (40, 520) tile (1, 9) {
     }
 
-    pole big2 at (760, 520) tile (21, 9) {
-        prototype = big-electric-pole
+    big-electric-pole big2 at (760, 520) tile (21, 9) {
     }
 
     wire red source.out <-> p1
@@ -298,20 +296,18 @@ test("a chain constant -> pole -> pole -> lamp built with the palette and the wi
 
 /** A big pole and a substation with a lamp in reach of a drag, and a wire of each color. */
 const SQUARES = `circuit "Squares" {
-    constant source at (40, 300) tile (0.5, 3.5) {
+    constant-combinator source at (40, 300) tile (0.5, 3.5) {
         virtual:signal-A = 1
     }
 
-    pole big at (40, 80) tile (1, 1) {
-        prototype = big-electric-pole
+    big-electric-pole big at (40, 80) tile (1, 1) {
     }
 
-    lamp light at (300, 80) tile (3.5, 0.5) {
+    small-lamp light at (300, 80) tile (3.5, 0.5) {
         when virtual:signal-A > 0
     }
 
-    pole station at (560, 300) tile (6, 4) {
-        prototype = substation
+    substation station at (560, 300) tile (6, 4) {
     }
 
     wire red source.out <-> big
@@ -359,7 +355,7 @@ test("a 2x2 pole on the board: selection, bubble, drag onto free and onto taken 
   });
   expect((await committedTiles(page)).big).toEqual([2, 2]);
   expect(await footprint(page, "big")).toMatchObject({ tile: [1, 1], size: [2, 2] });
-  expect(await sourceText(page)).toContain("pole big at (40, 80) tile (2, 2) {");
+  expect(await sourceText(page)).toContain("big-electric-pole big at (40, 80) tile (2, 2) {");
   await expect(card(page, "light")).toHaveAttribute("data-status", "lit");
   // The arrow keys move it by whole tiles; a step onto the substation is refused.
   await page.keyboard.press("ArrowDown");
@@ -392,14 +388,14 @@ test("a 2x2 pole on the board: selection, bubble, drag onto free and onto taken 
  * tenth of a tile before its tile does: 8.63 tiles, shown as 8.6. A medium pole on that tile fills it: 8.49, shown as 8.5.
  */
 const REACH = `circuit "Reach" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    pole p at (300, 80) tile (7.5, 7.5) {
+    small-electric-pole p at (300, 80) tile (7.5, 7.5) {
     }
 
-    lamp light at (560, 80) tile (8.5, 7.5) {
+    small-lamp light at (560, 80) tile (8.5, 7.5) {
         when virtual:signal-A > 0
     }
 
@@ -436,7 +432,7 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   await option("Medium electric pole").click();
   await expect(pressed()).toHaveText(/^Medium electric pole/);
   await expect(inspector(page).locator("h2")).toHaveText("Medium electric pole");
-  expect(await sourceText(page)).toContain("    pole p at (300, 80) tile (7.5, 7.5) {\n        prototype = medium-electric-pole\n    }\n");
+  expect(await sourceText(page)).toContain("    medium-electric-pole p at (300, 80) tile (7.5, 7.5) {\n    }\n");
   await expect(wire(page, far)).not.toHaveAttribute("data-too-long");
   expect(await title(page, far).textContent()).toBe("red: source.out <-> p (8.5 tiles apart)");
   expect(await diagnostics(page)).toEqual([]);
@@ -467,7 +463,7 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   await expect(toast).toHaveCount(0);
   await expect(pressed()).toHaveText(/^Big electric pole/);
   expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [2, 2] });
-  expect(await sourceText(page)).toContain("    pole p at (300, 80) tile (8, 8) {\n        prototype = big-electric-pole\n    }\n");
+  expect(await sourceText(page)).toContain("    big-electric-pole p at (300, 80) tile (8, 8) {\n    }\n");
   expect(await pinOffsets(page, "p")).toEqual({ "io red": [70, 12], "io green": [90, 12] });
   await expect(inspector(page).locator(".inspector-footer")).toHaveText("Tile X 8 Y 8");
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
@@ -484,7 +480,7 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
 
   // One undo step takes back the prototype and the tile together.
   await page.getByRole("button", { name: "Undo" }).click();
-  expect(await sourceText(page)).toContain("    pole p at (300, 80) tile (7.5, 7.5) {\n        prototype = medium-electric-pole\n    }\n");
+  expect(await sourceText(page)).toContain("    medium-electric-pole p at (300, 80) tile (7.5, 7.5) {\n    }\n");
   expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [1, 1] });
 
   // On the edit canvas nothing is refused, as for a turn there: the overlap is a warning of the source.
@@ -496,6 +492,6 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   await expect(toast).toHaveCount(0);
   await expect(card(page, "p").locator(".card-kind")).toHaveText("SUBSTATION");
   await expect(card(page, "p").locator(".card-summary")).toHaveText("reach 18 · 2x2");
-  expect(await sourceText(page)).toContain("    pole p at (300, 80) tile (8, 8) {\n        prototype = substation\n    }\n");
+  expect(await sourceText(page)).toContain("    substation p at (300, 80) tile (8, 8) {\n    }\n");
   expect((await diagnostics(page)).map((line) => line.split(":")[0])).toEqual(["warning tile-overlap", "warning tile-overlap"]);
 });

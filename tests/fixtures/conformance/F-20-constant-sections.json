@@ -8,10 +8,10 @@
   "circuit": {
     "name": "F-20-constant-sections",
     "entities": [
-      {"id": "wrap", "name": "wrap", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 2147483647}]}, {"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
-      {"id": "sections", "name": "sections", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 10}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}, {"active": false, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}, {"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": -3}]}]},
-      {"id": "off", "name": "off", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": false, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 10}]}]},
-      {"id": "probe", "name": "probe", "position": {"x": 0, "y": 0}, "kind": "lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping"}
+      {"id": "wrap", "name": "wrap", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 2147483647}]}, {"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 1}]}]},
+      {"id": "sections", "name": "sections", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 10}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 1}]}, {"active": false, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}, {"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": -3}]}]},
+      {"id": "off", "name": "off", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": false, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 10}]}]},
+      {"id": "probe", "name": "probe", "position": {"x": 0, "y": 0}, "kind": "lamp", "prototype": "small-lamp", "inputNetworks": {"red": true, "green": true}, "alwaysOn": false, "useColors": false, "colorMode": "mapping"}
     ],
     "wires": [
       {"color": "red", "a": {"entity": "wrap", "side": "out"}, "b": {"entity": "probe", "side": "in"}},

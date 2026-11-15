@@ -36,7 +36,7 @@ test("the inspector offers rename and Delete at the top", async ({ page }) => {
   await expect(inspector.getByRole("alert")).toContainText("already used");
   await name.press("Enter");
   expect(await entityNames(page)).toContain("doubler");
-  await name.fill("lamp");
+  await name.fill("wire");
   await expect(inspector.getByRole("alert")).toContainText("reserved");
   await name.press("Enter");
   expect(await entityNames(page)).toContain("doubler");
@@ -94,7 +94,7 @@ test("the inspector edits settings of each kind as controlled forms", async ({ p
   const source = await sourceText(page);
   for (const statement of ["item:iron-plate@rare = 42", "virtual:signal-B = virtual:signal-A[red] + 7", "when virtual:signal-A >= 10", "operation = count", "output = virtual:signal-C", "always-on = true"]) expect(source).toContain(statement);
   expect(source).not.toContain("order = min");
-  expect(source).toContain("lamp light at (560, 80) {");
+  expect(source).toContain("small-lamp light at (560, 80) {");
   expect(source.slice(source.indexOf("    wire red source.out"))).toBe(FIVE_KINDS_SOURCE.slice(FIVE_KINDS_SOURCE.indexOf("    wire red source.out")));
   await page.getByRole("button", { name: "Source", exact: true }).click();
   await expect(page.locator(".source-pane .cm-content")).toContainText("virtual:signal-B = virtual:signal-A[red] + 7");

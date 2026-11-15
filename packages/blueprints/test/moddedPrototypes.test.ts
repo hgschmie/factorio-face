@@ -1,21 +1,21 @@
 // Blueprints with the entity table of a modded game: a game name becomes the kind of its prototype type and the prototype, the
 // name written is the prototype, and a loader of one tile has the control behaviour of the loader.
 import { printCircuit } from "@face/language";
-import { prototypeOf, setEntityTable, STANDARD_ENTITY_TABLE } from "@face/model";
+import { setEntityTable, STANDARD_ENTITY_TABLE } from "@face/model";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { MODDED_ENTITY_TABLE } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { A, B, blueprintOf, circuitOf, exported, imported, importedEntity } from "./helpers.ts";
 
 const SOURCE = `
-  constant c { prototype = mod-constant virtual:signal-A = 1 }
-  arithmetic a facing south { prototype = mod-arithmetic description = "doubles" virtual:signal-B = virtual:signal-A * 2 }
-  decider d facing north { prototype = mod-decider when virtual:signal-A > 0 output virtual:signal-A = 1 }
-  selector s { prototype = mod-selector operation = count output = virtual:signal-C }
-  lamp l { prototype = mod-lamp when virtual:signal-A > 0 always-on = true }
-  lamp f { prototype = "5d-lamp" }
-  pole p { prototype = mod-pole }
-  entity m facing west { prototype = mod-loader read-transfers = true when virtual:signal-A > 0 }
-  arithmetic plain { virtual:signal-B = virtual:signal-A + 1 }
+  mod-constant c { virtual:signal-A = 1 }
+  mod-arithmetic a facing south { description = "doubles" virtual:signal-B = virtual:signal-A * 2 }
+  mod-decider d facing north { when virtual:signal-A > 0 output virtual:signal-A = 1 }
+  mod-selector s { operation = count output = virtual:signal-C }
+  mod-lamp l { when virtual:signal-A > 0 always-on = true }
+  "5d-lamp" f { }
+  mod-pole p { }
+  mod-loader m facing west { read-transfers = true when virtual:signal-A > 0 }
+  arithmetic-combinator plain { virtual:signal-B = virtual:signal-A + 1 }
   wire red c.out <-> a.in
   wire green a.out <-> d.in
   wire red d.out <-> p
@@ -52,14 +52,13 @@ describe("blueprints of a modded game", () => {
       { entity_number: 7, name: "mod-constant", position: { x: 16.5, y: 0.5 }, direction: 8 },
     ], [[1, 3, 3, 1], [3, 1, 2, 1], [4, 2, 2, 2], [6, 1, 5, 1]]);
     const { circuit, report } = imported(blueprint);
-    expect(circuit.entities.map((entity) => [entity.name, entity.kind, entity.prototype, prototypeOf(entity)])).toEqual([
-      ["arithmetic1", "arithmetic", "mod-arithmetic", "mod-arithmetic"],
-      ["lamp1", "lamp", "mod-lamp", "mod-lamp"],
-      ["pole1", "pole", "mod-pole", "mod-pole"],
-      ["mod_loader1", "entity", "mod-loader", "mod-loader"],
-      // The first of its kind holds no prototype.
-      ["lamp2", "lamp", undefined, "small-lamp"],
-      ["constant1", "constant", "mod-constant", "mod-constant"],
+    expect(circuit.entities.map((entity) => [entity.name, entity.kind, entity.prototype])).toEqual([
+      ["arithmetic1", "arithmetic", "mod-arithmetic"],
+      ["lamp1", "lamp", "mod-lamp"],
+      ["pole1", "pole", "mod-pole"],
+      ["mod_loader1", "entity", "mod-loader"],
+      ["lamp2", "lamp", "small-lamp"],
+      ["constant1", "constant", "mod-constant"],
     ]);
     expect(circuit.entities[0]).toMatchObject({ operation: "*", output: { kind: "virtual", name: "signal-B" }, placement: { tile: { x: 0.5, y: 0.5 } } });
     expect(circuit.entities[3]).toMatchObject({ settings: { "read-transfers": true }, blueprintData: '{"type":"output"}' });
@@ -68,13 +67,13 @@ describe("blueprints of a modded game", () => {
     // A modded speaker has no kind: it is dropped with its wire, like every entity the editor does not have.
     expect(report.dropped).toEqual([{ name: "mod-speaker", count: 1, reason: "unknown" }]);
     expect(report.wires).toMatchObject({ imported: 3, toDropped: 1 });
-    expect(printCircuit(circuit)).toContain("    arithmetic arithmetic1 at (0, 0) tile (0.5, 0.5) {\n        prototype = mod-arithmetic\n        virtual:signal-B = virtual:signal-A * 2\n    }");
+    expect(printCircuit(circuit)).toContain("    mod-arithmetic arithmetic1 at (0, 0) tile (0.5, 0.5) {\n        virtual:signal-B = virtual:signal-A * 2\n    }");
   });
 
   it("keeps a circuit of modded prototypes through a blueprint and back, and the blueprint through the editor", () => {
     const first = exported(circuitOf(SOURCE));
     const back = imported(first).circuit;
-    expect(back.entities.map((entity) => [entity.kind, prototypeOf(entity), entity.placement?.direction])).toEqual([
+    expect(back.entities.map((entity) => [entity.kind, entity.prototype, entity.placement?.direction])).toEqual([
       ["constant", "mod-constant", undefined], ["arithmetic", "mod-arithmetic", "south"], ["decider", "mod-decider", "north"], ["selector", "mod-selector", undefined], ["lamp", "mod-lamp", undefined], ["lamp", "5d-lamp", undefined],
       ["pole", "mod-pole", undefined], ["entity", "mod-loader", "west"], ["arithmetic", "arithmetic-combinator", undefined],
     ]);

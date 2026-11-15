@@ -86,10 +86,10 @@ const CRAFTING_TYPES: ReadonlySet<string> = new Set(["assembling-machine", "furn
  */
 function genericSource(prototypes: readonly string[]): string {
   const base = { position: { x: 0, y: 0 } };
-  const source: Entity = { ...base, id: "e0", name: "source", kind: "constant", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: signal("virtual", "signal-A"), count: 1 }] }] };
+  const source: Entity = { ...base, id: "e0", name: "source", kind: "constant", prototype: "constant-combinator", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: signal("virtual", "signal-A"), count: 1 }] }] };
   const counters = new Map<string, number>();
   const entities = prototypes.map((prototype, index): Entity => {
-    const name = entityNameBase({ kind: "entity", prototype });
+    const name = entityNameBase({ prototype });
     const count = (counters.get(name) ?? 0) + 1;
     counters.set(name, count);
     // A crafting machine has a direction only while its recipe uses its fluid boxes; the samples have no recipe.
@@ -110,19 +110,19 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "constant combinators",
     source: `
-      constant plain {
+      constant-combinator plain {
         item:iron-plate = 5  fluid:water = -3  virtual:signal-A@rare = 2147483647  space-location:nauvis = -2147483648
         recipe:iron-gear-wheel = 2  entity:small-biter = 3  asteroid-chunk:metallic-asteroid-chunk = 1  quality:legendary = 7  item:iron-ore@legendary = 9
       }
-      constant off facing north { description = "line one\\nline two"  enabled = false  virtual:signal-B = 1 }
-      constant grouped facing south {
+      constant-combinator off facing north { description = "line one\\nline two"  enabled = false  virtual:signal-B = 1 }
+      constant-combinator grouped facing south {
         section "face probe ore" { active = false  multiplier = -0.5  item:iron-ore = 1  item:copper-ore = 2 }
         section { virtual:signal-C = 3 }
         section "face probe empty" { }
       }
-      constant scaled facing west { section { multiplier = 2.5  virtual:signal-D = 4 } }
-      constant blank { }
-      constant zero { virtual:signal-Z = 0 }
+      constant-combinator scaled facing west { section { multiplier = 2.5  virtual:signal-D = 4 } }
+      constant-combinator blank { }
+      constant-combinator zero { virtual:signal-Z = 0 }
       wire red plain.out <-> off.out
       wire green grouped.out <-> scaled.out
     `,
@@ -130,15 +130,15 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "arithmetic combinators, first half of the operations",
     source: `
-      arithmetic mul { virtual:signal-A = virtual:signal-B * 2 }
-      arithmetic div facing north { virtual:signal-A = virtual:signal-B[red] / -3 }
-      arithmetic add facing south { virtual:signal-A = 2147483647 + virtual:signal-B[green] }
-      arithmetic sub facing west { item:iron-plate@rare = virtual:signal-A[red] - virtual:signal-B[green] }
-      arithmetic mod { description = "remainder"  fluid:water = item:iron-plate % item:copper-plate }
-      arithmetic pow { virtual:signal-A = -2147483648 ^ 2 }
-      arithmetic zero_first { virtual:signal-A = 0 + virtual:signal-B }
-      arithmetic zeros { virtual:signal-A = 0 * 0 }
-      arithmetic blank { }
+      arithmetic-combinator mul { virtual:signal-A = virtual:signal-B * 2 }
+      arithmetic-combinator div facing north { virtual:signal-A = virtual:signal-B[red] / -3 }
+      arithmetic-combinator add facing south { virtual:signal-A = 2147483647 + virtual:signal-B[green] }
+      arithmetic-combinator sub facing west { item:iron-plate@rare = virtual:signal-A[red] - virtual:signal-B[green] }
+      arithmetic-combinator mod { description = "remainder"  fluid:water = item:iron-plate % item:copper-plate }
+      arithmetic-combinator pow { virtual:signal-A = -2147483648 ^ 2 }
+      arithmetic-combinator zero_first { virtual:signal-A = 0 + virtual:signal-B }
+      arithmetic-combinator zeros { virtual:signal-A = 0 * 0 }
+      arithmetic-combinator blank { }
       wire red mul.out <-> div.in
       wire green add.out <-> add.in
     `,
@@ -146,20 +146,20 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "arithmetic combinators, second half of the operations",
     source: `
-      arithmetic shl { virtual:signal-A = 1 << virtual:signal-B }
-      arithmetic shr { virtual:signal-A = virtual:signal-B >> 1 }
-      arithmetic band { virtual:signal-A = virtual:signal-B AND 255 }
-      arithmetic bor { virtual:signal-A = virtual:signal-B OR virtual:signal-C }
-      arithmetic bxor { virtual:signal-A = virtual:signal-B XOR -1 }
-      arithmetic every { each = each[red] * virtual:signal-A[green] }
-      arithmetic both { each = each + each }
-      arithmetic sum { virtual:signal-S = each[none] + 0 }
+      arithmetic-combinator shl { virtual:signal-A = 1 << virtual:signal-B }
+      arithmetic-combinator shr { virtual:signal-A = virtual:signal-B >> 1 }
+      arithmetic-combinator band { virtual:signal-A = virtual:signal-B AND 255 }
+      arithmetic-combinator bor { virtual:signal-A = virtual:signal-B OR virtual:signal-C }
+      arithmetic-combinator bxor { virtual:signal-A = virtual:signal-B XOR -1 }
+      arithmetic-combinator every { each = each[red] * virtual:signal-A[green] }
+      arithmetic-combinator both { each = each + each }
+      arithmetic-combinator sum { virtual:signal-S = each[none] + 0 }
     `,
   },
   {
     label: "decider combinators",
     source: `
-      decider gate {
+      decider-combinator gate {
         description = "a gate"
         when virtual:signal-A > 5 and virtual:signal-B[red] != virtual:signal-C[green] or item:iron-plate <= -1 or fluid:water = 0
         output virtual:signal-A = input
@@ -168,15 +168,15 @@ export const SAMPLES: readonly Sample[] = [
         else output virtual:signal-D = input[green]
         else output virtual:signal-E = 1
       }
-      decider each_gate facing north { when each >= 10 and each < 20  output each = input  output virtual:signal-N = 1 }
-      decider any facing south { when anything > virtual:signal-A[none]  output anything = input  else output virtual:signal-Z = -5 }
-      decider all facing west { when everything < 100  output everything = input[green] }
-      decider one { when virtual:signal-A = 1  output virtual:signal-A = 1 }
-      decider zero { when virtual:signal-A < 0  output virtual:signal-F = 0 }
-      decider undecided { when virtual:signal-A > 1 }
-      decider otherwise { when virtual:signal-A > 1  else output virtual:signal-B = 2 }
-      decider unconditional { output virtual:signal-A = 3 }
-      decider blank { }
+      decider-combinator each_gate facing north { when each >= 10 and each < 20  output each = input  output virtual:signal-N = 1 }
+      decider-combinator any facing south { when anything > virtual:signal-A[none]  output anything = input  else output virtual:signal-Z = -5 }
+      decider-combinator all facing west { when everything < 100  output everything = input[green] }
+      decider-combinator one { when virtual:signal-A = 1  output virtual:signal-A = 1 }
+      decider-combinator zero { when virtual:signal-A < 0  output virtual:signal-F = 0 }
+      decider-combinator undecided { when virtual:signal-A > 1 }
+      decider-combinator otherwise { when virtual:signal-A > 1  else output virtual:signal-B = 2 }
+      decider-combinator unconditional { output virtual:signal-A = 3 }
+      decider-combinator blank { }
       wire red gate.out <-> gate.in
       wire green gate.out <-> each_gate.in
     `,
@@ -184,50 +184,50 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "selector combinators, select count random",
     source: `
-      selector fresh { }
-      selector lowest { operation = select  order = min  index = 2 }
-      selector indexed facing north { description = "by index"  operation = select  index = virtual:signal-I  index-comparator = >= }
-      selector upto facing south { operation = select  index = 3  index-comparator = < }
-      selector counter facing west { operation = count  output = virtual:signal-C }
-      selector uncounted { operation = count }
-      selector rnd { operation = random  interval = 60 }
-      selector rnd0 { operation = random }
+      selector-combinator fresh { }
+      selector-combinator lowest { operation = select  order = min  index = 2 }
+      selector-combinator indexed facing north { description = "by index"  operation = select  index = virtual:signal-I  index-comparator = >= }
+      selector-combinator upto facing south { operation = select  index = 3  index-comparator = < }
+      selector-combinator counter facing west { operation = count  output = virtual:signal-C }
+      selector-combinator uncounted { operation = count }
+      selector-combinator rnd { operation = random  interval = 60 }
+      selector-combinator rnd0 { operation = random }
     `,
   },
   {
     label: "selector combinators, the other modes",
     source: `
-      selector stack { operation = stack-size }
-      selector rocket { operation = rocket-capacity }
-      selector qf { operation = quality-filter  quality = rare  comparator = > }
-      selector qany { operation = quality-filter }
-      selector qs { operation = quality-select  order = lowest }
-      selector qt1 { operation = quality-transfer  source = legendary  destination = each }
-      selector qt2 { operation = quality-transfer  source = signal  source-signal = item:iron-plate  destination = virtual:signal-Q }
-      selector clock { operation = time  day-length = virtual:signal-L  day-tick = virtual:signal-D  game-tick = virtual:signal-T }
+      selector-combinator stack { operation = stack-size }
+      selector-combinator rocket { operation = rocket-capacity }
+      selector-combinator qf { operation = quality-filter  quality = rare  comparator = > }
+      selector-combinator qany { operation = quality-filter }
+      selector-combinator qs { operation = quality-select  order = lowest }
+      selector-combinator qt1 { operation = quality-transfer  source = legendary  destination = each }
+      selector-combinator qt2 { operation = quality-transfer  source = signal  source-signal = item:iron-plate  destination = virtual:signal-Q }
+      selector-combinator clock { operation = time  day-length = virtual:signal-L  day-tick = virtual:signal-D  game-tick = virtual:signal-T }
     `,
   },
   {
     label: "selector combinators, defaults of the modes",
     source: `
-      selector qhigh { operation = quality-select }
-      selector qnormal { operation = quality-transfer }
-      selector qsignal { operation = quality-transfer  source = signal }
-      selector idle_clock { operation = time }
-      selector qequal { operation = quality-filter  quality = normal }
+      selector-combinator qhigh { operation = quality-select }
+      selector-combinator qnormal { operation = quality-transfer }
+      selector-combinator qsignal { operation = quality-transfer  source = signal }
+      selector-combinator idle_clock { operation = time }
+      selector-combinator qequal { operation = quality-filter  quality = normal }
     `,
   },
   {
     label: "lamps",
     source: `
-      lamp plain { }
-      lamp lit { always-on = true  color = #ff8000 }
-      lamp enabled { when virtual:signal-A > 0 }
-      lamp compared { when anything >= virtual:signal-B  networks = green }
-      lamp mapped { when everything != 5  networks = red  colors = mapping }
-      lamp parts { colors = components  red = virtual:signal-1  green = virtual:signal-2  blue = virtual:signal-3 }
-      lamp packed { networks = none  colors = packed-rgb  rgb = item:iron-plate@rare }
-      constant source { virtual:signal-A = 1 }
+      small-lamp plain { }
+      small-lamp lit { always-on = true  color = #ff8000 }
+      small-lamp enabled { when virtual:signal-A > 0 }
+      small-lamp compared { when anything >= virtual:signal-B  networks = green }
+      small-lamp mapped { when everything != 5  networks = red  colors = mapping }
+      small-lamp parts { colors = components  red = virtual:signal-1  green = virtual:signal-2  blue = virtual:signal-3 }
+      small-lamp packed { networks = none  colors = packed-rgb  rgb = item:iron-plate@rare }
+      constant-combinator source { virtual:signal-A = 1 }
       wire red source.out <-> enabled.in
       wire green source.out <-> compared.in
     `,
@@ -235,12 +235,12 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "electric poles",
     source: `
-      pole small { }
-      pole medium { prototype = medium-electric-pole }
-      pole big { prototype = big-electric-pole }
-      pole sub { prototype = substation }
-      constant source { virtual:signal-A = 1 }
-      lamp light { when virtual:signal-A > 0 }
+      small-electric-pole small { }
+      medium-electric-pole medium { }
+      big-electric-pole big { }
+      substation sub { }
+      constant-combinator source { virtual:signal-A = 1 }
+      small-lamp light { when virtual:signal-A > 0 }
       wire red source.out <-> small
       wire red small <-> medium
       wire red medium <-> big
@@ -252,20 +252,20 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "programmable speakers",
     source: `
-      speaker quiet { }
-      speaker alarm {
+      programmable-speaker quiet { }
+      programmable-speaker alarm {
         when virtual:signal-A > 0
         instrument = alarms  note = siren  volume = 62.5  volume-signal = virtual:signal-V  playback = global
         polyphony = true  stop-playing-sounds = true  show-alert = true  show-on-map = false
         alert-icon = item:iron-plate  alert-message = "Out of \\"plates\\"\\nagain"
       }
-      speaker tune { pitch = virtual:signal-P  instrument = piano  playback = surface  volume = 0 }
-      speaker chime { when everything < virtual:signal-B  instrument = drum-kit  note = hat-1  volume = 80 }
-      speaker first_note { when item:iron-plate = 0  instrument = bass }
-      speaker other_note { when anything != 1  note = alarm-2  show-alert = true }
-      speaker plain_condition { when virtual:signal-A < 0 }
-      speaker stopping { stop-playing-sounds = true }
-      constant source { virtual:signal-A = 1 }
+      programmable-speaker tune { pitch = virtual:signal-P  instrument = piano  playback = surface  volume = 0 }
+      programmable-speaker chime { when everything < virtual:signal-B  instrument = drum-kit  note = hat-1  volume = 80 }
+      programmable-speaker first_note { when item:iron-plate = 0  instrument = bass }
+      programmable-speaker other_note { when anything != 1  note = alarm-2  show-alert = true }
+      programmable-speaker plain_condition { when virtual:signal-A < 0 }
+      programmable-speaker stopping { stop-playing-sounds = true }
+      constant-combinator source { virtual:signal-A = 1 }
       wire red source.out <-> alarm.in
       wire green source.out <-> tune.in
     `,
@@ -273,14 +273,14 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "wires between every kind of connection point",
     source: `
-      constant c1 { virtual:signal-A = 1 }
-      constant c2 facing south { virtual:signal-B = 1 }
-      decider d1 { when virtual:signal-A > 0  output virtual:signal-A = input }
-      arithmetic a1 facing north { virtual:signal-A = virtual:signal-A + 1 }
-      lamp l1 { }
-      lamp l2 { }
-      pole p1 { }
-      pole p2 { prototype = medium-electric-pole }
+      constant-combinator c1 { virtual:signal-A = 1 }
+      constant-combinator c2 facing south { virtual:signal-B = 1 }
+      decider-combinator d1 { when virtual:signal-A > 0  output virtual:signal-A = input }
+      arithmetic-combinator a1 facing north { virtual:signal-A = virtual:signal-A + 1 }
+      small-lamp l1 { }
+      small-lamp l2 { }
+      small-electric-pole p1 { }
+      medium-electric-pole p2 { }
       wire red c1.out <-> c2.out
       wire green c1.out <-> d1.in
       wire red c1.out <-> d1.out
@@ -304,10 +304,10 @@ export const SAMPLES: readonly Sample[] = [
   {
     label: "a counter with a speaker",
     source: `
-      constant one { virtual:signal-A = 1 }
-      decider counter facing west { when virtual:signal-A < 600  output virtual:signal-A = input }
-      selector seconds facing south { operation = time  game-tick = virtual:signal-T }
-      speaker bell { when virtual:signal-A = 599  instrument = miscellaneous }
+      constant-combinator one { virtual:signal-A = 1 }
+      decider-combinator counter facing west { when virtual:signal-A < 600  output virtual:signal-A = input }
+      selector-combinator seconds facing south { operation = time  game-tick = virtual:signal-T }
+      programmable-speaker bell { when virtual:signal-A = 599  instrument = miscellaneous }
       wire red one.out <-> counter.in
       wire green counter.out <-> counter.in
       wire green counter.out <-> bell.in
@@ -320,15 +320,15 @@ export const SAMPLES: readonly Sample[] = [
     // conditions of a splitter are set.
     label: "generic entities: defaults of the game that are not blank",
     source: `
-      constant source { virtual:signal-A = 1 }
-      entity sensor { prototype = stone-wall  read-sensor = true }
-      entity sides { prototype = splitter  input-left when virtual:signal-I < 0  input-right when virtual:signal-I > 0  output-left when virtual:signal-O < 0  output-right when virtual:signal-O > 0 }
-      entity left_only { prototype = splitter  input-left when virtual:signal-A > 5 }
-      entity right_out { prototype = splitter  output-right when virtual:signal-B > 6 }
-      entity chest_blue { prototype = blue-chest }
-      entity chest_red { prototype = red-chest }
-      entity crash1 { prototype = crash-site-chest-1 }
-      entity crash2 { prototype = crash-site-chest-2 }
+      constant-combinator source { virtual:signal-A = 1 }
+      stone-wall sensor { read-sensor = true }
+      splitter sides { input-left when virtual:signal-I < 0  input-right when virtual:signal-I > 0  output-left when virtual:signal-O < 0  output-right when virtual:signal-O > 0 }
+      splitter left_only { input-left when virtual:signal-A > 5 }
+      splitter right_out { output-right when virtual:signal-B > 6 }
+      blue-chest chest_blue { }
+      red-chest chest_red { }
+      crash-site-chest-1 crash1 { }
+      crash-site-chest-2 crash2 { }
       wire red source.out <-> sensor
       wire red source.out <-> sides
       wire red sides <-> left_only

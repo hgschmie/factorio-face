@@ -2,13 +2,13 @@
 // Unrelated text, comments, spacing and declaration order are never touched.
 
 import {
-  canRotate, DEFAULT_ENTITY, DEFAULT_FACING, DIRECTIONS, entityNameBase, facingOf, hasTerminal, heldPrototype, isInt32, isTileCenter, NORMAL_QUALITY, prototypeData, prototypesOf, rotateTile, wireKey,
+  canRotate, DEFAULT_FACING, DIRECTIONS, entityNameBase, facingOf, hasTerminal, isInt32, isPrototypeName, isTileCenter, newEntity, NORMAL_QUALITY, prototypeData, rotateTile, wireKey,
   type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type TerminalRef, type WireColor,
 } from "@face/model";
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
 import type { CstBlock, CstMember, CstSection, CstStatement } from "./cst.ts";
 import { uniqueNames, type Fragment } from "./fragment.ts";
-import { entityItems, printAt, printCircuit, printEntity, printMembers, printNumber, printWire, type StatementItem } from "./printer.ts";
+import { entityItems, printAt, printCircuit, printEntity, printMembers, printName, printNumber, printWire, type StatementItem } from "./printer.ts";
 import { encodeString, isIdentifier, isKeyword, type Range } from "./tokens.ts";
 
 /** Replace `[from, to)` of the source with `insert`. Offsets refer to the source the command was computed from. */
@@ -326,22 +326,16 @@ function checkPosition(position: Point): Point {
 }
 
 /**
- * Appends a declaration with default configuration after the last entity. Generates `constant1`, `lamp2`, ... when no name is given;
- * a generic entity is named after its prototype, `fast_inserter1` (`entityNameBase`). With `facing` other than east the declaration
- * gets a `facing` clause, unless the entity cannot rotate (a lamp). With `tile` (the game's center position, on the grid for the
- * entity in that direction) it gets a `tile` clause. `prototype` says which game prototype of the kind the entity is (a
- * `big-electric-pole`, a modded combinator); without it it is the first of the kind. A generic entity (kind `entity`) has to say which one it is.
+ * Appends a declaration of the game prototype `prototype` with default configuration after the last entity. Generates `constant1`,
+ * `lamp2`, ... when no name is given; an entity without a kind of its own is named after its prototype, `fast_inserter1`
+ * (`entityNameBase`). With `facing` other than east the declaration gets a `facing` clause, unless the entity cannot rotate (a
+ * lamp). With `tile` (the game's center position, on the grid for the entity in that direction) it gets a `tile` clause.
  */
-export function addEntity(parse: ParseResult, kind: EntityKind, position: Point, name?: string, tile?: Point, facing?: Direction, prototype?: PrototypeName): { changes: TextChange[]; name: string } {
+export function addEntity(parse: ParseResult, prototype: PrototypeName, position: Point, name?: string, tile?: Point, facing?: Direction): { changes: TextChange[]; name: string } {
   const edit = new Edit(parse);
   const taken = new Set(edit.circuit.entities.map((e) => e.name));
-  if (kind === "entity" && prototype === undefined) throw new EditError("invalid-entity", "A new entity needs its prototype: which entity of the game it is");
-  if (prototype !== undefined && !(prototypesOf(kind) as readonly string[]).includes(prototype)) {
-    throw new EditError("invalid-entity", kind === "entity" ? `'${prototype}' is not an entity of the game that the editor has under the kind 'entity'` : `'${prototype}' is not a ${kind}; use ${prototypesOf(kind).join(", ")}`);
-  }
-  // The first of a kind goes without saying.
-  const held = prototype === undefined ? undefined : heldPrototype(kind, prototype);
-  const shape = { ...DEFAULT_ENTITY[kind], ...(held !== undefined && { prototype: held }) };
+  if (!isPrototypeName(prototype)) throw new EditError("invalid-entity", `'${prototype}' is not an entity of the game data in use`);
+  const shape = newEntity(prototype);
   if (name === undefined) {
     const base = entityNameBase(shape);
     let n = 1;
@@ -757,9 +751,10 @@ function diffSection(edit: Edit, statement: CstSection, kind: EntityKind, curren
 }
 
 /**
- * Rewrites entity `id` so that it equals `next` (same kind): name, position, placement and configuration. Statements whose meaning
- * is unchanged keep their text and trivia byte for byte; changed ones are replaced by canonical text, new ones are inserted in
- * canonical order and dropped ones are deleted. An empty description removes the property.
+ * Rewrites entity `id` so that it equals `next` (same kind): which entity of the game it is (the declaration word), name,
+ * position, placement and configuration. Statements whose meaning is unchanged keep their text and trivia byte for byte; changed
+ * ones are replaced by canonical text, new ones are inserted in canonical order and dropped ones are deleted. An empty
+ * description removes the property.
  */
 export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): TextChange[] {
   const edit = new Edit(parse);
@@ -773,6 +768,7 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
   if (!check.ok) throw new EditError(check.code, check.message);
 
   const node = source.node;
+  if (next.prototype !== current.prototype) edit.change(node.word.from, node.word.to, printName(next.prototype));
   if (next.position.x !== current.position.x || next.position.y !== current.position.y) {
     if (!source.at) edit.change(source.atInsert, source.atInsert, printAt(next.position));
     else {
@@ -800,15 +796,14 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
 export type EditCommand =
   | {
       readonly type: "addEntity";
-      readonly kind: EntityKind;
+      /** Which entity of the game. */
+      readonly prototype: PrototypeName;
       readonly position: Point;
       readonly name?: string;
       /** The center for a `tile` clause. */
       readonly tile?: Point;
       /** East when absent. */
       readonly facing?: Direction;
-      /** Which game prototype of the kind; the first of the kind when absent. */
-      readonly prototype?: PrototypeName;
     }
   | { readonly type: "moveEntities"; readonly moves: readonly EntityMove[] }
   | { readonly type: "faceEntities"; readonly facings: readonly EntityFacing[] }
@@ -836,7 +831,7 @@ export type EditResult =
 export function executeCommand(parse: ParseResult, command: EditCommand): EditResult {
   try {
     switch (command.type) {
-      case "addEntity": return { ok: true, ...addEntity(parse, command.kind, command.position, command.name, command.tile, command.facing, command.prototype) };
+      case "addEntity": return { ok: true, ...addEntity(parse, command.prototype, command.position, command.name, command.tile, command.facing) };
       case "moveEntities": return { ok: true, changes: moveEntities(parse, command.moves) };
       case "faceEntities": return { ok: true, changes: faceEntities(parse, command.facings) };
       case "setTiles": return { ok: true, changes: setTiles(parse, command.tiles) };

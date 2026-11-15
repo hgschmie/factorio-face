@@ -67,7 +67,7 @@ test("places each of the four combinators and the lamp from the palette", async 
   await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
   // Each placement is a declaration appended to the source; what was there is untouched.
   const source = await sourceText(page);
-  expect(source).toContain("selector selector1 at (720, 500) {");
+  expect(source).toContain("selector-combinator selector1 at (720, 500) {");
   expect(source.startsWith(FIVE_KINDS_SOURCE.slice(0, FIVE_KINDS_SOURCE.indexOf("    wire red source.out")))).toBe(true);
 });
 
@@ -99,7 +99,7 @@ test("drags an entity and commits the snapped position of the pointer release", 
   expect(greenPath).toBe("M 164 260 L 228 260 Q 242 260 242 246 L 242 174 Q 242 160 256 160 L 300 160");
 
   // The move is a patch of the two numbers in the source.
-  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("constant source at (40, 80)", "constant source at (-20, 180)"));
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("constant-combinator source at (40, 80)", "constant-combinator source at (-20, 180)"));
 
   // One undo restores both coordinates.
   await page.getByRole("button", { name: "Undo" }).click();

@@ -58,6 +58,8 @@ test("typing in Source updates the canvas", async ({ page }) => {
   await expect(page.locator("g.card")).toHaveCount(4);
   // The editor highlights the language: keywords, signals and the two wire colors have their own classes.
   await expect(page.locator(".source-pane .face-tok-keyword").first()).toHaveText("circuit");
+  // The word of an entity declaration is a name of the game and reads like a keyword.
+  await expect(page.locator(".source-pane .face-tok-keyword").nth(1)).toHaveText("constant-combinator");
   await expect(page.locator(".source-pane .face-tok-signal").first()).toHaveText("virtual:signal-A");
   await expect(page.locator(".source-pane .face-tok-color-red").first()).toHaveText("red");
   await expect(page.locator(".source-pane .face-tok-comment").first()).toContainText("A counter that lights a lamp.");
@@ -65,7 +67,11 @@ test("typing in Source updates the canvas", async ({ page }) => {
   // A new entity and a wire to it, typed by hand.
   await caretAtEndOf(page, "wire green twice.out <-> light.in");
   await page.keyboard.press("Enter");
-  await page.keyboard.type("lamp second at (560, 240) { when virtual:signal-A > 5 }");
+  // At the start of a member completion offers the entities of the game by their names, with what the game calls them.
+  const completions = page.locator(".cm-tooltip-autocomplete");
+  await page.keyboard.type("small-l");
+  await expect(completions.locator("li", { hasText: "small-lamp" }).locator(".cm-completionDetail")).toHaveText("Lamp");
+  await page.keyboard.type("amp second at (560, 240) { when virtual:signal-A > 5 }");
   await expect(card(page, "second")).toHaveAttribute("data-kind", "lamp");
   await expect(card(page, "second").locator(".card-summary")).toHaveText("A > 5");
   expect((await committedPositions(page)).second).toEqual({ x: 560, y: 240 });
@@ -83,7 +89,6 @@ test("typing in Source updates the canvas", async ({ page }) => {
   await caretAtEndOf(page, "wire red gate.out <-> second.in");
   await page.keyboard.press("Enter");
   await page.keyboard.type("wire green sec");
-  const completions = page.locator(".cm-tooltip-autocomplete");
   await expect(completions).toContainText("second.in");
   // CodeMirror ignores Enter for the first 75 ms a completion list is shown (`interactionDelay`), so that typing ahead does not
   // accept by accident; the key would then be a line break. The page shows nothing when that time is over.
@@ -99,7 +104,7 @@ test("a canvas edit patches the source while a nearby comment survives", async (
   await dragCard(page, "gate", 40, 60);
   expect((await committedPositions(page)).gate).toEqual({ x: 340, y: 140 });
   // Exactly the two numbers changed; the header comment, the trailing comment and all spacing are as they were.
-  expect(await sourceText(page)).toBe(original.replace("decider gate at (300, 80) {", "decider gate at (340, 140) {"));
+  expect(await sourceText(page)).toBe(original.replace("decider-combinator gate at (300, 80) {", "decider-combinator gate at (340, 140) {"));
 
   // Renaming rewrites the declaration and the three references on the commented line and its neighbours.
   await selectEntity(page, "gate");
@@ -108,7 +113,7 @@ test("a canvas edit patches the source while a nearby comment survives", async (
   await name.press("Enter");
   const renamed = await sourceText(page);
   expect(renamed).toContain("wire green counter.out <-> counter.in      // feedback");
-  expect(renamed).toBe(original.replace("decider gate at (300, 80) {", "decider gate at (340, 140) {").replaceAll("gate", "counter"));
+  expect(renamed).toBe(original.replace("decider-combinator gate at (300, 80) {", "decider-combinator gate at (340, 140) {").replaceAll("gate", "counter"));
 
   // Removing the commented wire takes its trailing comment with it and nothing else.
   await page.getByRole("button", { name: "Remove green wire from out to counter.in" }).click();
@@ -117,7 +122,7 @@ test("a canvas edit patches the source while a nearby comment survives", async (
   expect(removed).toContain("// A counter that lights a lamp.");
   expect(removed).toContain("    wire red source.out <-> counter.in\n    wire red counter.out <-> twice.in\n");
   await mode(page, "Split").click();
-  await expect(page.locator(".source-pane .cm-line", { hasText: "decider counter at (340, 140) {" })).toHaveCount(1);
+  await expect(page.locator(".source-pane .cm-line", { hasText: "decider-combinator counter at (340, 140) {" })).toHaveCount(1);
 });
 
 test("canvas and text share one undo history", async ({ page }) => {
@@ -129,10 +134,10 @@ test("canvas and text share one undo history", async ({ page }) => {
   // 1: canvas drag. 2: typed comment. 3: inspector edit. 4: typed number.
   await dragCard(page, "source", 0, 100);
   const afterDrag = await sourceText(page);
-  await caretAtEndOf(page, "lamp light at (560, 80) {");
+  await caretAtEndOf(page, "small-lamp light at (560, 80) {");
   await page.keyboard.type(" // typed");
   const afterComment = await sourceText(page);
-  expect(afterComment).toContain("lamp light at (560, 80) { // typed");
+  expect(afterComment).toContain("small-lamp light at (560, 80) { // typed");
   await selectEntity(page, "light");
   await page.getByRole("complementary", { name: "Inspector" }).getByLabel("Controlled by the circuit network").uncheck();
   await expect(card(page, "light").locator(".card-summary")).toHaveText("no condition");
@@ -364,7 +369,7 @@ test("stepping the example circuit shows the expected values tick by tick in doc
 });
 
 const ROWS_SOURCE = `circuit "Rows" {
-    constant many at (40, 40) {
+    constant-combinator many at (40, 40) {
         virtual:signal-A = -2147483648
         virtual:signal-B = 2500000
         virtual:signal-C = 12345
@@ -379,12 +384,12 @@ const ROWS_SOURCE = `circuit "Rows" {
         virtual:signal-L = 8
     }
 
-    decider all at (300, 40) {
+    decider-combinator all at (300, 40) {
         when anything != 0
         output everything = input
     }
 
-    lamp glow at (560, 40) {
+    small-lamp glow at (560, 40) {
         when virtual:signal-E > 0
         color = #ff8000
     }

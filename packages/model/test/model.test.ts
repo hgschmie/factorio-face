@@ -54,7 +54,7 @@ describe("entity kinds", () => {
     expect(TERMINALS.pole).toEqual(["io"]);
     expect(TERMINALS.speaker).toEqual(["in"]);
     expect(ENTITY_KINDS.filter((kind) => TERMINALS[kind].length === 2)).toEqual(["arithmetic", "decider", "selector"]);
-    expect(DEFAULT_ENTITY.pole).toEqual({ kind: "pole", prototype: "small-electric-pole" });
+    expect(DEFAULT_ENTITY.pole).toEqual({ kind: "pole" });
     expect(DEFAULT_ENTITY.speaker).toMatchObject({ volume: 100, playbackMode: "local", allowPolyphony: false, showAlert: false, showOnMap: true, alertMessage: "" });
     expect(wireKey({ color: "green", a: { entity: "e2", side: "io" }, b: { entity: "e1", side: "io" } })).toBe("green|e1.io|e2.io");
   });

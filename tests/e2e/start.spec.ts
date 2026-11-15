@@ -159,7 +159,7 @@ test("File > New Project gives an empty circuit that is not an unsaved change, a
   const entries = await readProjectEntries(projectPath);
   expect(JSON.parse(entries["face.json"]!)).toMatchObject({ name: "Untitled circuit", circuits: ["main.face"] });
   expect(entries["main.face"]).toBe(await sourceText(page));
-  expect(entries["main.face"]).toMatch(/^circuit "Untitled circuit" \{\n    constant \w+ at \(/);
+  expect(entries["main.face"]).toMatch(/^circuit "Untitled circuit" \{\n    constant-combinator \w+ at \(/);
 
   // Undo leads back to the empty circuit.
   await page.getByRole("button", { name: "Undo" }).click();

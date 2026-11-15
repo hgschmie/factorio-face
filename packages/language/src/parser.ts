@@ -1,16 +1,19 @@
 // Recursive-descent parser with error recovery. Never throws; a syntax error yields a diagnostic and the parser
 // resynchronizes at the next statement or member.
 
-import { COMPARATORS, DIRECTIONS, ENTITY_KINDS, WILDCARDS, WIRE_COLORS, type EntityKind, type Wildcard } from "@face/model";
+import { COMPARATORS, DIRECTIONS, WILDCARDS, WIRE_COLORS, type EntityKind, type Wildcard } from "@face/model";
 import type { CstAssign, CstBlock, CstCircuit, CstCondition, CstEntity, CstFacing, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstPoint, CstProperty, CstSection, CstSigRef, CstStatement, CstTerminal, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
+import { declaredPrototype } from "./names.ts";
 import { ARITHMETIC_OPERATORS, NO_NETWORK, SIGNAL_SLOTS } from "./schema.ts";
-import { isTrivia, lex, type Range, type Token } from "./tokens.ts";
+import { decodeString, encodeString, isTrivia, lex, type Range, type Token } from "./tokens.ts";
 
 /** What the grammar accepts at the end of a source prefix; the raw material for completion. */
 export type Expectation =
   | { readonly type: "keyword"; readonly values: readonly string[] }
   | { readonly type: "literal"; readonly kind: "integer" | "number" | "string" | "name" }
+  /** The start of a member: the word of an entity declaration, which is a name of the game data. `wire` comes as a keyword. */
+  | { readonly type: "entity" }
   | { readonly type: "statement"; readonly kind: EntityKind; readonly section: boolean }
   | { readonly type: "value"; readonly kind: EntityKind; readonly property: string; readonly section: boolean }
   | { readonly type: "signal"; readonly wildcards: readonly Wildcard[] }
@@ -22,17 +25,34 @@ export interface SyntaxResult {
   readonly diagnostics: readonly Diagnostic[];
 }
 
-const ENTITY_KIND_SET: ReadonlySet<string> = new Set(ENTITY_KINDS);
 const UNSUPPORTED: ReadonlySet<string> = new Set(["import", "component", "port"]);
 const WILDCARD_SET: ReadonlySet<string> = new Set(WILDCARDS);
 const COMPARATOR_SET: ReadonlySet<string> = new Set(COMPARATORS);
 const DIRECTION_SET: ReadonlySet<string> = new Set(DIRECTIONS);
 const ARITHMETIC_SET: ReadonlySet<string> = new Set(ARITHMETIC_OPERATORS);
 const VALUE_KEYWORDS: ReadonlySet<string> = new Set(["true", "false", "red", "green", ...WILDCARDS]);
-const MEMBER_KEYWORDS: readonly string[] = [...ENTITY_KINDS, "wire"];
 
-const isMemberStart = (t: Token) => t.kind === "keyword" && (ENTITY_KIND_SET.has(t.text) || t.text === "wire");
-const isOutsideBody = (t: Token) => isMemberStart(t) || (t.kind === "keyword" && (t.text === "circuit" || UNSUPPORTED.has(t.text)));
+/** What the word of an entity declaration is written as: a bare word of the language that is not reserved, or a string. */
+const isDeclarationWord = (t: Token) => t.kind === "ident" || t.kind === "word" || t.kind === "string";
+const isSymbol = (t: Token | undefined, text: string) => t !== undefined && t.text === text && (t.kind === "keyword" || t.kind === "punct" || t.kind === "op");
+/** `at`, `tile`, `facing` or `{`: what follows the name of an entity declaration. */
+const opensEntity = (t: Token | undefined) => isSymbol(t, "at") || isSymbol(t, "tile") || isSymbol(t, "facing") || isSymbol(t, "{");
+
+/**
+ * An entity declaration starts at `tokens[index]` (trivia left out): its word, a name and what follows a name. No keyword says
+ * so, and no statement of a body reads like it, so this is what ends a body whose closing brace is missing.
+ */
+function startsEntityAt(tokens: readonly Token[], index: number): boolean {
+  const [word, name] = [tokens[index], tokens[index + 1]];
+  return word !== undefined && isDeclarationWord(word) && (name?.kind === "ident" || name?.kind === "word") && opensEntity(tokens[index + 2]);
+}
+
+/** The words of the complete entity declarations among `tokens`, for an editor that styles them: no token says by itself that it is one. */
+export function declarationWords(tokens: readonly Token[]): Set<Token> {
+  const significant = tokens.filter((token) => !isTrivia(token) && token.kind !== "error");
+  return new Set(significant.filter((_, index) => startsEntityAt(significant, index)));
+}
+
 const isSignalToken = (t: Token) => t.kind === "signal" || (t.kind === "keyword" && WILDCARD_SET.has(t.text));
 const isWordLike = (t: Token) => t.kind === "ident" || t.kind === "word" || t.kind === "keyword";
 
@@ -59,8 +79,23 @@ class Parser {
     return this.tokens[this.pos]!;
   }
 
-  private peek(): Token {
-    return this.tokens[Math.min(this.pos + 1, this.tokens.length - 1)]!;
+  private peek(ahead = 1): Token {
+    return this.tokens[Math.min(this.pos + ahead, this.tokens.length - 1)]!;
+  }
+
+  /** An entity declaration starts `ahead` tokens from here (`startsEntityAt`). Between the members of a circuit a declaration is recognized by less (`members`). */
+  private startsEntity(ahead = 0): boolean {
+    return startsEntityAt(this.tokens, this.pos + ahead);
+  }
+
+  private startsMember(ahead = 0): boolean {
+    return this.is("wire", this.peek(ahead)) || this.startsEntity(ahead);
+  }
+
+  /** At a declaration or at a word that belongs in front of a circuit: nothing of an entity body. */
+  private outsideBody(): boolean {
+    const token = this.tok;
+    return this.startsMember() || (token.kind === "keyword" && (token.text === "circuit" || UNSUPPORTED.has(token.text)));
   }
 
   private get eof(): boolean {
@@ -68,7 +103,7 @@ class Parser {
   }
 
   private is(text: string, token: Token = this.tok): boolean {
-    return token.text === text && (token.kind === "keyword" || token.kind === "punct" || token.kind === "op");
+    return isSymbol(token, text);
   }
 
   private next(): Token {
@@ -113,7 +148,7 @@ class Parser {
     const from = this.tok.from;
     let depth = 0;
     while (!this.eof) {
-      if (isOutsideBody(this.tok)) break;
+      if (this.outsideBody()) break;
       if (this.is("{")) depth++;
       else if (this.is("}")) {
         if (depth === 0) break;
@@ -166,22 +201,31 @@ class Parser {
   private members(braced: boolean): CstMember[] {
     const members: CstMember[] = [];
     for (;;) {
-      this.keywords(...MEMBER_KEYWORDS);
+      this.note({ type: "entity" });
+      this.keywords("wire");
       const token = this.tok;
       if (token.kind === "eof") break;
       if (this.is("}")) {
         // A closing brace followed by more members is a stray one, not the end of the circuit.
-        if (braced && !isMemberStart(this.peek())) break;
+        if (braced && !this.startsMember(1)) break;
         this.error(token, "Unexpected '}'");
         this.next();
       } else if (this.is(";") || this.is(",")) this.next();
-      else if (token.kind === "keyword" && ENTITY_KIND_SET.has(token.text)) members.push(this.entity());
       else if (this.is("wire")) members.push(this.wire());
-      else if (token.kind === "keyword" && UNSUPPORTED.has(token.text)) this.unsupported();
+      else if (isDeclarationWord(token) && (this.errorPos !== this.pos || this.startsEntity())) {
+        // Between the members every word starts a declaration: one that is being typed has nothing behind it yet. A word the
+        // member before it stumbled over is the rest of that one, unless a whole declaration follows.
+        const entity = this.entity();
+        if (entity) members.push(entity);
+      } else if (token.kind === "keyword" && UNSUPPORTED.has(token.text)) this.unsupported();
       else if (this.is("circuit")) {
         this.error(token, braced ? "A file contains exactly one circuit" : "A circuit cannot follow entity or wire declarations");
         this.next();
         this.skip(() => false);
+      } else if (token.kind === "keyword" && this.peek().kind === "ident" && opensEntity(this.peek(2))) {
+        this.error(token, `'${token.text}' is a reserved word; an entity of this name is declared in quotes: ${encodeString(token.text)} ${this.peek().text}`);
+        this.next();
+        this.passDeclaration();
       } else this.skip(() => false, "Expected an entity or wire declaration");
     }
     return members;
@@ -192,15 +236,34 @@ class Parser {
     return this.is("circuit") ? (this.file(all, length).circuit?.members ?? []) : this.members(false);
   }
 
-  private entity(): CstEntity {
-    const keyword = this.next();
-    const kind = keyword.text as EntityKind;
+  /**
+   * An entity declaration. Its word names an entity of the game, and the kind of that one decides how the body is read. A name
+   * the game data in use does not have, or has without a kind, is one error on the word, and the declaration is no entity.
+   */
+  private entity(): CstEntity | undefined {
+    const word = this.next();
+    const prototype = word.kind === "string" ? decodeString(word.text) : word.text;
+    const declared = declaredPrototype(prototype);
+    if ("problem" in declared) {
+      this.error(word, declared.message, declared.problem === "unknown" ? "unknown-prototype" : "unsupported-prototype");
+      this.passDeclaration();
+      return undefined;
+    }
+    const header = this.header();
+    let body: CstBlock | undefined;
+    if (this.is("{")) body = this.block(declared.kind, false);
+    else this.expected("'{'");
+    return { type: "entity", from: word.from, to: this.lastEnd, word, prototype, kind: declared.kind, ...header, body };
+  }
+
+  /** What stands between the word of an entity declaration and its block: the name and the clauses. */
+  private header(): Pick<CstEntity, "name" | "at" | "tile" | "facing"> {
     this.note({ type: "literal", kind: "name" });
     let name: Token | undefined;
     const token = this.tok;
-    const following = this.peek();
-    if (token.kind === "ident") name = this.next();
-    else if ((token.kind === "keyword" || token.kind === "word") && (this.is("at", following) || this.is("tile", following) || this.is("facing", following) || this.is("{", following))) {
+    // A word that starts the next declaration is not the name of this one.
+    if (token.kind === "ident" && !this.startsEntity()) name = this.next();
+    else if ((token.kind === "keyword" || token.kind === "word") && opensEntity(this.peek())) {
       this.error(token, token.kind === "keyword" ? `'${token.text}' is a reserved keyword and cannot be used as an entity name` : `'${token.text}' is not a valid entity name`);
       name = this.next();
     } else this.expected("an entity name");
@@ -224,10 +287,29 @@ class Parser {
         else facing = clause;
       } else break;
     }
-    let body: CstBlock | undefined;
-    if (this.is("{")) body = this.block(kind, false);
-    else this.expected("'{'");
-    return { type: "entity", from: keyword.from, to: this.lastEnd, kind, keyword, name, at, tile, facing, body };
+    return { name, at, tile, facing };
+  }
+
+  /**
+   * Reads past the rest of a declaration that is no entity (its word is the one error it has): the name, the clauses and the
+   * block by its braces, whatever they say. It ends before the next declaration where the closing brace is missing.
+   */
+  private passDeclaration(): void {
+    const { length } = this.diagnostics;
+    const { errorPos } = this;
+    this.header();
+    if (this.is("{")) {
+      let depth = 0;
+      do {
+        if (this.is("{")) depth++;
+        else if (this.is("}")) depth--;
+        this.next();
+      } while (depth > 0 && !this.eof && !this.outsideBody());
+      // Inside the block nothing is expected: what an entity that is none takes is not known.
+      if (depth > 0 && this.eof) this.failedAtEnd = true;
+    } else if (this.eof) this.failedAtEnd = true;
+    this.diagnostics.length = length;
+    this.errorPos = errorPos;
   }
 
   private point(): CstPoint {
@@ -265,7 +347,7 @@ class Parser {
     const statements: CstStatement[] = [];
     for (;;) {
       this.note({ type: "statement", kind, section });
-      if (this.eof || this.is("}") || isOutsideBody(this.tok)) break;
+      if (this.eof || this.is("}") || this.outsideBody()) break;
       if (this.is(";") || this.is(",")) {
         this.next();
         continue;
@@ -324,7 +406,8 @@ class Parser {
       (token.kind === "op" && COMPARATOR_SET.has(token.text)) ||
       (token.kind === "keyword" && VALUE_KEYWORDS.has(token.text) && !this.is("=", this.peek())) ||
       ((token.kind === "ident" || token.kind === "word") && !this.is("=", this.peek()));
-    if (accepted) value = this.next();
+    // A word or a string that starts the next declaration is not the value.
+    if (accepted && !this.startsEntity()) value = this.next();
     else this.expected(`a value for '${name.text}'`);
     return { type: "property", from: name.from, to: this.lastEnd, name, value };
   }
@@ -443,7 +526,7 @@ class Parser {
     const keyword = this.next();
     if (nested) this.error(keyword, "Sections cannot be nested");
     this.note({ type: "literal", kind: "string" });
-    const name = this.tok.kind === "string" ? this.next() : undefined;
+    const name = this.tok.kind === "string" && !this.startsEntity() ? this.next() : undefined;
     let body: CstBlock | undefined;
     if (this.is("{")) body = this.block(kind, true);
     else this.expected("'{'");
@@ -469,8 +552,8 @@ class Parser {
     this.note({ type: "terminal" });
     const token = this.tok;
     let name: Token;
-    if (token.kind === "ident") name = this.next();
-    else if (token.kind === "keyword" && !isOutsideBody(token) && this.is(".", this.peek())) {
+    if (token.kind === "ident" && !this.startsEntity()) name = this.next();
+    else if (token.kind === "keyword" && !this.outsideBody() && this.is(".", this.peek())) {
       this.error(token, `'${token.text}' is a reserved keyword and cannot be an entity name`);
       name = this.next();
     } else {
@@ -484,7 +567,7 @@ class Parser {
       dot = this.next();
       this.note({ type: "side", entity: name.text });
       const candidate = this.tok;
-      if (this.is("in") || this.is("out") || candidate.kind === "ident" || candidate.kind === "word") side = this.next();
+      if (this.is("in") || this.is("out") || ((candidate.kind === "ident" || candidate.kind === "word") && !this.startsEntity())) side = this.next();
       else this.expected("'in' or 'out'");
     }
     return { from: name.from, to: this.lastEnd, name, dot, side };

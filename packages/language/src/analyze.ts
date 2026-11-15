@@ -1,20 +1,20 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, heldPrototype, isInt32, isPrototypeName, isTileCenter,
-  normalizedSettings, normalizeWire, PROTOTYPES, prototypeData, prototypesOf, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
+  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, isInt32, isTileCenter,
+  normalizedSettings, normalizeWire, prototypeData, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
   withArticle,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
-  type Entity, type EntityId, type EntityKind, type EntityOfKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeName, type RgbColor,
+  type Entity, type EntityConfig, type EntityId, type EntityKind, type EntityShape, type LampColorMode, type NetworkSelection, type Operand, type Placement, type Point, type PrototypeName, type RgbColor,
   type SelectorMode, type SelectorOperation, type SettingValue, type SignalId, type SpeakerInstrument, type SpeakerPlaybackMode, type TerminalSide, type Wildcard, type Wire, type WireColor,
 } from "@face/model";
 import type { CstAssign, CstBlock, CstCondition, CstEntity, CstFile, CstMember, CstNetworks, CstOperand, CstOutput, CstProperty, CstSection, CstSigRef, CstStatement, CstWhen, CstWire } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
-import { printName, printTerminal } from "./printer.ts";
+import { printTerminal } from "./printer.ts";
 import {
-  BLUEPRINT_DATA_PROPERTY, conditionRoles, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_FORMS,
+  BLUEPRINT_DATA_PROPERTY, conditionRoles, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS,
   type PropertySpec, type PropertyVariant, type SignalSlot, type StatementForm,
 } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
@@ -47,9 +47,9 @@ export interface EntitySource {
   readonly id: EntityId;
   readonly name: string;
   readonly kind: EntityKind;
-  /** The whole declaration, from the kind keyword to the closing brace. */
+  /** The whole declaration, from its word to the closing brace. */
   readonly range: Range;
-  /** Empty range directly after the kind keyword while the name is missing. */
+  /** Empty range directly after the declaration word while the name is missing. */
   readonly nameRange: Range;
   /** The `at (x, y)` clause with the ranges of both numbers; absent when the entity is auto-placed. */
   readonly at?: { readonly range: Range; readonly x: Range; readonly y: Range };
@@ -122,7 +122,10 @@ export interface ParseResult {
 /** "A lamp", "An electric pole". */
 const aKind = (kind: EntityKind): string => capitalize(withArticle(KIND_LABEL[kind]));
 /** The same for one entity; a generic entity is named by its prototype: "A fast inserter". */
-const anEntity = (entity: EntityShape): string => capitalize(withArticle(entity.kind === "entity" ? (genericPrototype(entity.prototype)?.label ?? "entity") : KIND_LABEL[entity.kind]));
+const anEntity = (entity: EntityShape): string => {
+  const { kind, label } = prototypeData(entity);
+  return capitalize(withArticle(kind === "entity" ? label : KIND_LABEL[kind]));
+};
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 const FORM_LABEL: Readonly<Record<StatementForm, string>> = { property: "properties", assign: "signal assignments", when: "a 'when' statement", output: "'output' statements", section: "'section' blocks" };
 const MAX_LOST = 256;
@@ -332,8 +335,8 @@ class Analyzer {
   /** Validates statement forms and properties of one block and groups the statements by form. */
   sort(kind: EntityKind, statements: readonly CstStatement[], inSection: boolean, variant?: PropertyVariant): Sorted {
     const sorted: Sorted = { values: new Map(), properties: new Map(), assigns: [], whens: [], conditions: new Map(), outputs: [], sections: [] };
-    // A generic entity whose prototype is missing or unknown has one error for that; its settings cannot be judged.
-    const generic = kind === "entity" && !inSection ? genericPrototype(variant) : undefined;
+    // A generic entity is judged by its prototype: the settings and the conditions of its type.
+    const generic = kind === "entity" && variant !== undefined ? genericPrototype(variant) : undefined;
     const forms: readonly StatementForm[] = inSection ? ["property", "assign"] : STATEMENT_FORMS[kind];
     for (const statement of statements) {
       if (!forms.includes(statement.type)) {
@@ -344,12 +347,8 @@ class Analyzer {
         case "property": {
           const name = statement.name.text;
           const lookup = lookupProperty(kind, name, variant, inSection);
-          if (kind === "entity" && lookup.status !== "ok") {
-            if (generic) this.report(statement.name, "unknown-property", `${capitalize(withArticle(generic.label))} (${generic.prototype}) has no setting '${name}'; it has ${generic.words.join(", ")}`);
-            else if (lookup.status === "unknown") this.report(statement.name, "unknown-property", `Unknown property '${name}' in an entity; no entity of the game has it`);
-          } else if (kind === "entity" && !generic && name !== "description" && name !== PROTOTYPE_PROPERTY && name !== BLUEPRINT_DATA_PROPERTY) {
-            // Without a prototype the value cannot be judged either: the word may be a switch for one type and a mode for another.
-            sorted.properties.set(name, statement);
+          if (generic && lookup.status !== "ok") {
+            this.report(statement.name, "unknown-property", `${capitalize(withArticle(generic.label))} (${generic.prototype}) has no setting '${name}'; it has ${generic.words.join(", ")}`);
           } else if (lookup.status === "unknown") {
             this.report(statement.name, "unknown-property", `Unknown property '${name}' in ${inSection ? "a section" : withArticle(KIND_LABEL[kind])}; expected one of ${propertyNames(kind, undefined, inSection).join(", ")}`);
           } else if (lookup.status === "inapplicable") {
@@ -369,10 +368,10 @@ class Analyzer {
           break;
         case "when": {
           const key = statementKey(statement, kind);
-          if (kind === "entity") {
+          if (generic) {
             const role = statement.role?.text;
             const form = role === undefined ? "'when'" : `'${role} when'`;
-            if (generic && !generic.conditions.includes(key)) {
+            if (!generic.conditions.includes(key)) {
               const has = generic.conditions.map((own) => `'${[conditionRole(own), "when"].filter(Boolean).join(" ")}'`);
               this.report(statement.role ?? statement.keyword, "invalid-statement", `${capitalize(withArticle(generic.label))} (${generic.prototype}) has no ${form} condition; it has ${has.length ? has.join(", ") : "no conditions"}`);
             } else if (sorted.conditions.has(key)) this.report(statement, "duplicate-statement", `Duplicate ${form} condition`);
@@ -403,65 +402,32 @@ class Analyzer {
 
   entity(node: CstEntity, id: EntityId, name: string, position: Point): Entity {
     const statements = node.body?.statements ?? [];
-    const operation = node.kind === "selector" ? this.selectorOperation(statements) : undefined;
-    const sorted = this.sort(node.kind, statements, false, node.kind === "entity" ? declaredPrototype(statements)?.name : operation);
+    const { kind, prototype } = node;
+    const operation = kind === "selector" ? this.selectorOperation(statements) : undefined;
+    const sorted = this.sort(kind, statements, false, kind === "entity" ? prototype : operation);
     const tile = this.point(node.tile, false);
     const direction = node.facing?.direction?.text as Direction | undefined;
     const placement: Placement | undefined = tile || direction ? compact({ tile, direction }) : undefined;
     const description = sorted.values.get("description")?.value as string | undefined;
-    const prototype = node.kind === "entity" ? undefined : this.prototype(node.kind, sorted);
     const base = compact({ id, name, position, placement, description, prototype });
-    const label = node.name ?? node.keyword;
-    switch (node.kind) {
+    const label = node.name ?? node.word;
+    switch (kind) {
       case "constant": return { ...base, ...this.constant(sorted, label) };
       case "arithmetic": return { ...base, ...this.arithmetic(sorted, label) };
       case "decider": return { ...base, ...this.decider(sorted, label) };
       case "selector": return { ...base, kind: "selector", mode: this.selector(sorted, operation ?? "select") };
       case "lamp": return { ...base, ...this.lamp(sorted) };
-      case "pole": return { ...base, kind: "pole", prototype: prototype ?? DEFAULT_ENTITY.pole.prototype };
+      case "pole": return { ...base, kind: "pole" };
       case "speaker": return { ...base, ...this.speaker(sorted, label) };
-      case "entity": return { ...base, ...this.generic(sorted, statements, label) };
+      case "entity": return { ...base, ...this.generic(prototype, sorted) };
     }
   }
 
-  /**
-   * Which prototype of its kind an entity is, as the entity holds it (`heldPrototype`: the first of the kind goes without
-   * saying). A name the game data does not have for the kind is an error, and the entity then is the first of its kind.
-   */
-  private prototype(kind: Exclude<EntityKind, "entity">, sorted: Sorted): PrototypeName | undefined {
-    const names = prototypesOf(kind);
-    const named = sorted.values.get(PROTOTYPE_PROPERTY)?.value as PrototypeName | undefined;
-    if (named === undefined || names.includes(named)) return heldPrototype(kind, named ?? names[0]!);
-    const own = isPrototypeName(named) ? PROTOTYPES[named]!.kind : undefined;
-    const message =
-      own === "entity" ? `'${named}' is not ${withArticle(KIND_LABEL[kind])}: declare it as 'entity <name> { ${PROTOTYPE_PROPERTY} = ${printName(named)} }'`
-      : own ? `'${named}' is ${withArticle(KIND_LABEL[own])}, not ${withArticle(KIND_LABEL[kind])}: declare it as '${own} <name> { ... }'`
-      : `Unknown prototype '${named}' for ${withArticle(KIND_LABEL[kind])}; the game data has ${names.join(", ")}`;
-    this.report(sorted.properties.get(PROTOTYPE_PROPERTY)!.value!, "invalid-value", message);
-    return heldPrototype(kind, names[0]!);
-  }
-
-  /**
-   * A generic entity: which prototype it is, the settings its prototype type has (in the form of the model: none at its default)
-   * and the blueprint data kept with it. Without a usable prototype it has one error and no settings.
-   */
-  private generic(sorted: Sorted, statements: readonly CstStatement[], label: Range): Omit<EntityOfKind<"entity">, "id" | "name" | "position"> {
-    const declared = declaredPrototype(statements);
+  /** A generic entity: the settings its prototype type has (in the form of the model: none at its default) and the blueprint data kept with it. */
+  private generic(prototype: PrototypeName, sorted: Sorted): EntityConfig<"entity"> {
     const data = sorted.values.get(BLUEPRINT_DATA_PROPERTY)?.value as string | undefined;
     if (data !== undefined && !isJsonObject(data)) this.report(sorted.properties.get(BLUEPRINT_DATA_PROPERTY)!.value!, "invalid-value", `'${BLUEPRINT_DATA_PROPERTY}' is the JSON text of an object, as a blueprint has it for the entity`);
     const blueprintData = data !== undefined && isJsonObject(data) ? data : undefined;
-    if (!declared) {
-      if (!sorted.properties.has(PROTOTYPE_PROPERTY)) this.report(label, "missing-prototype", `An entity says which entity of the game it is: add '${PROTOTYPE_PROPERTY} = <name>', for example '${PROTOTYPE_PROPERTY} = steel-chest'`);
-      return compact({ kind: "entity" as const, prototype: "", settings: {}, blueprintData });
-    }
-    const { name: prototype, token } = declared;
-    if (!genericPrototype(prototype)) {
-      const own = isPrototypeName(prototype) ? PROTOTYPES[prototype]!.kind : undefined;
-      const near = prototypesOf("entity").filter((candidate) => candidate.includes(prototype) || prototype.includes(candidate)).slice(0, 5);
-      const hint = near.length ? `; did you mean ${near.join(", ")}?` : "; the names are the game's, as a blueprint has them (steel-chest, fast-inserter, transport-belt)";
-      this.report(token, "invalid-value", own ? `'${prototype}' has a kind of its own: declare it as '${own} <name> { ... }'` : `Unknown prototype '${prototype}'${hint}`);
-      return compact({ kind: "entity" as const, prototype, settings: {}, blueprintData });
-    }
     const settings: Record<string, SettingValue> = {};
     for (const spec of settingSpecsOf(prototype)) {
       if (spec.type === "condition") {
@@ -474,7 +440,7 @@ class Analyzer {
       if (!value) continue;
       settings[spec.key] = spec.type === "networks" ? networkSelection(value.value as string) : (value.value as SettingValue);
     }
-    return compact({ kind: "entity" as const, prototype, settings: normalizedSettings(prototype, settings), blueprintData });
+    return compact({ kind: "entity" as const, settings: normalizedSettings(prototype, settings), blueprintData });
   }
 
   private selectorOperation(statements: readonly CstStatement[]): SelectorOperation {
@@ -516,7 +482,7 @@ class Analyzer {
     return signal && count !== undefined ? { signal, count } : undefined;
   }
 
-  private constant(sorted: Sorted, label: Range): Omit<Extract<Entity, { kind: "constant" }>, "id" | "name" | "position"> {
+  private constant(sorted: Sorted, label: Range): EntityConfig<"constant"> {
     const enabled = (sorted.values.get("enabled")?.value as boolean | undefined) ?? true;
     let sections: ConstantSection[];
     if (sorted.sections.length) {
@@ -537,7 +503,7 @@ class Analyzer {
     return { kind: "constant", enabled, sections };
   }
 
-  private arithmetic(sorted: Sorted, label: Range): Omit<Extract<Entity, { kind: "arithmetic" }>, "id" | "name" | "position"> {
+  private arithmetic(sorted: Sorted, label: Range): EntityConfig<"arithmetic"> {
     const expression = sorted.assigns[0];
     if (!expression) {
       this.report(label, "unconfigured", "This arithmetic combinator has no expression");
@@ -555,7 +521,7 @@ class Analyzer {
     return compact({ kind: "arithmetic" as const, first: first ?? fallback.first, operation: (expression.operator?.text as ArithmeticOperation | undefined) ?? fallback.operation, second: second ?? fallback.second, output });
   }
 
-  private decider(sorted: Sorted, label: Range): Omit<Extract<Entity, { kind: "decider" }>, "id" | "name" | "position"> {
+  private decider(sorted: Sorted, label: Range): EntityConfig<"decider"> {
     const when = sorted.whens[0];
     const conditions: DeciderCondition[] = [];
     let hasEach = false;
@@ -635,7 +601,7 @@ class Analyzer {
     return first && second && condition.comparator ? { first, comparator: condition.comparator.text as Comparator, second } : undefined;
   }
 
-  private lamp(sorted: Sorted): Omit<Extract<Entity, { kind: "lamp" }>, "id" | "name" | "position"> {
+  private lamp(sorted: Sorted): EntityConfig<"lamp"> {
     const when = sorted.whens[0];
     const value = <T>(name: string) => sorted.values.get(name)?.value as T | undefined;
     const networks = value<WireColor | typeof NO_NETWORK>("networks");
@@ -655,7 +621,7 @@ class Analyzer {
     });
   }
 
-  private speaker(sorted: Sorted, label: Range): Omit<EntityOfKind<"speaker">, "id" | "name" | "position"> {
+  private speaker(sorted: Sorted, label: Range): EntityConfig<"speaker"> {
     const when = sorted.whens[0];
     const value = <T>(name: string) => sorted.values.get(name)?.value as T | undefined;
     const node = (name: string): Range | undefined => sorted.properties.get(name)?.value;
@@ -697,23 +663,11 @@ class Analyzer {
   }
 }
 
-/** The prototype a generic entity declaration names: the value of its first `prototype` property, bare or quoted. */
-function declaredPrototype(statements: readonly CstStatement[]): { name: string; token: Token } | undefined {
-  for (const statement of statements) {
-    if (statement.type !== "property" || statement.name.text !== PROTOTYPE_PROPERTY || !statement.value) continue;
-    const token = statement.value;
-    const name = token.kind === "ident" || token.kind === "word" ? token.text : token.kind === "string" ? decodeString(token.text) : "";
-    if (name) return { name, token };
-  }
-  return undefined;
-}
-
-/** What a prototype of the kind `entity` takes, for the messages: its label, its property words and the keys of its conditions. Undefined for any other name. */
-function genericPrototype(prototype: string | undefined): { prototype: string; label: string; words: string[]; conditions: string[] } | undefined {
-  if (prototype === undefined || !isPrototypeName(prototype) || PROTOTYPES[prototype]!.kind !== "entity") return undefined;
+/** What a prototype of the kind `entity` takes, for the messages: its label, its property words and the keys of its conditions. */
+function genericPrototype(prototype: PrototypeName): { prototype: string; label: string; words: string[]; conditions: string[] } {
   const conditions = settingSpecsOf(prototype).flatMap((spec) => (spec.type === "condition" ? [spec.key] : []));
   const statements = ["when", ...conditionRoles(prototype).map((role) => `${role} when`)].slice(conditions.includes("when") ? 0 : 1);
-  return { prototype, label: PROTOTYPES[prototype]!.label, words: [...propertyNames("entity", prototype), ...statements], conditions };
+  return { prototype, label: prototypeData({ prototype }).label, words: [...propertyNames("entity", prototype), ...statements], conditions };
 }
 
 function isJsonObject(text: string): boolean {
@@ -873,13 +827,13 @@ function range(node: Range): Range {
 
 function entitySource(node: CstEntity, id: EntityId, name: string): EntitySource {
   const at = node.at?.x && node.at.y ? { range: range(node.at), x: range(node.at.x), y: range(node.at.y) } : undefined;
-  const anchor = node.name ?? node.keyword;
+  const anchor = node.name ?? node.word;
   return compact({
     id,
     name,
     kind: node.kind,
     range: range(node),
-    nameRange: node.name ? range(node.name) : { from: node.keyword.to, to: node.keyword.to },
+    nameRange: node.name ? range(node.name) : { from: node.word.to, to: node.word.to },
     at,
     atInsert: anchor.to,
     bodyRange: node.body && range(node.body),

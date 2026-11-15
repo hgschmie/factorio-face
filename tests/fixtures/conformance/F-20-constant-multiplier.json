@@ -8,8 +8,8 @@
   "circuit": {
     "name": "F-20-constant-multiplier",
     "entities": [
-      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 0.5, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 3}]}, {"active": true, "multiplier": 1.5, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}, {"active": true, "multiplier": -1, "filters": [{"signal": {"kind": "virtual", "name": "signal-B"}, "count": 3}]}]},
-      {"id": "exact", "name": "exact", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 0.29, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 100}]}]}
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 0.5, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}, {"signal": {"kind": "virtual", "name": "signal-B"}, "count": 3}]}, {"active": true, "multiplier": 1.5, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}, {"active": true, "multiplier": -1, "filters": [{"signal": {"kind": "virtual", "name": "signal-B"}, "count": 3}]}]},
+      {"id": "exact", "name": "exact", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 0.29, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 100}]}]}
     ],
     "wires": [
     ]

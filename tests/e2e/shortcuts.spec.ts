@@ -6,6 +6,8 @@ import { FIVE_KINDS, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 const MAC = process.platform === "darwin";
 const KINDS = ["constant", "arithmetic", "decider", "selector", "lamp"] as const;
+/** What the digit keys place: the prototype of the game for each of the kinds. */
+const PROTOTYPES = ["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp"] as const;
 const SELECT = { type: "select" };
 const RED_WIRE = { type: "wire", color: "red" };
 const BROKEN_SOURCE = FIVE_KINDS_SOURCE.replace("when virtual:signal-A < 10", "when virtual:signal-A <");
@@ -54,7 +56,7 @@ test("Q, Alt+R, Alt+G and the digits pick the tools, wherever the focus is outsi
     await page.keyboard.press(String(index + 1));
     await expect(block(page, kind)).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator('.palette-item[aria-pressed="true"]')).toHaveCount(1);
-    await expect.poll(() => activeTool(page)).toEqual({ type: "place", kind });
+    await expect.poll(() => activeTool(page)).toEqual({ type: "place", prototype: PROTOTYPES[index] });
   }
   await page.keyboard.press("6");
   await page.keyboard.press("0");
@@ -150,7 +152,7 @@ test("Escape returns to the select tool from outside the canvas, after it has dr
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
   await expect(block(page, "selector")).toHaveAttribute("aria-pressed", "true");
-  await expectUntouched(page, { type: "place", kind: "selector" });
+  await expectUntouched(page, { type: "place", prototype: "selector-combinator" });
 });
 
 test("the keys are text in the name field, the description, the signal search and the source editor", async ({ page }) => {
@@ -423,7 +425,7 @@ test("the overview opens with ? and from the Help menu, holds the focus and give
   await page.keyboard.press("Escape");
   await expect(overview(page)).toHaveCount(0);
   await expect(canvas(page)).toBeFocused();
-  await expect.poll(() => activeTool(page)).toEqual({ type: "place", kind: "lamp" });
+  await expect.poll(() => activeTool(page)).toEqual({ type: "place", prototype: "small-lamp" });
   await page.keyboard.press("Escape");
   await expect(toolButton(page, "Select and move")).toHaveAttribute("aria-pressed", "true");
   await expectUntouched(page);

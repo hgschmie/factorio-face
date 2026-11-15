@@ -186,14 +186,14 @@ export function fakeDesktop(): FakeDesktop {
 /** A hand-written document: comments in every position, irregular spacing, mixed indentation, a reversed duplicate wire. */
 export const IRREGULAR = `// Header comment
 circuit   "Irregular"   {
-  /* about the source */ constant   src   at ( 40 ,80 )   { virtual:signal-A = 1   // one per tick
+  /* about the source */ constant-combinator   src   at ( 40 ,80 )   { virtual:signal-A = 1   // one per tick
   }
 
-\tdecider gate at (300, 80) {
+\tdecider-combinator gate at (300, 80) {
 \t\twhen virtual:signal-A < 10   // limit
 \t\toutput virtual:signal-A = input
 \t}
-  lamp light at (560,   80) { when virtual:signal-A > 3 }
+  small-lamp light at (560,   80) { when virtual:signal-A > 3 }
 
   wire red src.out <-> gate.in   // first
   wire  green  gate.out<->gate.in

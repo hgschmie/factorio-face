@@ -7,15 +7,15 @@ import { committedTiles, dragOnBoard, inspector, openBoardProject } from "./boar
 
 /** Ten empty tiles between `source` and `light`: 10 tiles apart. `loose` has no tile; its shown place is derived and not measured. */
 const FAR = `circuit "Far" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    lamp light at (560, 80) tile (11.5, 0.5) {
+    small-lamp light at (560, 80) tile (11.5, 0.5) {
         when virtual:signal-A > 0
     }
 
-    lamp loose at (1100, 280) {
+    small-lamp loose at (1100, 280) {
         when virtual:signal-A > 0
     }
 

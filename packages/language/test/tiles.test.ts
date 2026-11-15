@@ -37,26 +37,26 @@ describe("setTiles", () => {
   });
 
   it("puts a new clause behind at, wherever that stands, or behind the name, always in front of a facing that follows", () => {
-    const parse = valid(circuit("constant a { }\nconstant b at (0, 0) facing north { }\nconstant c facing west at (20, 40) { }\nconstant d facing south {\n}"));
+    const parse = valid(circuit("constant-combinator a { }\nconstant-combinator b at (0, 0) facing north { }\nconstant-combinator c facing west at (20, 40) { }\nconstant-combinator d facing south {\n}"));
     const tile = { x: 0.5, y: 0.5 };
     expect(tiled(parse, { a: tile, b: { x: 1.5, y: 0.5 }, c: { x: 2.5, y: 0.5 }, d: { x: 3.5, y: 0.5 } })).toBe(
-      circuit("constant a tile (0.5, 0.5) { }\nconstant b at (0, 0) tile (1.5, 0.5) facing north { }\nconstant c facing west at (20, 40) tile (2.5, 0.5) { }\nconstant d tile (3.5, 0.5) facing south {\n}"),
+      circuit("constant-combinator a tile (0.5, 0.5) { }\nconstant-combinator b at (0, 0) tile (1.5, 0.5) facing north { }\nconstant-combinator c facing west at (20, 40) tile (2.5, 0.5) { }\nconstant-combinator d tile (3.5, 0.5) facing south {\n}"),
     );
     // An entity without `at` keeps the position the editor chose for it.
     expect(valid(tiled(parse, { a: tile })).circuit.entities[0]!.position).toEqual(parse.circuit.entities[0]!.position);
   });
 
   it("patches only the numbers that change, whatever surrounds them", () => {
-    const parse = valid(circuit("lamp a tile ( 0.5 ,/* y */ -1.5 ) at (0, 0) { } // kept\nlamp b at (0, 0) tile (2.5, 2.5) { }"));
+    const parse = valid(circuit("small-lamp a tile ( 0.5 ,/* y */ -1.5 ) at (0, 0) { } // kept\nsmall-lamp b at (0, 0) tile (2.5, 2.5) { }"));
     const changes = setTiles(parse, [{ id: idOf(parse, "a"), tile: { x: 0.5, y: 7.5 } }, { id: idOf(parse, "b"), tile: { x: -3.5, y: 2.5 } }]);
     expect(changes.map((change) => [parse.source.slice(change.from, change.to), change.insert])).toEqual([["-1.5", "7.5"], ["2.5", "-3.5"]]);
-    expect(applyChanges(parse.source, changes)).toBe(circuit("lamp a tile ( 0.5 ,/* y */ 7.5 ) at (0, 0) { } // kept\nlamp b at (0, 0) tile (-3.5, 2.5) { }"));
+    expect(applyChanges(parse.source, changes)).toBe(circuit("small-lamp a tile ( 0.5 ,/* y */ 7.5 ) at (0, 0) { } // kept\nsmall-lamp b at (0, 0) tile (-3.5, 2.5) { }"));
     expect(setTiles(parse, [{ id: idOf(parse, "a"), tile: { x: 0.5, y: -1.5 } }])).toEqual([]);
   });
 
   it("removes the clause with the blanks in front of it and leaves an entity without one alone", () => {
-    const parse = valid(circuit("lamp a at (0, 0)   tile (0.5, 0.5) { } // kept\ndecider b tile (1, 1.5) facing east at (0, 200) { }\nlamp c tile (5.5, 5.5) { }\nlamp d { }"));
-    expect(tiled(parse, { a: undefined, b: undefined, c: undefined, d: undefined })).toBe(circuit("lamp a at (0, 0) { } // kept\ndecider b facing east at (0, 200) { }\nlamp c { }\nlamp d { }"));
+    const parse = valid(circuit("small-lamp a at (0, 0)   tile (0.5, 0.5) { } // kept\ndecider-combinator b tile (1, 1.5) facing east at (0, 200) { }\nsmall-lamp c tile (5.5, 5.5) { }\nsmall-lamp d { }"));
+    expect(tiled(parse, { a: undefined, b: undefined, c: undefined, d: undefined })).toBe(circuit("small-lamp a at (0, 0) { } // kept\ndecider-combinator b facing east at (0, 200) { }\nsmall-lamp c { }\nsmall-lamp d { }"));
     expect(setTiles(parse, [{ id: idOf(parse, "d"), tile: undefined }])).toEqual([]);
   });
 
@@ -76,7 +76,7 @@ describe("setTiles", () => {
   });
 
   it("accepts only a center on the grid for the kind and the direction of the entity", () => {
-    const parse = valid(circuit("lamp l facing north { }\nconstant c { }\ndecider e { }\ndecider n facing north { }\nselector w facing west { }"));
+    const parse = valid(circuit("small-lamp l facing north { }\nconstant-combinator c { }\ndecider-combinator e { }\ndecider-combinator n facing north { }\nselector-combinator w facing west { }"));
     const set = (name: string, x: number, y: number) => failure(() => setTiles(parse, [{ id: idOf(parse, name), tile: { x, y } }]));
     // A lamp is 1x1 and its `facing` means nothing.
     expect([set("l", 0.5, 0.5), set("c", -0.5, 2.5), set("e", 1, 0.5), set("n", 0.5, 1), set("w", -2, 0.5)]).toEqual(Array(5).fill("no failure"));
@@ -87,7 +87,7 @@ describe("setTiles", () => {
   });
 
   it("does not check for overlaps: the analysis warns about them", () => {
-    const parse = valid(circuit("lamp a tile (0.5, 0.5) { }\nlamp b { }"));
+    const parse = valid(circuit("small-lamp a tile (0.5, 0.5) { }\nsmall-lamp b { }"));
     const next = tiled(parse, { b: { x: 0.5, y: 0.5 } });
     expect(analyze(next).diagnostics.map((d) => d.code)).toEqual(["tile-overlap", "tile-overlap"]);
   });
@@ -105,39 +105,39 @@ describe("setTiles", () => {
 
 describe("addEntity with a tile", () => {
   it("writes the clause behind the position, and refuses a tile that is off the grid for the new entity", () => {
-    const added = executeCommand(parsed, { type: "addEntity", kind: "decider", position: { x: 20, y: 40 }, tile: { x: 3, y: -0.5 } });
+    const added = executeCommand(parsed, { type: "addEntity", prototype: "decider-combinator", position: { x: 20, y: 40 }, tile: { x: 3, y: -0.5 } });
     if (!added.ok) throw new Error(added.message);
     const next = applyChanges(comments, added.changes);
-    expect(next).toContain(`decider ${added.name} at (20, 40) tile (3, -0.5) {`);
+    expect(next).toContain(`decider-combinator ${added.name} at (20, 40) tile (3, -0.5) {`);
     expect(tileOf(next, added.name!)).toEqual({ x: 3, y: -0.5 });
     // No placement warning; the new decider only has no condition yet.
     expect(analyze(next).diagnostics.map((d) => d.code)).toEqual(["unconfigured"]);
     // A new entity faces east: a 2x1 one needs a whole x, a 1x1 one two halves.
-    expect(executeCommand(parsed, { type: "addEntity", kind: "decider", position: { x: 0, y: 0 }, tile: { x: 0.5, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
-    expect(executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 }, tile: { x: 1, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
-    expect(executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 }, tile: { x: 1.5, y: 0.5 } })).toMatchObject({ ok: true });
+    expect(executeCommand(parsed, { type: "addEntity", prototype: "decider-combinator", position: { x: 0, y: 0 }, tile: { x: 0.5, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
+    expect(executeCommand(parsed, { type: "addEntity", prototype: "small-lamp", position: { x: 0, y: 0 }, tile: { x: 1, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
+    expect(executeCommand(parsed, { type: "addEntity", prototype: "small-lamp", position: { x: 0, y: 0 }, tile: { x: 1.5, y: 0.5 } })).toMatchObject({ ok: true });
     // Without a tile nothing changes: no clause.
-    const plain = executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 } });
+    const plain = executeCommand(parsed, { type: "addEntity", prototype: "small-lamp", position: { x: 0, y: 0 } });
     expect(plain.ok && applyChanges(comments, plain.changes)).not.toContain("tile");
   });
 
   it("writes a facing other than east, and takes the tile on the grid of that direction", () => {
-    type Added = { kind: "decider" | "constant" | "lamp"; tile?: { x: number; y: number }; facing?: "east" | "south" | "west" | "north" };
+    type Added = { prototype: "decider-combinator" | "constant-combinator" | "small-lamp"; tile?: { x: number; y: number }; facing?: "east" | "south" | "west" | "north" };
     const add = (command: Added) => executeCommand(parsed, { type: "addEntity", position: { x: 20, y: 40 }, ...command });
     const declared = (result: ReturnType<typeof add>): string => {
       if (!result.ok) throw new Error(result.message);
       return new RegExp(`${result.name} (.*) \\{`).exec(applyChanges(comments, result.changes))![1]!;
     };
     // Upright, a 2x1 entity has its center on a whole y.
-    expect(declared(add({ kind: "decider", tile: { x: 2.5, y: 1 }, facing: "south" }))).toBe("at (20, 40) tile (2.5, 1) facing south");
+    expect(declared(add({ prototype: "decider-combinator", tile: { x: 2.5, y: 1 }, facing: "south" }))).toBe("at (20, 40) tile (2.5, 1) facing south");
     const offGrid = { ok: false, code: "invalid-position", message: "tile (3, 0.5) is not on the tile grid for a new decider combinator facing north" };
-    expect(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "north" })).toMatchObject(offGrid);
-    expect(declared(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "west" }))).toBe("at (20, 40) tile (3, 0.5) facing west");
-    expect(declared(add({ kind: "constant", facing: "north" }))).toBe("at (20, 40) facing north");
+    expect(add({ prototype: "decider-combinator", tile: { x: 3, y: 0.5 }, facing: "north" })).toMatchObject(offGrid);
+    expect(declared(add({ prototype: "decider-combinator", tile: { x: 3, y: 0.5 }, facing: "west" }))).toBe("at (20, 40) tile (3, 0.5) facing west");
+    expect(declared(add({ prototype: "constant-combinator", facing: "north" }))).toBe("at (20, 40) facing north");
     // East is what a declaration without the clause means, and a lamp does not rotate.
-    expect(declared(add({ kind: "decider", tile: { x: 3, y: 0.5 }, facing: "east" }))).toBe("at (20, 40) tile (3, 0.5)");
-    expect(declared(add({ kind: "lamp", tile: { x: 1.5, y: 0.5 }, facing: "south" }))).toBe("at (20, 40) tile (1.5, 0.5)");
-    const turned = add({ kind: "decider", tile: { x: 2.5, y: 1 }, facing: "south" });
+    expect(declared(add({ prototype: "decider-combinator", tile: { x: 3, y: 0.5 }, facing: "east" }))).toBe("at (20, 40) tile (3, 0.5)");
+    expect(declared(add({ prototype: "small-lamp", tile: { x: 1.5, y: 0.5 }, facing: "south" }))).toBe("at (20, 40) tile (1.5, 0.5)");
+    const turned = add({ prototype: "decider-combinator", tile: { x: 2.5, y: 1 }, facing: "south" });
     expect(turned.ok && analyze(applyChanges(comments, turned.changes)).diagnostics.map((d) => d.code)).toEqual(["unconfigured"]);
   });
 });
@@ -150,10 +150,10 @@ describe("updateEntity and the tile", () => {
   };
 
   it("sets, changes and removes the tile as a patch of the clause", () => {
-    const source = circuit("lamp l at (0, 0) /* where */ tile ( 0.5, 0.5 ) { } // kept\nconstant c { item:a = 1 }");
+    const source = circuit("small-lamp l at (0, 0) /* where */ tile ( 0.5, 0.5 ) { } // kept\nconstant-combinator c { item:a = 1 }");
     expect(update(source, "l", (e) => ({ ...e, placement: { tile: { x: 0.5, y: -2.5 } } }))).toBe(source.replace("( 0.5, 0.5 )", "( 0.5, -2.5 )"));
     expect(update(source, "l", (e) => ({ ...e, placement: undefined }))).toBe(source.replace(" tile ( 0.5, 0.5 )", ""));
-    expect(update(source, "c", (e) => ({ ...e, placement: { tile: { x: 1.5, y: 0.5 } } }))).toBe(source.replace("constant c", "constant c tile (1.5, 0.5)"));
+    expect(update(source, "c", (e) => ({ ...e, placement: { tile: { x: 1.5, y: 0.5 } } }))).toBe(source.replace("constant-combinator c", "constant-combinator c tile (1.5, 0.5)"));
     expect(update(source, "l", (e) => e)).toBe(source);
   });
 });

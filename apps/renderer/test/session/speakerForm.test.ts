@@ -17,7 +17,7 @@ const A = { kind: "virtual", name: "signal-A" } as const;
 const B = { kind: "virtual", name: "signal-B" } as const;
 
 const SPEAKER = `circuit "Speaker" {
-    speaker alarm at (40, 80) {
+    programmable-speaker alarm at (40, 80) {
         when virtual:signal-A > 0
     }
 }
@@ -118,15 +118,15 @@ describe("speaker settings in the source", () => {
 
   it("writes a new speaker and a setting at its default as nothing at all", () => {
     const { session } = createSession('circuit "Empty" {\n}\n');
-    session.commands.placeEntity("speaker", { x: 40, y: 80 });
-    expect(session.document.text).toBe('circuit "Empty" {\n    speaker speaker1 at (40, 80) {\n    }\n}\n');
+    session.commands.placeEntity("programmable-speaker", { x: 40, y: 80 });
+    expect(session.document.text).toBe('circuit "Empty" {\n    programmable-speaker speaker1 at (40, 80) {\n    }\n}\n');
     const placed = entityNamed(session, "speaker1") as Speaker;
     // The form sets what it shows: the values of a new speaker. None of them is a statement.
     const before = session.document.text;
     session.commands.updateEntity({ ...placed, volume: 100, playbackMode: "local", allowPolyphony: false, stopPlayingSounds: false, showAlert: false, showOnMap: true, alertMessage: "" });
     expect(session.document.text).toBe(before);
     session.commands.updateEntity({ ...(entityNamed(session, "speaker1") as Speaker), pitchSignal: A });
-    expect(session.document.text).toBe('circuit "Empty" {\n    speaker speaker1 at (40, 80) {\n        pitch = virtual:signal-A\n    }\n}\n');
+    expect(session.document.text).toBe('circuit "Empty" {\n    programmable-speaker speaker1 at (40, 80) {\n        pitch = virtual:signal-A\n    }\n}\n');
   });
 
   it("changes between a condition and a pitch signal, which take each other's place", () => {
@@ -172,13 +172,13 @@ describe("speaker settings in the source", () => {
 
 describe("the prototype of a pole", () => {
   const POLES = `circuit "Poles" {
-    pole p at (40, 80) tile (4.5, 0.5) {
+    small-electric-pole p at (40, 80) tile (4.5, 0.5) {
     }
 
-    lamp light at (300, 80) tile (5.5, 0.5) {
+    small-lamp light at (300, 80) tile (5.5, 0.5) {
     }
 
-    pole free at (560, 80) {
+    small-electric-pole free at (560, 80) {
     }
 }
 `;
@@ -187,10 +187,10 @@ describe("the prototype of a pole", () => {
   it("is written unless it is the small pole, and a pole without a tile just changes", () => {
     const { session } = createSession(POLES);
     session.commands.updateEntity({ ...pole(session, "free"), prototype: "substation" });
-    expect(session.document.text).toContain("    pole free at (560, 80) {\n        prototype = substation\n    }\n");
+    expect(session.document.text).toContain("    substation free at (560, 80) {\n    }\n");
     // Back to the small pole: the statement that is there says so (the language patches a value, it does not remove a statement for it).
     session.commands.updateEntity({ ...pole(session, "free"), prototype: "small-electric-pole" });
-    expect(session.document.text).toContain("    pole free at (560, 80) {\n        prototype = small-electric-pole\n    }\n");
+    expect(session.document.text).toContain("    small-electric-pole free at (560, 80) {\n    }\n");
     session.commands.undo();
     session.commands.undo();
     expect(session.document.text).toBe(POLES);
@@ -200,16 +200,16 @@ describe("the prototype of a pole", () => {
     const { session } = createSession(POLES.replace("tile (5.5, 0.5)", "tile (7.5, 0.5)"));
     session.commands.updateEntity({ ...pole(session, "p"), prototype: "big-electric-pole" });
     // On the tile (4, 0) a 2x2 pole covers (4..5, 0..1); its center is (5, 1).
-    expect(session.document.text).toContain("    pole p at (40, 80) tile (5, 1) {\n        prototype = big-electric-pole\n    }\n");
+    expect(session.document.text).toContain("    big-electric-pole p at (40, 80) tile (5, 1) {\n    }\n");
     expect(session.state.diagnostics).toEqual([]);
     session.commands.updateEntity({ ...pole(session, "p"), prototype: "substation" });
-    expect(session.document.text).toContain("    pole p at (40, 80) tile (5, 1) {\n        prototype = substation\n    }\n");
+    expect(session.document.text).toContain("    substation p at (40, 80) tile (5, 1) {\n    }\n");
     session.commands.updateEntity({ ...pole(session, "p"), prototype: "medium-electric-pole" });
-    expect(session.document.text).toContain("    pole p at (40, 80) tile (4.5, 0.5) {\n        prototype = medium-electric-pole\n    }\n");
+    expect(session.document.text).toContain("    medium-electric-pole p at (40, 80) tile (4.5, 0.5) {\n    }\n");
     session.commands.undo();
     session.commands.undo();
     session.commands.undo();
-    expect(session.document.text).toContain("    pole p at (40, 80) tile (4.5, 0.5) {\n    }\n");
+    expect(session.document.text).toContain("    small-electric-pole p at (40, 80) tile (4.5, 0.5) {\n    }\n");
     expect(session.state.canUndo).toBe(false);
   });
 
@@ -224,7 +224,7 @@ describe("the prototype of a pole", () => {
     // A prototype of the same size is no problem, and the message about the refused change goes with the edit.
     session.commands.updateEntity({ ...pole(session, "p"), prototype: "medium-electric-pole" });
     expect(session.state.error).toBeNull();
-    expect(session.document.text).toContain("tile (4.5, 0.5) {\n        prototype = medium-electric-pole");
+    expect(session.document.text).toBe(POLES.replace("small-electric-pole p", "medium-electric-pole p"));
     // The message is about the selected entity: it goes when something else is selected.
     session.commands.updateEntity({ ...pole(session, "p"), prototype: "substation" });
     expect(session.state.error).toBe("Not changed: p would stand on a tile of light.");
@@ -234,7 +234,7 @@ describe("the prototype of a pole", () => {
     session.commands.setDisplayMode("edit");
     session.commands.updateEntity({ ...pole(session, "p"), prototype: "big-electric-pole" });
     expect(session.state.error).toBeNull();
-    expect(session.document.text).toContain("tile (5, 1) {\n        prototype = big-electric-pole");
+    expect(session.document.text).toContain("big-electric-pole p at (40, 80) tile (5, 1) {\n    }");
     expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["tile-overlap", "tile-overlap"]);
   });
 });
@@ -244,36 +244,43 @@ describe("placing with a prototype", () => {
 
   it("places the prototype of the tool on the edit canvas and names the entity after its kind", () => {
     const { session } = createSession(EMPTY);
-    session.commands.setTool({ type: "place", kind: "pole", prototype: "big-electric-pole" });
-    expect(session.state.tool).toEqual({ type: "place", kind: "pole", prototype: "big-electric-pole" });
-    session.commands.placeEntity("pole", { x: 40, y: 80 }, "south", "big-electric-pole");
-    session.commands.placeEntity("pole", { x: 300, y: 80 });
-    session.commands.placeEntity("speaker", { x: 560, y: 80 }, undefined, "programmable-speaker");
-    session.commands.placeEntity("lamp", { x: 820, y: 80 }, undefined, "small-lamp");
+    session.commands.setTool({ type: "place", prototype: "big-electric-pole" });
+    expect(session.state.tool).toEqual({ type: "place", prototype: "big-electric-pole" });
+    session.commands.placeEntity("big-electric-pole", { x: 40, y: 80 }, "south");
+    session.commands.placeEntity("small-electric-pole", { x: 300, y: 80 });
+    session.commands.placeEntity("programmable-speaker", { x: 560, y: 80 });
+    session.commands.placeEntity("small-lamp", { x: 820, y: 80 });
     expect(session.document.text).toBe(
-      'circuit "Empty" {\n    pole pole1 at (40, 80) {\n        prototype = big-electric-pole\n    }\n\n    pole pole2 at (300, 80) {\n    }\n\n    speaker speaker1 at (560, 80) {\n    }\n\n    lamp lamp1 at (820, 80) {\n    }\n}\n',
+      'circuit "Empty" {\n    big-electric-pole pole1 at (40, 80) {\n    }\n\n    small-electric-pole pole2 at (300, 80) {\n    }\n\n    programmable-speaker speaker1 at (560, 80) {\n    }\n\n    small-lamp lamp1 at (820, 80) {\n    }\n}\n',
     );
     expect(session.state.selection).toEqual([idOf(session, "lamp1")]);
     expect(session.state.tool).toEqual({ type: "select" });
-    // A prototype of another kind is refused and reported.
-    session.commands.placeEntity("lamp", { x: 0, y: 0 }, undefined, "substation");
-    expect(session.state.error).toMatch(/'substation' is not a lamp/);
+    // A name the game data does not have is refused and reported, on the canvas and on a tile, and is no tool.
+    const before = session.document.text;
+    for (const place of [() => session.commands.placeEntity("lamp", { x: 0, y: 0 }), () => session.commands.placeEntityOnTile("lamp", { x: 30.5, y: 30.5 })]) {
+      place();
+      expect(session.state.error).toBe("'lamp' is not an entity of the game data in use");
+      session.commands.dismissError();
+    }
+    session.commands.setTool({ type: "place", prototype: "lamp" });
+    expect(session.state).toMatchObject({ tool: { type: "select" }, error: null });
+    expect(session.document.text).toBe(before);
   });
 
   it("places a 2x2 pole on free tiles only, with the center of its four tiles", () => {
     const { session } = createSession(EMPTY);
     session.commands.setDisplayMode("blueprint");
-    session.commands.placeEntityOnTile("pole", { x: 3, y: 1 }, undefined, "substation");
-    expect(session.document.text).toContain("pole pole1 at (180, 0) tile (3, 1) {\n        prototype = substation\n    }");
+    session.commands.placeEntityOnTile("substation", { x: 3, y: 1 });
+    expect(session.document.text).toContain("substation pole1 at (180, 0) tile (3, 1) {\n    }");
     // Any footprint that touches one of its four tiles (2..3, 0..1) is refused, without a message, like every taken tile.
     const before = session.document.text;
-    session.commands.placeEntityOnTile("pole", { x: 4, y: 2 }, undefined, "big-electric-pole");
-    session.commands.placeEntityOnTile("lamp", { x: 3.5, y: 1.5 });
-    session.commands.placeEntityOnTile("pole", { x: 2.5, y: 0.5 });
+    session.commands.placeEntityOnTile("big-electric-pole", { x: 4, y: 2 });
+    session.commands.placeEntityOnTile("small-lamp", { x: 3.5, y: 1.5 });
+    session.commands.placeEntityOnTile("small-electric-pole", { x: 2.5, y: 0.5 });
     expect(session.document.text).toBe(before);
     expect(session.state.error).toBeNull();
-    session.commands.placeEntityOnTile("pole", { x: 5, y: 1 }, undefined, "big-electric-pole");
-    session.commands.placeEntityOnTile("pole", { x: 1.5, y: 0.5 }, undefined, "medium-electric-pole");
+    session.commands.placeEntityOnTile("big-electric-pole", { x: 5, y: 1 });
+    session.commands.placeEntityOnTile("medium-electric-pole", { x: 1.5, y: 0.5 });
     expect(session.state.circuit.entities.map((entity) => [entity.name, entity.placement?.tile])).toEqual([["pole1", { x: 3, y: 1 }], ["pole2", { x: 5, y: 1 }], ["pole3", { x: 1.5, y: 0.5 }]]);
     expect(session.state.diagnostics).toEqual([]);
   });

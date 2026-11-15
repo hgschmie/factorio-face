@@ -32,22 +32,22 @@ describe("flipped", () => {
   });
 
   it("mirrors what a place tool is about to place, and nothing that cannot turn", () => {
-    const decider: PlaceTool = { type: "place", kind: "decider" };
-    expect(flippedTool(decider, "horizontal")).toEqual({ type: "place", kind: "decider", facing: "west" });
+    const decider: PlaceTool = { type: "place", prototype: "decider-combinator" };
+    expect(flippedTool(decider, "horizontal")).toEqual({ type: "place", prototype: "decider-combinator", facing: "west" });
     expect(placeFacing(flippedTool(decider, "vertical")!)).toBe("east");
-    expect(flippedTool({ ...decider, facing: "north" }, "vertical")).toEqual({ type: "place", kind: "decider", facing: "south" });
-    expect(flippedTool({ type: "place", kind: "lamp" }, "horizontal")).toBeUndefined();
-    expect(flippedTool({ type: "place", kind: "pole", prototype: "substation" }, "vertical")).toBeUndefined();
+    expect(flippedTool({ ...decider, facing: "north" }, "vertical")).toEqual({ type: "place", prototype: "decider-combinator", facing: "south" });
+    expect(flippedTool({ type: "place", prototype: "small-lamp" }, "horizontal")).toBeUndefined();
+    expect(flippedTool({ type: "place", prototype: "substation" }, "vertical")).toBeUndefined();
     expect(flippedTool({ type: "select" }, "horizontal")).toBeUndefined();
     expect(flippedTool({ type: "wire", color: "red" }, "horizontal")).toBeUndefined();
   });
 });
 
 const CARDS = entitiesOf(`
-  constant a at (40, 80) { }
-  decider b at (300, 80) facing north { }
-  lamp c at (560, 260) { }
-  arithmetic d at (310, 400) facing west { }
+  constant-combinator a at (40, 80) { }
+  decider-combinator b at (300, 80) facing north { }
+  small-lamp c at (560, 260) { }
+  arithmetic-combinator d at (310, 400) facing west { }
 `);
 
 describe("flipCards", () => {
@@ -94,13 +94,13 @@ describe("flipCards", () => {
  * p on (0..1, 3..4). `loose` has no tile.
  */
 const BOARD = entitiesOf(`
-  constant a at (40, 80) tile (0.5, 0.5) { }
-  decider b at (300, 80) tile (3, 0.5) { }
-  lamp c at (560, 80) tile (7.5, 0.5) { }
-  arithmetic d at (300, 260) tile (5.5, 2) facing south { }
-  selector e at (560, 260) tile (3, 2.5) facing west { operation = count }
-  pole p at (40, 400) tile (1, 4) { prototype = big-electric-pole }
-  decider loose at (40, 600) facing north { }
+  constant-combinator a at (40, 80) tile (0.5, 0.5) { }
+  decider-combinator b at (300, 80) tile (3, 0.5) { }
+  small-lamp c at (560, 80) tile (7.5, 0.5) { }
+  arithmetic-combinator d at (300, 260) tile (5.5, 2) facing south { }
+  selector-combinator e at (560, 260) tile (3, 2.5) facing west { operation = count }
+  big-electric-pole p at (40, 400) tile (1, 4) { }
+  decider-combinator loose at (40, 600) facing north { }
 `);
 
 describe("flipTiles", () => {
@@ -167,8 +167,8 @@ describe("flipTiles", () => {
 
   it("counts an entity whose tile is off the grid with the footprint the board shows", () => {
     const entities = entitiesOf(`
-      decider x at (0, 0) tile (1.4, 0.5) { }
-      lamp y at (0, 0) tile (4.5, 0.5) { }
+      decider-combinator x at (0, 0) tile (1.4, 0.5) { }
+      small-lamp y at (0, 0) tile (4.5, 0.5) { }
     `);
     // x is shown on (0..1, 0): columns 0 to 4.
     expect(flipTiles(entities, "horizontal").map((flip) => flip.tile)).toEqual([at(4, 0.5), at(0.5, 0.5)]);
@@ -187,7 +187,7 @@ describe("canFlip", () => {
       expect(canFlip([loose!], tiles)).toBe(true);
     }
     // On the board entities without a tile have nothing to mirror: two loose lamps cannot be flipped, on the edit canvas they can.
-    const lamps = entitiesOf("lamp one at (0, 0) { }\nlamp two at (200, 0) { }\nlamp three at (400, 0) tile (0.5, 0.5) { }");
+    const lamps = entitiesOf("small-lamp one at (0, 0) { }\nsmall-lamp two at (200, 0) { }\nsmall-lamp three at (400, 0) tile (0.5, 0.5) { }");
     expect(canFlip(lamps.slice(0, 2), false)).toBe(true);
     expect(canFlip(lamps.slice(0, 2), true)).toBe(false);
     expect(canFlip(lamps, true)).toBe(false);
@@ -210,9 +210,9 @@ describe("blockedFlip", () => {
 
   it("does not count an entity without a tile as an obstacle", () => {
     const entities = entitiesOf(`
-      lamp one at (0, 0) tile (0.5, 0.5) { }
-      lamp two at (184, 92) tile (2.5, 1.5) { }
-      lamp loose at (184, 0) { }
+      small-lamp one at (0, 0) tile (0.5, 0.5) { }
+      small-lamp two at (184, 92) tile (2.5, 1.5) { }
+      small-lamp loose at (184, 0) { }
     `);
     // `loose` is shown on (2, 0), where `one` goes.
     expect(firstObstacle(entities, new Map([[entities[0]!.id, at(2, 0)]]))).toBeUndefined();

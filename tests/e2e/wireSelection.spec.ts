@@ -6,7 +6,7 @@ import {
 } from "./app.ts";
 import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
-const LIGHT = "lamp light at (560, 80) {\n    when virtual:signal-B > 8\n}\n";
+const LIGHT = "small-lamp light at (560, 80) {\n    when virtual:signal-B > 8\n}\n";
 /** Where the wires from `source` to `gate` are clicked: their middle lies under the feedback loops of `gate`. */
 const NEAR_SOURCE = 0.2;
 

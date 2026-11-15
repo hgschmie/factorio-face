@@ -1,6 +1,6 @@
 // The circuit canvas. It owns transient view state only (camera, gesture in progress, pending wire, context menu);
 // every change to the circuit or the selection is emitted through a callback and comes back as new props.
-import { canRotate, facingOf, prototypeOf, TERMINAL_SIDES, tileCenter, tileSize, type TerminalSide, type Circuit, type Direction, type EntityId, type EntityKind, type Point, type PrototypeName, type TerminalRef, type Wire, type WireColor } from "@face/model";
+import { canRotate, facingOf, TERMINAL_SIDES, tileCenter, tileSize, type TerminalSide, type Circuit, type Direction, type EntityId, type Point, type PrototypeName, type TerminalRef, type Wire, type WireColor } from "@face/model";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type Ref } from "react";
 import type { FlipAxis, RotationTurn } from "../entities/facing.ts";
 import { entityNoun } from "../entities/kindInfo.ts";
@@ -59,11 +59,11 @@ export interface CanvasProps {
   /** The new selection: these entities and these wires (none when omitted). */
   onSelect(ids: readonly EntityId[], wires?: readonly string[]): void;
   onToolChange(tool: Tool): void;
-  /** A new entity of the kind and the prototype of the place tool at `position`, facing the way the tool was turned. */
-  onPlaceEntity(kind: EntityKind, position: Point, facing: Direction, prototype?: PrototypeName): void;
+  /** A new entity of the prototype of the place tool at `position`, facing the way the tool was turned. */
+  onPlaceEntity(prototype: PrototypeName, position: Point, facing: Direction): void;
   onMoveEntities(moves: readonly EntityMove[]): void;
   /** The blueprint board. A new entity with its center at `tile`, facing the way the place tool was turned; the host refuses a taken tile. */
-  onPlaceEntityOnTile(kind: EntityKind, tile: Point, facing: Direction, prototype?: PrototypeName): void;
+  onPlaceEntityOnTile(prototype: PrototypeName, tile: Point, facing: Direction): void;
   /** A move on the board ended: the dragged entities and the centers they would get. The host refuses a move onto a taken tile. */
   onSetTiles(tiles: readonly EntityTile[]): void;
   /** Gives the entities that have no `tile` the one of the place they are shown at. */
@@ -286,13 +286,13 @@ export function Canvas(props: CanvasProps) {
 
   // On the board a new entity is shown under the pointer before it is placed, with the footprint of its prototype; that starts
   // where the pointer is when the tool is picked.
-  const placingKind = tool.type === "place" && capabilities.tiles && editable ? tool.kind : null;
-  const placingPrototype = tool.type === "place" ? prototypeOf(tool) : undefined;
+  const placingPrototype = tool.type === "place" ? tool.prototype : undefined;
+  const placingOnTiles = placingPrototype !== undefined && capabilities.tiles && editable;
   const facing = placeFacing(tool);
   useEffect(() => {
-    if (placingKind) setPointerWorld(pointerRef.current && svgRef.current ? worldPoint(pointerRef.current) : null);
-  }, [placingKind, placingPrototype]);
-  const placing = useMemo(() => (placingKind ? { kind: placingKind, prototype: placingPrototype } : null), [placingKind, placingPrototype]);
+    if (placingOnTiles) setPointerWorld(pointerRef.current && svgRef.current ? worldPoint(pointerRef.current) : null);
+  }, [placingOnTiles, placingPrototype]);
+  const placing = useMemo(() => (placingOnTiles ? { prototype: placingPrototype } : null), [placingOnTiles, placingPrototype]);
   const ghostOrigin = placing && pointerWorld ? footprintOriginAt(pointerWorld, placing, facing) : null;
   const [ghostX, ghostY] = [ghostOrigin?.x, ghostOrigin?.y];
   const ghost = useMemo(() => {
@@ -356,8 +356,8 @@ export function Canvas(props: CanvasProps) {
     }
     if (tool.type === "place") {
       if (!editable) return;
-      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.kind, tileCenter(tool, facing, footprintOriginAt(worldPoint(event), tool, facing)), facing, tool.prototype);
-      else props.onPlaceEntity(tool.kind, placementPosition(worldPoint(event)), facing, tool.prototype);
+      if (capabilities.tiles) props.onPlaceEntityOnTile(tool.prototype, tileCenter(tool, facing, footprintOriginAt(worldPoint(event), tool, facing)), facing);
+      else props.onPlaceEntity(tool.prototype, placementPosition(worldPoint(event)), facing);
       return;
     }
     // From here on the select tool. Cards and their pins lie above the wires, so a wire is only found where neither is in the way.
@@ -401,7 +401,7 @@ export function Canvas(props: CanvasProps) {
 
   const onPointerMove = (event: PointerEvent<SVGSVGElement>): void => {
     pointerRef.current = { clientX: event.clientX, clientY: event.clientY, local: localPoint(event) };
-    if (pendingWire || placingKind) setPointerWorld(worldPoint(event));
+    if (pendingWire || placingOnTiles) setPointerWorld(worldPoint(event));
     trackHover(worldPoint(event));
     const gesture = gestureRef.current;
     if (!gesture || gesture.pointerId !== event.pointerId) return;
@@ -495,9 +495,9 @@ export function Canvas(props: CanvasProps) {
       // Keyboard placement: the new card goes to the middle of the view, on the board to the free place nearest to it.
       event.preventDefault();
       const middle = screenToWorld(cameraRef.current, { x: size.width / 2, y: size.height / 2 });
-      if (!capabilities.tiles) return props.onPlaceEntity(tool.kind, placementPosition(middle), facing, tool.prototype);
+      if (!capabilities.tiles) return props.onPlaceEntity(tool.prototype, placementPosition(middle), facing);
       const origin = freeOriginNear(circuit.entities, tool, footprintOriginAt(middle, tool, facing), facing);
-      props.onPlaceEntityOnTile(tool.kind, tileCenter(tool, facing, origin), facing, tool.prototype);
+      props.onPlaceEntityOnTile(tool.prototype, tileCenter(tool, facing, origin), facing);
     } else if (event.key.toLowerCase() === "a" && (event.metaKey || event.ctrlKey)) {
       event.preventDefault();
       onSelect(circuit.entities.map((entity) => entity.id));
@@ -605,7 +605,7 @@ export function Canvas(props: CanvasProps) {
         onPointerLeave={() => {
           pointerRef.current = null;
           hover.reset();
-          if (placingKind) setPointerWorld(null);
+          if (placingOnTiles) setPointerWorld(null);
         }}
         onContextMenu={onContextMenu}
       >

@@ -5,24 +5,24 @@ import { createSession, entityNamed, errorsOf, idOf, IRREGULAR } from "./helpers
 
 /** Row 0: `source` on (0, 0), `gate` on (2..3, 0), `light` on (7, 0). `twice` stands upright on (5, 1..2); `loose` has no tile. */
 const BOARD = `circuit "Board" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    decider gate at (300, 80) tile (3, 0.5) {   // the counter
+    decider-combinator gate at (300, 80) tile (3, 0.5) {   // the counter
         when virtual:signal-A < 10
         output virtual:signal-A = input
     }
 
-    arithmetic twice at (300, 260) tile (5.5, 2) facing south {
+    arithmetic-combinator twice at (300, 260) tile (5.5, 2) facing south {
         virtual:signal-B = virtual:signal-A[red] * 2
     }
 
-    lamp light at (560, 80) tile (7.5, 0.5) {
+    small-lamp light at (560, 80) tile (7.5, 0.5) {
         when virtual:signal-B > 8
     }
 
-    decider loose at (40, 400) facing north {
+    decider-combinator loose at (40, 400) facing north {
         when virtual:signal-A > 3
         output virtual:signal-C = 1
     }

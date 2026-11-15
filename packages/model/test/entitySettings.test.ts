@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   BOTH_NETWORKS, canRotate, conditionKey, conditionRole, ENABLE_CONDITION, ENTITY_SETTINGS, entityNameBase, entityTable, facingOf, findTileOverlaps, footprintBox, gamePrototype, isPrototypeName, isSettingValue, isTileCenter,
-  normalizedSettings, normalizeSettings, occupiedTiles, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypeOf, prototypesOf, rotateTile, sameSetting, setEntityTable, settingDefault, settingFields, settingShown, settingSpecsOf,
+  normalizedSettings, normalizeSettings, occupiedTiles, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, prototypesOf, rotateTile, sameSetting, setEntityTable, settingDefault, settingFields, settingShown, settingSpecsOf,
   signal, STANDARD_ENTITY_TABLE, TERMINALS, tileCenter, tileHalves, tileSize, wireReachBetween, wireSpan,
   type Condition, type Direction, type EntityShape, type SettingSpec, type SettingValue,
 } from "../src/index.ts";
@@ -28,7 +28,7 @@ const OWN_TYPES: Readonly<Record<string, string | undefined>> = {
 /** Defaults the reference states and the game has otherwise, as the test below finds them. */
 const REFERENCE_DIFFERS: readonly string[] = ["asteroid-collector.include-hands: false by the reference"];
 
-const generic = (prototype: string): EntityShape => ({ kind: "entity", prototype });
+const generic = (prototype: string): EntityShape => ({ prototype });
 const types = [...new Set(entityTable().entities.map((prototype) => prototype.type))].sort();
 const genericTypes = types.filter((type) => !Object.hasOwn(OWN_TYPES, type));
 const fieldsOf = (behavior: string): ReadonlyMap<string, BehaviorField> => new Map((reference.behaviors[behavior] ?? []).map((field) => [field.name, field]));
@@ -298,21 +298,20 @@ describe("the generic prototypes", () => {
     expect(PROTOTYPE_NAMES.slice(0, 10).every((name) => PROTOTYPES[name]!.kind !== "entity")).toBe(true);
     expect(entityTable().entities.filter((prototype) => prototype.hidden && isPrototypeName(prototype.name))).toHaveLength(13);
     for (const name of names) {
-      expect(prototypeOf(generic(name))).toBe(name);
+      expect(prototypeData(generic(name)).kind).toBe("entity");
       expect(settingSpecsOf(name)).toBe(ENTITY_SETTINGS[gamePrototype(generic(name)).type]!.settings);
     }
     expect(TERMINALS.entity).toEqual(["io"]);
-    // A prototype with a kind of its own has no table of settings, and is not a generic entity whatever is asked.
+    // A prototype with a kind of its own has no table of settings.
     expect(settingSpecsOf("small-lamp")).toEqual([]);
     expect(settingSpecsOf("toString")).toEqual([]);
-    expect(prototypeOf({ kind: "entity", prototype: "small-lamp" })).toBe(names[0]);
     expect(isPrototypeName("gate") || isPrototypeName("straight-rail") || isPrototypeName("__proto__")).toBe(false);
   });
 
   it("cover the footprints of the game, from one tile to nine by nine", () => {
     const sizes = new Map<string, number>();
     for (const name of PROTOTYPE_NAMES) {
-      const { width, height } = tileSize({ kind: PROTOTYPES[name]!.kind, prototype: name }, "north");
+      const { width, height } = tileSize({ prototype: name }, "north");
       sizes.set(`${width}x${height}`, (sizes.get(`${width}x${height}`) ?? 0) + 1);
     }
     expect(Object.fromEntries(sizes)).toEqual({ "1x1": 41, "1x2": 8, "2x1": 4, "2x2": 10, "2x3": 2, "2x4": 1, "3x2": 2, "3x3": 17, "3x5": 1, "4x4": 3, "5x5": 6, "8x8": 2, "9x9": 1 });
@@ -378,7 +377,7 @@ describe("the generic prototypes", () => {
     expect(wireReachBetween(power, tower, 9)).toEqual({ reach: 10, of: "power-switch" });
     expect(wireReachBetween(power, chest, 9)).toEqual({ reach: 9, of: "project" });
     expect(wireReachBetween(power, chest, 20)).toEqual({ reach: 10, of: "power-switch" });
-    expect(wireReachBetween(chest, { kind: "pole", prototype: "small-electric-pole" }, 9)).toEqual({ reach: 7.5, of: "small-electric-pole" });
+    expect(wireReachBetween(chest, { prototype: "small-electric-pole" }, 9)).toEqual({ reach: 7.5, of: "small-electric-pole" });
     // The distance is between the footprints: two towers of three by three with 30 tiles between them are within reach, with 31 not.
     const at = (shape: EntityShape, x: number) => ({ ...shape, placement: { tile: tileCenter(shape, "east", { x, y: 0 }) } });
     expect(wireSpan(at(tower, 0), at(tower, 33), 9)).toMatchObject({ distance: 30, tooLong: false });
@@ -392,7 +391,7 @@ describe("the generic prototypes", () => {
       "fast_inserter", "steel_chest", "assembling_machine", "crash_site_chest", "stone_wall", "train_stop", "pipe_to_ground", "radar",
     ]);
     for (const name of prototypesOf("entity")) expect(base(name), name).toMatch(/^[A-Za-z_][A-Za-z0-9_]*$/);
-    expect([entityNameBase({ kind: "pole", prototype: "substation" }), entityNameBase({ kind: "lamp" })]).toEqual(["pole", "lamp"]);
+    expect([entityNameBase({ prototype: "substation" }), entityNameBase({ prototype: "small-lamp" })]).toEqual(["pole", "lamp"]);
   });
 
   it("follow another entity table: a prototype of a type with settings is a generic entity, one that is gone is none", () => {

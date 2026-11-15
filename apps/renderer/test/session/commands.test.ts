@@ -77,7 +77,7 @@ describe("graphical commands as source patches", () => {
 
   it("refuses invalid, reserved and duplicate names without touching the text", () => {
     const { session } = createSession(IRREGULAR);
-    for (const [name, message] of [["2fast", /valid entity name/], ["lamp", /reserved/], ["light", /already in use/]] as const) {
+    for (const [name, message] of [["2fast", /valid entity name/], ["wire", /reserved/], ["light", /already in use/]] as const) {
       session.commands.renameEntity(idOf(session, "gate"), name);
       expect(session.state.error).toMatch(message);
       session.commands.dismissError();
@@ -109,7 +109,7 @@ describe("graphical commands as source patches", () => {
     session.commands.deleteEntities([idOf(session, "gate"), "no-such-id"]);
     expect(session.state.circuit.wires).toEqual([]);
     expect(session.state.source).not.toMatch(/wire/);
-    expect(session.state.source).toContain("/* about the source */ constant   src   at ( 40 ,80 )");
+    expect(session.state.source).toContain("/* about the source */ constant-combinator   src   at ( 40 ,80 )");
     expect(errorsOf(session)).toEqual([]);
     session.commands.undo();
     expect(session.state.source).toBe(IRREGULAR);
@@ -182,14 +182,14 @@ describe("graphical commands as source patches", () => {
 
   it("places an entity with a generated name, selects it and returns to the select tool", () => {
     const { session } = createSession(IRREGULAR);
-    session.commands.setTool({ type: "place", kind: "lamp" });
-    session.commands.placeEntity("lamp", { x: 100.4, y: 300 });
+    session.commands.setTool({ type: "place", prototype: "small-lamp" });
+    session.commands.placeEntity("small-lamp", { x: 100.4, y: 300 });
     const placed = entityNamed(session, "lamp1");
     expect(placed).toMatchObject({ kind: "lamp", position: { x: 100, y: 300 } });
     expect(session.state.selection).toEqual([placed.id]);
     expect(session.state.tool).toEqual({ type: "select" });
     // Everything that was there is still there, byte for byte.
-    expect(session.state.source.replace(/\n[ \t]*lamp lamp1 at \(100, 300\) \{\s*\}\n/, "\n")).toBe(IRREGULAR);
+    expect(session.state.source.replace(/\n[ \t]*small-lamp lamp1 at \(100, 300\) \{\s*\}\n/, "\n")).toBe(IRREGULAR);
     session.commands.undo();
     expect(session.state.source).toBe(IRREGULAR);
     expect(session.state.selection).toEqual([]);
@@ -197,12 +197,12 @@ describe("graphical commands as source patches", () => {
 
   it("places an entity facing the way the tool was turned; east is not written and a lamp does not turn", () => {
     const { session } = createSession(IRREGULAR);
-    session.commands.placeEntity("decider", { x: 100, y: 300 }, "north");
-    session.commands.placeEntity("constant", { x: 100, y: 500 }, "east");
-    session.commands.placeEntity("lamp", { x: 100, y: 700 }, "south");
-    expect(session.state.source).toContain("decider decider1 at (100, 300) facing north {");
-    expect(session.state.source).toContain("constant constant1 at (100, 500) {");
-    expect(session.state.source).toContain("lamp lamp1 at (100, 700) {");
+    session.commands.placeEntity("decider-combinator", { x: 100, y: 300 }, "north");
+    session.commands.placeEntity("constant-combinator", { x: 100, y: 500 }, "east");
+    session.commands.placeEntity("small-lamp", { x: 100, y: 700 }, "south");
+    expect(session.state.source).toContain("decider-combinator decider1 at (100, 300) facing north {");
+    expect(session.state.source).toContain("constant-combinator constant1 at (100, 500) {");
+    expect(session.state.source).toContain("small-lamp lamp1 at (100, 700) {");
     expect(entityNamed(session, "decider1").placement).toEqual({ direction: "north" });
     expect(session.state).toMatchObject({ error: null, diagnostics: expect.not.arrayContaining([expect.objectContaining({ code: "unused-facing" })]) });
   });
@@ -217,7 +217,7 @@ describe("graphical commands as source patches", () => {
     record();
     session.commands.renameEntity(idOf(session, "light"), "beacon");
     record();
-    session.commands.placeEntity("selector", { x: 0, y: 400 });
+    session.commands.placeEntity("selector-combinator", { x: 0, y: 400 });
     record();
     session.commands.addWire({ color: "green", a: { entity: idOf(session, "gate"), side: "out" }, b: { entity: idOf(session, "selector1"), side: "in" } });
     record();

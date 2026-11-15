@@ -1,8 +1,8 @@
 // Completion candidates for a caret position: what the language expects there, filled in from the circuit and the catalog. Pure.
 import { ENTITY_PROPERTIES, printName, printSignal, printTerminal, SECTION_PROPERTIES, type CompletionContext } from "@face/language";
-import { ENTITY_KINDS, type SignalId } from "@face/model";
+import { ENTITY_KINDS, entityTable, type SignalId } from "@face/model";
 
-export type CandidateType = "keyword" | "property" | "enum" | "signal" | "variable";
+export type CandidateType = "keyword" | "entity" | "property" | "enum" | "signal" | "variable";
 
 export interface Candidate {
   /** The text that is inserted. */
@@ -19,11 +19,11 @@ export interface CompletionCatalog {
   readonly speakerInstruments?: readonly { readonly name: string; readonly displayName: string; readonly notes: readonly { readonly name: string; readonly displayName: string }[] }[];
 }
 
-/** What a property is, per kind: a word several kinds have (`prototype`, `networks`) is described by the kind it is offered for. The properties of a section are those of a constant combinator. */
+/** What a property is, per kind: a word several kinds have (`networks`) is described by the kind it is offered for. The properties of a section are those of a constant combinator. */
 const PROPERTY_DETAILS = new Map(ENTITY_KINDS.map((kind) => [kind, new Map([...ENTITY_PROPERTIES[kind], ...SECTION_PROPERTIES].map((property) => [property.name, property.detail]))]));
 const WILDCARD_DETAILS: Readonly<Record<string, string>> = { each: "every input signal, one by one", anything: "any one input signal", everything: "all input signals" };
 
-/** Candidates in the order they should be offered: keywords, properties, values, entity terminals, then signals. Duplicates are dropped. */
+/** Candidates in the order they should be offered: keywords, the entities of the game, properties, values, entity terminals, then signals. Duplicates are dropped. */
 export function completionCandidates(context: CompletionContext, catalog: CompletionCatalog): Candidate[] {
   const candidates: Candidate[] = [];
   const signals: Candidate[] = [];
@@ -32,6 +32,10 @@ export function completionCandidates(context: CompletionContext, catalog: Comple
     switch (expected.type) {
       case "keyword":
         for (const value of expected.values) candidates.push({ label: value, type: "keyword" });
+        break;
+      case "entity":
+        // The word of a declaration: the game's name of an entity, as the printer writes it, with what the game calls it.
+        for (const prototype of expected.prototypes) candidates.push({ label: printName(prototype), type: "entity", detail: entityTable().byName.get(prototype)?.displayName });
         break;
       case "property":
         for (const name of expected.names) candidates.push({ label: name, type: "property", detail: PROPERTY_DETAILS.get(expected.kind)?.get(name) });

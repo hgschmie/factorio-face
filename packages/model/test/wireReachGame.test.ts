@@ -47,7 +47,7 @@ const fixture = JSON.parse(readFileSync(new URL("../../../tests/fixtures/game/F-
  */
 function entityOf(probed: ProbedEntity, origin: Point, asked = false): PlacedShape | undefined {
   if (!isPrototypeName(probed.name)) return undefined;
-  const shape = { kind: PROTOTYPES[probed.name]!.kind, prototype: probed.name };
+  const shape = { prototype: probed.name };
   const direction = (asked ? probed.asked : undefined) ?? probed.facing ?? "north";
   return { ...shape, placement: { tile: tileCenter(shape, direction, origin), direction } };
 }

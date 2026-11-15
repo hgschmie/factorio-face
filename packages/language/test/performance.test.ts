@@ -4,9 +4,9 @@ import { idOf } from "./helpers.ts";
 
 /** The prototype's scale fixture in the production language: a chain of 1,000 entities joined by 999 wires. */
 function largeSource(count: number): string {
-  const lines = ["// Generated scale document.", 'circuit "Scale" {', "    constant n0 at (20, 20) { virtual:signal-A = 1 }"];
+  const lines = ["// Generated scale document.", 'circuit "Scale" {', "    constant-combinator n0 at (20, 20) { virtual:signal-A = 1 }"];
   for (let i = 1; i < count; i++) {
-    lines.push(`    arithmetic n${i} at (${20 + (i % 25) * 240}, ${20 + Math.floor(i / 25) * 160}) { virtual:signal-A = virtual:signal-A + ${i} } // stage ${i}`);
+    lines.push(`    arithmetic-combinator n${i} at (${20 + (i % 25) * 240}, ${20 + Math.floor(i / 25) * 160}) { virtual:signal-A = virtual:signal-A + ${i} } // stage ${i}`);
     lines.push(`    wire ${i % 2 ? "red" : "green"} n${i - 1}.out <-> n${i}.in`);
   }
   lines.push("}", "");
@@ -69,7 +69,7 @@ describe("scale", () => {
   it("analyzes and prints 1,000 generic entities with settings from the table", () => {
     const prototypes = ["fast-inserter", "steel-chest", "transport-belt", "assembling-machine-2", "train-stop", "splitter", "requester-chest", "roboport"];
     const settings = ["when item:iron-plate < 100 read-hand = hold", "read-contents = false", "read-contents = pulse", "set-recipe = true read-working = true working-signal = virtual:signal-W", "read-trains-count = true", "input-left when anything > 0", "set-requests = true", "read-items = none"];
-    const text = `circuit "generic" {\n${Array.from({ length: 1000 }, (_, i) => `    entity g${i} { prototype = ${prototypes[i % 8]} ${settings[i % 8]} blueprint-data = "{\\"quality\\":\\"rare\\"}" }`).join("\n")}\n}\n`;
+    const text = `circuit "generic" {\n${Array.from({ length: 1000 }, (_, i) => `    ${prototypes[i % 8]} g${i} { ${settings[i % 8]} blueprint-data = "{\\"quality\\":\\"rare\\"}" }`).join("\n")}\n}\n`;
     analyze(text.slice(0, 2000));
     const [result, elapsed] = time(() => analyze(text));
     expect(result.diagnostics).toEqual([]);
@@ -81,7 +81,7 @@ describe("scale", () => {
   });
 
   it("auto-places 1,000 entities without positions quickly and without overlap", () => {
-    const text = `circuit "auto" {\n${Array.from({ length: 1000 }, (_, i) => `lamp l${i} { }`).join("\n")}\n}`;
+    const text = `circuit "auto" {\n${Array.from({ length: 1000 }, (_, i) => `small-lamp l${i} { }`).join("\n")}\n}`;
     const [result, elapsed] = time(() => analyze(text));
     const seen = new Set(result.circuit!.entities.map((e) => `${e.position.x},${e.position.y}`));
     expect(seen.size).toBe(1000);

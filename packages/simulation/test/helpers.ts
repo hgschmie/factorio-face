@@ -63,14 +63,14 @@ export function v(values: Values): Record<string, number> {
   return Object.fromEntries(Object.entries(values).map(([key, value]) => [key.includes(":") ? key : `virtual:signal-${key}`, value]));
 }
 
-const base = (id: string) => ({ id, name: id, position: { x: 0, y: 0 } });
+const base = (id: string, prototype: string) => ({ id, name: id, position: { x: 0, y: 0 }, prototype });
 
 export function section(values: Values, extra: Partial<ConstantSection> = {}): ConstantSection {
   return { active: true, multiplier: 1, filters: Object.entries(values).map(([key, count]) => ({ signal: sig(key), count })), ...extra };
 }
 
 export function constant(id: string, values: Values | readonly ConstantSection[], enabled = true): ConstantCombinator {
-  return { ...base(id), kind: "constant", enabled, sections: Array.isArray(values) ? values : [section(values as Values)] };
+  return { ...base(id, "constant-combinator"), kind: "constant", enabled, sections: Array.isArray(values) ? values : [section(values as Values)] };
 }
 
 export function operand(value: number | SignalSpec, networks: NetworkSelection = BOTH): Operand {
@@ -79,7 +79,7 @@ export function operand(value: number | SignalSpec, networks: NetworkSelection =
 
 export function arithmetic(id: string, first: number | SignalSpec | Operand, operation: ArithmeticOperation, second: number | SignalSpec | Operand, output?: SignalSpec): ArithmeticCombinator {
   const toOperand = (o: number | SignalSpec | Operand): Operand => (typeof o === "object" && "type" in o ? o : operand(o));
-  return { ...base(id), kind: "arithmetic", first: toOperand(first), operation, second: toOperand(second), ...(output !== undefined && { output: sig(output) }) };
+  return { ...base(id, "arithmetic-combinator"), kind: "arithmetic", first: toOperand(first), operation, second: toOperand(second), ...(output !== undefined && { output: sig(output) }) };
 }
 
 export interface ConditionOptions {
@@ -107,28 +107,28 @@ export function out(target: SignalSpec, value: number | "input" = "input", netwo
 }
 
 export function decider(id: string, conditions: readonly DeciderCondition[], outputs: readonly DeciderOutput[], elseOutputs: readonly DeciderOutput[] = []): DeciderCombinator {
-  return { ...base(id), kind: "decider", conditions, outputs, elseOutputs };
+  return { ...base(id, "decider-combinator"), kind: "decider", conditions, outputs, elseOutputs };
 }
 
 export function selector(id: string, mode: SelectorMode): SelectorCombinator {
-  return { ...base(id), kind: "selector", mode };
+  return { ...base(id, "selector-combinator"), kind: "selector", mode };
 }
 
 export function lamp(id: string, props: Partial<Omit<Lamp, "id" | "name" | "kind" | "position">> = {}): Lamp {
-  return { ...base(id), ...DEFAULT_ENTITY.lamp, ...props };
+  return { ...base(id, "small-lamp"), ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", ...props };
 }
 
 export function pole(id: string, prototype: Pole["prototype"] = "small-electric-pole"): Pole {
-  return { ...base(id), kind: "pole", prototype };
+  return { ...base(id, prototype), kind: "pole" };
 }
 
 export function speaker(id: string, props: Partial<Omit<Speaker, "id" | "name" | "kind" | "position">> = {}): Speaker {
-  return { ...base(id), ...DEFAULT_ENTITY.speaker, ...props };
+  return { ...base(id, "programmable-speaker"), ...DEFAULT_ENTITY.speaker, prototype: "programmable-speaker", ...props };
 }
 
 /** A generic entity: a prototype of the game with the settings that differ from its defaults. */
 export function entity(id: string, prototype: string, settings: EntitySettings = {}): GenericEntity {
-  return { ...base(id), kind: "entity", prototype, settings };
+  return { ...base(id, prototype), kind: "entity", settings };
 }
 
 /** A condition as a lamp, a speaker and a generic entity have it. */

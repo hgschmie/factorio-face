@@ -44,7 +44,7 @@ describe.skipIf(!present)("blueprint strings shipped with the game (local only: 
   it("imports the circuit of the game's own example: a constant combinator on the input of a selector", () => {
     const { circuit, report } = importOf("circuit");
     expect(printCircuit(circuit)).toBe(`circuit "" {
-    constant constant1 at (0, 0) tile (6.5, -22.5) facing north {
+    constant-combinator constant1 at (0, 0) tile (6.5, -22.5) facing north {
         item:bulk-inserter = 1
         item:spidertron = 1
         item:refined-hazard-concrete = 1
@@ -67,17 +67,15 @@ describe.skipIf(!present)("blueprint strings shipped with the game (local only: 
         entity:entity-ghost = 1
     }
 
-    selector selector1 at (0, 100) tile (6.5, -21) facing south {
+    selector-combinator selector1 at (0, 100) tile (6.5, -21) facing south {
         operation = random
         interval = 15
     }
 
-    pole pole1 at (100, 100) tile (8, -21) {
-        prototype = substation
+    substation pole1 at (100, 100) tile (8, -21) {
     }
 
-    entity display_panel1 at (280, 560) tile (9.5, -16.5) facing north {
-        prototype = display-panel
+    display-panel display_panel1 at (280, 560) tile (9.5, -16.5) facing north {
         blueprint-data = "{\\"control_behavior\\":{\\"parameters\\":[{\\"condition\\":{\\"first_signal\\":{\\"type\\":\\"virtual\\",\\"name\\":\\"signal-anything\\"},\\"constant\\":1,\\"comparator\\":\\"=\\"},\\"icon\\":{\\"type\\":\\"virtual\\",\\"name\\":\\"signal-anything\\"}}]},\\"icon\\":{\\"name\\":\\"repair-pack\\"}}"
     }
 

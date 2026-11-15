@@ -5,7 +5,7 @@
 import type { Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { card, expect, openProject, SCREENSHOT_DIR, selectEntity, showDisplay, sourceText, test, writeProject } from "./app.ts";
-import { bubble, footprint, hoverOnBoard, inspector, selectOnBoard, setSource } from "./board.ts";
+import { bubble, declarationCount, footprint, hoverOnBoard, inspector, selectOnBoard, setSource } from "./board.ts";
 
 const SHOTS = resolve(SCREENSHOT_DIR, "entities-ui");
 const toast = (page: Page) => page.getByRole("alert");
@@ -23,37 +23,30 @@ async function body(page: Page, name: string): Promise<string[]> {
 
 /** One entity per field type the test edits, apart on the edit canvas; the constant feeds the inserter. */
 const FACTORY = `circuit "Factory" {
-    constant source at (0, 0) {
+    constant-combinator source at (0, 0) {
         item:iron-plate = 40
     }
 
-    entity feeder at (240, 0) facing north {
-        prototype = inserter
+    inserter feeder at (240, 0) facing north {
     }
 
-    entity box at (480, 0) {
-        prototype = iron-chest
+    iron-chest box at (480, 0) {
     }
 
-    entity station at (720, 0) {
-        prototype = train-stop
+    train-stop station at (720, 0) {
         blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"
     }
 
-    entity split at (0, 200) {
-        prototype = splitter
+    splitter split at (0, 200) {
     }
 
-    entity guard at (240, 200) {
-        prototype = stone-wall
+    stone-wall guard at (240, 200) {
     }
 
-    entity robots at (480, 200) {
-        prototype = roboport
+    roboport robots at (480, 200) {
     }
 
-    entity tank at (720, 200) {
-        prototype = storage-tank
+    storage-tank tank at (720, 200) {
     }
 
     wire red source.out <-> feeder
@@ -65,7 +58,7 @@ async function openFactory(page: Page, source = FACTORY): Promise<void> {
   // The canvas draws what is in view: fit first, then every entity is.
   await page.locator("g.card").first().waitFor();
   await page.getByRole("button", { name: "Fit circuit" }).click();
-  await expect(page.locator("g.card")).toHaveCount((source.match(/^ {4}(constant|entity|lamp) /gm) ?? []).length);
+  await expect(page.locator("g.card")).toHaveCount(declarationCount(source));
 }
 
 test("the form of an inserter has a control per setting of its type and writes every field type to the source", async ({ page }) => {
@@ -81,12 +74,12 @@ test("the form of an inserter has a control per setting of its type and writes e
 
   // A condition: the checkbox switches it on with a first signal, as for a lamp, and its fields edit it.
   await checkbox(page, "Enable/disable").check();
-  expect(await body(page, "feeder")).toEqual(["prototype = inserter", "when virtual:signal-A > 0"]);
+  expect(await body(page, "feeder")).toEqual(["when virtual:signal-A > 0"]);
   const when = setting(page, "when");
   await when.getByLabel("Condition signal", { exact: true }).fill("item:iron-plate");
   await when.getByLabel("Comparator").selectOption("<");
   await when.getByLabel("Number", { exact: true }).fill("100");
-  expect(await body(page, "feeder")).toEqual(["prototype = inserter", "when item:iron-plate < 100"]);
+  expect(await body(page, "feeder")).toEqual(["when item:iron-plate < 100"]);
   // The other side can be a signal; a wildcard is taken on the left only.
   await when.getByLabel("Compare to").selectOption("signal");
   await when.getByLabel("Other signal", { exact: true }).fill("virtual:signal-B");
@@ -99,7 +92,7 @@ test("the form of an inserter has a control per setting of its type and writes e
   // Text that is no number is kept in the field and not written.
   await when.getByLabel("Number", { exact: true }).fill("10x");
   await expect(when.getByRole("alert")).toHaveText("Enter a whole number");
-  expect(await body(page, "feeder")).toEqual(["prototype = inserter", "when item:iron-plate < 100"]);
+  expect(await body(page, "feeder")).toEqual(["when item:iron-plate < 100"]);
   await when.getByLabel("Number", { exact: true }).fill("100");
 
   // A mode, a switch with the signal that belongs to it, and the two network selections.
@@ -109,12 +102,12 @@ test("the form of an inserter has a control per setting of its type and writes e
   expect(await shownSettings(page)).toEqual(["when", "logistic-when", "networks", "output-networks", "set-filters", "read-hand", "set-stack-size", "stack-size-signal"]);
   // The signal the game uses by itself shows in the field and is not written.
   await expect(field(page, "Stack size signal")).toHaveValue("virtual:signal-S");
-  expect(await body(page, "feeder")).toEqual(["prototype = inserter", "when item:iron-plate < 100", "set-filters = true", "read-hand = pulse", "set-stack-size = true"]);
+  expect(await body(page, "feeder")).toEqual(["when item:iron-plate < 100", "set-filters = true", "read-hand = pulse", "set-stack-size = true"]);
   await field(page, "Stack size signal").fill("virtual:signal-X");
   await inspector(page).getByRole("button", { name: "Read from: green network" }).click();
   await inspector(page).getByRole("button", { name: "Send to: red network" }).click();
   expect(await body(page, "feeder")).toEqual([
-    "prototype = inserter", "when item:iron-plate < 100", "networks = red", "output-networks = green", "set-filters = true", "read-hand = pulse", "set-stack-size = true", "stack-size-signal = virtual:signal-X",
+    "when item:iron-plate < 100", "networks = red", "output-networks = green", "set-filters = true", "read-hand = pulse", "set-stack-size = true", "stack-size-signal = virtual:signal-X",
   ]);
   await expect(inspector(page).getByRole("button", { name: "Read from: green network" })).toHaveAttribute("aria-pressed", "false");
   await page.screenshot({ path: resolve(SHOTS, "inspector-inserter.png") });
@@ -165,7 +158,7 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   await checkbox(page, "Read contents").uncheck();
   await checkbox(page, "Read empty slots").check();
   await expect(field(page, "Empty slots signal")).toHaveValue("virtual:signal-E");
-  expect(await body(page, "box")).toEqual(["prototype = iron-chest", "read-contents = false", "read-empty-slots = true"]);
+  expect(await body(page, "box")).toEqual(["read-contents = false", "read-empty-slots = true"]);
   await field(page, "Empty slots signal").fill("virtual:signal-F");
   expect(await body(page, "box")).toContain("empty-slots-signal = virtual:signal-F");
   // An emptied signal field is the signal of the prototype again.
@@ -191,7 +184,7 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   await field(page, "Train limit signal").fill("item:iron-plate");
   await checkbox(page, "Enable/disable").check();
   expect(await body(page, "station")).toEqual([
-    "prototype = train-stop", "when virtual:signal-A > 0", "send-to-train = false", "read-from-train = true", "read-stopped-train = true", "set-trains-limit = true", "trains-limit-signal = item:iron-plate",
+    "when virtual:signal-A > 0", "send-to-train = false", "read-from-train = true", "read-stopped-train = true", "set-trains-limit = true", "trains-limit-signal = item:iron-plate",
     'blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"',
   ]);
   await expect(inspector(page).locator(".kept-fields")).toHaveText("Kept from the blueprint: station, manual_trains_limit. The editor does not change these fields and writes them back on export.");
@@ -205,10 +198,10 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   expect(await shownSettings(page)).toEqual(["input-left-when", "input-right-when", "output-left-when", "output-right-when", "networks", "set-filter"]);
   await checkbox(page, "Input priority left").check();
   await checkbox(page, "Output priority right").check();
-  expect(await body(page, "split")).toEqual(["prototype = splitter", "input-left when virtual:signal-I < 0", "output-right when virtual:signal-O > 0"]);
+  expect(await body(page, "split")).toEqual(["input-left when virtual:signal-I < 0", "output-right when virtual:signal-O > 0"]);
   await setting(page, "output-right-when").getByLabel("Number", { exact: true }).fill("5");
   await checkbox(page, "Set filter").check();
-  expect(await body(page, "split")).toEqual(["prototype = splitter", "input-left when virtual:signal-I < 0", "output-right when virtual:signal-O > 5", "set-filter = true"]);
+  expect(await body(page, "split")).toEqual(["input-left when virtual:signal-I < 0", "output-right when virtual:signal-O > 5", "set-filter = true"]);
   await expect(setting(page, "input-left-when").getByLabel("Condition signal", { exact: true })).toHaveValue("virtual:signal-I");
   await expect(card(page, "split").locator(".card-summary")).toHaveText(["input-left I <… +1", "set-filter"]);
   await page.screenshot({ path: resolve(SHOTS, "inspector-splitter.png") });
@@ -220,7 +213,7 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   await checkbox(page, "Open gate").check();
   await checkbox(page, "Read gate sensor").check();
   await expect(field(page, "Gate sensor signal")).toHaveValue("virtual:signal-G");
-  expect(await body(page, "guard")).toEqual(["prototype = stone-wall", "open-gate when virtual:signal-A > 0", "read-sensor = true"]);
+  expect(await body(page, "guard")).toEqual(["open-gate when virtual:signal-A > 0", "read-sensor = true"]);
   // A wall has no description in the game: the field says that the text stays in the project.
   await expect(inspector(page).getByLabel("Description")).toHaveAttribute("title", "A wall has no description in the game. This text stays in the project.");
 
@@ -234,7 +227,7 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   expect(await shownSettings(page)).toEqual(["output-networks", "read-items", "read-robot-stats", "available-logistic-signal", "total-logistic-signal", "available-construction-signal", "total-construction-signal", "roboport-count-signal"]);
   await expect(field(page, "Available logistic robots")).toHaveValue("virtual:signal-X");
   await field(page, "Roboport count").fill("virtual:signal-N");
-  expect(await body(page, "robots")).toEqual(["prototype = roboport", "read-items = missing-requests", "read-robot-stats = true", "roboport-count-signal = virtual:signal-N"]);
+  expect(await body(page, "robots")).toEqual(["read-items = missing-requests", "read-robot-stats = true", "roboport-count-signal = virtual:signal-N"]);
 
   // A storage tank is built facing north or east only.
   await selectEntity(page, "tank");
@@ -242,7 +235,7 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   expect(await facing.getByRole("button").evaluateAll((all) => all.map((element) => element.getAttribute("data-direction")))).toEqual(["north", "east"]);
   await expect(facing.getByRole("button", { name: "East" })).toHaveAttribute("aria-pressed", "true");
   await facing.getByRole("button", { name: "North" }).click();
-  expect(await sourceText(page)).toContain("entity tank at (720, 200) facing north {");
+  expect(await sourceText(page)).toContain("storage-tank tank at (720, 200) facing north {");
   await expect(facing.getByRole("button", { name: "North" })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => window.faceSession!.getState().diagnostics.filter((diagnostic) => diagnostic.severity === "error"))).toEqual([]);
 });
@@ -252,17 +245,14 @@ const MACHINES = ["foundry", "biochamber", "assembling-machine-1", "assembling-m
 
 /** An assembling machine with a chest two tiles beside it, and an inserter. */
 const TIGHT = `circuit "Tight" {
-    entity maker at (0, 0) tile (1.5, 1.5) {
-        prototype = assembling-machine-1
+    assembling-machine-1 maker at (0, 0) tile (1.5, 1.5) {
         read-contents = true
     }
 
-    entity box at (240, 0) tile (4.5, 3.5) {
-        prototype = iron-chest
+    iron-chest box at (240, 0) tile (4.5, 3.5) {
     }
 
-    entity feeder at (480, 0) tile (7.5, 0.5) {
-        prototype = inserter
+    inserter feeder at (480, 0) tile (7.5, 0.5) {
         read-hand = hold
     }
 }
@@ -278,14 +268,18 @@ test("an entity becomes another prototype of its type; on the board one whose fo
   await expect(inspector(page).locator(".prototype-chosen")).toHaveText("Inserter 1 tile");
   await chooser.getByRole("button", { name: "Fast inserter" }).click();
   // The settings stay; the card, the inspector and the entities in use follow.
-  expect(await body(page, "feeder")).toEqual(["prototype = fast-inserter", "read-hand = hold"]);
+  expect(await body(page, "feeder")).toEqual(["read-hand = hold"]);
+  expect(await sourceText(page)).toContain("    fast-inserter feeder at (");
   await expect(inspector(page).locator("h2")).toHaveText("Fast inserter");
   await expect(inspector(page).locator(".prototype-chosen")).toHaveText("Fast inserter 1 tile");
   await expect(card(page, "feeder").locator(".card-kind")).toHaveText("FAST INSERTER");
   await expect(page.locator('.palette-tile.in-use[data-prototype="fast-inserter"]')).toHaveCount(1);
   await expect(page.locator('.palette-tile.in-use[data-prototype="inserter"]')).toHaveCount(0);
+  // The word of the declaration is all that changed, in one step.
+  const changed = await sourceText(page);
   await page.getByRole("button", { name: "Undo" }).click();
-  expect(await body(page, "feeder")).toEqual(["prototype = inserter", "read-hand = hold"]);
+  expect(await sourceText(page)).toBe(changed.replace("    fast-inserter feeder at (", "    inserter feeder at ("));
+  expect(await body(page, "feeder")).toEqual(["read-hand = hold"]);
 
   // On the board: an oil refinery covers 5 x 5 tiles from the top-left tile of the machine, and the chest stands on one of them.
   await showDisplay(page, "blueprint");
@@ -302,7 +296,8 @@ test("an entity becomes another prototype of its type; on the board one whose fo
   // One of the same size is taken, and one that is smaller in the turned direction as well.
   await chooser.getByRole("button", { name: "Assembling machine 2" }).click();
   await expect(toast(page)).toHaveCount(0);
-  expect(await body(page, "maker")).toEqual(["prototype = assembling-machine-2", "read-contents = true"]);
+  expect(await body(page, "maker")).toEqual(["read-contents = true"]);
+  expect(await sourceText(page)).toBe(before.replace("    assembling-machine-1 maker at (", "    assembling-machine-2 maker at ("));
   expect(await footprint(page, "maker")).toMatchObject({ tile: [0, 0], size: [3, 3] });
   // An assembling machine 2 turns, which a machine 1 does not: the facing appears with it.
   await expect(inspector(page).getByRole("group", { name: "Facing" }).getByRole("button")).toHaveCount(4);
@@ -314,31 +309,27 @@ test("an entity becomes another prototype of its type; on the board one whose fo
   await chooser.getByRole("button", { name: "Oil refinery" }).click();
   await expect(toast(page)).toHaveCount(0);
   expect(await footprint(page, "maker")).toMatchObject({ tile: [0, 0], size: [5, 5] });
-  expect(await sourceText(page)).toContain("entity maker at (0, 0) tile (2.5, 2.5) {\n        prototype = oil-refinery\n        read-contents = true");
+  expect(await sourceText(page)).toContain("oil-refinery maker at (0, 0) tile (2.5, 2.5) {\n        read-contents = true");
 });
 
 /** A constant feeds an inserter that works below 100 plates, a rail signal that closes above 20 and a chest. */
 const LINE = `circuit "Line" {
-    constant source at (0, 0) tile (0.5, 0.5) {
+    constant-combinator source at (0, 0) tile (0.5, 0.5) {
         item:iron-plate = 40
     }
 
-    entity feeder at (240, 0) tile (3.5, 0.5) {
-        prototype = fast-inserter
+    fast-inserter feeder at (240, 0) tile (3.5, 0.5) {
         when item:iron-plate < 100
     }
 
-    entity gate at (480, 0) tile (6.5, 0.5) {
-        prototype = rail-signal
+    rail-signal gate at (480, 0) tile (6.5, 0.5) {
         close when item:iron-plate > 20
     }
 
-    entity box at (720, 0) tile (9.5, 0.5) {
-        prototype = steel-chest
+    steel-chest box at (720, 0) tile (9.5, 0.5) {
     }
 
-    entity maker at (240, 200) tile (4.5, 4.5) {
-        prototype = assembling-machine-2
+    assembling-machine-2 maker at (240, 200) tile (4.5, 4.5) {
         when item:iron-plate > 200
         read-working = true
     }

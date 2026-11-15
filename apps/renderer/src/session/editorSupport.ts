@@ -3,7 +3,7 @@
 import { autocompletion, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete";
 import { linter, setDiagnostics, type Diagnostic as LintDiagnostic } from "@codemirror/lint";
 import type { EditorState, Extension, TransactionSpec } from "@codemirror/state";
-import { analyze, completionContext, tokenize, type ParseResult, type Token } from "@face/language";
+import { analyze, completionContext, declarationWords, tokenize, type ParseResult, type Token } from "@face/language";
 import { tokenHighlighting } from "../editor/tokenHighlight.ts";
 import type { Diagnostic, SourceToken } from "../workbench/controller.ts";
 import { completionCandidates, type CompletionCatalog } from "./completion.ts";
@@ -13,7 +13,9 @@ const WILDCARDS: ReadonlySet<string> = new Set(["each", "anything", "everything"
 const WORD_OPERATORS: ReadonlySet<string> = new Set(["AND", "OR", "XOR"]);
 
 /** Token kind in the vocabulary of editor/tokens.ts, or undefined for trivia that is not styled. */
-function highlightKind(token: Token): string | undefined {
+function highlightKind(token: Token, declarations: ReadonlySet<Token>): string | undefined {
+  // The word of an entity declaration reads like a keyword, bare or quoted.
+  if (declarations.has(token)) return "keyword";
   switch (token.kind) {
     case "whitespace":
     case "eof":
@@ -44,9 +46,10 @@ function highlightKind(token: Token): string | undefined {
 }
 
 export function highlightTokens(tokens: readonly Token[]): SourceToken[] {
+  const declarations = declarationWords(tokens);
   const result: SourceToken[] = [];
   for (const token of tokens) {
-    const kind = highlightKind(token);
+    const kind = highlightKind(token, declarations);
     if (kind) result.push({ kind, from: token.from, to: token.to });
   }
   return result;

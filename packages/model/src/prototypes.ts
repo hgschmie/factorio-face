@@ -1,12 +1,13 @@
 // The prototypes of the game that the editor has: which family of behaviour (`EntityKind`) each of them is, and its game data
 // (size, rotation, wire reach, name) from the entity table of the game (`entityTable.ts`), which has every prototype a circuit
 // wire connects to. A kind is a family of behaviour; a prototype is one member of it as the game names it in a blueprint (`name`).
+// Every entity says which prototype it is, and has its kind from it.
 // Six prototype types of the game have a kind of their own (`KIND_OF_TYPE`: the combinators, the lamp, the electric pole), so every
 // prototype of such a type has it, a modded one like a standard one. The speaker has its kind by name: its instruments are data
 // of the one prototype. Every other prototype of the table is of the kind `entity` when its prototype type has a row of settings
 // (`ENTITY_SETTINGS`). No list of names decides what there is, so a table of another game brings its own.
 
-import type { EntityKind, EntitySettings } from "./circuit.ts";
+import { DEFAULT_ENTITY, type EntityConfig, type EntityKind, type EntitySettings } from "./circuit.ts";
 import { ENTITY_SETTINGS, normalizeSettings, type SettingSpec } from "./entitySettings.ts";
 import { hasOwnWireReach, STANDARD_ENTITY_TABLE, type BoxEdges, type EntityPrototype, type EntityTable } from "./entityTable.ts";
 
@@ -42,10 +43,7 @@ const KIND_OF_TYPE: Readonly<Record<string, EntityKind>> = {
 /** The one prototype type whose kind goes by name: the instruments and notes of a speaker are those of the standard prototype, which the entity table does not have per prototype. */
 const SPEAKER = { type: "programmable-speaker", name: "programmable-speaker" } as const;
 
-/**
- * The standard prototypes with a kind of their own, which every table has to have. The first of a kind is the one an entity of
- * that kind is without saying which, in a table with further prototypes of the kind as well.
- */
+/** The standard prototypes with a kind of their own, which every table has to have. Each is the first of its kind in a table with further prototypes of the kind as well. */
 const STANDARD_KIND = {
   "constant-combinator": "constant",
   "arithmetic-combinator": "arithmetic",
@@ -136,10 +134,9 @@ export function setEntityTable(next: EntityTable): void {
   install(next);
 }
 
-/** What decides the game prototype of an entity: its kind and, for a kind with several prototypes, which one. Every `Entity` is one. */
+/** An entity as far as its game data goes: which prototype it is. Every `Entity` is one, and so is whatever names a prototype to place. */
 export interface EntityShape {
-  readonly kind: EntityKind;
-  readonly prototype?: PrototypeName;
+  readonly prototype: PrototypeName;
 }
 
 /** Whether the editor has a prototype of this name. */
@@ -147,32 +144,25 @@ export function isPrototypeName(value: string): boolean {
   return Object.hasOwn(PROTOTYPES, value);
 }
 
-/** The prototypes of a kind; the first is the default, except for `entity`, which always says which one it is. */
+/** The prototypes of a kind. The standard one is the first; the generic ones (`entity`) are in the order of their names. */
 export function prototypesOf(kind: EntityKind): readonly PrototypeName[] {
   return BY_KIND.get(kind) ?? [];
 }
 
-/** The game prototype of an entity: the one it names if that is of its kind, else the first of its kind. */
-export function prototypeOf(entity: EntityShape): PrototypeName {
-  const named = entity.prototype;
-  return named !== undefined && isPrototypeName(named) && PROTOTYPES[named]!.kind === entity.kind ? named : prototypesOf(entity.kind)[0]!;
-}
-
-/**
- * What an entity of `kind` holds as its `prototype` when it is the game prototype `name`: the name, and nothing for the first of
- * a kind, which goes without saying. A pole and a generic entity always say which one they are.
- */
-export function heldPrototype(kind: EntityKind, name: PrototypeName): PrototypeName | undefined {
-  return kind === "pole" || kind === "entity" || name !== prototypesOf(kind)[0] ? name : undefined;
-}
-
 export function prototypeData(entity: EntityShape): PrototypeData {
-  return PROTOTYPES[prototypeOf(entity)]!;
+  return PROTOTYPES[entity.prototype]!;
 }
 
 /** The record of the entity table for an entity's prototype. */
 export function gamePrototype(entity: EntityShape): EntityPrototype {
-  return table.byName.get(prototypeOf(entity))!;
+  return table.byName.get(entity.prototype)!;
+}
+
+/** A new entity of a prototype without its identity and its place: the configuration of a freshly placed one of its kind. */
+export type NewEntity = { readonly [K in EntityKind]: EntityConfig<K> & EntityShape }[EntityKind];
+
+export function newEntity(prototype: PrototypeName): NewEntity {
+  return { ...DEFAULT_ENTITY[PROTOTYPES[prototype]!.kind], prototype };
 }
 
 /** The circuit settings a prototype has, by its type (`ENTITY_SETTINGS`). None for a prototype with a kind of its own or one the editor does not have. */
@@ -193,8 +183,9 @@ export function normalizedSettings(prototype: PrototypeName, settings: EntitySet
  * (`assembling_machine1` for assembling-machine-2).
  */
 export function entityNameBase(entity: EntityShape): string {
-  if (entity.kind !== "entity") return entity.kind;
-  const base = prototypeOf(entity).replace(/-\d+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
+  const { kind } = prototypeData(entity);
+  if (kind !== "entity") return kind;
+  const base = entity.prototype.replace(/-\d+$/, "").replace(/[^A-Za-z0-9_]/g, "_");
   // A name of another game's table may start with a digit, which an entity name cannot.
   return /^[0-9]/.test(base) ? `_${base}` : base;
 }

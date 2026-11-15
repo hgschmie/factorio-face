@@ -218,13 +218,13 @@ test("the search looks through every group by name, shows what it finds under th
   // Enter arms the first entity found; the results stay, with its tile pressed.
   await search(page).fill("turret");
   await page.keyboard.press("Enter");
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "entity", prototype: "gun-turret" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "gun-turret" });
   await expect(entry(page, "gun-turret")).toHaveAttribute("aria-pressed", "true");
   expect(await found()).toHaveLength(7);
   await expect(search(page)).toHaveValue("turret");
   // A click on a tile found arms it like any tile.
   await entry(page, "laser-turret").click();
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "entity", prototype: "laser-turret" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "laser-turret" });
   await expect(search(page)).toHaveValue("turret");
   await page.keyboard.press("q");
 
@@ -429,7 +429,7 @@ test('"Entities in use" has a tile for each kind of entity the circuit contains,
   // A tile in use arms the tool like the entry in its group, and both show it; it places the same entity.
   await tab(page, "Logistics").click();
   await inUse(page, "substation").click();
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "pole", prototype: "substation" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "substation" });
   await expect(inUse(page, "substation")).toHaveAttribute("aria-pressed", "true");
   await expect(entry(page, "substation")).toHaveAttribute("aria-pressed", "true");
   await expect(palette(page).locator('.palette-tile[aria-pressed="true"]')).toHaveCount(2);
@@ -437,11 +437,11 @@ test('"Entities in use" has a tile for each kind of entity the circuit contains,
   await canvas(page).focus();
   await page.keyboard.press("Enter");
   await expect(card(page, "pole4")).toHaveAttribute("data-kind", "pole");
-  expect(await sourceText(page)).toMatch(/pole pole4 at \(-?\d+, -?\d+\) \{\n {8}prototype = substation/);
+  expect(await sourceText(page)).toMatch(/substation pole4 at \(-?\d+, -?\d+\) \{\n {4}\}/);
   await expect(palette(page).locator('.palette-tile[aria-pressed="true"]')).toHaveCount(0);
   // A tile in use of another tab arms its tool and brings its tab.
   await inUse(page, "gun-turret").click();
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "entity", prototype: "gun-turret" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "gun-turret" });
   await expectTab(page, "Combat");
   await expect(entry(page, "gun-turret")).toHaveAttribute("aria-pressed", "true");
   // Clicking it again while it is armed returns to the select tool; the key of the lamp lights both of its tiles.
@@ -461,7 +461,7 @@ test('"Entities in use" has a tile for each kind of entity the circuit contains,
   await page.getByRole("button", { name: "Undo" }).click();
   expect(await entitiesInUse(page)).toHaveLength(8);
   // Typing in the source counts like any edit, and so does a prototype changed there.
-  await setSource(page, (await sourceText(page)).replace("prototype = fast-inserter", "prototype = bulk-inserter"));
+  await setSource(page, (await sourceText(page)).replace("fast-inserter fast_inserter1", "bulk-inserter fast_inserter1"));
   expect((await entitiesInUse(page))[0]).toBe("bulk-inserter");
 
   // The section closes; its heading and its count stay.
@@ -513,7 +513,7 @@ test("an entity the game hides is in no tab, but one a blueprint brought shows i
   await page.screenshot({ path: resolve(SHOTS, "selector-in-use-hidden.png") });
   // The tile places another one; no tab changes for it, since none holds it.
   await inUse(page, "loader").click();
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "entity", prototype: "loader" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "loader" });
   await expect(inUse(page, "loader")).toHaveAttribute("aria-pressed", "true");
   await expectTab(page, "Logistics");
   await canvas(page).focus();
@@ -613,7 +613,7 @@ test("the key 5 brings the tab of the lamp so that the armed entry is on show; t
   // Another tab shown by hand while the tool is armed stays; the tool stays armed and still places.
   await tab(page, "Production").click();
   await expectTab(page, "Production");
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "lamp" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "small-lamp" });
   await page.keyboard.press("q");
   await expectTab(page, "Production");
   // The key again brings the tab again; the keys 1 to 4 arm a tile of the first row and leave the tab alone.
@@ -629,18 +629,18 @@ test("the key 5 brings the tab of the lamp so that the armed entry is on show; t
   await expect(entry(page, "small-lamp")).toHaveAttribute("aria-pressed", "false");
   // The digits beyond 5 pick nothing: the other entries have no key.
   for (const digit of ["6", "7", "8", "9", "0"]) await page.keyboard.press(digit);
-  expect(await activeTool(page)).toEqual({ type: "place", kind: "decider" });
+  expect(await activeTool(page)).toEqual({ type: "place", prototype: "decider-combinator" });
 });
 
 /** One entry per kind of thing the selector places: what it is called, how it turns, and what the source says of it. */
 const PLACED = [
-  { group: "Logistics", prototype: "programmable-speaker", kind: "speaker", name: "speaker1", noun: "a speaker", title: "SPEAKER", turns: false, source: "speaker speaker1 at (0, 500) {\n    }" },
-  { group: "Logistics", prototype: "big-electric-pole", kind: "pole", name: "pole1", noun: "a big electric pole", title: "BIG ELECTRIC POLE", turns: false, source: "pole pole1 at (240, 500) {\n        prototype = big-electric-pole\n    }" },
-  { group: "Logistics", prototype: "steel-chest", kind: "entity", name: "steel_chest1", noun: "a steel chest", title: "STEEL CHEST", turns: false, source: "entity steel_chest1 at (480, 500) {\n        prototype = steel-chest\n    }" },
-  { group: "Logistics", prototype: "fast-inserter", kind: "entity", name: "fast_inserter1", noun: "a fast inserter", title: "FAST INSERTER", turns: true, source: "entity fast_inserter1 at (720, 500) facing south {\n        prototype = fast-inserter\n    }" },
-  { group: "Production", prototype: "assembling-machine-2", kind: "entity", name: "assembling_machine1", noun: "an assembling machine 2", title: "ASSEMBLING MACHINE 2", turns: true, source: "entity assembling_machine1 at (960, 500) facing south {\n        prototype = assembling-machine-2\n    }" },
-  { group: "Space", prototype: "rocket-silo", kind: "entity", name: "rocket_silo1", noun: "a rocket silo", title: "ROCKET SILO", turns: false, source: "entity rocket_silo1 at (1200, 500) {\n        prototype = rocket-silo\n    }" },
-  { group: "Combat", prototype: "stone-wall", kind: "entity", name: "stone_wall1", noun: "a wall", title: "WALL", turns: false, source: "entity stone_wall1 at (1440, 500) {\n        prototype = stone-wall\n    }" },
+  { group: "Logistics", prototype: "programmable-speaker", kind: "speaker", name: "speaker1", noun: "a speaker", title: "SPEAKER", turns: false, source: "programmable-speaker speaker1 at (0, 500) {\n    }" },
+  { group: "Logistics", prototype: "big-electric-pole", kind: "pole", name: "pole1", noun: "a big electric pole", title: "BIG ELECTRIC POLE", turns: false, source: "big-electric-pole pole1 at (240, 500) {\n    }" },
+  { group: "Logistics", prototype: "steel-chest", kind: "entity", name: "steel_chest1", noun: "a steel chest", title: "STEEL CHEST", turns: false, source: "steel-chest steel_chest1 at (480, 500) {\n    }" },
+  { group: "Logistics", prototype: "fast-inserter", kind: "entity", name: "fast_inserter1", noun: "a fast inserter", title: "FAST INSERTER", turns: true, source: "fast-inserter fast_inserter1 at (720, 500) facing south {\n    }" },
+  { group: "Production", prototype: "assembling-machine-2", kind: "entity", name: "assembling_machine1", noun: "an assembling machine 2", title: "ASSEMBLING MACHINE 2", turns: true, source: "assembling-machine-2 assembling_machine1 at (960, 500) facing south {\n    }" },
+  { group: "Space", prototype: "rocket-silo", kind: "entity", name: "rocket_silo1", noun: "a rocket silo", title: "ROCKET SILO", turns: false, source: "rocket-silo rocket_silo1 at (1200, 500) {\n    }" },
+  { group: "Combat", prototype: "stone-wall", kind: "entity", name: "stone_wall1", noun: "a wall", title: "WALL", turns: false, source: "stone-wall stone_wall1 at (1440, 500) {\n    }" },
 ] as const;
 
 test("a tile of every tab places its entity on the edit canvas, named after its prototype, with its prototype in the source", async ({ page }) => {
@@ -650,12 +650,12 @@ test("a tile of every tab places its entity on the edit canvas, named after its 
     await tab(page, item.group).click();
     await entry(page, item.prototype).click();
     await expect(entry(page, item.prototype)).toHaveAttribute("aria-pressed", "true");
-    expect(await activeTool(page)).toEqual({ type: "place", kind: item.kind, prototype: item.prototype });
+    expect(await activeTool(page)).toEqual({ type: "place", prototype: item.prototype });
     // The hint names the entity. One that turns says so, and R turns what is about to be placed; the others say nothing and the keys do nothing.
     await expect(hint(page)).toHaveText(`Click the canvas (or press Enter on it) to place ${item.noun}${item.turns ? " facing east (R turns it)" : ""}. Esc cancels.`);
     await page.keyboard.press("r");
     if (item.turns) await expect(hint(page)).toContainText("facing south");
-    else expect(await activeTool(page)).toEqual({ type: "place", kind: item.kind, prototype: item.prototype });
+    else expect(await activeTool(page)).toEqual({ type: "place", prototype: item.prototype });
     const point = await clientPointOf(page, { x: 92 + index * 240, y: 564 });
     await page.mouse.click(point.x, point.y);
 
@@ -691,10 +691,10 @@ test("a tile of every tab places its entity on the edit canvas, named after its 
 
 /** Two lamps that span the board the next tests place on, so that Fit shows all of it. */
 const corners = (width: number, height: number): string => `circuit "Corners" {
-    lamp first at (0, 0) tile (0.5, 0.5) {
+    small-lamp first at (0, 0) tile (0.5, 0.5) {
     }
 
-    lamp last at (1380, 460) tile (${width - 0.5}, ${height - 0.5}) {
+    small-lamp last at (1380, 460) tile (${width - 0.5}, ${height - 0.5}) {
     }
 }
 `;
@@ -748,7 +748,7 @@ test("on the board a tile of each footprint places an entity of the right size, 
       await expect(hint(page)).not.toContainText("turns it");
       await expect(arrow).toHaveCount(0);
       for (const key of ["r", "Shift+KeyR", "h", "v"]) await page.keyboard.press(key);
-      expect(await activeTool(page), item.prototype).toEqual({ type: "place", kind: "entity", prototype: item.prototype });
+      expect(await activeTool(page), item.prototype).toEqual({ type: "place", prototype: item.prototype });
       await expect.poll(() => ghostOutline(page), item.prototype).toMatchObject({ size: east });
     } else {
       await expect(hint(page)).toContainText("facing east (R turns it)");
@@ -778,13 +778,13 @@ test("on the board a tile of each footprint places an entity of the right size, 
   expect(await page.evaluate(() => window.faceSession!.getState().diagnostics.filter((diagnostic) => diagnostic.code.startsWith("tile")))).toEqual([]);
   // The centers as the source holds them: half tiles along an odd number of tiles, whole numbers along an even one.
   const source = await sourceText(page);
-  expect(source).toMatch(/entity iron_chest1 at \(\d+, \d+\) tile \(2\.5, 1\.5\) \{\n {8}prototype = iron-chest/);
-  expect(source).toMatch(/entity pump1 at \(\d+, \d+\) tile \(7, 1\.5\) \{/);
-  expect(source).toMatch(/entity splitter1 at \(\d+, \d+\) tile \(10\.5, 2\) \{/);
-  expect(source).toMatch(/entity train_stop1 at \(\d+, \d+\) tile \(14, 2\) \{/);
-  expect(source).toMatch(/entity boiler1 at \(\d+, \d+\) tile \(20, 2\.5\) \{/);
-  expect(source).toMatch(/entity cargo_landing_pad1 at \(\d+, \d+\) tile \(17, 11\) \{/);
-  expect(source).toMatch(/entity rocket_silo1 at \(\d+, \d+\) tile \(26\.5, 11\.5\) \{/);
+  expect(source).toMatch(/iron-chest iron_chest1 at \(\d+, \d+\) tile \(2\.5, 1\.5\) \{\n {4}\}/);
+  expect(source).toMatch(/pump pump1 at \(\d+, \d+\) tile \(7, 1\.5\) \{/);
+  expect(source).toMatch(/splitter splitter1 at \(\d+, \d+\) tile \(10\.5, 2\) \{/);
+  expect(source).toMatch(/train-stop train_stop1 at \(\d+, \d+\) tile \(14, 2\) \{/);
+  expect(source).toMatch(/boiler boiler1 at \(\d+, \d+\) tile \(20, 2\.5\) \{/);
+  expect(source).toMatch(/cargo-landing-pad cargo_landing_pad1 at \(\d+, \d+\) tile \(17, 11\) \{/);
+  expect(source).toMatch(/rocket-silo rocket_silo1 at \(\d+, \d+\) tile \(26\.5, 11\.5\) \{/);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Fit circuit" }).click();
   await page.waitForTimeout(300);
@@ -799,7 +799,7 @@ test("on the board a tile of each footprint places an entity of the right size, 
   await expect.poll(() => ghostOutline(page)).toEqual({ tile: [34, 8], size: [1, 2], prototype: "pump", blocked: false });
   await page.mouse.click(pump.x, pump.y);
   expect(await footprint(page, "pump2")).toEqual({ tile: [34, 8], size: [1, 2], facing: "north", placed: "true" });
-  expect(await sourceText(page)).toMatch(/entity pump2 at \(\d+, \d+\) tile \(34\.5, 9\) facing north \{/);
+  expect(await sourceText(page)).toMatch(/pump pump2 at \(\d+, \d+\) tile \(34\.5, 9\) facing north \{/);
   // A storage tank placed after a turn faces north.
   await entry(page, "storage-tank").click();
   await page.keyboard.press("r");

@@ -1,7 +1,7 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, entityNameBase, facingOf, gamePrototype, prototypeOf, settingSpecsOf, tileCenter, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { MODDED_RECORDS, withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
@@ -137,7 +137,7 @@ describe("round trip: editor to blueprint to editor", () => {
     withModdedTable(() => {
       for (let seed = 1; seed <= 300; seed++) {
         const circuit = blueprintable(new Generator(seed).circuit(1 + (seed % 12)));
-        for (const entity of circuit.entities) prototypes.add(prototypeOf(entity));
+        for (const entity of circuit.entities) prototypes.add(entity.prototype);
         roundTrip(circuit, GENERATED_INSTRUMENTS);
       }
     });
@@ -149,31 +149,31 @@ describe("round trip: editor to blueprint to editor", () => {
     const circuit = sampleCircuit({
       label: "",
       source: `
-        constant c facing east { description = ""  section "" { virtual:signal-A = 1 } }
-        lamp l facing south { description = "note" }
-        speaker s { when virtual:signal-A > 0  instrument = alarms  note = alarm-1 }
-        speaker t { instrument = piano  note = F3 }
-        selector q { operation = quality-transfer  source = signal  source-signal = item:iron-plate@rare }
+        constant-combinator c facing east { description = ""  section "" { virtual:signal-A = 1 } }
+        small-lamp l facing south { description = "note" }
+        programmable-speaker s { when virtual:signal-A > 0  instrument = alarms  note = alarm-1 }
+        programmable-speaker t { instrument = piano  note = F3 }
+        selector-combinator q { operation = quality-transfer  source = signal  source-signal = item:iron-plate@rare }
       `,
     });
     const back = imported(exported(circuit)).circuit;
     expect(printCircuit({ ...back, entities: back.entities.map((entity) => ({ ...entity, position: { x: 0, y: 0 } })) })).toBe(`circuit "" {
-    constant constant1 at (0, 0) tile (0.5, 0.5) {
+    constant-combinator constant1 at (0, 0) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    lamp lamp1 at (0, 0) tile (2.5, 0.5) {
+    small-lamp lamp1 at (0, 0) tile (2.5, 0.5) {
     }
 
-    speaker speaker1 at (0, 0) tile (4.5, 0.5) {
+    programmable-speaker speaker1 at (0, 0) tile (4.5, 0.5) {
         when virtual:signal-A > 0
     }
 
-    speaker speaker2 at (0, 0) tile (6.5, 0.5) {
+    programmable-speaker speaker2 at (0, 0) tile (6.5, 0.5) {
         instrument = piano
     }
 
-    selector selector1 at (0, 0) tile (1, 2.5) {
+    selector-combinator selector1 at (0, 0) tile (1, 2.5) {
         operation = quality-transfer
         source = signal
         source-signal = item:iron-plate

@@ -3,7 +3,7 @@
 // use" has the other entities the circuit contains, and below them every entity the project's modules have is where the game
 // has the item that builds it: a tab per item group, its subgroups as rows, and a search through all of them. What the selector
 // offers is data: the `EntityRegistry` of the catalog (entities/registry.ts).
-import { prototypeOf, type Entity, type EntityId } from "@face/model";
+import type { Entity, EntityId } from "@face/model";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { placeBubble, type BubblePlacement } from "../canvas/bubble.ts";
 import { HoverIntent } from "../canvas/hover.ts";
@@ -71,7 +71,7 @@ interface TileProps {
  * no native tooltip that would say it twice.
  */
 function Tile({ entry, tool, disabled, place: where, describedBy, resolveIcon, onToggle, onHover, onFocus }: TileProps) {
-  const place: Tool = { type: "place", kind: entry.kind, prototype: entry.prototype };
+  const place: Tool = { type: "place", prototype: entry.prototype };
   return (
     <button
       type="button"
@@ -215,7 +215,7 @@ export function Palette({ registry, tool, canPlace, entities, selection, resolve
 
   // A tool whose tile is not on show (picked by its key, or armed while the palette was away in Source mode) must be: its tab
   // comes to the front, and a search that does not find it goes. The pinned entries are on show whatever the tab.
-  const armed = tool.type === "place" ? prototypeOf(tool) : undefined;
+  const armed = tool.type === "place" ? tool.prototype : undefined;
   const armedGroup = armed !== undefined && !pinned.some((entry) => entry.prototype === armed) ? registry.groupOf(armed) : undefined;
   useEffect(() => {
     if (armedGroup === undefined) return;
@@ -315,7 +315,7 @@ export function Palette({ registry, tool, canPlace, entities, selection, resolve
               value={search}
               onChange={(event) => changeSearch(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && firstFound && canPlace) onToolChange({ type: "place", kind: firstFound.kind, prototype: firstFound.prototype });
+                if (event.key === "Enter" && firstFound && canPlace) onToolChange({ type: "place", prototype: firstFound.prototype });
                 if (event.key === "Escape" && search !== "") {
                   event.stopPropagation();
                   changeSearch("");

@@ -19,9 +19,9 @@ export const TERMINAL_SIDES = ["in", "out", "io"] as const;
 export type TerminalSide = (typeof TERMINAL_SIDES)[number];
 
 /**
- * A kind is a family of behaviour. Which game prototype an entity is: `prototypes.ts`. The kind `entity` is every prototype of the
- * game that has no kind of its own (chests, inserters, belts, machines, ...): its settings are a table per prototype type
- * (`entitySettings.ts`), not fields of an interface.
+ * A kind is a family of behaviour. An entity has the kind of its game prototype (`prototypes.ts`). The kind `entity` is every
+ * prototype of the game that has no kind of its own (chests, inserters, belts, machines, ...): its settings are a table per
+ * prototype type (`entitySettings.ts`), not fields of an interface.
  */
 export const ENTITY_KINDS = ["constant", "arithmetic", "decider", "selector", "lamp", "pole", "speaker", "entity"] as const;
 export type EntityKind = (typeof ENTITY_KINDS)[number];
@@ -88,11 +88,10 @@ interface EntityBase {
   readonly placement?: Placement;
   readonly description?: string;
   /**
-   * Which game prototype of its kind the entity is, where the kind has several (a modded combinator, a big electric pole); absent:
-   * the first of the kind, which goes without saying (`prototypeOf`, `heldPrototype`). It decides the size, the rotation and the
-   * wire reach, never the behaviour.
+   * Which entity of the game this is, by the name a blueprint has for it (`prototypes.ts`). It decides the kind and with it the
+   * behaviour, the size, the rotation and the wire reach.
    */
-  readonly prototype?: PrototypeName;
+  readonly prototype: PrototypeName;
 }
 
 // Constant combinator
@@ -205,10 +204,9 @@ export interface Lamp extends EntityBase {
 
 // Electric pole
 
-/** Relays circuit signals: every wire of one color on it is one network. It has no settings; the prototype decides its size and its wire reach, and a pole always says which one it is. */
+/** Relays circuit signals: every wire of one color on it is one network. It has no settings; the prototype decides its size and its wire reach. */
 export interface Pole extends EntityBase {
   readonly kind: "pole";
-  readonly prototype: PrototypeName;
 }
 
 // Programmable speaker
@@ -270,7 +268,6 @@ export type EntitySettings = Readonly<Record<string, SettingValue>>;
  */
 export interface GenericEntity extends EntityBase {
   readonly kind: "entity";
-  readonly prototype: PrototypeName;
   readonly settings: EntitySettings;
   /**
    * What a blueprint says about the entity that the editor does not model (recipe, filters, quality, a direction that is no
@@ -330,16 +327,17 @@ export function isInt32(value: number): boolean {
 
 // Defaults mirror a freshly placed entity in the game.
 
-type NewEntity<K extends EntityKind> = Omit<EntityOfKind<K>, "id" | "name" | "position">;
+/** What an entity of a kind holds besides its identity, its place and its prototype. */
+export type EntityConfig<K extends EntityKind> = Omit<EntityOfKind<K>, "id" | "name" | "position" | "prototype">;
 
-export const DEFAULT_ENTITY: { readonly [K in EntityKind]: NewEntity<K> } = {
+/** The configuration of a new entity per kind. A whole new entity of a prototype: `newEntity` in `prototypes.ts`. */
+export const DEFAULT_ENTITY: { readonly [K in EntityKind]: EntityConfig<K> } = {
   constant: { kind: "constant", enabled: true, sections: [] },
   arithmetic: { kind: "arithmetic", first: { type: "constant", value: 0 }, operation: "*", second: { type: "constant", value: 0 } },
   decider: { kind: "decider", conditions: [], outputs: [], elseOutputs: [] },
   selector: { kind: "selector", mode: { operation: "select", max: true, index: { type: "constant", value: 0 }, indexComparator: "=" } },
   lamp: { kind: "lamp", inputNetworks: BOTH_NETWORKS, alwaysOn: false, useColors: false, colorMode: "mapping" },
-  pole: { kind: "pole", prototype: "small-electric-pole" },
+  pole: { kind: "pole" },
   speaker: { kind: "speaker", volume: 100, playbackMode: "local", allowPolyphony: false, stopPlayingSounds: false, showAlert: false, showOnMap: true, alertMessage: "" },
-  // The prototype only fills the place: whoever makes a generic entity says which one it is.
-  entity: { kind: "entity", prototype: "wooden-chest", settings: {} },
+  entity: { kind: "entity", settings: {} },
 };

@@ -1,5 +1,5 @@
 import {
-  BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, wireKey,
+  BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, PROTOTYPE_NAMES, PROTOTYPES, wireKey,
   type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type NetworkSelection, type SelectorCombinator,
 } from "@face/model";
 import { describe, expect, it } from "vitest";
@@ -75,15 +75,15 @@ describe("comment and spacing fixture: every command changes only the expected b
   });
 
   it("addEntity appends after the last entity, before trailing wires, in the file's style", () => {
-    const { changes, name } = addEntity(parsed, "constant", { x: 40, y: 260 });
+    const { changes, name } = addEntity(parsed, "constant-combinator", { x: 40, y: 260 });
     expect(name).toBe("constant1");
     expect(changes).toHaveLength(1);
     expect(applyChanges(comments, changes)).toBe(
-      comments.replace("        always-on = false\n    }\n", "        always-on = false\n    }\n\n    constant constant1 at (40, 260) {\n    }\n"),
+      comments.replace("        always-on = false\n    }\n", "        always-on = false\n    }\n\n    constant-combinator constant1 at (40, 260) {\n    }\n"),
     );
     const after = valid(applyChanges(comments, changes), parsed);
     expect(after.circuit.entities.map((e) => e.id)).toEqual([...parsed.circuit.entities.map((e) => e.id), "e4"]);
-    expect(withoutId(entityOf(after, "constant1"))).toEqual({ ...DEFAULT_ENTITY.constant, name: "constant1", position: { x: 40, y: 260 } });
+    expect(withoutId(entityOf(after, "constant1"))).toEqual({ ...DEFAULT_ENTITY.constant, prototype: "constant-combinator", name: "constant1", position: { x: 40, y: 260 } });
   });
 
   it("addWire appends after the last member and keeps its trailing comment", () => {
@@ -101,14 +101,14 @@ describe("comment and spacing fixture: every command changes only the expected b
 circuit "Text / canvas experiment" {
 
     // The source keeps this leading comment.
-    constant source at (40, 80) {
+    constant-combinator source at (40, 80) {
         virtual:signal-A   =   5  // deliberately irregular spacing
         enabled = true    /* explicit default */
     }
 
     // A wire between declarations tests ordering in the model.
 
-    lamp light at (560, 80) {
+    small-lamp light at (560, 80) {
         when virtual:signal-B > 8
         always-on = false
     }
@@ -140,7 +140,7 @@ circuit "Text / canvas experiment" {
 });
 
 describe("wires", () => {
-  const source = circuit("    arithmetic a { }\n    lamp b { }\n\n    wire green a.out <-> b.in\n    wire green a.out <-> b.in // duplicate\n    wire green b.in <-> a.out // reversed\n    // own-line comment stays\n    wire red a.out <-> b.in");
+  const source = circuit("    arithmetic-combinator a { }\n    small-lamp b { }\n\n    wire green a.out <-> b.in\n    wire green a.out <-> b.in // duplicate\n    wire green b.in <-> a.out // reversed\n    // own-line comment stays\n    wire red a.out <-> b.in");
   const parse = valid(source);
   const a = idOf(parse, "a");
   const b = idOf(parse, "b");
@@ -149,7 +149,7 @@ describe("wires", () => {
     expect(addWire(parse, "green", { entity: a, side: "out" }, { entity: b, side: "in" })).toEqual([]);
     expect(addWire(parse, "green", { entity: b, side: "in" }, { entity: a, side: "out" })).toEqual([]);
     expect(addWire(parse, "red", { entity: b, side: "in" }, { entity: a, side: "out" })).toEqual([]);
-    const only = valid(circuit("arithmetic a { }\nlamp b { }\nwire green b.in <-> a.out"));
+    const only = valid(circuit("arithmetic-combinator a { }\nsmall-lamp b { }\nwire green b.in <-> a.out"));
     expect(addWire(only, "green", { entity: "e1", side: "out" }, { entity: "e2", side: "in" })).toEqual([]);
   });
 
@@ -177,30 +177,30 @@ describe("wires", () => {
     const key = wireKey({ color: "green", a: { entity: a, side: "out" }, b: { entity: b, side: "in" } });
     const changes = removeWire(parse, key);
     expect(changes).toHaveLength(1);
-    expect(applyChanges(source, changes)).toBe(circuit("    arithmetic a { }\n    lamp b { }\n\n    // own-line comment stays\n    wire red a.out <-> b.in"));
+    expect(applyChanges(source, changes)).toBe(circuit("    arithmetic-combinator a { }\n    small-lamp b { }\n\n    // own-line comment stays\n    wire red a.out <-> b.in"));
     expect(failure(() => removeWire(parse, "red|x.in|y.out"))).toBe("unknown-wire");
   });
 
   it("deleting an entity removes incident duplicate and reversed wires", () => {
     const result = applyChanges(source, deleteEntities(parse, [b]));
-    expect(result).toBe(circuit("    arithmetic a { }\n\n    // own-line comment stays"));
+    expect(result).toBe(circuit("    arithmetic-combinator a { }\n\n    // own-line comment stays"));
     expect(valid(result).circuit.wires).toEqual([]);
   });
 
   it("appends the first wire after the last entity with the file's spacing", () => {
-    const spaced = valid('circuit "t" {\n\tconstant a {\n\t\titem:x = 1\n\t}\n\n\tlamp b {\n\t}\n}\n');
-    expect(applyChanges(spaced.source, addWire(spaced, "red", { entity: "e1", side: "out" }, { entity: "e2", side: "in" }))).toBe('circuit "t" {\n\tconstant a {\n\t\titem:x = 1\n\t}\n\n\tlamp b {\n\t}\n\n\twire red a.out <-> b.in\n}\n');
-    const dense = valid("circuit \"t\" {\nconstant a { item:x = 1 }\nlamp b { }\n}");
-    expect(applyChanges(dense.source, addWire(dense, "red", { entity: "e1", side: "out" }, { entity: "e2", side: "in" }))).toBe("circuit \"t\" {\nconstant a { item:x = 1 }\nlamp b { }\nwire red a.out <-> b.in\n}");
+    const spaced = valid('circuit "t" {\n\tconstant-combinator a {\n\t\titem:x = 1\n\t}\n\n\tsmall-lamp b {\n\t}\n}\n');
+    expect(applyChanges(spaced.source, addWire(spaced, "red", { entity: "e1", side: "out" }, { entity: "e2", side: "in" }))).toBe('circuit "t" {\n\tconstant-combinator a {\n\t\titem:x = 1\n\t}\n\n\tsmall-lamp b {\n\t}\n\n\twire red a.out <-> b.in\n}\n');
+    const dense = valid("circuit \"t\" {\nconstant-combinator a { item:x = 1 }\nsmall-lamp b { }\n}");
+    expect(applyChanges(dense.source, addWire(dense, "red", { entity: "e1", side: "out" }, { entity: "e2", side: "in" }))).toBe("circuit \"t\" {\nconstant-combinator a { item:x = 1 }\nsmall-lamp b { }\nwire red a.out <-> b.in\n}");
   });
 });
 
 describe("addEntity", () => {
   it("generates unique names per kind", () => {
-    let parse: ParseResult = valid(circuit("    lamp lamp1 { }\n    lamp lamp3 { }"));
+    let parse: ParseResult = valid(circuit("    small-lamp lamp1 { }\n    small-lamp lamp3 { }"));
     const names: string[] = [];
-    for (const kind of ["lamp", "lamp", "constant", "arithmetic", "decider", "selector", "lamp"] as const) {
-      const { changes, name } = addEntity(parse, kind, { x: 0, y: 0 });
+    for (const prototype of ["small-lamp", "small-lamp", "constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp"]) {
+      const { changes, name } = addEntity(parse, prototype, { x: 0, y: 0 });
       names.push(name);
       parse = valid(applyChanges(parse.source, changes), parse);
     }
@@ -210,60 +210,61 @@ describe("addEntity", () => {
   });
 
   it("creates default configurations that parse back to the model defaults", () => {
-    for (const kind of ENTITY_KINDS) {
+    for (const prototype of PROTOTYPE_NAMES) {
       const empty = valid('circuit "t" {\n}\n');
-      const { changes, name } = addEntity(empty, kind, { x: 20, y: -40 }, "fresh", undefined, undefined, kind === "entity" ? DEFAULT_ENTITY.entity.prototype : undefined);
+      const { changes, name } = addEntity(empty, prototype, { x: 20, y: -40 }, "fresh");
       const after = valid(applyChanges(empty.source, changes));
       expect(name).toBe("fresh");
-      expect(withoutId(after.circuit.entities[0]!)).toEqual({ ...DEFAULT_ENTITY[kind], name: "fresh", position: { x: 20, y: -40 } });
+      expect(withoutId(after.circuit.entities[0]!)).toEqual({ ...DEFAULT_ENTITY[PROTOTYPES[prototype]!.kind], prototype, name: "fresh", position: { x: 20, y: -40 } });
     }
+    expect(failure(() => addEntity(valid('circuit "t" {\n}\n'), "lamp", { x: 0, y: 0 }))).toBe("invalid-entity");
   });
 
   it("inserts into empty and single-line circuits", () => {
     const empty = valid('circuit "t" {}');
-    expect(applyChanges(empty.source, addEntity(empty, "lamp", { x: 0, y: 0 }).changes)).toBe('circuit "t" {\n    lamp lamp1 at (0, 0) {\n    }\n}');
-    const wiresOnly = valid(circuit("  lamp a { }\n  wire red a.in <-> a.in").replace("wire red a.in <-> a.in", ""));
-    expect(applyChanges(wiresOnly.source, addEntity(wiresOnly, "lamp", { x: 0, y: 0 }).changes)).toBe('circuit "t" {\n  lamp a { }\n  lamp lamp1 at (0, 0) {\n  }\n  \n}\n');
-    const inline = valid('circuit "t" { lamp a {} }');
-    expect(valid(applyChanges(inline.source, addEntity(inline, "lamp", { x: 0, y: 0 }).changes)).circuit.entities).toHaveLength(2);
+    expect(applyChanges(empty.source, addEntity(empty, "small-lamp", { x: 0, y: 0 }).changes)).toBe('circuit "t" {\n    small-lamp lamp1 at (0, 0) {\n    }\n}');
+    const wiresOnly = valid(circuit("  small-lamp a { }\n  wire red a.in <-> a.in").replace("wire red a.in <-> a.in", ""));
+    expect(applyChanges(wiresOnly.source, addEntity(wiresOnly, "small-lamp", { x: 0, y: 0 }).changes)).toBe('circuit "t" {\n  small-lamp a { }\n  small-lamp lamp1 at (0, 0) {\n  }\n  \n}\n');
+    const inline = valid('circuit "t" { small-lamp a {} }');
+    expect(valid(applyChanges(inline.source, addEntity(inline, "small-lamp", { x: 0, y: 0 }).changes)).circuit.entities).toHaveLength(2);
   });
 
   it("places the entity before leading wires when there is no entity yet", () => {
     const before = analyze('circuit "t" {\n    wire red a.out <-> b.in\n}\n');
     expect(before.hasErrors).toBe(true);
-    const tabbed = valid('circuit "t" {\n\tlamp a {\n\t\talways-on = true\n\t}\n\twire red a.in <-> b.in\n\tlamp b {\n\t}\n\twire green a.in <-> b.in\n}\n');
-    expect(applyChanges(tabbed.source, addEntity(tabbed, "decider", { x: 0, y: 20 }).changes)).toBe(
-      'circuit "t" {\n\tlamp a {\n\t\talways-on = true\n\t}\n\twire red a.in <-> b.in\n\tlamp b {\n\t}\n\tdecider decider1 at (0, 20) {\n\t}\n\twire green a.in <-> b.in\n}\n',
+    const tabbed = valid('circuit "t" {\n\tsmall-lamp a {\n\t\talways-on = true\n\t}\n\twire red a.in <-> b.in\n\tsmall-lamp b {\n\t}\n\twire green a.in <-> b.in\n}\n');
+    expect(applyChanges(tabbed.source, addEntity(tabbed, "decider-combinator", { x: 0, y: 20 }).changes)).toBe(
+      'circuit "t" {\n\tsmall-lamp a {\n\t\talways-on = true\n\t}\n\twire red a.in <-> b.in\n\tsmall-lamp b {\n\t}\n\tdecider-combinator decider1 at (0, 20) {\n\t}\n\twire green a.in <-> b.in\n}\n',
     );
   });
 
   it("rejects invalid, reserved and duplicate names and bad positions", () => {
-    expect(failure(() => addEntity(parsed, "lamp", { x: 0, y: 0 }, "1x"))).toBe("invalid-name");
-    expect(failure(() => addEntity(parsed, "lamp", { x: 0, y: 0 }, "a-b"))).toBe("invalid-name");
-    expect(failure(() => addEntity(parsed, "lamp", { x: 0, y: 0 }, "wire"))).toBe("reserved-name");
-    expect(failure(() => addEntity(parsed, "lamp", { x: 0, y: 0 }, "twice"))).toBe("duplicate-name");
-    expect(failure(() => addEntity(parsed, "lamp", { x: NaN, y: 0 }))).toBe("invalid-position");
-    expect(failure(() => addEntity(parsed, "lamp", { x: 1e12, y: 0 }))).toBe("invalid-position");
+    expect(failure(() => addEntity(parsed, "small-lamp", { x: 0, y: 0 }, "1x"))).toBe("invalid-name");
+    expect(failure(() => addEntity(parsed, "small-lamp", { x: 0, y: 0 }, "a-b"))).toBe("invalid-name");
+    expect(failure(() => addEntity(parsed, "small-lamp", { x: 0, y: 0 }, "wire"))).toBe("reserved-name");
+    expect(failure(() => addEntity(parsed, "small-lamp", { x: 0, y: 0 }, "twice"))).toBe("duplicate-name");
+    expect(failure(() => addEntity(parsed, "small-lamp", { x: NaN, y: 0 }))).toBe("invalid-position");
+    expect(failure(() => addEntity(parsed, "small-lamp", { x: 1e12, y: 0 }))).toBe("invalid-position");
   });
 });
 
 describe("move and rename", () => {
   it("inserts the at clause when absent", () => {
-    const parse = valid(circuit("lamp a { }\nlamp b tile (1, 2) facing east {\n}"));
-    expect(applyChanges(parse.source, moveEntities(parse, [{ id: "e1", position: { x: 100, y: -20 } }, { id: "e2", position: { x: 0, y: 0 } }]))).toBe(circuit("lamp a at (100, -20) { }\nlamp b at (0, 0) tile (1, 2) facing east {\n}"));
+    const parse = valid(circuit("small-lamp a { }\nsmall-lamp b tile (1, 2) facing east {\n}"));
+    expect(applyChanges(parse.source, moveEntities(parse, [{ id: "e1", position: { x: 100, y: -20 } }, { id: "e2", position: { x: 0, y: 0 } }]))).toBe(circuit("small-lamp a at (100, -20) { }\nsmall-lamp b at (0, 0) tile (1, 2) facing east {\n}"));
     const auto = parse.circuit.entities[0]!.position;
     expect(moveEntity(parse, "e1", auto)).toEqual([]);
   });
 
   it("rewrites irregular at clauses token by token", () => {
-    const parse = valid(circuit("lamp a at ( 0x10 ,/* y */ -5 ) { }"));
-    expect(applyChanges(parse.source, moveEntity(parse, "e1", { x: 16, y: 5 }))).toBe(circuit("lamp a at ( 0x10 ,/* y */ 5 ) { }"));
-    expect(applyChanges(parse.source, moveEntity(parse, "e1", { x: 20, y: -5 }))).toBe(circuit("lamp a at ( 20 ,/* y */ -5 ) { }"));
+    const parse = valid(circuit("small-lamp a at ( 0x10 ,/* y */ -5 ) { }"));
+    expect(applyChanges(parse.source, moveEntity(parse, "e1", { x: 16, y: 5 }))).toBe(circuit("small-lamp a at ( 0x10 ,/* y */ 5 ) { }"));
+    expect(applyChanges(parse.source, moveEntity(parse, "e1", { x: 20, y: -5 }))).toBe(circuit("small-lamp a at ( 20 ,/* y */ -5 ) { }"));
   });
 
   it("renames self-wires and reversed references", () => {
-    const parse = valid(circuit("decider gate { }\nlamp l { }\nwire red gate.out <-> gate.in\nwire green l.in <-> gate.out // gate stays in comments"));
-    expect(applyChanges(parse.source, renameEntity(parse, "e1", "g2"))).toBe(circuit("decider g2 { }\nlamp l { }\nwire red g2.out <-> g2.in\nwire green l.in <-> g2.out // gate stays in comments"));
+    const parse = valid(circuit("decider-combinator gate { }\nsmall-lamp l { }\nwire red gate.out <-> gate.in\nwire green l.in <-> gate.out // gate stays in comments"));
+    expect(applyChanges(parse.source, renameEntity(parse, "e1", "g2"))).toBe(circuit("decider-combinator g2 { }\nsmall-lamp l { }\nwire red g2.out <-> g2.in\nwire green l.in <-> g2.out // gate stays in comments"));
   });
 
   it("rejects invalid, duplicate and keyword names and unknown ids", () => {
@@ -280,47 +281,47 @@ describe("move and rename", () => {
 
 describe("deleteEntities", () => {
   it("deletes several entities without blank-line debris", () => {
-    const source = 'circuit "t" {\n    lamp a { }\n\n    lamp b { }\n\n    lamp c { }\n\n    lamp d { }\n}\n';
+    const source = 'circuit "t" {\n    small-lamp a { }\n\n    small-lamp b { }\n\n    small-lamp c { }\n\n    small-lamp d { }\n}\n';
     const parse = valid(source);
-    expect(applyChanges(source, deleteEntities(parse, ["e1"]))).toBe('circuit "t" {\n    lamp b { }\n\n    lamp c { }\n\n    lamp d { }\n}\n');
-    expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe('circuit "t" {\n    lamp a { }\n\n    lamp c { }\n\n    lamp d { }\n}\n');
-    expect(applyChanges(source, deleteEntities(parse, ["e4"]))).toBe('circuit "t" {\n    lamp a { }\n\n    lamp b { }\n\n    lamp c { }\n}\n');
-    expect(applyChanges(source, deleteEntities(parse, ["e2", "e3"]))).toBe('circuit "t" {\n    lamp a { }\n\n    lamp d { }\n}\n');
-    expect(applyChanges(source, deleteEntities(parse, ["e3", "e4", "e3"]))).toBe('circuit "t" {\n    lamp a { }\n\n    lamp b { }\n}\n');
+    expect(applyChanges(source, deleteEntities(parse, ["e1"]))).toBe('circuit "t" {\n    small-lamp b { }\n\n    small-lamp c { }\n\n    small-lamp d { }\n}\n');
+    expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe('circuit "t" {\n    small-lamp a { }\n\n    small-lamp c { }\n\n    small-lamp d { }\n}\n');
+    expect(applyChanges(source, deleteEntities(parse, ["e4"]))).toBe('circuit "t" {\n    small-lamp a { }\n\n    small-lamp b { }\n\n    small-lamp c { }\n}\n');
+    expect(applyChanges(source, deleteEntities(parse, ["e2", "e3"]))).toBe('circuit "t" {\n    small-lamp a { }\n\n    small-lamp d { }\n}\n');
+    expect(applyChanges(source, deleteEntities(parse, ["e3", "e4", "e3"]))).toBe('circuit "t" {\n    small-lamp a { }\n\n    small-lamp b { }\n}\n');
     expect(applyChanges(source, deleteEntities(parse, ["e1", "e2", "e3", "e4"]))).toBe('circuit "t" {\n}\n');
     expect(deleteEntities(parse, [])).toEqual([]);
   });
 
   it("keeps own-line comments and removes trailing comments of removed lines", () => {
-    const source = circuit("    // about a\n    lamp a { } // trailing a\n    // about b\n    lamp b {\n        always-on = true // inner\n    } /* trailing b */\n    wire red a.in <-> b.in // trailing wire\n    // the end");
+    const source = circuit("    // about a\n    small-lamp a { } // trailing a\n    // about b\n    small-lamp b {\n        always-on = true // inner\n    } /* trailing b */\n    wire red a.in <-> b.in // trailing wire\n    // the end");
     const parse = valid(source);
-    expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe(circuit("    // about a\n    lamp a { } // trailing a\n    // about b\n    // the end"));
+    expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe(circuit("    // about a\n    small-lamp a { } // trailing a\n    // about b\n    // the end"));
   });
 
   it("removes selected wires together with entities and their wires, as one edit", () => {
-    const source = circuit("    lamp a { }\n    lamp b { }\n    lamp c { }\n\n    wire red a.in <-> b.in\n    wire green a.in <-> b.in // keep\n    wire red b.in <-> c.in\n    wire red b.in <-> a.in // the red one again");
+    const source = circuit("    small-lamp a { }\n    small-lamp b { }\n    small-lamp c { }\n\n    wire red a.in <-> b.in\n    wire green a.in <-> b.in // keep\n    wire red b.in <-> c.in\n    wire red b.in <-> a.in // the red one again");
     const parse = valid(source);
     const red = wireKey({ color: "red", a: { entity: "e2", side: "in" }, b: { entity: "e1", side: "in" } });
     const green = wireKey({ color: "green", a: { entity: "e1", side: "in" }, b: { entity: "e2", side: "in" } });
     // Every declaration of the connection goes, in either direction.
-    expect(applyChanges(source, deleteEntities(parse, [], [red]))).toBe(circuit("    lamp a { }\n    lamp b { }\n    lamp c { }\n\n    wire green a.in <-> b.in // keep\n    wire red b.in <-> c.in"));
+    expect(applyChanges(source, deleteEntities(parse, [], [red]))).toBe(circuit("    small-lamp a { }\n    small-lamp b { }\n    small-lamp c { }\n\n    wire green a.in <-> b.in // keep\n    wire red b.in <-> c.in"));
     expect(deleteEntities(parse, [], [red])).toEqual(removeWire(parse, red));
     // A wire of a deleted entity may be named as well; the wires that are left keep their lines.
-    expect(applyChanges(source, deleteEntities(parse, ["e3"], [red, red]))).toBe(circuit("    lamp a { }\n    lamp b { }\n\n    wire green a.in <-> b.in // keep"));
-    expect(applyChanges(source, deleteEntities(parse, ["e3"], [red, green]))).toBe(circuit("    lamp a { }\n    lamp b { }"));
+    expect(applyChanges(source, deleteEntities(parse, ["e3"], [red, red]))).toBe(circuit("    small-lamp a { }\n    small-lamp b { }\n\n    wire green a.in <-> b.in // keep"));
+    expect(applyChanges(source, deleteEntities(parse, ["e3"], [red, green]))).toBe(circuit("    small-lamp a { }\n    small-lamp b { }"));
     expect(executeCommand(parse, { type: "deleteEntities", ids: ["e3"], wires: [green] })).toMatchObject({ ok: true });
     expect(failure(() => deleteEntities(parse, ["e3"], ["red|e1.in|e9.in"]))).toBe("unknown-wire");
   });
 
   it("handles declarations sharing a line", () => {
-    const source = 'circuit "t" { lamp a {} lamp b {} wire red a.in <-> b.in lamp c {} }';
+    const source = 'circuit "t" { small-lamp a {} small-lamp b {} wire red a.in <-> b.in small-lamp c {} }';
     const parse = valid(source);
-    expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe('circuit "t" { lamp a {} lamp c {} }');
-    expect(applyChanges(source, deleteEntities(parse, ["e1", "e3"]))).toBe('circuit "t" { lamp b {} }');
+    expect(applyChanges(source, deleteEntities(parse, ["e2"]))).toBe('circuit "t" { small-lamp a {} small-lamp c {} }');
+    expect(applyChanges(source, deleteEntities(parse, ["e1", "e3"]))).toBe('circuit "t" { small-lamp b {} }');
     expect(applyChanges(source, deleteEntities(parse, ["e1", "e2", "e3"]))).toBe('circuit "t" { }');
-    const mixed = "circuit \"t\" {\n    lamp a {} lamp b {} // both\n    lamp c {}\n}";
-    expect(applyChanges(mixed, deleteEntities(valid(mixed), ["e1"]))).toBe("circuit \"t\" {\n    lamp b {} // both\n    lamp c {}\n}");
-    expect(applyChanges(mixed, deleteEntities(valid(mixed), ["e2"]))).toBe("circuit \"t\" {\n    lamp a {} // both\n    lamp c {}\n}");
+    const mixed = "circuit \"t\" {\n    small-lamp a {} small-lamp b {} // both\n    small-lamp c {}\n}";
+    expect(applyChanges(mixed, deleteEntities(valid(mixed), ["e1"]))).toBe("circuit \"t\" {\n    small-lamp b {} // both\n    small-lamp c {}\n}");
+    expect(applyChanges(mixed, deleteEntities(valid(mixed), ["e2"]))).toBe("circuit \"t\" {\n    small-lamp a {} // both\n    small-lamp c {}\n}");
   });
 });
 
@@ -332,7 +333,7 @@ describe("invalid source", () => {
     expect(broken.circuit).toBeUndefined();
     const lamp = entityOf<Lamp>(parsed, "light");
     const attempts = [
-      () => addEntity(broken, "lamp", { x: 0, y: 0 }),
+      () => addEntity(broken, "small-lamp", { x: 0, y: 0 }),
       () => moveEntity(broken, "e1", { x: 0, y: 0 }),
       () => moveEntities(broken, []),
       () => renameEntity(broken, "e1", "x"),
@@ -354,7 +355,7 @@ describe("invalid source", () => {
 
 describe("executeCommand", () => {
   it("returns changes, the generated name and typed failures as values", () => {
-    expect(executeCommand(parsed, { type: "addEntity", kind: "lamp", position: { x: 0, y: 0 } })).toMatchObject({ ok: true, name: "lamp1" });
+    expect(executeCommand(parsed, { type: "addEntity", prototype: "small-lamp", position: { x: 0, y: 0 } })).toMatchObject({ ok: true, name: "lamp1" });
     expect(executeCommand(parsed, { type: "moveEntities", moves: [{ id: id("twice"), position: { x: 0, y: 0 } }] })).toMatchObject({ ok: true, changes: [{ insert: "0" }, { insert: "0" }] });
     expect(executeCommand(parsed, { type: "renameEntity", id: id("twice"), name: "source" })).toMatchObject({ ok: false, code: "duplicate-name" });
     expect(executeCommand(parsed, { type: "removeWire", key: "nope" })).toMatchObject({ ok: false, code: "unknown-wire" });
@@ -378,20 +379,24 @@ describe("updateEntity: description", () => {
   const ENCODED = '"first line\\nsecond \\"quoted\\" \\\\ line\\n\\n\\ttabbed, Grüße 日本語 → 𝒜\\r\\n// no comment"';
 
   it("adds the property as one line at the top of the body, for every kind", () => {
-    const statements = { constant: "item:a = 1", arithmetic: "item:a = item:b + 1", decider: "output item:a = 1", selector: "operation = count", lamp: "always-on = true", pole: "prototype = substation", speaker: "volume = 50", entity: "prototype = steel-chest" };
-    for (const kind of ENTITY_KINDS) {
-      const source = circuit(`    // above\n    ${kind} e at (0, 0) { // head\n        // inside\n        ${statements[kind]} // first\n    }\n    // below`);
+    // A pole has nothing to say but its description: it is the empty body below.
+    const statements = {
+      "constant-combinator": "item:a = 1", "arithmetic-combinator": "item:a = item:b + 1", "decider-combinator": "output item:a = 1", "selector-combinator": "operation = count", "small-lamp": "always-on = true",
+      "programmable-speaker": "volume = 50", "steel-chest": "read-contents = false",
+    };
+    for (const [prototype, statement] of Object.entries(statements)) {
+      const source = circuit(`    // above\n    ${prototype} e at (0, 0) { // head\n        // inside\n        ${statement} // first\n    }\n    // below`);
       const { changes, result } = describeAs(source, "e", AWKWARD);
-      const at = source.indexOf(`        ${statements[kind]}`);
+      const at = source.indexOf(`        ${statement}`);
       expect(changes).toEqual([{ from: at, to: at, insert: `        description = ${ENCODED}\n` }]);
-      expect(result).toBe(source.replace(`        ${statements[kind]}`, `        description = ${ENCODED}\n        ${statements[kind]}`));
+      expect(result).toBe(source.replace(`        ${statement}`, `        description = ${ENCODED}\n        ${statement}`));
       expect(result.split("\n")).toHaveLength(source.split("\n").length + 1);
     }
-    const empty = circuit("    lamp l { // head\n        // inside\n    }");
+    const empty = circuit("    small-lamp l { // head\n        // inside\n    }");
     expect(describeAs(empty, "l", "a\nb").result).toBe(empty.replace("// head\n", '// head\n        description = "a\\nb"\n'));
-    const oneLine = circuit("    lamp l { always-on = true }");
+    const oneLine = circuit("    small-lamp l { always-on = true }");
     expect(describeAs(oneLine, "l", "a\nb").result).toBe(oneLine.replace("{ always-on", '{ description = "a\\nb" always-on'));
-    expect(describeAs(circuit("\tlamp l {}"), "l", "a\nb").result).toBe(circuit('\tlamp l {\n\t\tdescription = "a\\nb"\n\t}'));
+    expect(describeAs(circuit("\tsmall-lamp l {}"), "l", "a\nb").result).toBe(circuit('\tsmall-lamp l {\n\t\tdescription = "a\\nb"\n\t}'));
   });
 
   it("changes only the statement and keeps the comments and the spacing around it", () => {
@@ -401,7 +406,7 @@ describe("updateEntity: description", () => {
     expect(result).toBe(comments.replace('description = "doubles A" //', `description = ${ENCODED} //`));
     // The same text again is no change, whatever the spelling in the source.
     expect(describeAs(result, "twice", AWKWARD).changes).toEqual([]);
-    const spelled = circuit('    lamp l {\n        description   =   "a\tb" ; // raw tab\n    }');
+    const spelled = circuit('    small-lamp l {\n        description   =   "a\tb" ; // raw tab\n    }');
     expect(describeAs(spelled, "l", "a\tb").changes).toEqual([]);
     expect(describeAs(spelled, "l", "a\tc").result).toBe(spelled.replace('description   =   "a\tb" ;', 'description = "a\\tc" ;'));
   });
@@ -413,17 +418,17 @@ describe("updateEntity: description", () => {
       expect(changes).toHaveLength(1);
       expect(result).toBe(expected);
     }
-    const oneLine = circuit('    lamp l { /* a */ description = "x" /* b */ always-on = true }');
+    const oneLine = circuit('    small-lamp l { /* a */ description = "x" /* b */ always-on = true }');
     expect(describeAs(oneLine, "l", "").result).toBe(oneLine.replace('description = "x" ', ""));
-    const only = circuit('    lamp l {\n        // note\n\n        description = "x"\n    }');
-    expect(describeAs(only, "l", undefined).result).toBe(circuit("    lamp l {\n        // note\n    }"));
+    const only = circuit('    small-lamp l {\n        // note\n\n        description = "x"\n    }');
+    expect(describeAs(only, "l", undefined).result).toBe(circuit("    small-lamp l {\n        // note\n    }"));
   });
 
   it("an empty description is none: nothing is written for it, and one written by hand stays until it changes", () => {
-    const plain = circuit("    lamp l {\n        always-on = true\n    }");
+    const plain = circuit("    small-lamp l {\n        always-on = true\n    }");
     expect(describeAs(plain, "l", "").changes).toEqual([]);
     expect(executeCommand(valid(plain), { type: "updateEntity", id: "e1", entity: { ...entityOf<Lamp>(valid(plain), "l"), description: "" } })).toEqual({ ok: true, changes: [] });
-    const written = circuit('    lamp l {\n        description = "" // empty\n        always-on = true\n    }');
+    const written = circuit('    small-lamp l {\n        description = "" // empty\n        always-on = true\n    }');
     const parse = valid(written);
     const lamp = entityOf<Lamp>(parse, "l");
     expect(lamp.description).toBe("");
@@ -447,7 +452,7 @@ describe("updateEntity: statement-level minimal rewrite", () => {
     return result;
   };
 
-  const decider = circuit(`    decider gate at (0, 0) {
+  const decider = circuit(`    decider-combinator gate at (0, 0) {
         // leading comment
         output virtual:signal-A = input   // first output
         when virtual:signal-A < 10 /* limit */ and virtual:signal-B > 0
@@ -481,14 +486,14 @@ describe("updateEntity: statement-level minimal rewrite", () => {
     expect(red).toBe(rewritten.replace("when virtual:signal-A <", "when virtual:signal-A[red] <"));
     expect(update(red, "gate", select(BOTH_NETWORKS, BOTH_NETWORKS))).toBe(rewritten);
 
-    const arithmetic = circuit("    arithmetic a {\n        // product\n        item:x = item:a[red] * item:b /* b */ ; // both colors\n    }");
+    const arithmetic = circuit("    arithmetic-combinator a {\n        // product\n        item:x = item:a[red] * item:b /* b */ ; // both colors\n    }");
     const operand = update(arithmetic, "a", (e) => ({ ...(e as ArithmeticCombinator), second: { type: "signal", signal: { kind: "item", name: "b" }, networks: NONE } }));
     expect(operand).toBe(arithmetic.replace("item:b /* b */ ;", "item:b[none] /* b */ ;"));
     expect(update(operand, "a", (e) => ({ ...(e as ArithmeticCombinator), first: { type: "signal", signal: { kind: "item", name: "a" }, networks: NONE } }))).toBe(operand.replace("item:a[red]", "item:a[none]"));
   });
 
   it("writes, changes and removes the networks property of a lamp in place", () => {
-    const source = circuit("    lamp l {\n        // lit by b\n        when item:b > 0 // enable\n        always-on = true; // sep\n    }");
+    const source = circuit("    small-lamp l {\n        // lit by b\n        when item:b > 0 // enable\n        always-on = true; // sep\n    }");
     const select = (inputNetworks: NetworkSelection) => (e: Entity): Entity => ({ ...(e as Lamp), inputNetworks });
     const none = update(source, "l", select(NONE));
     expect(none).toBe(source.replace("// enable\n", "// enable\n        networks = none\n"));
@@ -496,7 +501,7 @@ describe("updateEntity: statement-level minimal rewrite", () => {
     expect(green).toBe(none.replace("networks = none", "networks = green"));
     expect(update(green, "l", select(BOTH_NETWORKS))).toBe(source);
     // A hand-written statement that keeps its meaning keeps its text.
-    const written = circuit("    lamp l { networks   =   none /* dark */ always-on = true }");
+    const written = circuit("    small-lamp l { networks   =   none /* dark */ always-on = true }");
     expect(update(written, "l", (e) => ({ ...(e as Lamp), alwaysOn: false }))).toBe(written.replace("always-on = true", "always-on = false"));
     expect(update(written, "l", select(RED))).toBe(written.replace("networks   =   none", "networks = red"));
   });
@@ -522,7 +527,7 @@ describe("updateEntity: statement-level minimal rewrite", () => {
   });
 
   it("keeps explicit default statements and flips them in place", () => {
-    const source = circuit("    constant c {\n        enabled = true // on\n        item:a = 1\n    }\n    lamp l {\n        always-on = false; // sep\n    }");
+    const source = circuit("    constant-combinator c {\n        enabled = true // on\n        item:a = 1\n    }\n    small-lamp l {\n        always-on = false; // sep\n    }");
     expect(update(source, "c", (e) => ({ ...(e as ConstantCombinator), enabled: false }))).toBe(source.replace("enabled = true // on", "enabled = false // on"));
     expect(update(source, "l", (e) => ({ ...(e as Lamp), alwaysOn: true }))).toBe(source.replace("always-on = false;", "always-on = true;"));
     expect(update(source, "l", (e) => ({ ...(e as Lamp), description: "d" }))).toBe(source.replace("        always-on = false;", '        description = "d"\n        always-on = false;'));
@@ -530,61 +535,61 @@ describe("updateEntity: statement-level minimal rewrite", () => {
 
   it("fills an empty body in each layout", () => {
     const set = (e: Entity): Entity => ({ ...(e as Lamp), alwaysOn: true, condition: { first: { kind: "item", name: "a" }, comparator: ">", second: { type: "constant", value: 0 } } });
-    expect(update(circuit("    lamp l {\n    }"), "l", set)).toBe(circuit("    lamp l {\n        when item:a > 0\n        always-on = true\n    }"));
-    expect(update(circuit("    lamp l {}"), "l", set)).toBe(circuit("    lamp l {\n        when item:a > 0\n        always-on = true\n    }"));
-    expect(update(circuit("\tlamp l { /* keep */ }"), "l", set)).toBe(circuit("\tlamp l { /* keep */\n\t\twhen item:a > 0\n\t\talways-on = true\n\t}"));
-    expect(update(circuit("    lamp l { // keep\n    }"), "l", set)).toBe(circuit("    lamp l { // keep\n        when item:a > 0\n        always-on = true\n    }"));
+    expect(update(circuit("    small-lamp l {\n    }"), "l", set)).toBe(circuit("    small-lamp l {\n        when item:a > 0\n        always-on = true\n    }"));
+    expect(update(circuit("    small-lamp l {}"), "l", set)).toBe(circuit("    small-lamp l {\n        when item:a > 0\n        always-on = true\n    }"));
+    expect(update(circuit("\tsmall-lamp l { /* keep */ }"), "l", set)).toBe(circuit("\tsmall-lamp l { /* keep */\n\t\twhen item:a > 0\n\t\talways-on = true\n\t}"));
+    expect(update(circuit("    small-lamp l { // keep\n    }"), "l", set)).toBe(circuit("    small-lamp l { // keep\n        when item:a > 0\n        always-on = true\n    }"));
   });
 
   it("edits single-line bodies inline", () => {
-    const source = circuit("    selector s at (0, 0) { operation = select  order = min  index = virtual:signal-I }");
+    const source = circuit("    selector-combinator s at (0, 0) { operation = select  order = min  index = virtual:signal-I }");
     expect(update(source, "s", (e) => ({ ...(e as SelectorCombinator), mode: { ...(e as SelectorCombinator).mode, max: true } as SelectorCombinator["mode"] }))).toBe(source.replace("order = min", "order = max"));
     expect(update(source, "s", (e) => ({ ...(e as SelectorCombinator), mode: { operation: "select", max: false, index: { type: "signal", signal: { kind: "virtual", name: "signal-I" }, networks: BOTH_NETWORKS }, indexComparator: "<" } }))).toBe(
       source.replace("index = virtual:signal-I", "index = virtual:signal-I index-comparator = <"),
     );
-    expect(update(source, "s", (e) => ({ ...(e as SelectorCombinator), mode: { operation: "count", output: { kind: "item", name: "n" } } }))).toBe(circuit("    selector s at (0, 0) { operation = count output = item:n }"));
-    expect(update(source, "s", (e) => ({ ...(e as SelectorCombinator), mode: { operation: "stack-size" } }))).toBe(circuit("    selector s at (0, 0) { operation = stack-size }"));
+    expect(update(source, "s", (e) => ({ ...(e as SelectorCombinator), mode: { operation: "count", output: { kind: "item", name: "n" } } }))).toBe(circuit("    selector-combinator s at (0, 0) { operation = count output = item:n }"));
+    expect(update(source, "s", (e) => ({ ...(e as SelectorCombinator), mode: { operation: "stack-size" } }))).toBe(circuit("    selector-combinator s at (0, 0) { operation = stack-size }"));
   });
 
   it("replaces every statement of a single-line body", () => {
     const set = (e: Entity): Entity => ({ ...(e as Lamp), alwaysOn: false, condition: { first: { kind: "item", name: "a" }, comparator: ">", second: { type: "constant", value: 0 } }, inputNetworks: { red: true, green: false } });
-    expect(update(circuit("    lamp l { always-on = true }"), "l", ({ ...e }) => ({ ...set(e), alwaysOn: true }))).toBe(circuit("    lamp l { when item:a > 0 networks = red always-on = true }"));
-    expect(update(circuit("    lamp l {always-on = true}"), "l", ({ ...e }) => ({ ...set(e), alwaysOn: true }))).toBe(circuit("    lamp l {when item:a > 0 networks = red always-on = true}"));
-    expect(update(circuit("    lamp l { colors = mapping }"), "l", (e) => ({ ...set(e), useColors: false }))).toBe(circuit("    lamp l { when item:a > 0 networks = red }"));
-    expect(update(circuit("    constant c { item:a = 1 item:b = 2 }"), "c", (e) => ({ ...(e as ConstantCombinator), sections: [] }))).toBe(circuit("    constant c { }"));
-    expect(update(circuit("    constant c { item:a = 1 item:b = 2 }"), "c", (e) => ({ ...(e as ConstantCombinator), enabled: false, sections: [] }))).toBe(circuit("    constant c { enabled = false }"));
+    expect(update(circuit("    small-lamp l { always-on = true }"), "l", ({ ...e }) => ({ ...set(e), alwaysOn: true }))).toBe(circuit("    small-lamp l { when item:a > 0 networks = red always-on = true }"));
+    expect(update(circuit("    small-lamp l {always-on = true}"), "l", ({ ...e }) => ({ ...set(e), alwaysOn: true }))).toBe(circuit("    small-lamp l {when item:a > 0 networks = red always-on = true}"));
+    expect(update(circuit("    small-lamp l { colors = mapping }"), "l", (e) => ({ ...set(e), useColors: false }))).toBe(circuit("    small-lamp l { when item:a > 0 networks = red }"));
+    expect(update(circuit("    constant-combinator c { item:a = 1 item:b = 2 }"), "c", (e) => ({ ...(e as ConstantCombinator), sections: [] }))).toBe(circuit("    constant-combinator c { }"));
+    expect(update(circuit("    constant-combinator c { item:a = 1 item:b = 2 }"), "c", (e) => ({ ...(e as ConstantCombinator), enabled: false, sections: [] }))).toBe(circuit("    constant-combinator c { enabled = false }"));
   });
 
   it("rewrites constant filters with a sequence diff", () => {
-    const source = circuit("    constant c {\n        item:a = 1 // a\n        item:b = 2 // b\n        item:c = 3 // c\n    }");
+    const source = circuit("    constant-combinator c {\n        item:a = 1 // a\n        item:b = 2 // b\n        item:c = 3 // c\n    }");
     const filters = (list: [string, number][]) => (e: Entity): Entity => ({ ...(e as ConstantCombinator), sections: list.length ? [{ active: true, multiplier: 1, filters: list.map(([name, count]) => ({ signal: { kind: "item", name }, count })) }] : [] });
     expect(update(source, "c", filters([["a", 1], ["b", 20], ["c", 3]]))).toBe(source.replace("item:b = 2", "item:b = 20"));
     expect(update(source, "c", filters([["a", 1], ["c", 3]]))).toBe(source.replace("        item:b = 2 // b\n", ""));
     expect(update(source, "c", filters([["a", 1], ["b", 2], ["x", 9], ["c", 3]]))).toBe(source.replace("// b\n", "// b\n        item:x = 9\n"));
     expect(update(source, "c", filters([["x", 9], ["a", 1], ["b", 2], ["c", 3]]))).toBe(source.replace("        item:a", "        item:x = 9\n        item:a"));
-    expect(update(source, "c", filters([["c", 3], ["a", 1], ["b", 2]]))).toBe(circuit("    constant c {\n        item:c = 3\n        item:a = 1 // a\n        item:b = 2 // b\n    }"));
-    expect(update(source, "c", filters([]))).toBe(circuit("    constant c {\n    }"));
+    expect(update(source, "c", filters([["c", 3], ["a", 1], ["b", 2]]))).toBe(circuit("    constant-combinator c {\n        item:c = 3\n        item:a = 1 // a\n        item:b = 2 // b\n    }"));
+    expect(update(source, "c", filters([]))).toBe(circuit("    constant-combinator c {\n    }"));
   });
 
   it("switches between bare filters and sections and edits inside sections", () => {
-    const bare = circuit("    constant c {\n        item:a = 1\n    }");
+    const bare = circuit("    constant-combinator c {\n        item:a = 1\n    }");
     const grouped = update(bare, "c", (e) => ({ ...(e as ConstantCombinator), sections: [{ group: "G", active: true, multiplier: 2, filters: [{ signal: { kind: "item", name: "a" }, count: 1 }] }] }));
-    expect(grouped).toBe(circuit('    constant c {\n        section "G" {\n            multiplier = 2\n            item:a = 1\n        }\n    }'));
+    expect(grouped).toBe(circuit('    constant-combinator c {\n        section "G" {\n            multiplier = 2\n            item:a = 1\n        }\n    }'));
 
-    const sections = circuit('    constant c {\n        section "G" { // group\n            item:a = 1 // a\n            active = true\n        }\n        section {\n            item:b = 2\n        }\n    }');
+    const sections = circuit('    constant-combinator c {\n        section "G" { // group\n            item:a = 1 // a\n            active = true\n        }\n        section {\n            item:b = 2\n        }\n    }');
     const edit = (change: (sections: ConstantCombinator["sections"]) => ConstantCombinator["sections"]) => update(sections, "c", (e) => ({ ...(e as ConstantCombinator), sections: change((e as ConstantCombinator).sections) }));
     expect(edit(([g, s]) => [{ ...g!, filters: [{ signal: { kind: "item", name: "a" }, count: 7 }] }, s!])).toBe(sections.replace("item:a = 1 //", "item:a = 7 //"));
     expect(edit(([g, s]) => [{ ...g!, group: "H", active: false, multiplier: -0.5 }, s!])).toBe(sections.replace('"G"', '"H"').replace("active = true", "active = false\n            multiplier = -0.5"));
     expect(edit(([g, s]) => [{ active: g!.active, multiplier: g!.multiplier, filters: g!.filters }, { ...s!, group: "New" }])).toBe(sections.replace('section "G" {', "section {").replace("        section {\n            item:b", '        section "New" {\n            item:b'));
     expect(edit(([g]) => [g!])).toBe(sections.replace("        section {\n            item:b = 2\n        }\n", ""));
     expect(edit(([g, s]) => [g!, s!, { active: true, multiplier: 1, filters: [] }])).toBe(sections.replace("item:b = 2\n        }\n", "item:b = 2\n        }\n        section {\n        }\n"));
-    expect(edit(([, s]) => [s!])).toBe(circuit("    constant c {\n        section {\n            item:b = 2\n        }\n    }"));
+    expect(edit(([, s]) => [s!])).toBe(circuit("    constant-combinator c {\n        section {\n            item:b = 2\n        }\n    }"));
   });
 
   it("updates name, position and placement clauses together with statements", () => {
-    const source = circuit("    lamp l { }\n    constant c at (0, 0) facing north { item:a = 1 }\n    wire red c.out <-> l.in");
+    const source = circuit("    small-lamp l { }\n    constant-combinator c at (0, 0) facing north { item:a = 1 }\n    wire red c.out <-> l.in");
     expect(update(source, "l", (e) => ({ ...e, name: "bulb", position: { x: 20, y: 40 }, placement: { tile: { x: 1.5, y: 2 }, direction: "west" } }))).toBe(
-      circuit("    lamp bulb at (20, 40) tile (1.5, 2) facing west { }\n    constant c at (0, 0) facing north { item:a = 1 }\n    wire red c.out <-> bulb.in"),
+      circuit("    small-lamp bulb at (20, 40) tile (1.5, 2) facing west { }\n    constant-combinator c at (0, 0) facing north { item:a = 1 }\n    wire red c.out <-> bulb.in"),
     );
     expect(update(source, "c", (e) => ({ ...e, placement: { tile: { x: 3, y: 4 } } }))).toBe(source.replace("at (0, 0) facing north", "at (0, 0) tile (3, 4)"));
     expect(update(source, "c", ({ placement: _placement, ...e }) => ({ ...e, position: { x: 0, y: 20 } }) as Entity)).toBe(source.replace("at (0, 0) facing north", "at (0, 20)"));
@@ -593,7 +598,7 @@ describe("updateEntity: statement-level minimal rewrite", () => {
 
   it("rejects kind changes, bad names and inexpressible configurations", () => {
     const lamp = entityOf<Lamp>(parsed, "light");
-    expect(failure(() => updateEntity(parsed, lamp.id, { ...DEFAULT_ENTITY.decider, id: lamp.id, name: lamp.name, position: lamp.position }))).toBe("kind-mismatch");
+    expect(failure(() => updateEntity(parsed, lamp.id, { ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", id: lamp.id, name: lamp.name, position: lamp.position }))).toBe("kind-mismatch");
     expect(failure(() => updateEntity(parsed, lamp.id, { ...lamp, name: "source" }))).toBe("duplicate-name");
     expect(failure(() => updateEntity(parsed, lamp.id, { ...lamp, name: "no good" }))).toBe("invalid-name");
     expect(failure(() => updateEntity(parsed, lamp.id, { ...lamp, useColors: false, colorMode: "components" }))).toBe("unrepresentable");
@@ -611,7 +616,7 @@ describe("updateEntity: statement-level minimal rewrite", () => {
       let declaration = printEntity(from);
       if (layout === 1) declaration = declaration.split("\n").map((line, i) => `${line} // c${i}`).join("\n");
       if (layout === 2) declaration = declaration.replace(/\n\s*/g, " ");
-      const before = `circuit "r" {\n    // head\n    lamp pre { } // pre\n\n${declaration.replace(/^/gm, "    ")}\n\n    lamp post { } // post\n    wire red pre.in <-> post.in\n}\n`;
+      const before = `circuit "r" {\n    // head\n    small-lamp pre { } // pre\n\n${declaration.replace(/^/gm, "    ")}\n\n    small-lamp post { } // post\n    wire red pre.in <-> post.in\n}\n`;
       const parse = valid(before);
       const target = entityOf<Entity>(parse, "target");
       expect(withoutId(target)).toEqual(withoutId(from));
@@ -625,8 +630,8 @@ describe("updateEntity: statement-level minimal rewrite", () => {
       // An empty description is written as none, unless the source spells it out already.
       expect(withoutId(entityOf(after, to.name))).toEqual(withoutId(to.description === "" && from.description !== "" ? { ...to, description: undefined } : to));
       expect(idOf(after, to.name)).toBe(target.id);
-      expect(after.source.startsWith('circuit "r" {\n    // head\n    lamp pre { } // pre\n\n')).toBe(true);
-      expect(after.source.endsWith("\n\n    lamp post { } // post\n    wire red pre.in <-> post.in\n}\n")).toBe(true);
+      expect(after.source.startsWith('circuit "r" {\n    // head\n    small-lamp pre { } // pre\n\n')).toBe(true);
+      expect(after.source.endsWith("\n\n    small-lamp post { } // post\n    wire red pre.in <-> post.in\n}\n")).toBe(true);
       expect(updateEntity(after, target.id, entityOf(after, to.name))).toEqual([]);
     }
   });

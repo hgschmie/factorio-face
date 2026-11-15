@@ -32,7 +32,7 @@ describe("invalid source", () => {
     session.commands.moveEntities([{ id: gate, position: { x: 0, y: 0 } }]);
     session.commands.renameEntity(gate, "other");
     session.commands.deleteEntities([gate]);
-    session.commands.placeEntity("lamp", { x: 0, y: 0 });
+    session.commands.placeEntity("small-lamp", { x: 0, y: 0 });
     session.commands.addWire({ color: "green", a: { entity: gate, side: "out" }, b: { entity: idOf(session, "light"), side: "in" } });
     session.commands.updateEntity({ ...entityNamed(session, "light"), alwaysOn: true } as never);
     session.commands.step();
@@ -81,7 +81,7 @@ describe("invalid source", () => {
   });
 
   it("shows a project that starts with errors as text, with an empty canvas", () => {
-    const { session } = createSession('circuit "Broken" {\n  lamp a at (0, 0) {\n');
+    const { session } = createSession('circuit "Broken" {\n  small-lamp a at (0, 0) {\n');
     expect(session.state).toMatchObject({ editable: false, canUndo: false });
     expect(session.state.circuit.entities).toEqual([]);
     expect(session.state.simulation.available).toBe(false);
@@ -234,7 +234,7 @@ describe("state that belongs to the session, not to a view", () => {
 
 describe("editor support", () => {
   it("maps language tokens to highlight kinds", () => {
-    const { session } = createSession('circuit "t" {\n  lamp a at (1, 2) { networks = red  always-on = true  when each > 3 /* c */ }\n  wire green a.in <-> a.in // x\n}\n');
+    const { session } = createSession('circuit "t" {\n  small-lamp a at (1, 2) { networks = red  always-on = true  when each > 3 /* c */ }\n  wire green a.in <-> a.in // x\n}\n');
     const source = session.state.source;
     const kinds = highlightTokens(session.parse!.cst.tokens).map((token) => [source.slice(token.from, token.to), token.kind]);
     expect(kinds).toEqual(expect.arrayContaining([["circuit", "keyword"], ['"t"', "string"], ["a", "identifier"], ["1", "number"], ["red", "red"], ["green", "green"], ["true", "boolean"], ["each", "wildcard"], [">", "operator"], ["{", "punctuation"], ["/* c */", "comment"], ["// x", "comment"]]));

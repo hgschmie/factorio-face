@@ -2,7 +2,7 @@
 // and in its order: what it leaves out at a default and what it spells out is recorded in fixture F-01 (docs/factorio-audit.md 12).
 
 import {
-  canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, gamePrototype, isTileCenter, NORMAL_QUALITY, prototypeOf, signalKey, TERMINALS, wireSpan,
+  canRotate, DEFAULT_WIRE_REACH, facingOf, findTileOverlaps, formatWireDistance, gamePrototype, isTileCenter, NORMAL_QUALITY, signalKey, TERMINALS, wireSpan,
   type Circuit, type Condition, type DeciderCondition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type Point, type SelectorMode, type SignalId, type SpeakerInstrument, type TerminalRef, type WireColor,
 } from "@face/model";
 import {
@@ -261,7 +261,7 @@ class Exporter {
     const direction = entity.kind !== "entity" && canRotate(entity) && facing !== "north" ? DIRECTION_NUMBERS[facing] : undefined;
     return {
       entity_number: number,
-      name: prototypeOf(entity),
+      name: entity.prototype,
       position: { x: tile.x - origin.x, y: tile.y - origin.y },
       ...(direction !== undefined && { direction }),
       ...this.settings(entity, kept),
@@ -328,7 +328,7 @@ function platformOrigin(circuit: Circuit): Point {
 function icons(entities: readonly Entity[]): Blueprint["icons"] {
   const counts = new Map<string, { signal: BlueprintSignal; count: number }>();
   for (const entity of entities) {
-    const name = prototypeOf(entity);
+    const name = entity.prototype;
     const item = gamePrototype(entity).placedBy[0];
     const entry = counts.get(name) ?? { signal: item === undefined ? { type: "entity" as const, name } : { name: item }, count: 0 };
     counts.set(name, { ...entry, count: entry.count + 1 });

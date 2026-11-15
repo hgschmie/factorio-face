@@ -59,7 +59,7 @@ test("saves a project file atomically and reopens it in a new session", async ()
     const manifest = JSON.parse(entries["face.json"]!);
     expect(manifest).toEqual({ formatVersion: 1, gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], name: "Feedback example", circuits: ["main.face"] });
     savedSource = entries["main.face"]!;
-    expect(savedSource).toContain("decider gate at (300, 80) {");
+    expect(savedSource).toContain("decider-combinator gate at (300, 80) {");
     expect(savedSource).not.toContain("lamp light");
     await expect.poll(() => isDocumentEdited(app)).toBe(false);
     await expect(page.locator(".project-meta .path")).toHaveText(projectPath);
@@ -108,7 +108,7 @@ test("saves a project file atomically and reopens it in a new session", async ()
     await page.getByRole("button", { name: "Source", exact: true }).click();
     const editor = page.locator(".source-pane .cm-content");
     await expect(editor).toBeVisible();
-    await expect(editor).toContainText("decider gate at (300, 80) {");
+    await expect(editor).toContainText("decider-combinator gate at (300, 80) {");
 
     // Editing the source and saving writes exactly the editor's text back.
     await editor.click();

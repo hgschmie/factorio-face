@@ -8,7 +8,7 @@
   "circuit": {
     "name": "F-05-counter-wrap",
     "entities": [
-      {"id": "n", "name": "n", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 2147483647}, "output": {"kind": "virtual", "name": "signal-A"}}
+      {"id": "n", "name": "n", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "prototype": "arithmetic-combinator", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 2147483647}, "output": {"kind": "virtual", "name": "signal-A"}}
     ],
     "wires": [
       {"color": "green", "a": {"entity": "n", "side": "out"}, "b": {"entity": "n", "side": "in"}}

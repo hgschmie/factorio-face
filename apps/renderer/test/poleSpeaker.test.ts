@@ -18,27 +18,26 @@ import { wireEndsLabel, wireReachNote } from "../src/workbench/selectionText.ts"
 import { createSession, entityNamed, idOf } from "./session/helpers.ts";
 
 const SOURCE = `circuit "Poles" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 3
     }
 
-    pole p1 at (280, 80) tile (4.5, 0.5) {
+    small-electric-pole p1 at (280, 80) tile (4.5, 0.5) {
     }
 
-    pole big at (520, 80) tile (9, 1) {
-        prototype = big-electric-pole
+    big-electric-pole big at (520, 80) tile (9, 1) {
     }
 
-    lamp light at (760, 80) tile (12.5, 0.5) {
+    small-lamp light at (760, 80) tile (12.5, 0.5) {
         when virtual:signal-A > 0
     }
 
-    speaker alarm at (760, 300) tile (12.5, 2.5) {
+    programmable-speaker alarm at (760, 300) tile (12.5, 2.5) {
         pitch = virtual:signal-A
         instrument = piano
     }
 
-    pole far at (1000, 300) tile (13.5, 0.5) {
+    small-electric-pole far at (1000, 300) tile (13.5, 0.5) {
     }
 
     wire red source.out <-> p1
@@ -55,19 +54,19 @@ const ALL = catalog.modules.map((module) => module.name);
 describe("kinds", () => {
   it("has display data for every kind and names an entity by its kind, or by its prototype where the kind has several", () => {
     for (const kind of ENTITY_KINDS) expect(KIND_INFO[kind].label.length).toBeGreaterThan(0);
-    expect(entityTitle({ kind: "decider" })).toBe("Decider");
-    expect(entityTitle({ kind: "lamp" })).toBe("Lamp");
-    expect(entityTitle({ kind: "speaker" })).toBe("Speaker");
-    expect(entityTitle({ kind: "pole" })).toBe("Small electric pole");
-    expect(entityTitle({ kind: "pole", prototype: "substation" })).toBe("Substation");
-    expect(entityNoun({ kind: "arithmetic" })).toBe("an arithmetic");
-    expect(entityNoun({ kind: "pole", prototype: "big-electric-pole" })).toBe("a big electric pole");
-    expect(prototypeLabel({ kind: "speaker" })).toBe("Programmable speaker");
+    expect(entityTitle({ prototype: "decider-combinator" })).toBe("Decider");
+    expect(entityTitle({ prototype: "small-lamp" })).toBe("Lamp");
+    expect(entityTitle({ prototype: "programmable-speaker" })).toBe("Speaker");
+    expect(entityTitle({ prototype: "small-electric-pole" })).toBe("Small electric pole");
+    expect(entityTitle({ prototype: "substation" })).toBe("Substation");
+    expect(entityNoun({ prototype: "arithmetic-combinator" })).toBe("an arithmetic");
+    expect(entityNoun({ prototype: "big-electric-pole" })).toBe("a big electric pole");
+    expect(prototypeLabel({ prototype: "programmable-speaker" })).toBe("Programmable speaker");
     // What sets a prototype apart: its tiles, and its reach only where that is not the project's.
-    expect(prototypeFacts({ kind: "lamp" })).toBe("1 tile");
-    expect(prototypeFacts({ kind: "decider" })).toBe("1 x 2 tiles");
-    expect(prototypeFacts({ kind: "pole" })).toBe("1 tile, wire reach 7.5");
-    expect(prototypeFacts({ kind: "pole", prototype: "big-electric-pole" })).toBe("2 x 2 tiles, wire reach 32");
+    expect(prototypeFacts({ prototype: "small-lamp" })).toBe("1 tile");
+    expect(prototypeFacts({ prototype: "decider-combinator" })).toBe("1 x 2 tiles");
+    expect(prototypeFacts({ prototype: "small-electric-pole" })).toBe("1 tile, wire reach 7.5");
+    expect(prototypeFacts({ prototype: "big-electric-pole" })).toBe("2 x 2 tiles, wire reach 32");
     // The game has a description on the combinators only.
     expect(ENTITY_KINDS.filter((kind) => !KIND_INFO[kind].describedInGame)).toEqual(["lamp", "pole", "speaker", "entity"]);
   });
@@ -215,14 +214,15 @@ describe("completion", () => {
   const at = (text: string): string[] => completionCandidates(completionContext(analyze(text.replace("|", "")), text.indexOf("|")), service).map((candidate) => candidate.label);
 
   it("offers a pole by its bare name and the other entities with their terminals", () => {
-    expect(at('circuit "c" {\n pole p { }\n lamp l { }\n decider d { }\n wire red |\n}')).toEqual(["p", "l.in", "d.in", "d.out"]);
+    expect(at('circuit "c" {\n small-electric-pole p { }\n small-lamp l { }\n decider-combinator d { }\n wire red |\n}')).toEqual(["p", "l.in", "d.in", "d.out"]);
   });
 
   it("offers the instruments and the notes of the instrument a speaker names, quoted where they are not one word", () => {
-    expect(at('circuit "c" {\n speaker s { instrument = | }\n}')).toEqual(["alarms", "miscellaneous", "drum-kit", "piano", "bass", "lead", "saw", "square", "celesta", "vibraphone", "plucked", "steel-drum"]);
-    expect(at('circuit "c" {\n speaker s { instrument = piano note = | }\n}').slice(0, 3)).toEqual(["F3", '"F#3"', "G3"]);
-    expect(at('circuit "c" {\n speaker s { note = | }\n}')).toEqual(["alarm-1", "alarm-2", "buzzer-1", "buzzer-2", "buzzer-3", "ring", "siren"]);
-    expect(at('circuit "c" {\n speaker s { instrument = organ note = | }\n}')).toEqual([]);
-    expect(at('circuit "c" {\n pole p { prototype = | }\n}')).toEqual(["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"]);
+    expect(at('circuit "c" {\n programmable-speaker s { instrument = | }\n}')).toEqual(["alarms", "miscellaneous", "drum-kit", "piano", "bass", "lead", "saw", "square", "celesta", "vibraphone", "plucked", "steel-drum"]);
+    expect(at('circuit "c" {\n programmable-speaker s { instrument = piano note = | }\n}').slice(0, 3)).toEqual(["F3", '"F#3"', "G3"]);
+    expect(at('circuit "c" {\n programmable-speaker s { note = | }\n}')).toEqual(["alarm-1", "alarm-2", "buzzer-1", "buzzer-2", "buzzer-3", "ring", "siren"]);
+    expect(at('circuit "c" {\n programmable-speaker s { instrument = organ note = | }\n}')).toEqual([]);
+    // A pole has nothing to say but a description.
+    expect(at('circuit "c" {\n small-electric-pole p { | }\n}')).toEqual(["description"]);
   });
 });

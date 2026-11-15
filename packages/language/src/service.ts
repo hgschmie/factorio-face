@@ -1,10 +1,10 @@
 // Editor helpers: what the grammar expects at a caret position, in terms a completion source can use directly.
 
-import { prototypesOf, SELECTOR_OPERATIONS, TERMINALS, TERMINAL_SIDES, type EntityKind, type TerminalSide, type Wildcard } from "@face/model";
+import { PROTOTYPE_NAMES, SELECTOR_OPERATIONS, TERMINALS, TERMINAL_SIDES, type EntityKind, type PrototypeName, type TerminalSide, type Wildcard } from "@face/model";
 import type { ParseResult } from "./analyze.ts";
 import type { CstEntity } from "./cst.ts";
 import { expectationsAfter } from "./parser.ts";
-import { conditionRoles, enumValues, lookupProperty, propertyNames, PROTOTYPE_PROPERTY, SIGNAL_SLOTS, STATEMENT_KEYWORDS, type PropertyVariant } from "./schema.ts";
+import { conditionRoles, enumValues, lookupProperty, propertyNames, SIGNAL_SLOTS, STATEMENT_KEYWORDS, type PropertyVariant } from "./schema.ts";
 import { decodeString, type Token } from "./tokens.ts";
 
 export interface TerminalCandidate {
@@ -15,6 +15,8 @@ export interface TerminalCandidate {
 
 export type Completion =
   | { readonly type: "keyword"; readonly values: readonly string[] }
+  /** The word of an entity declaration: the entities of the game data in use, by their names in the game. */
+  | { readonly type: "entity"; readonly prototypes: readonly PrototypeName[] }
   | { readonly type: "property"; readonly kind: EntityKind; readonly names: readonly string[] }
   | { readonly type: "enum"; readonly property: string; readonly values: readonly string[] }
   | { readonly type: "signal"; readonly wildcards: readonly Wildcard[] }
@@ -36,34 +38,36 @@ export interface CompletionContext {
 
 const PARTIAL_KINDS: ReadonlySet<string> = new Set(["keyword", "ident", "word", "signal", "int", "decimal", "color"]);
 
-/** The token that contains `offset` or ends exactly there. */
-function tokenBefore(tokens: readonly Token[], offset: number): Token | undefined {
+/** The index of the token that contains `offset` or ends exactly there; -1 when there is none. */
+function tokenBefore(tokens: readonly Token[], offset: number): number {
   let low = 0;
   let high = tokens.length - 1;
-  let found: Token | undefined;
+  let found = -1;
   while (low <= high) {
     const mid = (low + high) >> 1;
     if (tokens[mid]!.from < offset) {
-      found = tokens[mid];
+      found = mid;
       low = mid + 1;
     } else high = mid - 1;
   }
-  return found && offset <= found.to ? found : undefined;
+  return found >= 0 && offset <= tokens[found]!.to ? found : -1;
 }
 
-/** What narrows the properties of a declaration: the operation of a selector, the prototype of a generic entity (undefined while it names none). */
+/**
+ * The word being typed in front of `offset`, when it so far ends in a hyphen: `small-` is lexed as a word and an operator, and
+ * is the beginning of `small-lamp`.
+ */
+function hyphenatedPartial(tokens: readonly Token[], index: number, offset: number): Token | undefined {
+  const [word, hyphen] = [tokens[index - 1], tokens[index]];
+  const open = word && hyphen && hyphen.kind === "op" && hyphen.text === "-" && hyphen.to === offset && word.to === hyphen.from && (word.kind === "ident" || word.kind === "word");
+  return open ? word : undefined;
+}
+
+/** What narrows the properties of a declaration: the operation of a selector, the prototype of a generic entity. */
 function variantOf(entity: CstEntity | undefined): PropertyVariant | undefined {
-  const statements = entity?.body?.statements ?? [];
-  if (entity?.kind === "entity") {
-    for (const statement of statements) {
-      if (statement.type !== "property" || statement.name.text !== PROTOTYPE_PROPERTY || !statement.value) continue;
-      const name = statement.value.kind === "string" ? decodeString(statement.value.text) : statement.value.text;
-      return (prototypesOf("entity") as readonly string[]).includes(name) ? name : undefined;
-    }
-    return undefined;
-  }
+  if (entity?.kind === "entity") return entity.prototype;
   if (entity?.kind !== "selector") return undefined;
-  for (const statement of statements) {
+  for (const statement of entity.body?.statements ?? []) {
     if (statement.type === "property" && statement.name.text === "operation" && statement.value && (SELECTOR_OPERATIONS as readonly string[]).includes(statement.value.text)) return statement.value.text;
   }
   return "select";
@@ -81,14 +85,15 @@ function instrumentOf(entity: CstEntity | undefined): { instrument?: string } {
 export function completionContext(parse: ParseResult, offset: number): CompletionContext {
   const { source } = parse;
   offset = Math.max(0, Math.min(offset, source.length));
-  const token = tokenBefore(parse.cst.tokens, offset);
+  const index = tokenBefore(parse.cst.tokens, offset);
+  const token = parse.cst.tokens[index];
   const none = { from: offset, to: offset, prefix: "", expected: [] };
   if (token) {
     const unterminated = token.kind === "string" && !(token.text.length > 1 && token.text.endsWith('"'));
     if (token.kind === "lineComment" || ((token.kind === "blockComment" || token.kind === "string") && (offset < token.to || unterminated))) return none;
     if (token.kind === "blockComment" && !token.text.endsWith("*/")) return none;
   }
-  const partial = token && PARTIAL_KINDS.has(token.kind) ? token : undefined;
+  const partial = token && PARTIAL_KINDS.has(token.kind) ? token : hyphenatedPartial(parse.cst.tokens, index, offset);
   const from = partial ? partial.from : offset;
   const entity = parse.cst.circuit?.members.findLast((m): m is CstEntity => m.type === "entity" && m.from <= offset);
   const variant = variantOf(entity);
@@ -106,9 +111,7 @@ export function completionContext(parse: ParseResult, offset: number): Completio
         if (!section) for (const value of STATEMENT_KEYWORDS[kind]) keywords.add(value);
         // The further conditions of a generic entity start with their role: `logistic when ...`.
         if (kind === "entity" && variant !== undefined) for (const role of conditionRoles(variant)) keywords.add(role);
-        // Until a generic entity says which prototype it is, that is what there is to say.
-        const names = kind === "entity" && variant === undefined ? ["description", PROTOTYPE_PROPERTY] : propertyNames(kind, variantFor(kind), section);
-        expected.push({ type: "property", kind, names });
+        expected.push({ type: "property", kind, names: propertyNames(kind, variantFor(kind), section) });
         if (kind === "constant") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["constant.filter"] });
         else if (kind === "arithmetic") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["arithmetic.output"] });
         break;
@@ -122,13 +125,15 @@ export function completionContext(parse: ParseResult, offset: number): Completio
           if (alternative.type === "signal") expected.push({ type: "signal", wildcards: alternative.wildcards });
           else if (alternative.type === "int") expected.push({ type: "literal", kind: "integer" });
           else if (alternative.type === "number" || alternative.type === "string" || alternative.type === "color" || alternative.type === "quality") expected.push({ type: "literal", kind: alternative.type });
-          else if (alternative.type === "name" && alternative.of === "prototype") expected.push({ type: "enum", property: expectation.property, values: prototypesOf(expectation.kind) });
           else if (alternative.type === "name") expected.push(alternative.of === "instrument" ? { type: "instrument" } : { type: "note", ...instrumentOf(entity) });
         }
         break;
       }
       case "signal":
         expected.push({ type: "signal", wildcards: expectation.wildcards });
+        break;
+      case "entity":
+        expected.push({ type: "entity", prototypes: PROTOTYPE_NAMES });
         break;
       case "terminal":
         expected.push({ type: "terminal", entities: [...parse.sourceMap.entities.values()].filter((e) => e.name).map((e) => ({ name: e.name, kind: e.kind, sides: TERMINALS[e.kind] })) });
@@ -145,5 +150,5 @@ export function completionContext(parse: ParseResult, offset: number): Completio
     }
   }
   if (keywords.size) expected.unshift({ type: "keyword", values: [...keywords] });
-  return { from, to: partial ? partial.to : offset, prefix: source.slice(from, offset), expected };
+  return { from, to: partial ? Math.max(partial.to, offset) : offset, prefix: source.slice(from, offset), expected };
 }

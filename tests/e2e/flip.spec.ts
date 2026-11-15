@@ -268,7 +268,7 @@ test("with a place tool H and V flip what is about to be placed, as R turns it",
   await expect(hint(page)).toContainText("to place a decider facing east");
   await page.keyboard.press("h");
   await expect(hint(page)).toContainText("to place a decider facing west");
-  expect(await page.evaluate(() => window.faceSession!.getState().tool)).toEqual({ type: "place", kind: "decider", facing: "west" });
+  expect(await page.evaluate(() => window.faceSession!.getState().tool)).toEqual({ type: "place", prototype: "decider-combinator", facing: "west" });
   await page.keyboard.press("v");
   await expect(hint(page)).toContainText("facing west");
   await page.keyboard.press("r");
@@ -283,13 +283,13 @@ test("with a place tool H and V flip what is about to be placed, as R turns it",
   await canvas(page).focus();
   await page.keyboard.press("Enter");
   await expect(card(page, "decider1")).toHaveAttribute("data-facing", "south");
-  expect(await sourceText(page)).toMatch(/decider decider1 at \(-?\d+, -?\d+\) facing south \{/);
+  expect(await sourceText(page)).toMatch(/decider-combinator decider1 at \(-?\d+, -?\d+\) facing south \{/);
 
   // A lamp in hand has no direction: the keys do nothing, and they do not reach the selection either.
   await page.keyboard.press("5");
   await page.keyboard.press("h");
   await page.keyboard.press("v");
-  expect(await page.evaluate(() => window.faceSession!.getState().tool)).toEqual({ type: "place", kind: "lamp" });
+  expect(await page.evaluate(() => window.faceSession!.getState().tool)).toEqual({ type: "place", prototype: "small-lamp" });
   await expect(card(page, "decider1")).toHaveAttribute("data-facing", "south");
   await page.keyboard.press("Escape");
 
@@ -308,7 +308,7 @@ test("with a place tool H and V flip what is about to be placed, as R turns it",
   await page.mouse.click(free.x, free.y);
   await expect(card(page, "arithmetic1")).toHaveAttribute("data-facing", "west");
   await expect(card(page, "arithmetic1")).toHaveAttribute("data-placed", "true");
-  expect(await sourceText(page)).toMatch(/arithmetic arithmetic1 at \(-?\d+, -?\d+\) tile \(-?[\d.]+, -?[\d.]+\) facing west \{/);
+  expect(await sourceText(page)).toMatch(/arithmetic-combinator arithmetic1 at \(-?\d+, -?\d+\) tile \(-?[\d.]+, -?[\d.]+\) facing west \{/);
 });
 
 test("the shortcut overview lists the two flips with their keys", async ({ page }) => {

@@ -44,10 +44,10 @@ export function imported(data: unknown, options: ImportOptions = { instruments: 
   return { circuit: result.circuit, report: result.report };
 }
 
-/** One blueprint entity at a place that fits it, read by the importer: the entity without what every entity has, and the notes about it. */
+/** One blueprint entity at a place that fits it, read by the importer: the entity without its name and its place, and the notes about it. */
 export function importedEntity(name: string, fields: Record<string, unknown> = {}, options: ImportOptions = { instruments: INSTRUMENTS }): { entity: Record<string, unknown>; notes: string[] } {
   const { circuit, report } = imported(blueprintOf([{ entity_number: 1, name, position: { x: 0.5, y: 0.5 }, ...fields }]), options);
-  expect(circuit.entities).toHaveLength(1);
+  expect(circuit.entities).toMatchObject([{ prototype: name }]);
   const { id: _id, name: _name, position: _position, placement: _placement, ...entity } = circuit.entities[0]!;
   return { entity: JSON.parse(JSON.stringify(entity)) as Record<string, unknown>, notes: report.settings.map((note) => `${note.kind} ${note.field}`) };
 }

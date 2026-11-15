@@ -1,5 +1,5 @@
 // Display metadata per entity kind, shared by palette, canvas and inspector, and the names an entity goes by.
-import { gamePrototype, prototypeData, prototypeOf, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
+import { gamePrototype, prototypeData, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
 import { typeDescription } from "./typeInfo.ts";
 
 export interface KindInfo {
@@ -41,7 +41,8 @@ export function prototypeLabel(entity: EntityShape): string {
  * name where a kind has several entities ("Big electric pole").
  */
 export function entityTitle(entity: EntityShape): string {
-  return prototypesOf(entity.kind).length > 1 ? prototypeLabel(entity) : KIND_INFO[entity.kind].label;
+  const { kind } = prototypeData(entity);
+  return prototypesOf(kind).length > 1 ? prototypeLabel(entity) : KIND_INFO[kind].label;
 }
 
 /** The same inside a sentence, with its article: "a decider", "a big electric pole". */
@@ -51,7 +52,8 @@ export function entityNoun(entity: EntityShape): string {
 
 /** What an entity is on a circuit for, in a line: of its kind, and for a generic entity of its prototype type. */
 export function entityDescription(entity: EntityShape): string {
-  return entity.kind === "entity" ? typeDescription(prototypeOf(entity)) : KIND_INFO[entity.kind].description;
+  const { kind } = prototypeData(entity);
+  return kind === "entity" ? typeDescription(entity.prototype) : KIND_INFO[kind].description;
 }
 
 /** The tiles a prototype covers when it faces north, width by height: "1 tile", "1 x 2 tiles", "9 x 9 tiles". */

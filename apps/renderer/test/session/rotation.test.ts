@@ -160,7 +160,7 @@ describe("rotating entities", () => {
     expect(text).toContain("facing north");
     session.commands.pasteEntities(text);
     expect(facingOf(entityNamed(session, "gate2"))).toBe("north");
-    expect(session.state.source).toContain("decider gate2 at (340, 120) facing north {");
+    expect(session.state.source).toContain("decider-combinator gate2 at (340, 120) facing north {");
   });
 
   it("drops a pending inspector draft of an entity that is turned, like any other change of its declaration", () => {

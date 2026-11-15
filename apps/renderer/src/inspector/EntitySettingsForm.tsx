@@ -1,6 +1,6 @@
 // Dispatches to the settings form of the entity's kind. All forms are controlled: they render `entity` and emit a
 // complete replacement through `onChange`. A kind with several game prototypes in the game data first says which one the entity is.
-import { prototypeOf, type Entity, type GenericEntity, type PrototypeName } from "@face/model";
+import type { Entity, GenericEntity, PrototypeName } from "@face/model";
 import { prototypeNotes } from "../entities/typeInfo.ts";
 import type { EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { ArithmeticForm } from "./ArithmeticForm.tsx";
@@ -81,7 +81,7 @@ export function EntitySettingsForm({ entity, resolveEntityIcon, prototypes, onCh
     );
   }
   // Which prototype of its kind the entity is: a pole of the game, and every kind a mod gives further prototypes.
-  const choices = alternativePrototypes(prototypeOf(entity), prototypes?.offers, prototypes?.position);
+  const choices = alternativePrototypes(entity.prototype, prototypes?.offers, prototypes?.position);
   return (
     <>
       {choices.length > 1 && (

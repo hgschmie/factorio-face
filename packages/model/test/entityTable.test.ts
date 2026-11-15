@@ -137,14 +137,14 @@ describe("another entity table", () => {
     setEntityTable(modded);
     expect(entityTable()).toBe(modded);
     expect(PROTOTYPES["small-lamp"]).toEqual({ kind: "lamp", label: "big lamp", width: 2, height: 3, rotatable: true, wireReach: 12 });
-    expect(prototypeData({ kind: "lamp" }).width).toBe(2);
-    expect(tileSize({ kind: "lamp" }, "east")).toEqual({ width: 3, height: 2 });
-    expect(wireReachBetween({ kind: "lamp" }, { kind: "constant" }, 20)).toEqual({ reach: 12, of: "small-lamp" });
+    expect(prototypeData({ prototype: "small-lamp" }).width).toBe(2);
+    expect(tileSize({ prototype: "small-lamp" }, "east")).toEqual({ width: 3, height: 2 });
+    expect(wireReachBetween({ prototype: "small-lamp" }, { prototype: "constant-combinator" }, 20)).toEqual({ reach: 12, of: "small-lamp" });
     expect(PROTOTYPES["decider-combinator"]).toEqual({ kind: "decider", label: "decider combinator", width: 1, height: 2, rotatable: true });
 
     setEntityTable(STANDARD_ENTITY_TABLE);
     expect(PROTOTYPES["small-lamp"]).toEqual({ kind: "lamp", label: "lamp", width: 1, height: 1, rotatable: false });
-    expect(wireReachBetween({ kind: "lamp" }, { kind: "constant" }, 20)).toEqual({ reach: 20, of: "project" });
+    expect(wireReachBetween({ prototype: "small-lamp" }, { prototype: "constant-combinator" }, 20)).toEqual({ reach: 20, of: "project" });
   });
 
   it("is refused, and nothing changes, when it lacks a prototype the editor has", () => {

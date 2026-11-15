@@ -87,11 +87,11 @@ test("a pasted blueprint of chest, inserters, belt, assembling machine and train
 
   // What the editor does not model is in the source as the blueprint had it; the settings it models are properties.
   const source = await sourceText(page);
-  expect(source).toContain('    entity assembling_machine1 at (560, 0) tile (7.5, 1.5) facing north {\n        prototype = assembling-machine-2\n        read-contents = true\n        blueprint-data = "{\\"recipe\\":\\"iron-gear-wheel\\",\\"recipe_quality\\":\\"normal\\"}"\n    }');
-  expect(source).toContain('    entity fast_inserter1 at (280, 0) tile (3.5, 0.5) {\n        prototype = fast-inserter\n        when item:iron-plate < 100\n        read-hand = hold\n    }');
-  expect(source).toContain('        prototype = train-stop\n        send-to-train = false\n        read-from-train = true\n        blueprint-data = "{\\"station\\":\\"Iron pickup\\",\\"manual_trains_limit\\":2}"');
-  expect(source).toContain("        prototype = transport-belt\n        read-contents = entire-belt-hold\n");
-  expect(source).toContain('        prototype = steel-chest\n        read-empty-slots = true\n        blueprint-data = "{\\"bar\\":10}"');
+  expect(source).toContain('    assembling-machine-2 assembling_machine1 at (560, 0) tile (7.5, 1.5) facing north {\n        read-contents = true\n        blueprint-data = "{\\"recipe\\":\\"iron-gear-wheel\\",\\"recipe_quality\\":\\"normal\\"}"\n    }');
+  expect(source).toContain('    fast-inserter fast_inserter1 at (280, 0) tile (3.5, 0.5) {\n        when item:iron-plate < 100\n        read-hand = hold\n    }');
+  expect(source).toMatch(/    train-stop train_stop1 at \(\d+, \d+\) tile \([\d.]+, [\d.]+\)[a-z ]* \{\n        send-to-train = false\n        read-from-train = true\n        blueprint-data = "\{\\"station\\":\\"Iron pickup\\",\\"manual_trains_limit\\":2\}"\n    \}/);
+  expect(source).toMatch(/    transport-belt transport_belt1 at \(\d+, \d+\) tile \([\d.]+, [\d.]+\)[a-z ]* \{\n        read-contents = entire-belt-hold\n    \}/);
+  expect(source).toMatch(/    steel-chest steel_chest1 at \(\d+, \d+\) tile \([\d.]+, [\d.]+\) \{\n        read-empty-slots = true\n        blueprint-data = "\{\\"bar\\":10\}"\n    \}/);
   expect(source).toContain("    wire red constant1.out <-> steel_chest1\n");
   expect(source).toContain("    wire green assembling_machine1 <-> train_stop1\n");
 
@@ -183,24 +183,21 @@ test("a pasted blueprint of chest, inserters, belt, assembling machine and train
 
 /** A rocket silo of 9 x 9 tiles, a boiler of 3 x 2 that turns, a splitter with a condition per side and a lamp. */
 const YARD = `circuit "Yard" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    entity silo at (280, 80) tile (6.5, 4.5) {
-        prototype = rocket-silo
+    rocket-silo silo at (280, 80) tile (6.5, 4.5) {
     }
 
-    entity heat at (520, 80) tile (13.5, 1) facing north {
-        prototype = boiler
+    boiler heat at (520, 80) tile (13.5, 1) facing north {
     }
 
-    entity split at (760, 80) tile (13, 4.5) facing north {
-        prototype = splitter
+    splitter split at (760, 80) tile (13, 4.5) facing north {
         input-left when virtual:signal-A > 0
     }
 
-    lamp light at (1000, 80) tile (16.5, 0.5) {
+    small-lamp light at (1000, 80) tile (16.5, 0.5) {
         when virtual:signal-A > 0
     }
 
@@ -230,7 +227,7 @@ test("generic entities from the source stand on both canvases with their footpri
     const session = window.faceSession!;
     session.commands.rotateEntities([session.getState().circuit.entities.find((entity) => entity.name === "heat")!.id], "clockwise");
   });
-  expect(await sourceText(page)).toContain("entity heat at (520, 80) tile (13, 1.5) facing east {");
+  expect(await sourceText(page)).toContain("boiler heat at (520, 80) tile (13, 1.5) facing east {");
   expect(await footprint(page, "heat")).toMatchObject({ tile: [12, 0], size: [2, 3], facing: "east" });
 
   // The wire tool on the board: from the boiler's connection point to the splitter's and on to the lamp.

@@ -6,17 +6,17 @@ import {
 import { circuit, fixture, Generator, idOf, portable, valid } from "./helpers.ts";
 
 const EXAMPLE = `circuit "Feedback example" {
-    constant source at (40, 80) {
+    constant-combinator source at (40, 80) {
         virtual:signal-A = 1
     }
 
-    decider gate at (300, 80) tile (2.5, -1) facing east {
+    decider-combinator gate at (300, 80) tile (2.5, -1) facing east {
         description = "Counts A,\\nthen starts over."
         when virtual:signal-A < 10
         output virtual:signal-A = input
     }
 
-    lamp light at (560, 80) {
+    small-lamp light at (560, 80) {
         when virtual:signal-A > 8
     }
 
@@ -58,11 +58,11 @@ describe("extractFragment and printFragment", () => {
   it("takes the selected entities in declaration order and only the wires between them", () => {
     const fragment = extractFragment(example.circuit, [idOf(example, "gate"), idOf(example, "source"), "unknown"]);
     expect(fragment.entities.map((e) => e.name)).toEqual(["source", "gate"]);
-    expect(printFragment(fragment)).toBe(`constant source at (40, 80) {
+    expect(printFragment(fragment)).toBe(`constant-combinator source at (40, 80) {
     virtual:signal-A = 1
 }
 
-decider gate at (300, 80) tile (2.5, -1) facing east {
+decider-combinator gate at (300, 80) tile (2.5, -1) facing east {
     description = "Counts A,\\nthen starts over."
     when virtual:signal-A < 10
     output virtual:signal-A = input
@@ -72,7 +72,7 @@ wire red source.out <-> gate.in
 wire green gate.out <-> gate.in
 `);
     // A wire to an entity outside the selection is not copied.
-    expect(printFragment(copy(example, "light"))).toBe("lamp light at (560, 80) {\n    when virtual:signal-A > 8\n}\n");
+    expect(printFragment(copy(example, "light"))).toBe("small-lamp light at (560, 80) {\n    when virtual:signal-A > 8\n}\n");
     expect(printFragment(copy(example, "source", "light"))).not.toContain("wire");
     expect(printFragment(extractFragment(example.circuit, []))).toBe("");
   });
@@ -94,10 +94,10 @@ wire green gate.out <-> gate.in
 
 describe("parseFragment and analyzeFragment", () => {
   it("reads declarations without a circuit around them, with comments and separators", () => {
-    const syntax = parseFragment("// copied\nlamp a { }; lamp b at (20, 40) { }\n/* and */ wire red a.in <-> b.in,\n");
+    const syntax = parseFragment("// copied\nsmall-lamp a { }; small-lamp b at (20, 40) { }\n/* and */ wire red a.in <-> b.in,\n");
     expect(syntax.diagnostics).toEqual([]);
     expect(syntax.members.map((m) => m.type)).toEqual(["entity", "entity", "wire"]);
-    const fragment = fragmentOf("lamp a { }\nlamp b at (20, 40) { }\nwire red a.in <-> b.in\nwire red b.in <-> a.in");
+    const fragment = fragmentOf("small-lamp a { }\nsmall-lamp b at (20, 40) { }\nwire red a.in <-> b.in\nwire red b.in <-> a.in");
     // An entity without a position gets the first free slot, as in a circuit.
     expect(fragment.entities.map((e) => [e.name, e.position])).toEqual([["a", { x: 280, y: 40 }], ["b", { x: 20, y: 40 }]]);
     expect(fragment.wires).toHaveLength(1);
@@ -106,7 +106,7 @@ describe("parseFragment and analyzeFragment", () => {
   it("accepts the source of a whole circuit and yields its members", () => {
     const fragment = fragmentOf(EXAMPLE);
     expect(portable({ name: "Feedback example", ...fragment })).toEqual(portable(example.circuit));
-    expect(analyzeFragment(`${EXAMPLE}lamp extra { }`).hasErrors).toBe(true);
+    expect(analyzeFragment(`${EXAMPLE}small-lamp extra { }`).hasErrors).toBe(true);
   });
 
   it("is empty for text without declarations", () => {
@@ -120,17 +120,18 @@ describe("parseFragment and analyzeFragment", () => {
       expect(result.fragment).toBeUndefined();
       return result.diagnostics.filter((d) => d.severity === "error").map((d) => d.code);
     };
-    expect(codes("hello world")).toEqual(["syntax-error"]);
+    expect(codes("hello world")).toEqual(["unknown-prototype"]);
+    expect(codes("= hello")).toEqual(["syntax-error"]);
     expect(codes("https://example.org/a?b=1")).toContain("syntax-error");
-    expect(codes("lamp a { }\n}")).toEqual(["syntax-error"]);
-    expect(codes("lamp a { }\ncircuit \"x\" { }")).toEqual(["syntax-error"]);
-    expect(codes("lamp a {")).toEqual(["syntax-error"]);
-    expect(codes("lamp a { }\nlamp a { }")).toEqual(["duplicate-entity"]);
-    expect(codes("lamp wire { }")).toContain("syntax-error");
+    expect(codes("small-lamp a { }\n}")).toEqual(["syntax-error"]);
+    expect(codes("small-lamp a { }\ncircuit \"x\" { }")).toEqual(["syntax-error"]);
+    expect(codes("small-lamp a {")).toEqual(["syntax-error"]);
+    expect(codes("small-lamp a { }\nsmall-lamp a { }")).toEqual(["duplicate-entity"]);
+    expect(codes("small-lamp wire { }")).toContain("syntax-error");
     // A wire needs both of its entities in the fragment.
-    expect(codes("lamp a { }\nwire red a.in <-> b.in")).toEqual(["unknown-entity"]);
-    expect(codes("lamp a { }\nlamp b { }\nwire red a.out <-> b.in")).toEqual(["invalid-terminal"]);
-    expect(codes("constant c { virtual:signal-A = 99999999999 }")).toEqual(["integer-range"]);
+    expect(codes("small-lamp a { }\nwire red a.in <-> b.in")).toEqual(["unknown-entity"]);
+    expect(codes("small-lamp a { }\nsmall-lamp b { }\nwire red a.out <-> b.in")).toEqual(["invalid-terminal"]);
+    expect(codes("constant-combinator c { virtual:signal-A = 99999999999 }")).toEqual(["integer-range"]);
     expect(codes("import x")).toEqual(["unsupported-feature"]);
   });
 
@@ -167,25 +168,25 @@ describe("pasteFragment", () => {
     expect(names).toEqual(["source2", "gate2"]);
     expect(changes).toHaveLength(2);
     expect(applyChanges(EXAMPLE, changes)).toBe(`circuit "Feedback example" {
-    constant source at (40, 80) {
+    constant-combinator source at (40, 80) {
         virtual:signal-A = 1
     }
 
-    decider gate at (300, 80) tile (2.5, -1) facing east {
+    decider-combinator gate at (300, 80) tile (2.5, -1) facing east {
         description = "Counts A,\\nthen starts over."
         when virtual:signal-A < 10
         output virtual:signal-A = input
     }
 
-    lamp light at (560, 80) {
+    small-lamp light at (560, 80) {
         when virtual:signal-A > 8
     }
 
-    constant source2 at (80, 120) {
+    constant-combinator source2 at (80, 120) {
         virtual:signal-A = 1
     }
 
-    decider gate2 at (340, 120) facing east {
+    decider-combinator gate2 at (340, 120) facing east {
         description = "Counts A,\\nthen starts over."
         when virtual:signal-A < 10
         output virtual:signal-A = input
@@ -225,8 +226,8 @@ describe("pasteFragment", () => {
   });
 
   it("keeps names that are free in the target and lets the wires follow the renamed ones", () => {
-    const target = valid(circuit("    lamp light { }\n    constant feed { }"));
-    const { source, names } = paste(target, fragmentOf("constant feed at (0, 0) { }\nlamp light at (0, 0) { }\narithmetic sum at (0, 0) { }\nwire red feed.out <-> sum.in\nwire green sum.out <-> light.in"));
+    const target = valid(circuit("    small-lamp light { }\n    constant-combinator feed { }"));
+    const { source, names } = paste(target, fragmentOf("constant-combinator feed at (0, 0) { }\nsmall-lamp light at (0, 0) { }\narithmetic-combinator sum at (0, 0) { }\nwire red feed.out <-> sum.in\nwire green sum.out <-> light.in"));
     expect(names).toEqual(["feed2", "light2", "sum"]);
     expect(source).toContain("    wire red feed2.out <-> sum.in\n    wire green sum.out <-> light2.in\n");
   });
@@ -237,16 +238,16 @@ describe("pasteFragment", () => {
     const { changes } = pasteFragment(parsed, copy(parsed, "source", "twice", "light"), { x: 0, y: 200 });
     const result = applyChanges(comments, changes);
     const entities = `
-    constant source2 at (40, 280) {
+    constant-combinator source2 at (40, 280) {
         virtual:signal-A = 5
     }
 
-    arithmetic twice2 at (300, 280) {
+    arithmetic-combinator twice2 at (300, 280) {
         description = "doubles A"
         virtual:signal-B = virtual:signal-A * 2
     }
 
-    lamp light2 at (560, 280) {
+    small-lamp light2 at (560, 280) {
         when virtual:signal-B > 8
     }
 `;
@@ -259,21 +260,21 @@ describe("pasteFragment", () => {
   });
 
   it("puts the copies where addEntity and addWire put theirs", () => {
-    const lamp = fragmentOf("lamp lamp1 at (20, 40) {\n}\nconstant constant1 at (0, 0) {\n}\nwire red constant1.out <-> lamp1.in");
+    const lamp = fragmentOf("small-lamp lamp1 at (20, 40) {\n}\nconstant-combinator constant1 at (0, 0) {\n}\nwire red constant1.out <-> lamp1.in");
     const empty = valid('circuit "t" {\n}\n');
     const pasted = paste(empty, lamp).source;
-    const first = addEntity(empty, "lamp", { x: 20, y: 40 });
+    const first = addEntity(empty, "small-lamp", { x: 20, y: 40 });
     const second = valid(applyChanges(empty.source, first.changes));
-    const third = valid(applyChanges(second.source, addEntity(second, "constant", { x: 0, y: 0 }).changes));
+    const third = valid(applyChanges(second.source, addEntity(second, "constant-combinator", { x: 0, y: 0 }).changes));
     expect(pasted).toBe(applyChanges(third.source, addWire(third, "red", { entity: idOf(third, "constant1"), side: "out" }, { entity: idOf(third, "lamp1"), side: "in" })));
-    expect(pasted).toBe('circuit "t" {\n    lamp lamp1 at (20, 40) {\n    }\n\n    constant constant1 at (0, 0) {\n    }\n\n    wire red constant1.out <-> lamp1.in\n}\n');
+    expect(pasted).toBe('circuit "t" {\n    small-lamp lamp1 at (20, 40) {\n    }\n\n    constant-combinator constant1 at (0, 0) {\n    }\n\n    wire red constant1.out <-> lamp1.in\n}\n');
 
     // The file's own style: tabs, no blank lines, no line break at the end.
-    const dense = valid('circuit "t" {\n\tconstant a at (0, 0) {\n\t\titem:x = 1\n\t}\n\tlamp b at (0, 0) { }\n\twire red a.out <-> b.in\n}');
+    const dense = valid('circuit "t" {\n\tconstant-combinator a at (0, 0) {\n\t\titem:x = 1\n\t}\n\tsmall-lamp b at (0, 0) { }\n\twire red a.out <-> b.in\n}');
     expect(paste(dense, copy(dense, "a", "b")).source).toBe(
-      'circuit "t" {\n\tconstant a at (0, 0) {\n\t\titem:x = 1\n\t}\n\tlamp b at (0, 0) { }\n\tconstant a2 at (0, 0) {\n\t\titem:x = 1\n\t}\n\tlamp b2 at (0, 0) {\n\t}\n\twire red a.out <-> b.in\n\twire red a2.out <-> b2.in\n}',
+      'circuit "t" {\n\tconstant-combinator a at (0, 0) {\n\t\titem:x = 1\n\t}\n\tsmall-lamp b at (0, 0) { }\n\tconstant-combinator a2 at (0, 0) {\n\t\titem:x = 1\n\t}\n\tsmall-lamp b2 at (0, 0) {\n\t}\n\twire red a.out <-> b.in\n\twire red a2.out <-> b2.in\n}',
     );
-    const inline = valid('circuit "t" { lamp a { } }');
+    const inline = valid('circuit "t" { small-lamp a { } }');
     expect(paste(inline, copy(inline, "a")).after.circuit.entities.map((e) => e.name)).toEqual(["a", "a2"]);
     const braces = valid('circuit "t" {}');
     expect(paste(braces, lamp).after.circuit.wires).toHaveLength(1);
@@ -301,7 +302,7 @@ describe("pasteFragment", () => {
 
   it("round trips through the clipboard text into another circuit", () => {
     const text = printFragment(copy(example, "source", "gate", "light"));
-    const target = valid('circuit "Other" {\n    lamp gate at (0, 0) {\n    }\n}\n');
+    const target = valid('circuit "Other" {\n    small-lamp gate at (0, 0) {\n    }\n}\n');
     const { after, names } = paste(target, fragmentOf(text), { x: 40, y: 40 });
     expect(names).toEqual(["source", "gate2", "light"]);
     // What arrived is what was copied, apart from the taken name, the tile and the shift.

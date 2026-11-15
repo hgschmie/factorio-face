@@ -5,11 +5,11 @@ import { card, expect, selectEntity, sourceText, test } from "./app.ts";
 import { inspector, setSource } from "./board.ts";
 
 const SPEAKER = `circuit "Speaker" {
-    constant source at (40, 80) {
+    constant-combinator source at (40, 80) {
         virtual:signal-A = 3
     }
 
-    speaker alarm at (300, 80) {
+    programmable-speaker alarm at (300, 80) {
         when virtual:signal-A > 0
     }
 

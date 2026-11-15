@@ -1,6 +1,6 @@
 // Concrete syntax tree. Every node is a range; tokens are referenced, never copied. Optional parts are absent after a syntax error.
 
-import type { EntityKind } from "@face/model";
+import type { EntityKind, PrototypeName } from "@face/model";
 import type { Range, Token } from "./tokens.ts";
 
 export interface CstFile extends Range {
@@ -19,10 +19,15 @@ export interface CstCircuit extends Range {
 
 export type CstMember = CstEntity | CstWire;
 
+/** A declaration of an entity the game data in use has; one it does not have is an error of the parser and no node. */
 export interface CstEntity extends Range {
   readonly type: "entity";
+  /** The declaration word, bare or quoted: the game's name of the entity. */
+  readonly word: Token;
+  /** What the word says. */
+  readonly prototype: PrototypeName;
+  /** The kind of the prototype, which decides how the body is read. */
   readonly kind: EntityKind;
-  readonly keyword: Token;
   readonly name?: Token;
   readonly at?: CstPoint;
   readonly tile?: CstPoint;

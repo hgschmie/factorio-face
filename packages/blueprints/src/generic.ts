@@ -5,12 +5,12 @@
 
 import {
   BOTH_NETWORKS, canRotate, DIRECTIONS, ENTITY_SETTINGS, facingOf, gamePrototype, NORMAL_QUALITY, normalizedSettings, sameSetting, settingDefault, settingFields, settingSpecsOf,
-  type Condition, type ConditionSetting, type Direction, type EntityOfKind, type EnumSetting, type NetworkSelection, type PrototypeName, type SettingValue, type SignalId,
+  type Condition, type ConditionSetting, type Direction, type EntityConfig, type EntityOfKind, type EnumSetting, type NetworkSelection, type PrototypeName, type SettingValue, type SignalId,
 } from "@face/model";
 import { circuitCondition, Fields, isObject, type Json, type NoteSink } from "./reader.ts";
 import { DIRECTION_NUMBERS, type BlueprintCondition, type BlueprintSignal } from "./schema.ts";
 
-type GenericSettings = Omit<EntityOfKind<"entity">, "id" | "name" | "position" | "placement" | "description">;
+type GenericSettings = Omit<EntityConfig<"entity">, "placement" | "description">;
 
 /** What every entity record has and the editor holds elsewhere. */
 const STRUCTURAL: ReadonlySet<string> = new Set(["entity_number", "name", "position"]);
@@ -98,7 +98,7 @@ function readConditions(specs: readonly ConditionSetting[], behavior: Fields | u
  * or sixteen directions one that is no quarter turn is part of the kept data.
  */
 export function readGeneric(prototype: PrototypeName, record: Json, note: NoteSink): { settings: GenericSettings; direction: Direction } {
-  const shape = { kind: "entity" as const, prototype };
+  const shape = { prototype };
   const specs = settingSpecsOf(prototype);
 
   let direction: Direction = "north";
@@ -161,7 +161,7 @@ export function readGeneric(prototype: PrototypeName, record: Json, note: NoteSi
   }
   // `Object.fromEntries` defines every key as a property of its own, also `__proto__`.
   const blueprintData = kept.length ? JSON.stringify(Object.fromEntries(kept)) : undefined;
-  return { settings: { kind: "entity", prototype, settings: normalizedSettings(prototype, values), ...(blueprintData !== undefined && { blueprintData }) }, direction };
+  return { settings: { kind: "entity", settings: normalizedSettings(prototype, values), ...(blueprintData !== undefined && { blueprintData }) }, direction };
 }
 
 /** The kept data of a generic entity as the object it is the text of; undefined when it is not the JSON of an object. */

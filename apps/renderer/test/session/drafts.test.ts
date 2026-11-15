@@ -44,7 +44,7 @@ describe("inspector drafts", () => {
   });
 
   it("holds an expression without output signal until one is chosen", () => {
-    const { session } = createSession('circuit "c" {\n  arithmetic sum at (0, 0) {\n  }\n}\n');
+    const { session } = createSession('circuit "c" {\n  arithmetic-combinator sum at (0, 0) {\n  }\n}\n');
     const sum = entityNamed(session, "sum") as ArithmeticCombinator;
     session.commands.select([sum.id]);
     session.commands.updateEntity({ ...sum, first: { type: "signal", signal: A, networks: BOTH_NETWORKS }, operation: "+" });
@@ -71,7 +71,7 @@ describe("inspector drafts", () => {
     expect(session.state.draft).toBeNull();
     expect(session.state.source).toContain("virtual:signal-B = 2");
 
-    expect(checkDraft({ id: "x", name: "a", position: { x: 0, y: 0 }, kind: "arithmetic", first: { type: "constant", value: 0 }, operation: "*", second: { type: "constant", value: 0 }, output: wildcardSignal("each") })).toMatchObject({ ok: false, code: "invalid-entity", message: expect.stringContaining("each") });
+    expect(checkDraft({ id: "x", name: "a", position: { x: 0, y: 0 }, kind: "arithmetic", prototype: "arithmetic-combinator", first: { type: "constant", value: 0 }, operation: "*", second: { type: "constant", value: 0 }, output: wildcardSignal("each") })).toMatchObject({ ok: false, code: "invalid-entity", message: expect.stringContaining("each") });
   });
 
   it("drops the draft when the selection moves on, when it is discarded, or when the entity changes underneath it", () => {
@@ -118,7 +118,7 @@ describe("inspector drafts", () => {
     const red = { red: true, green: false };
     const copy = { signal: A, copyCountFromInput: true, constant: 5, networks: red };
     const fixed = { signal: A, copyCountFromInput: false, constant: 5, networks: red };
-    const d: DeciderCombinator = { ...base, kind: "decider", conditions: [{ join: "and", first: A, firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 0 } }], outputs: [copy, fixed], elseOutputs: [fixed] };
+    const d: DeciderCombinator = { ...base, kind: "decider", prototype: "decider-combinator", conditions: [{ join: "and", first: A, firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 0 } }], outputs: [copy, fixed], elseOutputs: [fixed] };
     expect(checkDraft(d).ok).toBe(false);
     const normal = normalizeEntity(d) as DeciderCombinator;
     expect(normal.conditions[0]!.join).toBe("or");
@@ -127,10 +127,10 @@ describe("inspector drafts", () => {
     expect(checkDraft(normal)).toEqual({ ok: true });
     expect(normalizeEntity(normal)).toBe(normal);
 
-    const s: SelectorCombinator = { ...base, kind: "selector", mode: { operation: "select", max: true, index: { type: "signal", signal: A, networks: red }, indexComparator: "=" } };
+    const s: SelectorCombinator = { ...base, kind: "selector", prototype: "selector-combinator", mode: { operation: "select", max: true, index: { type: "signal", signal: A, networks: red }, indexComparator: "=" } };
     expect(checkDraft(normalizeEntity(s))).toEqual({ ok: true });
-    expect(checkDraft(normalizeEntity({ ...base, kind: "selector", mode: { operation: "quality-filter" } }))).toEqual({ ok: true });
-    const l: Lamp = { ...base, kind: "lamp", inputNetworks: BOTH_NETWORKS, alwaysOn: false, useColors: false, colorMode: "components" };
+    expect(checkDraft(normalizeEntity({ ...base, kind: "selector", prototype: "selector-combinator", mode: { operation: "quality-filter" } }))).toEqual({ ok: true });
+    const l: Lamp = { ...base, kind: "lamp", prototype: "small-lamp", inputNetworks: BOTH_NETWORKS, alwaysOn: false, useColors: false, colorMode: "components" };
     expect(checkDraft(l).ok).toBe(false);
     expect(checkDraft(normalizeEntity(l))).toEqual({ ok: true });
     expect(checkDraft({ ...l, condition: { comparator: ">", second: { type: "constant", value: 0 } } })).toMatchObject({ ok: false, message: "The light condition needs a signal." });

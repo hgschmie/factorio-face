@@ -69,7 +69,7 @@ describe("simulation of the example circuit", () => {
   });
 
   it("reports the color of a lamp that is lit with a color", () => {
-    const { session } = createSession('circuit "c" {\n  constant c at (0, 0) { virtual:signal-A = 5 }\n  lamp l at (300, 0) { when virtual:signal-A > 1  color = #ff8000 }\n  wire red c.out <-> l.in\n}\n');
+    const { session } = createSession('circuit "c" {\n  constant-combinator c at (0, 0) { virtual:signal-A = 5 }\n  small-lamp l at (300, 0) { when virtual:signal-A > 1  color = #ff8000 }\n  wire red c.out <-> l.in\n}\n');
     expect(session.state.simulation.entityStatus.get(idOf(session, "l"))).toMatchObject({ label: "lit #ff8000", active: true, lamp: { lit: true, color: "#ff8000" } });
     session.commands.select([idOf(session, "l")]);
     expect(session.state.simulation.traces[0]).toMatchObject({ current: "lit #ff8000", lamp: { lit: true, color: "#ff8000" }, values: [1] });
@@ -205,13 +205,13 @@ describe("card statuses", () => {
   const B = { kind: "virtual", name: "signal-B" };
   const C = { kind: "virtual", name: "signal-C" };
   const SOURCE = `circuit "c" {
-  constant reds at (0, 0) { virtual:signal-A = 5  virtual:signal-B = -3  virtual:signal-C = 7 }
-  constant greens at (0, 200) { virtual:signal-A = 1 }
-  constant silent at (0, 400) { enabled = false  virtual:signal-A = 1 }
-  decider gate at (300, 0) { when virtual:signal-A > 0  output everything = input }
-  arithmetic alone at (300, 200) { virtual:signal-A = virtual:signal-A + 1 }
-  lamp glow at (600, 0) { when virtual:signal-A > 1  color = #ff8000 }
-  lamp idle at (600, 200) { when virtual:signal-A > 1 }
+  constant-combinator reds at (0, 0) { virtual:signal-A = 5  virtual:signal-B = -3  virtual:signal-C = 7 }
+  constant-combinator greens at (0, 200) { virtual:signal-A = 1 }
+  constant-combinator silent at (0, 400) { enabled = false  virtual:signal-A = 1 }
+  decider-combinator gate at (300, 0) { when virtual:signal-A > 0  output everything = input }
+  arithmetic-combinator alone at (300, 200) { virtual:signal-A = virtual:signal-A + 1 }
+  small-lamp glow at (600, 0) { when virtual:signal-A > 1  color = #ff8000 }
+  small-lamp idle at (600, 200) { when virtual:signal-A > 1 }
   wire red reds.out <-> gate.in
   wire green greens.out <-> gate.in
   wire green silent.out <-> alone.in

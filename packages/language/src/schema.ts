@@ -16,7 +16,7 @@ export type ValueSpec =
   /** A quality prototype name: a bare word or a quoted string. */
   | { readonly type: "quality" }
   /** A name from the game data that the language does not know by itself: a bare word or a quoted string. */
-  | { readonly type: "name"; readonly of: "instrument" | "note" | "prototype" }
+  | { readonly type: "name"; readonly of: "instrument" | "note" }
   | { readonly type: "signal"; readonly wildcards: readonly Wildcard[] }
   | { readonly type: "enum"; readonly values: readonly string[] };
 
@@ -47,9 +47,6 @@ export const NO_NETWORK = "none";
 
 const DESCRIPTION: PropertySpec = { name: "description", values: [{ type: "string" }], detail: "In-game entity description" };
 
-/** The property that says which game prototype an entity is. */
-export const PROTOTYPE_PROPERTY = "prototype";
-
 /** The property of a generic entity that holds what a blueprint says about it and the editor does not model, as JSON text. */
 export const BLUEPRINT_DATA_PROPERTY = "blueprint-data";
 
@@ -66,8 +63,6 @@ function settingProperty(spec: SettingSpec): PropertySpec[] {
   }
 }
 
-const PROTOTYPE_NAME: ValueSpec = { type: "name", of: "prototype" };
-const GENERIC_PROTOTYPE: PropertySpec = { name: PROTOTYPE_PROPERTY, values: [PROTOTYPE_NAME], detail: "Which entity of the game this is, by its name in a blueprint (required)" };
 const BLUEPRINT_DATA: PropertySpec = { name: BLUEPRINT_DATA_PROPERTY, values: [{ type: "string" }], detail: "What a blueprint says about the entity beyond its circuit settings, as JSON text; kept for the export" };
 
 /** Every setting word of every prototype type, a word once per form it has (`read-contents` is a switch for a chest and a mode for a belt). */
@@ -129,18 +124,7 @@ const OWN_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = {
   ],
 };
 
-/**
- * Every entity may say which game prototype of its kind it is, `prototype = <name>`; the first of the kind is the default. A
- * generic entity always says which one it is. The names are data of the entity table, so the value is checked against it by the
- * analysis and not here: a kind with one prototype in the game data takes the word too, but is not offered it (`propertyNames`).
- */
-function prototypeProperty(kind: EntityKind): PropertySpec {
-  return kind === "entity" ? GENERIC_PROTOTYPE : { name: PROTOTYPE_PROPERTY, values: [PROTOTYPE_NAME], detail: `Which ${KIND_LABEL[kind]} of the game this is, by its name in a blueprint (default: the standard one)` };
-}
-
-export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = Object.fromEntries(
-  ENTITY_KINDS.map((kind) => [kind, [DESCRIPTION, prototypeProperty(kind), ...OWN_PROPERTIES[kind]]]),
-) as Record<EntityKind, PropertySpec[]>;
+export const ENTITY_PROPERTIES: Readonly<Record<EntityKind, readonly PropertySpec[]>> = Object.fromEntries(ENTITY_KINDS.map((kind) => [kind, [DESCRIPTION, ...OWN_PROPERTIES[kind]]])) as Record<EntityKind, PropertySpec[]>;
 
 export const SECTION_PROPERTIES: readonly PropertySpec[] = [
   { name: "active", values: [BOOL], detail: "Whether the section is active (default true)" },
@@ -193,16 +177,13 @@ export type SignalSlot = keyof typeof SIGNAL_SLOTS;
 export const ARITHMETIC_OPERATORS: readonly string[] = ARITHMETIC_OPERATIONS;
 export const COMPARATOR_TOKENS: readonly string[] = COMPARATORS;
 
-/**
- * What narrows the properties of a kind: the `operation` of a selector, the `prototype` of a generic entity. Undefined, or a
- * prototype the editor does not have: every property of the kind.
- */
+/** What narrows the properties of a kind: the `operation` of a selector, the prototype of a generic entity. Undefined: every property of the kind. */
 export type PropertyVariant = SelectorOperation | string;
 
 /** The properties of a generic entity of one prototype: its settings in the order of the table, between what every entity has. */
 function genericProperties(prototype: string): readonly PropertySpec[] | undefined {
   const specs = settingSpecsOf(prototype);
-  return prototypesOf("entity").includes(prototype) ? [DESCRIPTION, GENERIC_PROTOTYPE, ...specs.flatMap(settingProperty), BLUEPRINT_DATA] : undefined;
+  return prototypesOf("entity").includes(prototype) ? [DESCRIPTION, ...specs.flatMap(settingProperty), BLUEPRINT_DATA] : undefined;
 }
 
 /** Properties legal in an entity of `kind`; for a selector narrowed to its operation and for a generic entity to its prototype when given. */
@@ -227,10 +208,9 @@ export function lookupProperty(kind: EntityKind, name: string, variant: Property
   return named.length ? { status: "inapplicable", operations: named.flatMap((p) => p.operations ?? []) } : { status: "unknown" };
 }
 
-/** The properties to name for an entity of `kind`: the legal ones, less `prototype` where the game data has one prototype of the kind and so nothing to choose. */
+/** The names of the properties legal in an entity of `kind`, each once. */
 export function propertyNames(kind: EntityKind, variant?: PropertyVariant, inSection = false): string[] {
-  const offered = (p: PropertySpec): boolean => p.name !== PROTOTYPE_PROPERTY || kind === "entity" || prototypesOf(kind).length > 1;
-  return [...new Set((inSection ? SECTION_PROPERTIES : propertiesFor(kind, variant).filter(offered)).map((p) => p.name))];
+  return [...new Set((inSection ? SECTION_PROPERTIES : propertiesFor(kind, variant)).map((p) => p.name))];
 }
 
 /** The words in front of `when` that a generic entity of this prototype takes: `logistic`, `harvest`. The enable condition has none. */

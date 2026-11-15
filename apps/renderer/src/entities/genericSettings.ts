@@ -3,7 +3,7 @@
 // settings table of the model (`ENTITY_SETTINGS` by prototype type) and its entity table: a further type, setting or prototype
 // needs nothing here. Pure.
 import {
-  entityTable, gamePrototype, heldPrototype, isSettingValue, PROTOTYPES, prototypesOf, sameSetting, settingDefault, settingShown, settingSpecsOf, signal,
+  entityTable, gamePrototype, isSettingValue, PROTOTYPES, prototypesOf, sameSetting, settingDefault, settingShown, settingSpecsOf, signal,
   type Condition, type ConditionSetting, type Entity, type EnumSetting, type GenericEntity, type PrototypeName, type SettingSpec, type SettingValue,
 } from "@face/model";
 
@@ -57,15 +57,15 @@ export function enumOptions(spec: EnumSetting): readonly { readonly value: strin
 
 /**
  * The prototypes an entity can become. A generic entity stays in its prototype type (an inserter can be a fast inserter; they
- * take the same settings); an entity of any other kind stays in its kind, whose first prototype comes first. In the order of
+ * take the same settings); an entity of any other kind stays in its kind, whose standard prototype comes first. In the order of
  * `position` where given. Without the ones the game hides and the ones `offers` refuses (a module that is off), but always with
  * the one the entity is.
  */
 export function alternativePrototypes(prototype: PrototypeName, offers: (candidate: PrototypeName) => boolean = () => true, position?: (candidate: PrototypeName) => number): readonly PrototypeName[] {
   const table = entityTable();
-  const kind = PROTOTYPES[prototype]?.kind;
-  const type = table.byName.get(prototype)?.type;
-  const candidates = kind === undefined ? [] : kind === "entity" ? table.entities.filter((game) => game.type === type && PROTOTYPES[game.name]?.kind === "entity").map((game) => game.name) : prototypesOf(kind);
+  const { kind } = PROTOTYPES[prototype]!;
+  const { type } = table.byName.get(prototype)!;
+  const candidates = kind === "entity" ? table.entities.filter((game) => game.type === type && PROTOTYPES[game.name]?.kind === "entity").map((game) => game.name) : prototypesOf(kind);
   const same = candidates.filter((name) => name === prototype || (!table.byName.get(name)!.hidden && offers(name)));
   return position ? [...same].sort((a, b) => position(a) - position(b)) : same;
 }
@@ -73,15 +73,10 @@ export function alternativePrototypes(prototype: PrototypeName, offers: (candida
 /**
  * The entity as another prototype. A generic entity becomes another one of its type: the settings it holds stay, less those
  * that are the default of the new one (the defaults of the signals are the prototype's). An entity of any other kind becomes
- * another one of its kind and keeps everything else: the prototype decides its tiles and its reach, not what it does; the
- * first of the kind goes without saying (`heldPrototype`).
+ * another one of its kind and keeps everything else: the prototype decides its tiles and its reach, not what it does.
  */
 export function withPrototype<E extends Entity>(entity: E, prototype: PrototypeName): E {
-  if (entity.kind !== "entity") {
-    const { prototype: _held, ...rest } = entity;
-    const held = heldPrototype(entity.kind, prototype);
-    return (held === undefined ? rest : { ...rest, prototype: held }) as E;
-  }
+  if (entity.kind !== "entity") return { ...entity, prototype };
   let next: GenericEntity = { ...entity, prototype, settings: {} };
   for (const spec of settingSpecsOf(prototype)) next = withSetting(next, spec, entity.settings[spec.key]);
   return next as E;

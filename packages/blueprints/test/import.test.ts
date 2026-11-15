@@ -1,5 +1,5 @@
 import { checkEntity, printCircuit } from "@face/language";
-import { BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, PROTOTYPE_NAMES, PROTOTYPES, prototypeOf, prototypesOf, TERMINALS, type EntityKind, type TerminalSide } from "@face/model";
+import { BOTH_NETWORKS, ENTITY_KINDS, newEntity, PROTOTYPE_NAMES, PROTOTYPES, prototypesOf, TERMINALS, type EntityKind, type TerminalSide } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { connectorId, encodeBlueprintString, importBlueprint, importBlueprintString, inspectBlueprint, packVersion, type ImportErrorCode, type ImportOptions } from "../src/index.ts";
 import { A, B, blueprintOf, imported, importedEntity, IRON } from "./helpers.ts";
@@ -33,17 +33,17 @@ describe("import: the blueprint", () => {
     );
     const { circuit, report } = imported(data);
     expect(printCircuit(circuit)).toBe(`circuit "Blinker" {
-    constant constant1 at (0, 0) tile (0.5, 0.5) facing north {
+    constant-combinator constant1 at (0, 0) tile (0.5, 0.5) facing north {
         virtual:signal-A = 1
     }
 
-    lamp lamp1 at (100, 0) tile (1.5, 0.5) {
+    small-lamp lamp1 at (100, 0) tile (1.5, 0.5) {
     }
 
-    lamp lamp2 at (180, 0) tile (2.5, 0.5) {
+    small-lamp lamp2 at (180, 0) tile (2.5, 0.5) {
     }
 
-    decider decider1 at (0, 180) tile (1, 2.5) {
+    decider-combinator decider1 at (0, 180) tile (1, 2.5) {
     }
 
     wire red constant1.out <-> lamp1.in
@@ -211,7 +211,7 @@ describe("import: what is dropped", () => {
     const entities = [...PROTOTYPE_NAMES, "gate", "straight-rail", "", "Small-Lamp", "toString", "__proto__"].map((name, index) => ({ entity_number: index + 1, name, ...at(index * 3, 0) }));
     const { circuit, report } = imported(blueprintOf(entities));
     expect(PROTOTYPE_NAMES).toHaveLength(98);
-    expect(circuit.entities.map((entity) => prototypeOf(entity))).toEqual(PROTOTYPE_NAMES);
+    expect(circuit.entities.map((entity) => entity.prototype)).toEqual(PROTOTYPE_NAMES);
     expect(circuit.entities.slice(0, 10).map((entity) => (entity.kind === "pole" ? entity.prototype : entity.kind))).toEqual(["constant", "arithmetic", "decider", "selector", "lamp", "small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation", "speaker"]);
     expect(circuit.entities.slice(10).every((entity) => entity.kind === "entity")).toBe(true);
     expect(report.dropped.map((entry) => `${entry.name} ${entry.reason}`).sort()).toEqual(["(no name) invalid", "Small-Lamp unknown", "__proto__ unknown", "gate unknown", "straight-rail unknown", "toString unknown"]);
@@ -249,7 +249,7 @@ describe("import: place and direction", () => {
 
   it("takes the one of the four before any other direction, as the game does, and says so", () => {
     const facing = (direction: unknown) => importedEntity("decider-combinator", { direction });
-    expect(facing(5)).toEqual({ entity: DEFAULT_ENTITY.decider, notes: ["changed direction"] });
+    expect(facing(5)).toEqual({ entity: newEntity("decider-combinator"), notes: ["changed direction"] });
     expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 14 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "west" });
     expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 3 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "north" });
     expect(imported(blueprintOf([{ entity_number: 1, name: "decider-combinator", ...at(0, 0.5), direction: 9 }])).circuit.entities[0]!.placement).toEqual({ tile: { x: 0, y: 0.5 }, direction: "south" });
@@ -286,7 +286,7 @@ describe("import: common fields", () => {
       expect(importedEntity(name, { player_description: "two\nlines" }).entity.description).toBe("two\nlines");
       expect(importedEntity(name, { player_description: "" }).entity).not.toHaveProperty("description");
     }
-    expect(importedEntity("small-lamp", { player_description: "x" })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["ignored player_description"] });
+    expect(importedEntity("small-lamp", { player_description: "x" })).toEqual({ entity: newEntity("small-lamp"), notes: ["ignored player_description"] });
   });
 
   it("says which fields of an entity the editor does not have, once per kind of entity", () => {
@@ -318,12 +318,12 @@ describe("import: constant combinator", () => {
   const sections = (list: readonly unknown[]) => read({ sections: { sections: list } });
 
   it("is as placed without settings", () => {
-    expect(importedEntity("constant-combinator")).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
-    expect(read({})).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
-    expect(read({ sections: {} }).entity).toEqual(DEFAULT_ENTITY.constant);
+    expect(importedEntity("constant-combinator")).toEqual({ entity: newEntity("constant-combinator"), notes: [] });
+    expect(read({})).toEqual({ entity: newEntity("constant-combinator"), notes: [] });
+    expect(read({ sections: {} }).entity).toEqual(newEntity("constant-combinator"));
     // The game places it with one empty section, and writes one without any section as null.
-    expect(sections([{ index: 1 }])).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
-    expect(read({ sections: null })).toEqual({ entity: DEFAULT_ENTITY.constant, notes: [] });
+    expect(sections([{ index: 1 }])).toEqual({ entity: newEntity("constant-combinator"), notes: [] });
+    expect(read({ sections: null })).toEqual({ entity: newEntity("constant-combinator"), notes: [] });
   });
 
   it("keeps an empty section that says something, or that is not the only one", () => {
@@ -346,7 +346,7 @@ describe("import: constant combinator", () => {
     });
     expect(notes).toEqual([]);
     expect(entity).toEqual({
-      kind: "constant",
+      kind: "constant", prototype: "constant-combinator",
       enabled: false,
       sections: [
         { active: true, multiplier: 1, filters: [{ signal: sig("water", "fluid"), count: 2147483647 }] },
@@ -381,7 +381,7 @@ describe("import: constant combinator", () => {
 
   it("reports what a logistic request has and a constant combinator does not, and values of the wrong type", () => {
     const { entity, notes } = read({ is_on: "no", sections: { trash_not_requested: true, sections: [{ index: 1, active: 1, multiplier: "2", group: 5, filters: [{ index: 1, ...A, count: 1.5, import_from: "nauvis" }, { index: 2, type: "plasma", name: "x", count: 1 }, "text"] }, 7] } });
-    expect(entity).toEqual({ kind: "constant", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: SA, count: 0 }] }] });
+    expect(entity).toEqual({ kind: "constant", prototype: "constant-combinator", enabled: true, sections: [{ active: true, multiplier: 1, filters: [{ signal: SA, count: 0 }] }] });
     expect(notes.sort()).toEqual([
       "ignored control_behavior.sections.sections[].filters[].import_from",
       "ignored control_behavior.sections.trash_not_requested",
@@ -401,20 +401,20 @@ describe("import: arithmetic combinator", () => {
   const read = (parameters: unknown) => importedEntity("arithmetic-combinator", { control_behavior: { arithmetic_conditions: parameters } });
 
   it("is not configured without settings", () => {
-    expect(importedEntity("arithmetic-combinator")).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
-    expect(read({})).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
-    expect(read({ operation: "*", first_constant: 0 })).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
+    expect(importedEntity("arithmetic-combinator")).toEqual({ entity: newEntity("arithmetic-combinator"), notes: [] });
+    expect(read({})).toEqual({ entity: newEntity("arithmetic-combinator"), notes: [] });
+    expect(read({ operation: "*", first_constant: 0 })).toEqual({ entity: newEntity("arithmetic-combinator"), notes: [] });
     // As the game writes one it has just placed: nothing on the left, 0 on the right.
-    expect(read({ second_constant: 0, operation: "*" })).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: [] });
+    expect(read({ second_constant: 0, operation: "*" })).toEqual({ entity: newEntity("arithmetic-combinator"), notes: [] });
   });
 
   it("reads signals, constants, networks, the operation and the output", () => {
     expect(read({ first_signal: B, first_signal_networks: RED, second_constant: 2, operation: "+", output_signal: A })).toEqual({
-      entity: { kind: "arithmetic", first: { type: "signal", signal: SB, networks: RED }, operation: "+", second: { type: "constant", value: 2 }, output: SA },
+      entity: { kind: "arithmetic", prototype: "arithmetic-combinator", first: { type: "signal", signal: SB, networks: RED }, operation: "+", second: { type: "constant", value: 2 }, output: SA },
       notes: [],
     });
     expect(read({ first_constant: -5, second_signal: { name: "iron-plate", quality: "rare" }, second_signal_networks: { green: false }, output_signal: IRON }).entity).toEqual({
-      kind: "arithmetic", first: { type: "constant", value: -5 }, operation: "*", second: { type: "signal", signal: sig("iron-plate", "item", "rare"), networks: RED }, output: SIRON,
+      kind: "arithmetic", prototype: "arithmetic-combinator", first: { type: "constant", value: -5 }, operation: "*", second: { type: "signal", signal: sig("iron-plate", "item", "rare"), networks: RED }, output: SIRON,
     });
     for (const operation of ["*", "/", "+", "-", "%", "^", "<<", ">>", "AND", "OR", "XOR"]) expect(read({ first_signal: B, operation, output_signal: A }).entity.operation).toBe(operation);
   });
@@ -430,12 +430,12 @@ describe("import: arithmetic combinator", () => {
   });
 
   it("takes operands without an output as not configured and says so", () => {
-    expect(read({ first_signal: B, second_constant: 2, operation: "+" })).toEqual({ entity: DEFAULT_ENTITY.arithmetic, notes: ["changed control_behavior.arithmetic_conditions.output_signal"] });
+    expect(read({ first_signal: B, second_constant: 2, operation: "+" })).toEqual({ entity: newEntity("arithmetic-combinator"), notes: ["changed control_behavior.arithmetic_conditions.output_signal"] });
   });
 
   it("resets a configuration the game does not have, such as a wildcard that is not allowed there", () => {
     const { entity, notes } = read({ first_signal: { type: "virtual", name: "signal-everything" }, second_constant: 2, output_signal: A });
-    expect(entity).toEqual(DEFAULT_ENTITY.arithmetic);
+    expect(entity).toEqual(newEntity("arithmetic-combinator"));
     expect(notes).toEqual(["reset control_behavior"]);
     expect(read({ first_signal: B, output_signal: { type: "virtual", name: "signal-each" } }).notes).toEqual(["reset control_behavior"]);
     expect(read({ operation: "**", first_constant: 2.5, output_signal: A }).notes).toEqual(["invalid control_behavior.arithmetic_conditions.first_constant", "invalid control_behavior.arithmetic_conditions.operation"]);
@@ -447,9 +447,9 @@ describe("import: decider combinator", () => {
   const EACH = { type: "virtual", name: "signal-each" };
 
   it("is empty without settings", () => {
-    expect(importedEntity("decider-combinator")).toEqual({ entity: DEFAULT_ENTITY.decider, notes: [] });
-    expect(read({})).toEqual({ entity: DEFAULT_ENTITY.decider, notes: [] });
-    expect(read({ conditions: [], outputs: [], else_outputs: [] })).toEqual({ entity: DEFAULT_ENTITY.decider, notes: [] });
+    expect(importedEntity("decider-combinator")).toEqual({ entity: newEntity("decider-combinator"), notes: [] });
+    expect(read({})).toEqual({ entity: newEntity("decider-combinator"), notes: [] });
+    expect(read({ conditions: [], outputs: [], else_outputs: [] })).toEqual({ entity: newEntity("decider-combinator"), notes: [] });
   });
 
   it("reads conditions with both spellings of the comparators, the way they join, and networks", () => {
@@ -504,7 +504,7 @@ describe("import: decider combinator", () => {
   });
 
   it("takes the blank rows of a combinator that is not configured for what they are", () => {
-    expect(read({ conditions: [{ comparator: "<", constant: 0 }], outputs: [{ copy_count_from_input: true }], else_outputs: [] })).toEqual({ entity: DEFAULT_ENTITY.decider, notes: [] });
+    expect(read({ conditions: [{ comparator: "<", constant: 0 }], outputs: [{ copy_count_from_input: true }], else_outputs: [] })).toEqual({ entity: newEntity("decider-combinator"), notes: [] });
     expect(read({ conditions: [{ comparator: "<", constant: 0 }], outputs: [{ signal: A }] }).notes).toEqual(["changed control_behavior.decider_conditions.conditions[].first_signal"]);
   });
 
@@ -524,7 +524,7 @@ describe("import: decider combinator", () => {
   });
 
   it("resets an each output without each in a condition, which the game does not have", () => {
-    expect(read({ conditions: [{ first_signal: A, comparator: ">", constant: 0 }], outputs: [{ signal: EACH }] })).toEqual({ entity: DEFAULT_ENTITY.decider, notes: ["reset control_behavior"] });
+    expect(read({ conditions: [{ first_signal: A, comparator: ">", constant: 0 }], outputs: [{ signal: EACH }] })).toEqual({ entity: newEntity("decider-combinator"), notes: ["reset control_behavior"] });
   });
 });
 
@@ -533,8 +533,8 @@ describe("import: selector combinator", () => {
   const mode = (control_behavior: unknown) => read(control_behavior).entity.mode;
 
   it("is as placed without settings", () => {
-    expect(importedEntity("selector-combinator")).toEqual({ entity: DEFAULT_ENTITY.selector, notes: [] });
-    expect(read({})).toEqual({ entity: DEFAULT_ENTITY.selector, notes: [] });
+    expect(importedEntity("selector-combinator")).toEqual({ entity: newEntity("selector-combinator"), notes: [] });
+    expect(read({})).toEqual({ entity: newEntity("selector-combinator"), notes: [] });
   });
 
   it("reads every mode", () => {
@@ -566,13 +566,13 @@ describe("import: selector combinator", () => {
   });
 
   it("reads the wrapper of a pre-release string and passes over the fields of the modes that are not selected", () => {
-    expect(read({ selector_conditions: { operation: "random", select_max: true, index_constant: 0, random_update_interval: 15 } })).toEqual({ entity: { kind: "selector", mode: { operation: "random", interval: 15 } }, notes: [] });
-    expect(read({ operation: "stack-size", count_signal: A, quality_filter: "rare", game_tick_signal: B })).toEqual({ entity: { kind: "selector", mode: { operation: "stack-size" } }, notes: [] });
+    expect(read({ selector_conditions: { operation: "random", select_max: true, index_constant: 0, random_update_interval: 15 } })).toEqual({ entity: { kind: "selector", prototype: "selector-combinator", mode: { operation: "random", interval: 15 } }, notes: [] });
+    expect(read({ operation: "stack-size", count_signal: A, quality_filter: "rare", game_tick_signal: B })).toEqual({ entity: { kind: "selector", prototype: "selector-combinator", mode: { operation: "stack-size" } }, notes: [] });
   });
 
   it("reports an operation it does not know and fields that are no selector's", () => {
-    expect(read({ operation: "teleport", mystery: 1 })).toEqual({ entity: DEFAULT_ENTITY.selector, notes: ["invalid control_behavior.operation", "ignored control_behavior.mystery"] });
-    expect(read({ operation: "random", random_update_interval: -1 })).toEqual({ entity: { kind: "selector", mode: { operation: "random", interval: 0 } }, notes: ["invalid control_behavior.random_update_interval"] });
+    expect(read({ operation: "teleport", mystery: 1 })).toEqual({ entity: newEntity("selector-combinator"), notes: ["invalid control_behavior.operation", "ignored control_behavior.mystery"] });
+    expect(read({ operation: "random", random_update_interval: -1 })).toEqual({ entity: { kind: "selector", prototype: "selector-combinator", mode: { operation: "random", interval: 0 } }, notes: ["invalid control_behavior.random_update_interval"] });
   });
 });
 
@@ -581,12 +581,12 @@ describe("import: lamp", () => {
   const condition = { first_signal: A, constant: 0, comparator: ">" };
 
   it("is as placed without settings", () => {
-    expect(importedEntity("small-lamp")).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: [] });
-    expect(read({})).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: [] });
+    expect(importedEntity("small-lamp")).toEqual({ entity: newEntity("small-lamp"), notes: [] });
+    expect(read({})).toEqual({ entity: newEntity("small-lamp"), notes: [] });
   });
 
   it("reads the condition when the lamp is controlled by the circuit", () => {
-    expect(read({ circuit_enabled: true, circuit_condition: condition }).entity).toEqual({ ...DEFAULT_ENTITY.lamp, condition: { first: SA, comparator: ">", second: { type: "constant", value: 0 } } });
+    expect(read({ circuit_enabled: true, circuit_condition: condition }).entity).toEqual({ ...newEntity("small-lamp"), condition: { first: SA, comparator: ">", second: { type: "constant", value: 0 } } });
     expect(read({ circuit_enabled: true, circuit_condition: { first_signal: { type: "virtual", name: "signal-anything" }, second_signal: B, constant: 4, comparator: "≠" } }).entity.condition).toEqual({
       first: sig("signal-anything"), comparator: "!=", second: { type: "signal", signal: SB },
     });
@@ -594,24 +594,24 @@ describe("import: lamp", () => {
   });
 
   it("says so when a condition is not in use, or in use and blank; the editor has neither", () => {
-    expect(read({ circuit_condition: condition })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["changed control_behavior.circuit_condition"] });
-    expect(read({ circuit_enabled: false, circuit_condition: { comparator: "<", constant: 0 } })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: [] });
-    expect(read({ circuit_enabled: true })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["changed control_behavior.circuit_enabled"] });
+    expect(read({ circuit_condition: condition })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed control_behavior.circuit_condition"] });
+    expect(read({ circuit_enabled: false, circuit_condition: { comparator: "<", constant: 0 } })).toEqual({ entity: newEntity("small-lamp"), notes: [] });
+    expect(read({ circuit_enabled: true })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed control_behavior.circuit_enabled"] });
     expect(read({ circuit_enabled: true, circuit_condition: { constant: 5 } }).notes).toEqual(["changed control_behavior.circuit_enabled"]);
   });
 
   it("reads networks, always on, the color modes by number and the color signals", () => {
     const { entity, notes } = read({ input_networks: GREEN, use_colors: true, color_mode: 1, red_signal: A, green_signal: B, blue_signal: IRON, rgb_signal: { type: "virtual", name: "signal-white" } }, { always_on: true });
     expect(notes).toEqual([]);
-    expect(entity).toEqual({ kind: "lamp", inputNetworks: GREEN, alwaysOn: true, useColors: true, colorMode: "components", redSignal: SA, greenSignal: SB, blueSignal: SIRON, rgbSignal: sig("signal-white") });
+    expect(entity).toEqual({ kind: "lamp", prototype: "small-lamp", inputNetworks: GREEN, alwaysOn: true, useColors: true, colorMode: "components", redSignal: SA, greenSignal: SB, blueSignal: SIRON, rgbSignal: sig("signal-white") });
     expect(read({ use_colors: true }).entity.colorMode).toBe("mapping");
     expect(read({ use_colors: true, color_mode: 0 }).entity.colorMode).toBe("mapping");
     expect(read({ use_colors: true, color_mode: 2 }).entity.colorMode).toBe("packed-rgb");
   });
 
   it("keeps a color mode only with colors on, and reports one it does not know", () => {
-    expect(read({ color_mode: 2 })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["changed control_behavior.color_mode"] });
-    expect(read({ use_colors: true, color_mode: 3 })).toEqual({ entity: { ...DEFAULT_ENTITY.lamp, useColors: true }, notes: ["changed control_behavior.color_mode"] });
+    expect(read({ color_mode: 2 })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed control_behavior.color_mode"] });
+    expect(read({ use_colors: true, color_mode: 3 })).toEqual({ entity: { ...newEntity("small-lamp"), useColors: true }, notes: ["changed control_behavior.color_mode"] });
   });
 
   it("reads the color from 0 to 1, or from 0 to 255 when a value is above 1, as an object or a list", () => {
@@ -621,17 +621,17 @@ describe("import: lamp", () => {
     expect(color({ g: 0.2 })).toEqual({ r: 0, g: 51, b: 0 });
     expect(color([1, 0, 0.5019607843137255, 0.5])).toEqual({ r: 255, g: 0, b: 128 });
     expect(color({ r: 300, g: 1, b: 0 })).toEqual({ r: 255, g: 1, b: 0 });
-    expect(read(undefined, { color: "red" })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["changed color"] });
+    expect(read(undefined, { color: "red" })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed color"] });
     expect(read(undefined, { color: { r: -1 } }).notes).toEqual(["changed color"]);
   });
 
   it("reports the connection to the logistic network, which the editor does not have", () => {
-    expect(read({ connect_to_logistic_network: true, logistic_condition: condition })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["changed control_behavior.connect_to_logistic_network"] });
+    expect(read({ connect_to_logistic_network: true, logistic_condition: condition })).toEqual({ entity: newEntity("small-lamp"), notes: ["changed control_behavior.connect_to_logistic_network"] });
     expect(read({ connect_to_logistic_network: false, logistic_condition: condition }).notes).toEqual([]);
   });
 
   it("resets a condition the game does not have", () => {
-    expect(read({ circuit_enabled: true, circuit_condition: { first_signal: { type: "virtual", name: "signal-each" }, constant: 1, comparator: ">" } })).toEqual({ entity: DEFAULT_ENTITY.lamp, notes: ["reset control_behavior"] });
+    expect(read({ circuit_enabled: true, circuit_condition: { first_signal: { type: "virtual", name: "signal-each" }, constant: 1, comparator: ">" } })).toEqual({ entity: newEntity("small-lamp"), notes: ["reset control_behavior"] });
   });
 });
 
@@ -654,11 +654,11 @@ describe("import: programmable speaker", () => {
     );
 
   it("is as placed without settings, with its objects missing or filled with the defaults", () => {
-    expect(importedEntity("programmable-speaker")).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: [] });
+    expect(importedEntity("programmable-speaker")).toEqual({ entity: newEntity("programmable-speaker"), notes: [] });
     // The game writes no control behaviour for a speaker the circuit does not concern, and no condition where there is none.
-    expect(importedEntity("programmable-speaker", { parameters, alert_parameters: alert })).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: [] });
-    expect(importedEntity("programmable-speaker", { control_behavior: { circuit_parameters: { ...circuit, stop_playing_sounds: true } }, parameters, alert_parameters: alert })).toEqual({ entity: { ...DEFAULT_ENTITY.speaker, stopPlayingSounds: true }, notes: [] });
-    expect(read({})).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: [] });
+    expect(importedEntity("programmable-speaker", { parameters, alert_parameters: alert })).toEqual({ entity: newEntity("programmable-speaker"), notes: [] });
+    expect(importedEntity("programmable-speaker", { control_behavior: { circuit_parameters: { ...circuit, stop_playing_sounds: true } }, parameters, alert_parameters: alert })).toEqual({ entity: { ...newEntity("programmable-speaker"), stopPlayingSounds: true }, notes: [] });
+    expect(read({})).toEqual({ entity: newEntity("programmable-speaker"), notes: [] });
   });
 
   it("reads every setting", () => {
@@ -670,7 +670,7 @@ describe("import: programmable speaker", () => {
     });
     expect(notes).toEqual([]);
     expect(entity).toEqual({
-      kind: "speaker", condition: { first: SA, comparator: ">=", second: { type: "constant", value: 3 } }, instrument: "piano", note: "F#3", volume: 62.5, volumeSignal: SB, playbackMode: "global", allowPolyphony: true, stopPlayingSounds: true,
+      kind: "speaker", prototype: "programmable-speaker", condition: { first: SA, comparator: ">=", second: { type: "constant", value: 3 } }, instrument: "piano", note: "F#3", volume: 62.5, volumeSignal: SB, playbackMode: "global", allowPolyphony: true, stopPlayingSounds: true,
       showAlert: true, showOnMap: false, alertIcon: SIRON, alertMessage: "Out of plates",
     });
     expect(read({ parameters: { playback_mode: "surface" }, condition: { first_signal: { type: "virtual", name: "signal-everything" }, second_signal: B, comparator: "<" } }).entity).toMatchObject({
@@ -691,10 +691,10 @@ describe("import: programmable speaker", () => {
   });
 
   it("reads the pitch signal from the left side of the condition", () => {
-    expect(read({ condition: { first_signal: A, constant: 0, comparator: "<" }, circuit: { signal_value_is_pitch: true, instrument_id: 2 } })).toEqual({ entity: { ...DEFAULT_ENTITY.speaker, pitchSignal: SA, instrument: "drum-kit" }, notes: [] });
+    expect(read({ condition: { first_signal: A, constant: 0, comparator: "<" }, circuit: { signal_value_is_pitch: true, instrument_id: 2 } })).toEqual({ entity: { ...newEntity("programmable-speaker"), pitchSignal: SA, instrument: "drum-kit" }, notes: [] });
     expect(read({ condition: { first_signal: A }, circuit: { signal_value_is_pitch: true } }).notes).toEqual([]);
-    expect(read({ condition: { first_signal: A, constant: 5, comparator: ">" }, circuit: { signal_value_is_pitch: true } })).toEqual({ entity: { ...DEFAULT_ENTITY.speaker, pitchSignal: SA }, notes: ["changed control_behavior.circuit_condition.comparator"] });
-    expect(read({ circuit: { signal_value_is_pitch: true } })).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: ["changed control_behavior.circuit_parameters.signal_value_is_pitch"] });
+    expect(read({ condition: { first_signal: A, constant: 5, comparator: ">" }, circuit: { signal_value_is_pitch: true } })).toEqual({ entity: { ...newEntity("programmable-speaker"), pitchSignal: SA }, notes: ["changed control_behavior.circuit_condition.comparator"] });
+    expect(read({ circuit: { signal_value_is_pitch: true } })).toEqual({ entity: newEntity("programmable-speaker"), notes: ["changed control_behavior.circuit_parameters.signal_value_is_pitch"] });
   });
 
   it("names instrument and note from their places in the lists of the game; the first of each goes without saying", () => {
@@ -714,8 +714,8 @@ describe("import: programmable speaker", () => {
   });
 
   it("keeps the volume signal only while it is in use, and says so", () => {
-    expect(read({ parameters: { volume_controlled_by_signal: true } })).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: ["changed parameters.volume_controlled_by_signal"] });
-    expect(read({ parameters: { volume_signal_id: B } })).toEqual({ entity: DEFAULT_ENTITY.speaker, notes: ["changed parameters.volume_signal_id"] });
+    expect(read({ parameters: { volume_controlled_by_signal: true } })).toEqual({ entity: newEntity("programmable-speaker"), notes: ["changed parameters.volume_controlled_by_signal"] });
+    expect(read({ parameters: { volume_signal_id: B } })).toEqual({ entity: newEntity("programmable-speaker"), notes: ["changed parameters.volume_signal_id"] });
   });
 
   it("reads the switch between local and global of older strings", () => {
@@ -727,7 +727,7 @@ describe("import: programmable speaker", () => {
 
   it("reports values of the wrong type and fields it does not know", () => {
     const { entity, notes } = importedEntity("programmable-speaker", { parameters: { playback_mode: "everywhere", allow_polyphony: 1, reverb: true }, alert_parameters: { alert_message: 5, show_on_map: "yes" }, control_behavior: { circuit_enabled: true, circuit_parameters: [] } });
-    expect(entity).toEqual(DEFAULT_ENTITY.speaker);
+    expect(entity).toEqual(newEntity("programmable-speaker"));
     expect(notes.sort()).toEqual([
       "ignored control_behavior.circuit_enabled", "ignored parameters.reverb", "invalid alert_parameters.alert_message", "invalid alert_parameters.show_on_map", "invalid control_behavior.circuit_parameters", "invalid parameters.allow_polyphony",
       "invalid parameters.playback_mode",

@@ -5,7 +5,7 @@
 import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup, SpeakerInstrumentInfo } from "@face/catalog";
-import { canRotate, DEFAULT_FACING, facingOf, prototypeOf, type Circuit, type Direction, type Entity, type EntityId, type EntityKind, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
+import { canRotate, DEFAULT_FACING, facingOf, type Circuit, type Direction, type Entity, type EntityId, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
 import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
 import { flipped, rotated, type FlipAxis, type RotationTurn } from "../entities/facing.ts";
 import type { EntityRegistry } from "../entities/registry.ts";
@@ -55,18 +55,17 @@ export function toolAllowed(tool: Tool, displayMode: DisplayMode): boolean {
 }
 
 /**
- * The active canvas tool. A place tool says what it places, as an `EntityShape`: the kind and, for a kind with several game
- * prototypes, which one (the first of the kind without it). It also holds the direction the new entity will face: east until
- * the tool is turned.
+ * The active canvas tool. A place tool says which entity of the game it places (an `EntityShape`) and holds the direction the
+ * new entity will face: east until the tool is turned.
  */
-export type PlaceTool = { readonly type: "place"; readonly kind: EntityKind; readonly prototype?: PrototypeName; readonly facing?: Direction };
+export type PlaceTool = { readonly type: "place"; readonly prototype: PrototypeName; readonly facing?: Direction };
 export type Tool = { readonly type: "select" } | PlaceTool | { readonly type: "wire"; readonly color: WireColor };
 
 export const SELECT_TOOL: Tool = { type: "select" };
 
 /** True for the same tool of the palette: the same entity to place, whatever direction the tool was turned to. */
 export function sameTool(a: Tool, b: Tool): boolean {
-  if (a.type === "place" && b.type === "place") return a.kind === b.kind && prototypeOf(a) === prototypeOf(b);
+  if (a.type === "place" && b.type === "place") return a.prototype === b.prototype;
   if (a.type === "wire" && b.type === "wire") return a.color === b.color;
   return a.type === b.type;
 }
@@ -76,7 +75,7 @@ export function sameTool(a: Tool, b: Tool): boolean {
  * cannot rotate (a lamp, a chest), whatever the tool says; north or east for one of two directions (the storage tank).
  */
 export function placeFacing(tool: Tool): Direction {
-  return tool.type === "place" ? facingOf({ kind: tool.kind, prototype: tool.prototype, placement: { direction: tool.facing ?? DEFAULT_FACING } }) : DEFAULT_FACING;
+  return tool.type === "place" ? facingOf({ prototype: tool.prototype, placement: { direction: tool.facing ?? DEFAULT_FACING } }) : DEFAULT_FACING;
 }
 
 /**
@@ -375,10 +374,10 @@ export interface WorkbenchCommands {
 
   // Document edits: each call is one undoable step.
   /**
-   * Adds an entity of `kind` with a generated unique name at `position` (top-left, canvas units), facing `facing` (east when omitted;
-   * a lamp does not rotate). `prototype` says which entity of the kind it is (a `big-electric-pole`); the first of the kind without it.
+   * Adds an entity of the game prototype `prototype` with a generated unique name at `position` (top-left, canvas units), facing
+   * `facing` (east when omitted; a lamp does not rotate).
    */
-  placeEntity(kind: EntityKind, position: Point, facing?: Direction, prototype?: PrototypeName): void;
+  placeEntity(prototype: PrototypeName, position: Point, facing?: Direction): void;
   moveEntities(moves: readonly EntityMove[]): void;
   /**
    * Turns each of the entities a quarter turn in place, as one step. The source then says `facing` for each of them, east included.
@@ -441,11 +440,11 @@ export interface WorkbenchCommands {
   /** "Unplace": removes the `tile` of the entities, so they stand at a derived place again. */
   unplace(ids: readonly EntityId[]): void;
   /**
-   * Adds an entity of `kind` (of `prototype`, the first of the kind when omitted) that faces `facing` (east when omitted) with
-   * its center at `tile`. Its edit position is the one the tile is derived from, moved on until it is not exactly that of
-   * another entity. Nothing happens when a tile it would cover is taken (`canStandAt`).
+   * Adds an entity of the game prototype `prototype` that faces `facing` (east when omitted) with its center at `tile`. Its edit
+   * position is the one the tile is derived from, moved on until it is not exactly that of another entity. Nothing happens when
+   * a tile it would cover is taken (`canStandAt`).
    */
-  placeEntityOnTile(kind: EntityKind, tile: Point, facing?: Direction, prototype?: PrototypeName): void;
+  placeEntityOnTile(prototype: PrototypeName, tile: Point, facing?: Direction): void;
   /**
    * Copies the selected entities and the wires between them into the circuit and selects the copies: what `copyEntities` and
    * `pasteEntities` without a corner do, as one step and without a clipboard. Nothing happens with no entity selected.

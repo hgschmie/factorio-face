@@ -38,16 +38,16 @@ const MIXED = blueprint({
 
 /** The four entities of the example, each on its tile. */
 const PLACED = `circuit "Placed" {
-    constant source at (40, 80) tile (0.5, 0.5) {
+    constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    decider gate at (300, 80) tile (3, 0.5) {
+    decider-combinator gate at (300, 80) tile (3, 0.5) {
         when virtual:signal-A < 10
         output virtual:signal-A = input
     }
 
-    lamp light at (560, 80) tile (5.5, 0.5) {
+    small-lamp light at (560, 80) tile (5.5, 0.5) {
         description = "Lit above eight."
         when virtual:signal-A > 8
     }
@@ -357,7 +357,7 @@ describe("the export of a circuit", () => {
 
   it("writes instruments and notes of a speaker as the positions the game has them at, and reads them back by name", () => {
     const { session } = createSession(EMPTY_SOURCE);
-    session.commands.placeEntityOnTile("speaker", at(0.5, 0.5));
+    session.commands.placeEntityOnTile("programmable-speaker", at(0.5, 0.5));
     const instrument = session.state.catalog.speakerInstruments[2]!;
     const speaker = session.state.circuit.entities[0]!;
     session.commands.updateEntity({ ...speaker, instrument: instrument.name, note: instrument.notes[3]!.name } as typeof speaker);

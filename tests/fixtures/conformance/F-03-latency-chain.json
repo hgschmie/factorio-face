@@ -8,10 +8,10 @@
   "circuit": {
     "name": "F-03-latency-chain",
     "entities": [
-      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}]},
-      {"id": "a1", "name": "a1", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
-      {"id": "a2", "name": "a2", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "*", "second": {"type": "constant", "value": 2}, "output": {"kind": "virtual", "name": "signal-A"}},
-      {"id": "d", "name": "d", "position": {"x": 0, "y": 0}, "kind": "decider", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
+      {"id": "c", "name": "c", "position": {"x": 0, "y": 0}, "kind": "constant", "prototype": "constant-combinator", "enabled": true, "sections": [{"active": true, "multiplier": 1, "filters": [{"signal": {"kind": "virtual", "name": "signal-A"}, "count": 5}]}]},
+      {"id": "a1", "name": "a1", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "prototype": "arithmetic-combinator", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "+", "second": {"type": "constant", "value": 1}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "a2", "name": "a2", "position": {"x": 0, "y": 0}, "kind": "arithmetic", "prototype": "arithmetic-combinator", "first": {"type": "signal", "signal": {"kind": "virtual", "name": "signal-A"}, "networks": {"red": true, "green": true}}, "operation": "*", "second": {"type": "constant", "value": 2}, "output": {"kind": "virtual", "name": "signal-A"}},
+      {"id": "d", "name": "d", "position": {"x": 0, "y": 0}, "kind": "decider", "prototype": "decider-combinator", "conditions": [{"join": "or", "first": {"kind": "virtual", "name": "signal-A"}, "firstNetworks": {"red": true, "green": true}, "comparator": ">", "second": {"type": "constant", "value": 0}}], "outputs": [{"signal": {"kind": "virtual", "name": "signal-A"}, "copyCountFromInput": true, "constant": 1, "networks": {"red": true, "green": true}}], "elseOutputs": []}
     ],
     "wires": [
       {"color": "red", "a": {"entity": "c", "side": "out"}, "b": {"entity": "a1", "side": "in"}},

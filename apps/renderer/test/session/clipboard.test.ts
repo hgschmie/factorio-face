@@ -6,11 +6,11 @@ import type { ProjectSession } from "../../src/session/projectSession.ts";
 import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, entityNamed, idOf, IRREGULAR, replaceText } from "./helpers.ts";
 
-const GROUP_TEXT = `constant source at (40, 80) {
+const GROUP_TEXT = `constant-combinator source at (40, 80) {
     virtual:signal-A = 1
 }
 
-decider gate at (300, 80) {
+decider-combinator gate at (300, 80) {
     when virtual:signal-A < 10
     output virtual:signal-A = input
 }
@@ -28,7 +28,7 @@ describe("clipboard text", () => {
   it("is the source of the entities and of the wires between them", () => {
     const { session } = createSession();
     expect(copy(session, "gate", "source")).toBe(GROUP_TEXT);
-    expect(copy(session, "light")).toBe("lamp light at (560, 80) {\n    when virtual:signal-B > 8\n}\n");
+    expect(copy(session, "light")).toBe("small-lamp light at (560, 80) {\n    when virtual:signal-B > 8\n}\n");
     expect(session.commands.copyEntities([])).toBe("");
     expect(session.commands.copyEntities(["no such id"])).toBe("");
     expect(session.state).toMatchObject({ canUndo: false, error: null });
@@ -39,10 +39,10 @@ describe("clipboard text", () => {
     const fragment = readClipboardText(GROUP_TEXT)!;
     expect(clipboardText({ name: "", ...fragment }, fragment.entities.map((entity) => entity.id))).toBe(GROUP_TEXT);
     expect(readClipboardText(EXAMPLE_SOURCE)?.entities).toHaveLength(4);
-    for (const text of ["", "   \n", "// a comment", "some words", "{}", "lamp a {", "wire red a.out <-> b.in", `${GROUP_TEXT}wire red gate.out <-> light.in\n`, `${copy(session, "light")}}`]) {
+    for (const text of ["", "   \n", "// a comment", "some words", "{}", "small-lamp a {", "wire red a.out <-> b.in", `${GROUP_TEXT}wire red gate.out <-> light.in\n`, `${copy(session, "light")}}`]) {
       expect(readClipboardText(text), text).toBeUndefined();
     }
-    expect(readClipboardText(`${" ".repeat(CLIPBOARD_TEXT_LIMIT)}lamp a { }`)).toBeUndefined();
+    expect(readClipboardText(`${" ".repeat(CLIPBOARD_TEXT_LIMIT)}small-lamp a { }`)).toBeUndefined();
   });
 });
 
@@ -67,7 +67,7 @@ describe("pasteShift", () => {
     expect(pasteShift(fragment, at([40, 80], [300, 80]), { x: 600, y: 400 })).toEqual({ x: 560, y: 320 });
     expect(pasteShift(fragment, [], { x: -100, y: 0 })).toEqual({ x: -140, y: -80 });
     // The corner of the group is the smallest x and the smallest y, whichever entities they belong to.
-    const stairs = readClipboardText("lamp a at (100, 0) { }\nlamp b at (0, 60) { }")!;
+    const stairs = readClipboardText("small-lamp a at (100, 0) { }\nsmall-lamp b at (0, 60) { }")!;
     expect(pasteShift(stairs, [], { x: 20, y: 20 })).toEqual({ x: 20, y: 20 });
     expect(pasteShift(fragment, at([600, 400]), { x: 600, y: 400 })).toEqual({ x: 600, y: 360 });
   });
@@ -86,7 +86,7 @@ describe("paste", () => {
     expect(positions(session, "source2", "gate2")).toEqual([{ x: 80, y: 120 }, { x: 340, y: 120 }]);
     expect(session.state.circuit.wires).toHaveLength(6);
     expect(session.state.source).toBe(
-      EXAMPLE_SOURCE.replace("    wire red source.out", "    constant source2 at (80, 120) {\n        virtual:signal-A = 1\n    }\n\n    decider gate2 at (340, 120) {\n        when virtual:signal-A < 10\n        output virtual:signal-A = input\n    }\n\n    wire red source.out").replace(
+      EXAMPLE_SOURCE.replace("    wire red source.out", "    constant-combinator source2 at (80, 120) {\n        virtual:signal-A = 1\n    }\n\n    decider-combinator gate2 at (340, 120) {\n        when virtual:signal-A < 10\n        output virtual:signal-A = input\n    }\n\n    wire red source.out").replace(
         "light.in\n",
         "light.in\n    wire red source2.out <-> gate2.in\n    wire green gate2.out <-> gate2.in\n",
       ),
@@ -148,11 +148,11 @@ describe("paste", () => {
 
   it("drops the tile, keeps everything else and writes with the indentation of the file", () => {
     const { session } = createSession(IRREGULAR);
-    session.commands.pasteEntities('decider gate at (300, 80) tile (4, 2.5) facing south {\n    description = "two\\nlines"\n    when each > 1\n    output each = input[red]\n}\nlamp src at (0, 0) {\n}\nwire red gate.out <-> src.in\n');
+    session.commands.pasteEntities('decider-combinator gate at (300, 80) tile (4, 2.5) facing south {\n    description = "two\\nlines"\n    when each > 1\n    output each = input[red]\n}\nsmall-lamp src at (0, 0) {\n}\nwire red gate.out <-> src.in\n');
     expect(session.state.source).toBe(
       IRREGULAR.replace(
         "\n  wire red src.out",
-        '\tdecider gate2 at (340, 120) facing south {\n\t\tdescription = "two\\nlines"\n\t\twhen each > 1\n\t\toutput each = input[red]\n\t}\n\tlamp src2 at (40, 40) {\n\t}\n\n  wire red src.out',
+        '\tdecider-combinator gate2 at (340, 120) facing south {\n\t\tdescription = "two\\nlines"\n\t\twhen each > 1\n\t\toutput each = input[red]\n\t}\n\tsmall-lamp src2 at (40, 40) {\n\t}\n\n  wire red src.out',
       ).replace("light.in\n", "light.in\n\twire red gate2.out <-> src2.in\n"),
     );
     expect(entityNamed(session, "gate2")).toMatchObject({ placement: { direction: "south" }, description: "two\nlines" });
@@ -163,7 +163,7 @@ describe("paste", () => {
 
   it("ignores text that is not a fragment with a notice, and never pastes a part of it", () => {
     const { session } = createSession();
-    for (const text of ["", "hello", "https://example.org", `${GROUP_TEXT}wire red gate.out <-> light.in\n`, `${GROUP_TEXT}\nlamp gate { }`, "lamp a at (1, 2) {"]) {
+    for (const text of ["", "hello", "https://example.org", `${GROUP_TEXT}wire red gate.out <-> light.in\n`, `${GROUP_TEXT}\nsmall-lamp gate { }`, "small-lamp a at (1, 2) {"]) {
       session.commands.dismissError();
       session.commands.pasteEntities(text);
       expect(session.state.error, text).toMatch(/^Nothing was pasted/);
@@ -202,8 +202,8 @@ describe("paste", () => {
 
 describe("paste and duplicate on the blueprint board", () => {
   /** `source` and `gate` stand on tiles; `twice` and `light` have none. */
-  const BOARD = EXAMPLE_SOURCE.replace("constant source at (40, 80)", "constant source at (40, 80) tile (0.5, 0.5)")
-    .replace("decider gate at (300, 80)", "decider gate at (300, 80) tile (3, 0.5) facing west");
+  const BOARD = EXAMPLE_SOURCE.replace("constant-combinator source at (40, 80)", "constant-combinator source at (40, 80) tile (0.5, 0.5)")
+    .replace("decider-combinator gate at (300, 80)", "decider-combinator gate at (300, 80) tile (3, 0.5) facing west");
 
   it("gives copies without a tile at the edit position a paste without a corner gives them, whatever point comes with it", () => {
     const { session } = createSession(BOARD);
@@ -269,7 +269,7 @@ describe("cut", () => {
   it("pastes into another project with the names that are free there", () => {
     const { session } = createSession();
     const text = copy(session, "source", "gate", "light");
-    const other = createSession('circuit "Other" {\n    lamp light at (560, 80) {\n    }\n}\n').session;
+    const other = createSession('circuit "Other" {\n    small-lamp light at (560, 80) {\n    }\n}\n').session;
     other.commands.pasteEntities(text);
     expect(names(other)).toEqual(["light", "source", "gate", "light2"]);
     expect(positions(other, "source", "gate", "light2")).toEqual([{ x: 80, y: 120 }, { x: 340, y: 120 }, { x: 600, y: 120 }]);

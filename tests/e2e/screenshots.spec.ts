@@ -210,29 +210,28 @@ test("captures the strip, the status line, the tiles with their popups, the enti
 });
 
 const POLE_CHAIN = `circuit "Pole chain" {
-    constant source at (40, 80) {
+    constant-combinator source at (40, 80) {
         virtual:signal-A = 1
     }
 
-    pole p1 at (300, 80) {
+    small-electric-pole p1 at (300, 80) {
     }
 
-    pole p2 at (560, 80) {
-        prototype = medium-electric-pole
+    medium-electric-pole p2 at (560, 80) {
     }
 
-    lamp light at (820, 80) {
+    small-lamp light at (820, 80) {
         when virtual:signal-A > 0
     }
 
-    constant feed at (40, 320) {
+    constant-combinator feed at (40, 320) {
         virtual:signal-B = 2
     }
 
-    pole relay at (300, 320) {
+    small-electric-pole relay at (300, 320) {
     }
 
-    decider gate at (560, 320) {
+    decider-combinator gate at (560, 320) {
         when virtual:signal-B > 1
         output virtual:signal-C = 1
     }
@@ -249,24 +248,23 @@ const POLE_CHAIN = `circuit "Pole chain" {
 `;
 
 const POLE_COLUMN = `circuit "Pole column" {
-    constant feed at (40, 280) {
+    constant-combinator feed at (40, 280) {
         virtual:signal-A = 1
     }
 
-    pole top at (300, 80) {
+    small-electric-pole top at (300, 80) {
     }
 
-    pole middle at (300, 280) {
+    small-electric-pole middle at (300, 280) {
     }
 
-    pole bottom at (300, 480) {
-        prototype = big-electric-pole
+    big-electric-pole bottom at (300, 480) {
     }
 
-    pole aside at (560, 280) {
+    small-electric-pole aside at (560, 280) {
     }
 
-    lamp light at (560, 480) {
+    small-lamp light at (560, 480) {
         when virtual:signal-A > 0
     }
 
@@ -281,38 +279,35 @@ const POLE_COLUMN = `circuit "Pole column" {
 
 /** Poles in a row, in a column and on diagonals, a big pole and a substation, with a red and a green wire between each pair. */
 const POLE_BOARD = `circuit "Pole board" {
-    pole a at (0, 0) tile (0.5, 0.5) {
+    small-electric-pole a at (0, 0) tile (0.5, 0.5) {
     }
 
-    pole b at (0, 0) tile (3.5, 0.5) {
+    small-electric-pole b at (0, 0) tile (3.5, 0.5) {
     }
 
-    pole c at (0, 0) tile (0.5, 3.5) {
+    small-electric-pole c at (0, 0) tile (0.5, 3.5) {
     }
 
-    pole d at (0, 0) tile (3.5, 3.5) {
+    small-electric-pole d at (0, 0) tile (3.5, 3.5) {
     }
 
-    pole e at (0, 0) tile (5.5, 4.5) {
+    small-electric-pole e at (0, 0) tile (5.5, 4.5) {
     }
 
-    pole big at (0, 0) tile (7, 1) {
-        prototype = big-electric-pole
+    big-electric-pole big at (0, 0) tile (7, 1) {
     }
 
-    pole station at (0, 0) tile (11, 1) {
-        prototype = substation
+    substation station at (0, 0) tile (11, 1) {
     }
 
-    pole under at (0, 0) tile (11, 4) {
-        prototype = big-electric-pole
+    big-electric-pole under at (0, 0) tile (11, 4) {
     }
 
-    constant source at (0, 0) tile (-1.5, 1.5) {
+    constant-combinator source at (0, 0) tile (-1.5, 1.5) {
         virtual:signal-A = 1
     }
 
-    lamp light at (0, 0) tile (12.5, 3.5) {
+    small-lamp light at (0, 0) tile (12.5, 3.5) {
         when virtual:signal-A > 0
     }
 
@@ -325,23 +320,23 @@ ${[["a", "b"], ["a", "c"], ["a", "d"], ["d", "e"], ["b", "big"], ["big", "statio
 `;
 
 const POLE_BOARD_CLOSE = `circuit "Pole board close up" {
-    pole a at (0, 0) tile (1.5, 0.5) {
+    small-electric-pole a at (0, 0) tile (1.5, 0.5) {
     }
 
-    pole b at (0, 0) tile (3.5, 0.5) {
+    small-electric-pole b at (0, 0) tile (3.5, 0.5) {
     }
 
-    pole c at (0, 0) tile (1.5, 2.5) {
+    small-electric-pole c at (0, 0) tile (1.5, 2.5) {
     }
 
-    pole d at (0, 0) tile (3.5, 2.5) {
+    small-electric-pole d at (0, 0) tile (3.5, 2.5) {
     }
 
-    constant source at (0, 0) tile (0.5, 0.5) {
+    constant-combinator source at (0, 0) tile (0.5, 0.5) {
         virtual:signal-A = 1
     }
 
-    lamp light at (0, 0) tile (4.5, 2.5) {
+    small-lamp light at (0, 0) tile (4.5, 2.5) {
         when virtual:signal-A > 0
     }
 
@@ -456,52 +451,43 @@ test("captures the one connection point of a pole on both canvases, the wires be
 
 /** Entities of the game of several sizes on a board small enough to read: from one tile to the nine by nine of a rocket silo. */
 const SIZES = `circuit "Sizes" {
-    constant source at (40, 80) tile (19.5, 8.5) {
+    constant-combinator source at (40, 80) tile (19.5, 8.5) {
         item:iron-plate = 150
     }
 
-    entity feeder at (280, 80) tile (18.5, 8.5) facing north {
-        prototype = fast-inserter
+    fast-inserter feeder at (280, 80) tile (18.5, 8.5) facing north {
         when item:iron-plate < 100
         read-hand = pulse
     }
 
-    entity box at (520, 80) tile (17.5, 8.5) {
-        prototype = steel-chest
+    steel-chest box at (520, 80) tile (17.5, 8.5) {
         read-empty-slots = true
     }
 
-    entity split at (760, 80) tile (15, 8.5) facing north {
-        prototype = splitter
+    splitter split at (760, 80) tile (15, 8.5) facing north {
         input-left when item:iron-plate > 100
         output-right when item:iron-plate > 200
     }
 
-    entity station at (1000, 80) tile (19, 6) {
-        prototype = train-stop
+    train-stop station at (1000, 80) tile (19, 6) {
         read-from-train = true
     }
 
-    entity heat at (40, 300) tile (15.5, 6) facing north {
-        prototype = boiler
+    boiler heat at (40, 300) tile (15.5, 6) facing north {
     }
 
-    entity maker at (280, 300) tile (11.5, 7.5) {
-        prototype = assembling-machine-2
+    assembling-machine-2 maker at (280, 300) tile (11.5, 7.5) {
         when item:iron-plate > 100
         read-working = true
     }
 
-    entity robots at (520, 300) tile (18, 2) {
-        prototype = roboport
+    roboport robots at (520, 300) tile (18, 2) {
     }
 
-    entity refinery at (760, 300) tile (12.5, 2.5) {
-        prototype = oil-refinery
+    oil-refinery refinery at (760, 300) tile (12.5, 2.5) {
     }
 
-    entity silo at (1000, 300) tile (4.5, 4.5) {
-        prototype = rocket-silo
+    rocket-silo silo at (1000, 300) tile (4.5, 4.5) {
         read-launched = true
     }
 
