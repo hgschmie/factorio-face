@@ -1,6 +1,7 @@
 // The entity and signal data read from the user's game: the "Game data" section of the application settings, the native
-// confirmation before the game is run, progress, failure and cancellation, the window loaded again with the new data, what a
-// mod brings to the selector and the picker, and the record of the mods in the project file. The game is a stand-in
+// confirmation before the game is run, progress, failure and cancellation, the window loaded again with the new data, the mods of
+// the game as modules a project switches, what a mod brings to the selector and the picker once it is on, what a project says
+// that uses a mod that is off, a blueprint import that switches mods on, and the record of the mods in the project file. The game is a stand-in
 // (apps/desktop/test/support/fakeFactorio.mjs) in an installation the test builds; the real game is never started.
 import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
@@ -8,13 +9,13 @@ import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump } from "../../apps/desktop/test/support/cannedDump.ts";
 import type { GameDataInUse, GameDataStatus } from "../../apps/desktop/src/ipc.ts";
-import { decodeBlueprintString } from "../../packages/blueprints/src/string.ts";
+import { decodeBlueprintString, encodeBlueprintString } from "../../packages/blueprints/src/string.ts";
 import {
   APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, pin, readProjectEntries, SCREENSHOT_DIR, showDisplay, sourceText, test,
   type RunningApp,
 } from "./app.ts";
 import { inspector, setSource } from "./board.ts";
-import { addFakeProgram, setFakeProgram, writeFakeGame, type FakeProgram } from "./fakeGame.ts";
+import { addFakeProgram, setFakeProgram, writeFakeGame, type FakeMod, type FakeProgram } from "./fakeGame.ts";
 
 const SHOTS = resolve(SCREENSHOT_DIR, "game-data");
 const SETTINGS_MENU = process.platform === "darwin" ? [APP_TITLE, "Settings..."] : ["File", "Settings..."];
@@ -33,6 +34,14 @@ const readButton = (page: Page): Locator => section(page).getByRole("button", { 
 const builtInButton = (page: Page): Locator => section(page).getByRole("button", { name: "Use built-in data" });
 const palette = (page: Page): Locator => page.getByRole("complementary", { name: "Components" });
 const paletteEntry = (page: Page, prototype: string): Locator => palette(page).locator(`.palette-item[data-prototype="${prototype}"]`);
+const projectSettingsOf = (page: Page): Locator => page.getByRole("dialog", { name: "Project settings" });
+const moduleRow = (page: Page, name: string): Locator => projectSettingsOf(page).locator(`.module-list li[data-module="${name}"]`);
+/** Waits until the window works with data read from a game: it was loaded again, and its session is there. */
+const gameDataInUse = (page: Page): Promise<unknown> => page.waitForFunction(() => window.faceSession?.getState().project.gameData === true);
+/** Switches a mod on in the project, as its settings do: a new project has the mods of the game off. */
+const switchOn = (page: Page, module = "some-mod"): Promise<void> => page.evaluate((name) => window.faceSession!.commands.setModuleEnabled(name, true), module);
+const enabledModules = (page: Page): Promise<string[]> => page.evaluate(() => window.faceSession!.getState().catalog.modules.filter((module) => module.enabled).map((module) => module.name));
+const problems = (page: Page): Promise<string[]> => page.evaluate(() => window.faceSession!.getState().diagnostics.map((diagnostic) => `${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}`));
 
 /** The requests for catalog icons the windows of an app made since it was launched. */
 interface IconRequests {
@@ -64,9 +73,11 @@ function watchIconRequests(app: ElectronApplication, requests: IconRequests): vo
 }
 
 /** The app with an installation whose program is the stand-in, and the mod directory of a user with one mod. */
-async function launchWithGame(options: { readonly userData?: string; readonly behaviour?: Parameters<typeof addFakeProgram>[2]; readonly program?: FakeProgram; readonly folder?: string; readonly dump?: CannedDump } = {}): Promise<Game> {
+async function launchWithGame(
+  options: { readonly userData?: string; readonly behaviour?: Parameters<typeof addFakeProgram>[2]; readonly program?: FakeProgram; readonly folder?: string; readonly dump?: CannedDump; readonly mods?: readonly FakeMod[] } = {},
+): Promise<Game> {
   const game = options.folder === undefined ? await writeFakeGame({ bundle: process.platform === "darwin" }) : undefined;
-  const program = options.program ?? (await addFakeProgram(game!, options.dump, options.behaviour));
+  const program = options.program ?? (await addFakeProgram(game!, options.dump, options.behaviour, options.mods));
   const folder = options.folder ?? game!.folder;
   const icons: IconRequests = { answered: [], failed: [] };
   const running = await launchApp({ open: "start", userData: options.userData, env: { FACE_GAME_DIR: folder, FACE_GAME_MODS_DIR: program.modDirectory }, onLaunch: (app) => watchIconRequests(app, icons) });
@@ -129,12 +140,12 @@ async function runFolders(userData: string): Promise<string[]> {
 }
 
 /** Has the game read through the dialog and waits for the window that was loaded again, with the dialog back and the new source in it. */
-async function readGame(app: ElectronApplication, page: Page): Promise<void> {
+async function readGame(app: ElectronApplication, page: Page, shown: RegExp = READ_SOURCE): Promise<void> {
   await answerMessageBoxes(app, { run: true, unsaved: 1 });
   await openSettings(app, page);
   await readButton(page).click();
-  await expect(source(page)).toHaveText(READ_SOURCE, { timeout: 20_000 });
-  await page.waitForFunction(() => window.faceSession?.getState().catalog.modulesFixed === true);
+  await expect(source(page)).toHaveText(shown, { timeout: 20_000 });
+  await gameDataInUse(page);
 }
 
 test("the settings say that the built-in data is in use, and whether the game can be read", async () => {
@@ -252,7 +263,7 @@ test("reads the game after the confirmation, shows the steps, loads the window a
   }
 });
 
-test("what a mod brings is in the selector and the picker, is placed, saved and reopened, and the project file records the mods", async () => {
+test("a mod is switched on in the project settings; what it brings is then in the selector and the picker, is placed, saved and reopened, and the project file records the mods", async () => {
   const { app, page, userData, program, icons } = await launchWithGame();
   const projectPath = await newProjectPath("Modded");
   try {
@@ -260,8 +271,36 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     await page.keyboard.press("Escape");
     await expect(settingsDialog(page)).toHaveCount(0);
 
-    // The selector has the mod's crate among the game's entities, with the name the game gives it and no icon of its own.
+    // A new project has the game's own modules on and its mods off: what the mod brings is not offered yet.
     await expect(palette(page).getByRole("tab", { name: "Group", exact: true })).toHaveAttribute("aria-selected", "true");
+    await expect(paletteEntry(page, "constant-combinator")).toHaveCount(1);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
+    expect(await enabledModules(page)).toEqual(["base"]);
+    await expect(page.getByTestId("save-state")).toHaveText("No changes");
+
+    // The project settings list the game's module and the mod, by the title its info.json gives it and with what it brings.
+    await page.locator("[data-settings-toggle]").click();
+    const projectSettings = projectSettingsOf(page);
+    await expect(projectSettings.locator(".module-list li")).toHaveCount(2);
+    await expect(moduleRow(page, "base").locator("input")).toBeChecked();
+    await expect(moduleRow(page, "base").locator("input")).toBeDisabled();
+    await expect(moduleRow(page, "base").locator("small")).toHaveText("Always enabled");
+    await expect(moduleRow(page, "some-mod").locator(".module-title")).toHaveText("Some Mod");
+    await expect(moduleRow(page, "some-mod").locator(".module-count")).toHaveText("3 signals, 1 entity");
+    await expect(moduleRow(page, "some-mod").locator("input")).not.toBeChecked();
+    await expect(moduleRow(page, "some-mod").locator("input")).toBeEnabled();
+    // Two rows need no filter; every mod of this game adds something; and the mods are here, so nothing says where they come from.
+    await expect(projectSettings.getByLabel("Filter signal groups")).toHaveCount(0);
+    await expect(projectSettings.locator('[data-note="other-mods"], [data-note="mods-hint"], [data-note="modules-off"]')).toHaveCount(0);
+    await page.screenshot({ path: resolve(SHOTS, "project-settings-mod-off.png") });
+    await moduleRow(page, "some-mod").locator("input").check();
+    await expect(moduleRow(page, "some-mod").locator("input")).toBeChecked();
+    await expect(moduleRow(page, "base").locator("small")).toHaveText("Always enabled");
+    await page.keyboard.press("Escape");
+    await expect(projectSettings).toHaveCount(0);
+    expect(await enabledModules(page)).toEqual(["base", "some-mod"]);
+
+    // The selector has the mod's crate among the game's entities, with the name the game gives it and no icon of its own.
     const crate = paletteEntry(page, MOD_ENTITY);
     await expect(crate).toHaveAccessibleName("Mod crate");
     await expect(crate).toHaveAttribute("data-kind", "entity");
@@ -303,24 +342,33 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     // Since the launch, with the built-in data and with the game's, the page asked for no icon the app does not have: every request was answered with an image.
     expect(icons.answered).toContain(`${CATALOG_ICONS}virtual/signal-A.png`);
     expect(icons.failed).toEqual([]);
-    // Both are of the game the data was read from: nothing is flagged.
+    // Both are of modules the project has on: nothing is flagged.
     expect(await page.evaluate(() => window.faceSession!.getState().diagnostics)).toEqual([]);
     await page.screenshot({ path: resolve(SHOTS, "modded-circuit.png") });
 
-    // The project settings show the game's modules as they are: on, and not to be switched.
+    // Switched off again, the mod's entity and its signal stay where they are, each with a warning that names the mod, and are
+    // offered no more; the project settings say so and switch the mod back on with one button.
+    await page.evaluate(() => window.faceSession!.commands.setModuleEnabled("some-mod", false));
+    expect(await problems(page)).toEqual([
+      "warning disabled-prototype: 'mod-crate' (Mod crate) is an entity of Some Mod, which is switched off in the project settings",
+      "warning disabled-signal: The signal 'virtual:mod-signal' is of Some Mod, which is switched off in the project settings",
+    ]);
+    expect(await entityNames(page)).toEqual(["mod_crate1", "constant1"]);
+    await expect(card(page, "mod_crate1")).toHaveCount(1);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
+    await expect(page.locator(".statusbar")).toContainText("2 warnings");
     await page.locator("[data-settings-toggle]").click();
-    const projectSettings = page.getByRole("dialog", { name: "Project settings" });
-    await expect(projectSettings.locator('[data-note="modules-fixed"]')).toContainText("As in your game");
-    await expect(projectSettings.locator(".module-list li")).toHaveCount(2);
-    for (const module of ["base", "some-mod"]) {
-      await expect(projectSettings.locator(`[data-module="${module}"] input`)).toBeChecked();
-      await expect(projectSettings.locator(`[data-module="${module}"] input`)).toBeDisabled();
-    }
-    // A mod is listed by the title its info.json gives it.
-    await expect(projectSettings.locator('[data-module="some-mod"] .module-title')).toHaveText("Some Mod");
+    const unused = projectSettings.locator('[data-note="modules-off"]');
+    await expect(unused).toContainText("This project uses signals or entities of Some Mod, which is switched off.");
+    await page.screenshot({ path: resolve(SHOTS, "project-settings-mod-in-use.png") });
+    await unused.getByRole("button", { name: "Switch it on" }).click();
+    await expect(unused).toHaveCount(0);
+    await expect(moduleRow(page, "some-mod").locator("input")).toBeChecked();
     await page.keyboard.press("Escape");
+    expect(await problems(page)).toEqual([]);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
 
-    // Saved: the file has the record of the game and its mods, and keeps the module list it had.
+    // Saved: the file has the record of the game and its mods, and the module list of the project with the mod in it.
     await app.evaluate(({ dialog }, path) => {
       dialog.showSaveDialog = (async () => ({ canceled: false, filePath: path })) as typeof dialog.showSaveDialog;
     }, projectPath);
@@ -328,7 +376,7 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
     const saved = JSON.parse((await readProjectEntries(projectPath))["face.json"]!) as Record<string, unknown>;
     expect(saved.gameMods).toEqual({ gameVersion: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }] });
-    expect(saved.modules).toEqual(["base", "space-age", "quality", "recycler", "elevated-rails"]);
+    expect(saved.modules).toEqual(["base", "some-mod"]);
     const savedSource = await sourceText(page);
 
     // Reopened with the same data: as it was, and no notice.
@@ -358,8 +406,14 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
     await page.locator("[data-settings-toggle]").click();
     await expect(projectSettings.locator('[data-note="made-with"]')).toHaveText("Made with Factorio 2.1.24 with some-mod 1.2.3.");
     await expect(projectSettings.locator('[data-note="mods-notice"]')).toContainText("The data in use lacks some-mod 1.2.3.");
-    await expect(projectSettings.locator('[data-module="base"] input')).toBeDisabled();
-    await expect(projectSettings.locator('[data-module="space-age"] input')).toBeEnabled();
+    // The list is the project's with this data too: the five modules of the game, of which the project has only the base one
+    // on, and the name of the mod, which this data does not have, is kept.
+    await expect(projectSettings.locator(".module-list li")).toHaveCount(5);
+    await expect(moduleRow(page, "base").locator("input")).toBeDisabled();
+    await expect(moduleRow(page, "space-age").locator("input")).toBeEnabled();
+    await expect(moduleRow(page, "space-age").locator("input")).not.toBeChecked();
+    await expect(projectSettings).toContainText("Not part of this catalog, kept in the project file: some-mod.");
+    await expect(projectSettings.locator('[data-note="mods-hint"]')).toHaveText("The mods of your game appear here after the game has been read in the application settings.");
     await page.keyboard.press("Escape");
 
     // A save with other data in use keeps the record as it is.
@@ -416,6 +470,7 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     await readGame(app, page);
     await page.keyboard.press("Escape");
     await expect(settingsDialog(page)).toHaveCount(0);
+    await switchOn(page);
 
     // The selector has each of them in the tab of its item group, with the kind of its prototype type. A modded speaker has none.
     for (const [prototype, kind, name] of [["mod-arithmetic", "arithmetic", "Tiny arithmetic combinator"], ["mod-decider", "decider", "Wide decider combinator"], ["mod-lamp", "lamp", "Big lamp"], ["mod-pole", "pole", "Huge electric pole"], ["mod-loader", "entity", "Miniloader"]] as const) {
@@ -488,6 +543,132 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     const missing = (name: string): string => `Unknown entity '${name}': the game data in use has no entity of this name (the names are the game's, as a blueprint has them: constant-combinator, small-lamp, steel-chest)`;
     // One error per declaration, on its word; the five wires that end at them are left out and say nothing.
     expect(flagged).toEqual([missing("mod-arithmetic"), missing("mod-decider"), missing("mod-pole"), missing("mod-lamp"), "Unknown entity 'mod-loader'; did you mean loader?"]);
+  } finally {
+    await closeApp(app);
+  }
+});
+
+/** A game with many mods: twelve that add a crate each, and two that add nothing. */
+const CRATES = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
+/** A title as a mod may write it: it is shown as the text it is. */
+const BOLD_TITLE = "<b>Bold</b> crates 03";
+const crateTitle = (number: string): string => (number === "03" ? BOLD_TITLE : `Crates ${number}`);
+const MANY_MODS: readonly FakeMod[] = [
+  // crates-02 needs crates-01, and crates-05 needs crates-04 through a mod that adds nothing.
+  ...CRATES.map((number) => ({ name: `crates-${number}`, version: "1.0.0", title: crateTitle(number), dependencies: ["base >= 2.1", ...(number === "02" ? ["crates-01"] : number === "05" ? ["glue-lib >= 0.1"] : [])] })),
+  { name: "glue-lib", version: "0.1.0", title: "Glue", dependencies: ["base", "crates-04"] },
+  { name: "zz-lib", version: "0.1.0", title: "A library", dependencies: ["base"] },
+];
+const MANY_CRATES: CannedDump = { entities: CRATES.map((number) => ({ name: `crate-${number}`, type: "container", label: `Crate ${number}`, size: [1, 1], module: `crates-${number}` })) };
+const USES_CRATES = `circuit "Crates" {
+    crate-07 box at (40, 80) {
+    }
+
+    constant-combinator source at (300, 80) {
+        item:crate-08 = 1
+    }
+}
+`;
+
+test("a game with many mods: the list scrolls and filters, mods switch with what they need, a project says which it uses although they are off, and an import switches on what it needs", async () => {
+  const { app, page } = await launchWithGame({ dump: MANY_CRATES, mods: MANY_MODS });
+  try {
+    await readGame(app, page, /^Read from your game on .+: 2\.1\.24 with 15 mods$/);
+    await page.keyboard.press("Escape");
+    await expect(settingsDialog(page)).toHaveCount(0);
+    expect(await enabledModules(page)).toEqual(["base"]);
+
+    // The list: the game's module first, then the mods that add something by name; the two that add nothing are counted.
+    await page.locator("[data-settings-toggle]").click();
+    const projectSettings = projectSettingsOf(page);
+    const rows = projectSettings.locator(".module-list li");
+    const listed = ["base", ...CRATES.map((number) => `crates-${number}`), "some-mod"];
+    expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(listed);
+    await expect(projectSettings.locator('[data-note="other-mods"]')).toHaveText("2 other mods of your game add no signals or entities.");
+    await expect(projectSettings.locator('[data-note="mods-hint"]')).toHaveCount(0);
+    await expect(moduleRow(page, "crates-01").locator(".module-count")).toHaveText("1 signal, 1 entity");
+    // A title is text, whatever a mod writes into it.
+    await expect(moduleRow(page, "crates-03").locator(".module-title")).toHaveText(BOLD_TITLE);
+    await expect(moduleRow(page, "crates-03").locator("b")).toHaveCount(0);
+    // Fourteen rows have their own scrolling area, so that the rest of the panel stays in reach.
+    const list = projectSettings.locator(".module-list");
+    expect(await list.evaluate((element) => [getComputedStyle(element).overflowY, element.scrollHeight > element.clientHeight])).toEqual(["auto", true]);
+    await page.screenshot({ path: resolve(SHOTS, "project-settings-many-mods.png") });
+
+    // The filter finds a mod by its title or its name; Escape empties it and leaves the panel open.
+    const filter = projectSettings.getByLabel("Filter signal groups");
+    await filter.fill("bold");
+    expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-03"]);
+    await filter.fill("CRATES-1");
+    expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-10", "crates-11", "crates-12"]);
+    await filter.fill("no such mod");
+    await expect(rows).toHaveCount(0);
+    await expect(projectSettings.locator('[data-note="no-match"]')).toHaveText("No signal group matches the filter.");
+    await page.screenshot({ path: resolve(SHOTS, "project-settings-filter.png") });
+    await filter.press("Escape");
+    await expect(filter).toHaveValue("");
+    await expect(rows).toHaveCount(listed.length);
+    await expect(projectSettings).toBeVisible();
+
+    // Dependencies: a mod is switched on with what it requires, also through a mod that is not listed, and off with what requires it.
+    await expect(moduleRow(page, "crates-02").locator("small")).toHaveText("Switching on also switches on Crates 01");
+    await expect(moduleRow(page, "crates-05").locator("small")).toHaveText("Switching on also switches on Crates 04");
+    await moduleRow(page, "crates-05").locator("input").check();
+    expect(await enabledModules(page)).toEqual(["base", "crates-04", "crates-05"]);
+    await expect(moduleRow(page, "crates-04").locator("small")).toHaveText("Switching off also switches off Crates 05");
+    await moduleRow(page, "crates-04").locator("input").uncheck();
+    expect(await enabledModules(page)).toEqual(["base"]);
+    await page.keyboard.press("Escape");
+    await expect(projectSettings).toHaveCount(0);
+
+    // A circuit with an entity and a signal of mods that are off: both stay, each with a warning that names its mod.
+    await setSource(page, USES_CRATES);
+    expect(await problems(page)).toEqual([
+      "warning disabled-prototype: 'crate-07' (Crate 07) is an entity of Crates 07, which is switched off in the project settings",
+      "warning disabled-signal: The signal 'item:crate-08' is of Crates 08, which is switched off in the project settings",
+    ]);
+    expect(await entityNames(page)).toEqual(["box", "source"]);
+    await expect(paletteEntry(page, "crate-07")).toHaveCount(0);
+    await page.locator("[data-settings-toggle]").click();
+    const unused = projectSettings.locator('[data-note="modules-off"]');
+    await expect(unused.locator("p")).toHaveText("This project uses signals or entities of Crates 07, Crates 08, which are switched off. They are marked with a warning and are not offered.");
+    await page.screenshot({ path: resolve(SHOTS, "project-settings-mods-in-use.png") });
+    await unused.getByRole("button", { name: "Switch them on" }).click();
+    await expect(unused).toHaveCount(0);
+    expect(await enabledModules(page)).toEqual(["base", "crates-07", "crates-08"]);
+    expect(await problems(page)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(paletteEntry(page, "crate-07")).toHaveCount(1);
+
+    // A blueprint with a crate of one mod and a signal of another opens as a project that has those mods on, with what they
+    // require, and the report names them. The mods of the project before play no part.
+    const blueprint = encodeBlueprintString({
+      blueprint: {
+        item: "blueprint",
+        label: "Two crates",
+        version: 562954249109504,
+        entities: [
+          { entity_number: 1, name: "crate-05", position: { x: 0.5, y: 0.5 } },
+          { entity_number: 2, name: "constant-combinator", position: { x: 2.5, y: 0.5 }, control_behavior: { sections: { sections: [{ index: 1, filters: [{ index: 1, name: "crate-09", count: 1 }] }] } } },
+        ],
+      },
+    });
+    await clickMenu(app, "File", "Import Blueprint", "Paste Blueprint...");
+    const paste = page.getByRole("dialog", { name: "Paste blueprint string" });
+    await paste.getByRole("textbox", { name: "Blueprint string" }).fill(blueprint);
+    await expect(paste.locator('[data-message="blueprint"]')).toHaveText('"Two crates": 2 entities.');
+    await paste.getByRole("button", { name: "Import", exact: true }).click();
+    const report = page.getByRole("dialog", { name: "Blueprint imported" });
+    await expect(report.locator('[data-message="summary"]')).toHaveText('"Two crates": Imported 2 entities and 0 wires.');
+    await expect(report.getByRole("region", { name: "Signal groups" }).getByRole("listitem")).toHaveText([
+      "Switched on: Crates 04, Crates 05, Crates 09. The blueprint has their signals or entities; a new project has only the modules of the game itself on.",
+    ]);
+    await page.screenshot({ path: resolve(SHOTS, "import-report-mods.png") });
+    await report.getByRole("button", { name: "OK" }).click();
+    await expect(report).toHaveCount(0);
+    expect(await enabledModules(page)).toEqual(["base", "crates-04", "crates-05", "crates-09"]);
+    expect(await entityNames(page)).toEqual(["crate1", "constant1"]);
+    expect(await problems(page)).toEqual([]);
   } finally {
     await closeApp(app);
   }
@@ -606,7 +787,8 @@ test("a damaged data file falls back to the built-in data with a message, and di
     const hint = page.locator(".data-hint");
     await expect(hint).toContainText("The data read from your game cannot be used:");
     await expect(hint).toContainText("The built-in data is in use.");
-    expect(await page.evaluate(() => window.faceSession!.getState().catalog.modulesFixed)).toBe(false);
+    expect(await page.evaluate(() => window.faceSession!.getState().project.gameData)).toBe(false);
+    expect(await page.evaluate(() => window.faceSession!.getState().catalog.modules.map((module) => module.name))).toEqual(["base", "elevated-rails", "recycler", "quality", "space-age"]);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
     await expect(paletteEntry(page, "constant-combinator")).toHaveCount(1);
     expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.24" }, catalog: null, entities: null });
@@ -642,7 +824,7 @@ test("a data file of the earlier format falls back to the built-in data and asks
     const outdated = "The data read from your game was stored by an earlier version of this app and cannot be used by this one. Read the game again to work with your game's data. The built-in data is in use.";
     const hint = page.locator(".data-hint");
     await expect(hint).toContainText(outdated);
-    expect(await page.evaluate(() => window.faceSession!.getState().catalog.modulesFixed)).toBe(false);
+    expect(await page.evaluate(() => window.faceSession!.getState().project.gameData)).toBe(false);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
     expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.24" }, catalog: null, entities: null });
 
@@ -659,6 +841,8 @@ test("a data file of the earlier format falls back to the built-in data and asks
     await expect(message(page, "data-problem")).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(page.locator(".data-hint")).toHaveCount(0);
+    await gameDataInUse(page);
+    await switchOn(page);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
     expect((JSON.parse(await readFile(file, "utf8")) as { version: number }).version).toBe(2);
   } finally {
@@ -675,8 +859,13 @@ test("data that was read is in use at the next start, and unsaved changes are as
   }
   const { app, page, program } = await launchWithGame({ userData: first.userData, program: first.program, folder: resolve(first.dataDirectory, process.platform === "darwin" ? "../.." : "..") });
   try {
-    await page.waitForFunction(() => window.faceSession?.getState().catalog.modulesFixed === true);
+    await gameDataInUse(page);
+    // The window starts with a new project: the mod is in its list, off.
+    expect(await page.evaluate(() => window.faceSession!.getState().catalog.modules.map((module) => [module.name, module.enabled]))).toEqual([["base", true], ["some-mod", false]]);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
+    await switchOn(page);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
+    await page.evaluate(() => window.faceSession!.commands.setModuleEnabled("some-mod", false));
     await expect(page.locator(".data-hint")).toHaveCount(0);
 
     // An unsaved change, and the user keeps the window: the data waits, and the dialog offers to load the window again.

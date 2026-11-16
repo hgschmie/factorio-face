@@ -177,7 +177,8 @@ checked against the running GUI. The docs say that
 `hide_from_signal_gui` is true for hidden recipes; the engine reports false for them, hence `hidden` is checked first.
 
 Picker order: groups by `order`, subgroups by `order`, signals by `order`, each compared bytewise with the name as tie-breaker (signals: kind
-before name). Groups and subgroups without signals (`tiles`, `effects` for the default picker) are omitted.
+before name). Groups and subgroups without signals (`tiles`, `effects` for the default picker) are omitted. A subgroup or group
+with a signal that exists is in the tree whatever its own `modules` say (see "Single-set mode").
 
 ## Entity table
 
@@ -273,7 +274,12 @@ What differs from the standard tables, because one dump cannot say what a record
   of every module's items (89 of them exist only with another module), `base` creates the barrels of Space Age's fluids (6), and the
   satellite is removed by Space Age. And a record can sit in a subgroup or group that another module created: with the five modules,
   43 signals of `base` are in subgroups of Space Age and one subgroup of `base` is in a group of Space Age. A consumer that
-  enables fewer modules than the game had loaded has to expect both; `pickerTree` throws for a signal whose subgroup is not there.
+  enables fewer modules than the game had loaded has to expect both. `pickerTree` does: a subgroup is in the tree whenever a
+  signal that exists sits in it, and a group whenever such a subgroup sits in it, whichever module created the subgroup or the
+  group (their own `modules` say who created them, not when they are there). So no set of modules makes it throw; it throws only
+  for data with a signal whose subgroup, or a subgroup whose group, is in no record at all.
+- A record may name several modules (planned for a recycling recipe of a mod's item: `["recycler", "<mod>"]`): it exists when
+  all of them are enabled (`isAvailable`), as in the standard catalog.
 - `modules` in the head of the catalog lists what the game had loaded by its own account (`active_mods` of the runtime dump): its own
   modules as their `info.json` has them, and each mod as its own `info.json` describes it (`singleSetModules(dataDir, mods,
   modInfos)`; the caller reads the files, the app from the user's mod directory): the title, cleaned of control characters and cut
@@ -338,7 +344,7 @@ all eight sets.
 ## API
 
 ```ts
-import { loadStandardCatalog, currentCatalog, setCatalog, createCatalog, findSignal, availableSignals, pickerTree, resolveModules, enableModule, disableModule, dependentModules, iconPath } from "@face/catalog";
+import { loadStandardCatalog, currentCatalog, setCatalog, createCatalog, findSignal, availableSignals, pickerTree, resolveModules, enableModule, disableModule, dependentModules, listedModules, namedModules, iconPath } from "@face/catalog";
 
 const catalog = loadStandardCatalog();                       // the catalog that comes with the build
 currentCatalog();                                            // the catalog the editor works with: the standard one unless another was set
@@ -352,6 +358,9 @@ resolveModules(catalog.modules, enabled);                    // { enabled, unkno
 enableModule(catalog.modules, enabled, "space-age");         // adds hard dependencies ({ withRecommended: true } adds quality)
 dependentModules(catalog.modules, enabled, "recycler");      // ["quality", "space-age"]
 disableModule(catalog.modules, enabled, "recycler");         // removes the module and its dependents
+namedModules(catalog.signals);                               // Set of the module names the records name as theirs
+listedModules(catalog.modules, namedModules(catalog.signals));  // the modules a project switches, see below
+isGameModule("space-age"); BASE_MODULE;                      // one of the game's own five; "base", which is always on
 iconPath(signal, iconRoot);                                  // "<iconRoot>/item/iron-plate.png"
 speakerInstruments(catalog, enabled);                        // SpeakerInstrumentInfo[]: instruments with notes, names and display names
 speakerInstrumentNames(catalog, enabled);                    // the names only: what the language and the simulation environment take
@@ -371,6 +380,14 @@ iconFileLocation("__base__/graphics/icons/small-lamp.png");  // { module: "base"
 Types: `Catalog`, `CatalogSignal`, `CatalogGroup`, `CatalogSubgroup`, `ModuleInfo`, `QualityInfo`, `CatalogData` (the JSON shape),
 `SignalVisibility`, `ModuleResolution`, `PickerGroup`, `SpeakerInfo`, `SpeakerInstrumentInfo`, `SpeakerNote`. Every entry has `origin: "standard" | "custom"`; only `"standard"` is generated.
 Custom signals and groups are out of scope here; `createCatalog` and the functions do not assume the standard module names.
+
+`listedModules(modules, contributing)` is the module list for a catalog read from a game with mods: the game's own modules, and
+of the mods those that `contributing` names, which the caller collects from the records (`namedModules` over the signals and
+over the records of the entity table). A mod that adds nothing is left out, and the dependencies see through it: `requires` of a
+listed module is everything listed that it needs directly or through any chain of modules, `recommends` what it recommends
+itself and is listed. `resolveModules`, `enableModule`, `disableModule` and `dependentModules` work on the result as on any module
+list. A dependency that names no module, the module itself or a circle is passed over. For the standard catalog the result is its
+five modules as they are.
 
 `currentCatalog()` and `setCatalog()` are for the renderer, in the style of `entityTable()` and `setEntityTable()` of `@face/model`:
 at start it installs the catalog and the entity table the main process hands it (the ones read from the user's game, when there are

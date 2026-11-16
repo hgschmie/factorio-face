@@ -47,7 +47,8 @@ describe("signal status and module settings", () => {
 
     session.commands.setModuleEnabled("space-age", false);
     expect(codes()).toEqual(["warning:disabled-signal:4", "warning:unknown-signal:7"]);
-    expect(session.state.diagnostics[0]!.message).toContain("carbon-fiber");
+    expect(session.state.diagnostics[0]!.message).toBe("The signal 'item:carbon-fiber' is of Space Age, which is switched off in the project settings");
+    expect(session.state.project.modulesOff).toEqual(["space-age"]);
     expect(session.state).toMatchObject({ source: SPACE, editable: true, canUndo: false });
     expect(session.document.version).toBe(version);
     expect(session.state.circuit.entities).toHaveLength(1);
@@ -59,6 +60,8 @@ describe("signal status and module settings", () => {
     session.commands.setModuleEnabled("recycler", false);
     expect(session.state.catalog.modules.filter((module) => module.enabled).map((module) => module.name)).toEqual(["base", "elevated-rails"]);
     expect(codes()).toEqual(["warning:disabled-signal:4", "warning:disabled-signal:5", "warning:unknown-signal:7"]);
+    expect(session.state.diagnostics[1]!.message).toBe("The signal 'item:iron-plate@rare' is of Quality, which is switched off in the project settings");
+    expect(session.state.project.modulesOff).toEqual(["quality", "space-age"]);
     expect(session.state.catalog.qualities).toEqual([]);
     expect(session.state.source).toBe(SPACE);
 
@@ -71,10 +74,41 @@ describe("signal status and module settings", () => {
     expect(session.state.canUndo).toBe(false);
   });
 
+  it("flags an entity of a module that is switched off, keeps it in the circuit, and offers it no more", () => {
+    const source = 'circuit "Belts" {\n    turbo-transport-belt fast at (0, 0) {\n    }\n\n    transport-belt slow at (200, 0) {\n    }\n}\n';
+    const { session } = createSession(source);
+    const labels = (): string[] => completionCandidates(completionContext(analyze(source), source.indexOf("    transport-belt")), session.state.catalog as CatalogService).map((candidate) => candidate.label);
+    expect(session.state.diagnostics).toEqual([]);
+    expect(labels()).toEqual(expect.arrayContaining(["transport-belt", "turbo-transport-belt"]));
+
+    session.commands.setModuleEnabled("space-age", false);
+    expect(session.state.diagnostics.map((diagnostic) => [diagnostic.severity, diagnostic.code, diagnostic.line, diagnostic.message])).toEqual([
+      ["warning", "disabled-prototype", 2, "'turbo-transport-belt' (Turbo transport belt) is an entity of Space Age, which is switched off in the project settings"],
+    ]);
+    expect(session.state).toMatchObject({ source, editable: true, project: { modulesOff: ["space-age"] } });
+    expect(session.state.circuit.entities.map((entity) => entity.prototype)).toEqual(["turbo-transport-belt", "transport-belt"]);
+    const registry = session.state.catalog.entities();
+    expect([registry.offers("turbo-transport-belt"), registry.offers("transport-belt"), registry.entry("turbo-transport-belt")?.label]).toEqual([false, true, "Turbo transport belt"]);
+    expect(labels()).toContain("transport-belt");
+    expect(labels()).not.toContain("turbo-transport-belt");
+    // It is simulated and exported like any other entity.
+    session.commands.step();
+    expect(session.state.simulation.tick).toBe(1);
+
+    // One command switches on what the source uses: Space Age with what it requires, and nothing it only recommends.
+    session.commands.setModuleEnabled("recycler", false);
+    expect(session.state.catalog.modules.filter((module) => module.enabled).map((module) => module.name)).toEqual(["base", "elevated-rails"]);
+    session.commands.enableUsedModules();
+    expect(session.state.catalog.modules.filter((module) => module.enabled).map((module) => module.name)).toEqual(["base", "elevated-rails", "recycler", "space-age"]);
+    expect(session.state).toMatchObject({ diagnostics: [], project: { modulesOff: [] } });
+  });
+
   it("describes what switching a module does and refuses to switch off the base module", () => {
     const { session } = createSession(SPACE);
     const module = (name: string) => session.state.catalog.modules.find((candidate) => candidate.name === name)!;
-    expect(module("base")).toMatchObject({ title: "Base Mod", canDisable: false, enabled: true });
+    expect(module("base")).toMatchObject({ title: "Base Mod", game: true, canDisable: false, enabled: true });
+    expect(session.state.catalog).toMatchObject({ otherMods: 0, unknownModules: [] });
+    expect(session.state.catalog.modules.map((entry) => entry.entityCount)).toEqual([67, 0, 1, 0, 17]);
     expect(module("recycler")).toMatchObject({ canDisable: true, disables: ["quality", "space-age"], enables: [] });
     expect(module("space-age").signalCount).toBeGreaterThan(200);
     const before = session.state.catalog;
@@ -92,12 +126,14 @@ describe("signal status and module settings", () => {
     const service = new CatalogService(catalog, ["space-age", "my-mod", "base"]);
     expect(service.enabled).toEqual(["base", "space-age"]);
     expect(service.unknownModules).toEqual(["my-mod"]);
+    // The base module is on whatever the list says.
+    expect([new CatalogService(catalog, []).enabled, new CatalogService(catalog, ["quality"]).enabled]).toEqual([["base"], ["base", "quality"]]);
     expect(service.modules.find((module) => module.name === "space-age")!.missing).toEqual(["elevated-rails", "recycler"]);
     expect(service.withModule("quality", true)).toEqual(["base", "recycler", "quality", "space-age", "my-mod"]);
     expect(service.withModule("space-age", true)).toBeUndefined();
-    // Whatever the catalog makes of such a set, the views get a tree (possibly empty) and an environment, never an exception.
+    // Whatever the list, the views get a picker with the signals of its modules and an environment, never an exception.
     for (const modules of [["space-age"], ["quality"], ["space-age", "base"], []]) {
-      expect(Array.isArray(new CatalogService(catalog, modules).picker())).toBe(true);
+      expect(new CatalogService(catalog, modules).picker().length).toBeGreaterThan(5);
       expect(createCatalogEnvironment(catalog, modules).stackSize(signal("item", "no-such-thing"))).toBeUndefined();
       expect(createSession(SPACE, { project: { path: null, data: { manifest: { formatVersion: 1, name: "Odd", gameVersion: "2.1.24", modules, customSignalGroups: [], circuits: ["main.face"] }, files: [{ name: "main.face", source: SPACE }] } } }).session.state.editable).toBe(true);
     }

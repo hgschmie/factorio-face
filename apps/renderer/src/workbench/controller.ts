@@ -145,6 +145,10 @@ export interface ProjectView {
   readonly madeWith: string | null;
   /** What that game had that the data in use lacks or has differently; null when nothing differs or there is no record. */
   readonly modsNotice: string | null;
+  /** The data in use was read from the user's game: its mods are in the module list. */
+  readonly gameData: boolean;
+  /** The modules the source uses a signal or an entity of although they are switched off, by name in the order of the list; `enableUsedModules` switches them on. */
+  readonly modulesOff: readonly string[];
 }
 
 /** One row of the simulation dock's trace area: one signal on the output of one entity, the state of a lamp or a speaker, or one circuit condition of a generic entity. */
@@ -262,13 +266,16 @@ export interface QualityOption {
   readonly color: string;
 }
 
-/** One of the standard modules, shown as a signal group in the project settings. */
+/** A module the project switches, shown as a signal group in the project settings: one of the game's own, or a mod of the game the data was read from. */
 export interface ModuleView {
   readonly name: string;
+  /** What the game calls it. Of a mod this is the mod's own text: bounded by the data, and shown as text. */
   readonly title: string;
   readonly version: string;
+  /** One of the game's own modules; they come first. */
+  readonly game: boolean;
   readonly enabled: boolean;
-  /** False for the module everything depends on. */
+  /** False for `base`, which is always on. */
   readonly canDisable: boolean;
   /** Modules that are switched on together with this one. */
   readonly enables: readonly string[];
@@ -278,16 +285,19 @@ export interface ModuleView {
   readonly missing: readonly string[];
   /** Number of selectable signals the module contributes. */
   readonly signalCount: number;
+  /** Number of entities it adds to the selector. */
+  readonly entityCount: number;
 }
 
 /** Catalog data for the project's enabled modules. A new object whenever the module set changes. */
 export interface CatalogView {
   readonly gameVersion: string;
+  /** The modules the project switches, the game's own first: with data read from a game also its mods that add a signal or a wired entity. */
   readonly modules: readonly ModuleView[];
   /** Module names in the project file that the catalog does not know; kept on save. */
   readonly unknownModules: readonly string[];
-  /** The data was read from the user's game: everything that game had loaded is on, nothing can be switched, and the project's own list is kept. */
-  readonly modulesFixed: boolean;
+  /** How many mods of the game add neither a signal nor a wired entity: they are not in `modules` and nothing switches them. */
+  readonly otherMods: number;
   /** Selectable qualities, lowest first; empty unless the quality module is enabled. */
   readonly qualities: readonly QualityOption[];
   /** The instruments of the programmable speaker with their notes, in the game's order, with their names in the game. */
@@ -468,8 +478,10 @@ export interface WorkbenchCommands {
   setSpeed(ticksPerSecond: number): void;
 
   // Project settings: part of the project file, not of the undo history.
-  /** Enables or disables a standard module together with the modules that depend on it or that it requires. */
+  /** Enables or disables a module together with the modules that depend on it or that it requires. */
   setModuleEnabled(name: string, enabled: boolean): void;
+  /** Switches on the modules the source uses although they are off (`ProjectView.modulesOff`), each with what it requires, as one change. */
+  enableUsedModules(): void;
   setProjectName(name: string): void;
   /** Sets the wire reach in tiles (0: unlimited) and measures the wires again. A value outside `WIRE_REACH_RANGE` is ignored. */
   setWireReach(wireReach: number): void;

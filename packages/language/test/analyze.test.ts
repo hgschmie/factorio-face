@@ -1,6 +1,6 @@
 import { BOTH_NETWORKS, DEFAULT_ENTITY, SELECTOR_OPERATIONS, wildcardSignal, wireKey, type Entity, type SelectorCombinator, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type AnalyzeOptions, type DiagnosticCode, type SignalResolver } from "../src/index.ts";
+import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type AnalyzeOptions, type DiagnosticCode, type PrototypeResolver, type SignalResolver } from "../src/index.ts";
 import { withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { circuit, codes, fixture, idOf, valid } from "./helpers.ts";
 
@@ -425,6 +425,35 @@ describe("diagnostics", () => {
       ["disabled-signal", "warning", "epic"],
     ]);
     expect(result.circuit).toBeDefined();
+    for (const d of result.diagnostics) seen.add(d.code);
+  });
+
+  it("a disabled signal names the modules it is of, where the resolver knows them", () => {
+    const off: Record<string, readonly string[]> = { one: ["Space Age"], two: ["Space Age", "Quality"], many: ["A", "B", "C", "D", "E"], long: ["x".repeat(200)], removed: [] };
+    const signals: SignalResolver = { status: (id) => (id.name in off ? "disabled" : "known"), switchedOff: (id) => off[id.name] ?? [] };
+    const source = circuit("constant-combinator c { item:one = 1 item:two = 2 item:many = 3 item:long = 4 item:removed = 5 item:ok = 6 }");
+    expect(analyze(source, undefined, { signals }).diagnostics.map((d) => [d.code, d.message])).toEqual([
+      ["disabled-signal", "The signal 'item:one' is of Space Age, which is switched off in the project settings"],
+      ["disabled-signal", "The signal 'item:two' is of Space Age and Quality, which are switched off in the project settings"],
+      ["disabled-signal", "The signal 'item:many' is of A, B, C and 2 more, which are switched off in the project settings"],
+      ["disabled-signal", `The signal 'item:long' is of ${"x".repeat(80)}..., which is switched off in the project settings`],
+      ["disabled-signal", "The signal 'item:removed' belongs to a disabled module or group"],
+    ]);
+  });
+
+  it("disabled-prototype comes from the injected resolver only: the entity stays what it is", () => {
+    const prototypes: PrototypeResolver = { switchedOff: (prototype) => (prototype === "small-lamp" ? ["Some Mod"] : prototype === "steel-chest" ? ["Space Age", "Some Mod"] : []) };
+    const source = circuit("small-lamp l { when item:x > 1 }\nsteel-chest s { }\nconstant-combinator c { item:x = 1 }\nwire red c.out <-> l.in");
+    expect(analyze(source).diagnostics).toEqual([]);
+    const result = analyze(source, undefined, { prototypes });
+    expect(result.diagnostics.map((d) => [d.code, d.severity, source.slice(d.from, d.to), d.message])).toEqual([
+      ["disabled-prototype", "warning", "small-lamp", "'small-lamp' (Lamp) is an entity of Some Mod, which is switched off in the project settings"],
+      ["disabled-prototype", "warning", "steel-chest", "'steel-chest' (Steel chest) is an entity of Space Age and Some Mod, which are switched off in the project settings"],
+    ]);
+    expect(result.circuit?.entities.map((entity) => entity.prototype)).toEqual(["small-lamp", "steel-chest", "constant-combinator"]);
+    expect(result.circuit?.wires).toHaveLength(1);
+    // A fragment is not judged: what is pasted is judged in the circuit it lands in.
+    expect(analyzeFragment("small-lamp l { }").diagnostics).toEqual([]);
     for (const d of result.diagnostics) seen.add(d.code);
   });
 

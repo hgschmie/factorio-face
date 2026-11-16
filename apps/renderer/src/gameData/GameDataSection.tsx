@@ -135,8 +135,8 @@ export function GameDataSection({ gameData }: GameDataSectionProps) {
         </p>
       )}
       <p className="muted-note">
-        Reading runs your installed game without a window, to list the entities and signals it has with your mods. The app asks before it starts the game and never starts it by itself. Icons
-        of mods are not shown yet: their entities and signals appear with their names.
+        Reading runs your installed game without a window, to list the entities and signals it has with your mods. The app asks before it starts the game and never starts it by itself. A
+        project switches the mods on in its own settings; in a new project they are off. Icons of mods are not shown yet: their entities and signals appear with their names.
       </p>
     </section>
   );

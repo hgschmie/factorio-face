@@ -14,8 +14,9 @@ import { applyData } from "../src/gameData/dataInUse.ts";
 import { CatalogService } from "../src/session/catalogService.ts";
 import { completionCandidates } from "../src/session/completion.ts";
 import { sameTool } from "../src/workbench/controller.ts";
+import { MODDED_MODULES } from "./fixtures/moddedData.ts";
 import { moddedKindsData } from "./fixtures/moddedKinds.ts";
-import { createSession, EMPTY_SOURCE, entityNamed, type TestSession } from "./session/helpers.ts";
+import { createSession, EMPTY_SOURCE, entityNamed, project, type TestSession } from "./session/helpers.ts";
 
 const COMBINATORS = ["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"];
 
@@ -58,8 +59,8 @@ const SOURCE = `circuit "Modded kinds" {
 `;
 
 const reset = (): unknown => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] });
-/** A session on the modded data, which is applied as a window does at start. */
-const modded = (source = EMPTY_SOURCE): TestSession => createSession(source, { data: applyData(moddedKindsData()) });
+/** A session on the modded data, which is applied as a window does at start, with a project that has the mod switched on. */
+const modded = (source = EMPTY_SOURCE): TestSession => createSession(source, { data: applyData(moddedKindsData()), project: project(source, { modules: MODDED_MODULES }) });
 
 describe("modded prototypes of the kinds of the editor", () => {
   let registry: EntityRegistry;
@@ -270,7 +271,7 @@ describe("the name a mod gives its prototype", () => {
   afterAll(reset);
 
   it("is shown as the game writes it where it stands by itself, and in lower case inside a sentence", () => {
-    const { session } = createSession(EMPTY_SOURCE, { data: applyData(moddedKindsData({ "mod-constant": "LTN Combinator", "mod-loader": "AAI Loader (Mk2)" })) });
+    const { session } = createSession(EMPTY_SOURCE, { data: applyData(moddedKindsData({ "mod-constant": "LTN Combinator", "mod-loader": "AAI Loader (Mk2)" })), project: project(EMPTY_SOURCE, { modules: MODDED_MODULES }) });
     const registry = session.state.catalog.entities();
     const ltn = { kind: "constant", prototype: "mod-constant" } as const;
     // The tile of the selector and its popup, the Type field of the inspector, the title of the inspector and the heading of the card.

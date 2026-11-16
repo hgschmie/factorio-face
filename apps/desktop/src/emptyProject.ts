@@ -3,6 +3,11 @@
 import { DEFAULT_CIRCUIT_FILE, PROJECT_FORMAT_VERSION, type ProjectData } from "./ipc.ts";
 
 export const DEFAULT_GAME_VERSION = "2.1.24";
+/**
+ * The modules of the game itself, which a new project has on. With data read from a game the window leaves out the ones that
+ * game did not have loaded (`defaultModules` of the renderer's session); the mods of the game are off until a project
+ * switches them on.
+ */
 export const DEFAULT_MODULES = ["base", "space-age", "quality", "recycler", "elevated-rails"] as const;
 export const DEFAULT_PROJECT_NAME = "Untitled circuit";
 

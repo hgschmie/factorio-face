@@ -15,6 +15,8 @@ export interface CompletionCatalog {
   /** Signals of the enabled modules that a signal slot accepts, without wildcards. */
   selectableSignals(): readonly { readonly id: SignalId; readonly displayName: string }[];
   readonly qualities: readonly { readonly name: string; readonly displayName: string }[];
+  /** Whether an entity of the game data is offered: false for one of a module that is switched off. Without it every entity is. */
+  offersPrototype?(prototype: string): boolean;
   /** The instruments of the speaker with their notes, in the game's order; absent when the catalog has none. */
   readonly speakerInstruments?: readonly { readonly name: string; readonly displayName: string; readonly notes: readonly { readonly name: string; readonly displayName: string }[] }[];
 }
@@ -36,7 +38,9 @@ export function completionCandidates(context: CompletionContext, catalog: Comple
         break;
       case "entity":
         // The word of a declaration: the game's name of an entity, as the printer writes it, with what the game calls it.
-        for (const prototype of expected.prototypes) candidates.push({ label: printName(prototype), type: "entity", detail: entityTable().byName.get(prototype)?.displayName });
+        for (const prototype of expected.prototypes) {
+          if (catalog.offersPrototype?.(prototype) ?? true) candidates.push({ label: printName(prototype), type: "entity", detail: entityTable().byName.get(prototype)?.displayName });
+        }
         break;
       case "property":
         for (const name of expected.names) candidates.push({ label: name, type: "property", detail: PROPERTY_DETAILS.get(expected.kind)?.get(name) });

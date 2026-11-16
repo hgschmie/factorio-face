@@ -1,6 +1,6 @@
 // The project as a file: what was loaded, what is saved, and whether the two differ. Pure; the IPC calls are in the session.
 import { DEFAULT_WIRE_REACH } from "@face/model";
-import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
+import { DEFAULT_MODULES, createEmptyProject } from "../../../desktop/src/emptyProject.ts";
 import type { CircuitFile, LoadedProject, ProjectData, ProjectManifest, ProjectMods } from "../../../desktop/src/ipc.ts";
 
 export const DEFAULT_FILE_NAME = "main.face";
@@ -33,6 +33,19 @@ export interface ProjectFile {
 /** What a session shows before a project is opened: the empty project File > New Project gives, not saved anywhere. */
 export function emptyProject(): LoadedProject {
   return { path: null, data: createEmptyProject() };
+}
+
+/**
+ * The modules a new project has on with the data in use: the game's own, as far as the data has them (a game with Quality
+ * switched off has no such module), in the order of the empty project. Mods are off until the project switches them on.
+ */
+export function defaultModules(catalog: { readonly modules: readonly { readonly name: string }[] }): readonly string[] {
+  return DEFAULT_MODULES.filter((name) => catalog.modules.some((module) => module.name === name));
+}
+
+/** The project with another module list, as it would have been loaded with it. */
+export function withModules(project: LoadedProject, modules: readonly string[]): LoadedProject {
+  return { ...project, data: { ...project.data, manifest: { ...project.data.manifest, modules: [...modules] } } };
 }
 
 export function openProjectFile(project: LoadedProject): { readonly file: ProjectFile; readonly source: string; readonly settings: ProjectSettings } {

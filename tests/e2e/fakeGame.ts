@@ -58,6 +58,14 @@ export async function writeFakeGame({ version = "2.1.24", modules = ["space-age"
   return { folder, dataDirectory };
 }
 
+/** A further mod of the user: what its `info.json` says. The game loads it, and the dump says what it created (`CannedDump.entities`). */
+export interface FakeMod {
+  readonly name: string;
+  readonly version: string;
+  readonly title: string;
+  readonly dependencies?: readonly string[];
+}
+
 export interface FakeProgram {
   /** The program beside the installation's data: what the app starts when it reads the game. */
   readonly executable: string;
@@ -70,19 +78,20 @@ export interface FakeProgram {
 /**
  * Gives an installation its program: the stand-in of the unit tests (apps/desktop/test/support/fakeFactorio.mjs), which
  * writes a canned dump of a game the editor can work with and one mod, each prototype with the mod that created it. Nothing of
- * the real game is started.
+ * the real game is started. `mods` are further mods of the user, each with its archive: the game says it loaded them too.
  */
-export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, behaviour: Partial<FakeGameControl> = {}): Promise<FakeProgram> {
+export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, behaviour: Partial<FakeGameControl> = {}, mods: readonly FakeMod[] = []): Promise<FakeProgram> {
   const executable = executablePath(game.dataDirectory, process.platform);
   if (executable === undefined) throw new Error(`The game has no program on ${process.platform}`);
   const parent = dirname(game.folder);
-  const control: FakeGameControl = { record: join(parent, "starts.jsonl"), dump: await writeCannedDump(join(parent, "dump"), { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3" }, ...dump }), ...behaviour };
+  const control: FakeGameControl = { record: join(parent, "starts.jsonl"), dump: await writeCannedDump(join(parent, "dump"), { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3", ...Object.fromEntries(mods.map((mod) => [mod.name, mod.version])) }, ...dump }), ...behaviour };
   await mkdir(dirname(executable), { recursive: true });
   await writeFakeProgram(executable, control);
   const modDirectory = join(parent, "user", "mods");
   await mkdir(modDirectory, { recursive: true });
-  await writeFile(join(modDirectory, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "some-mod", enabled: true }] }));
+  await writeFile(join(modDirectory, "mod-list.json"), JSON.stringify({ mods: ["base", "some-mod", ...mods.map((mod) => mod.name)].map((name) => ({ name, enabled: true })) }));
   await writeFile(join(modDirectory, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
+  for (const mod of mods) await writeFile(join(modDirectory, `${mod.name}_${mod.version}.zip`), modArchive({ author: "nobody", factorio_version: "2.1", dependencies: ["base >= 2.1"], ...mod }));
   return { executable, control, modDirectory };
 }
 

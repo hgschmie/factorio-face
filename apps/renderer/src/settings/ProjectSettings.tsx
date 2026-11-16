@@ -1,9 +1,11 @@
-// Project settings panel: the project name, the wire reach and the standard modules, shown as the signal groups they contribute.
-// Presentational; enabling and disabling (with dependencies) is decided by the session.
+// Project settings panel: the project name, the wire reach and the modules the project switches (the game's own and, with data
+// read from a game, its mods), shown as the signal groups they contribute. Presentational; enabling and disabling (with
+// dependencies) is decided by the session.
 import { DEFAULT_WIRE_REACH, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE } from "@face/model";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../icons/Icon.tsx";
-import type { CatalogView, ModuleView, ProjectView } from "../workbench/controller.ts";
+import type { CatalogView, ProjectView } from "../workbench/controller.ts";
+import { consequence, FILTER_FROM, filterModules, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote } from "./moduleList.ts";
 import { parseWireReach, WIRE_REACH_ERROR } from "./wireReach.ts";
 
 export interface ProjectSettingsProps {
@@ -12,20 +14,9 @@ export interface ProjectSettingsProps {
   onRename(name: string): void;
   onWireReachChange(wireReach: number): void;
   onModuleChange(name: string, enabled: boolean): void;
+  /** Switches on the modules the project uses although they are off. */
+  onEnableUsedModules(): void;
   close(): void;
-}
-
-function titles(names: readonly string[], modules: readonly ModuleView[]): string {
-  return names.map((name) => modules.find((module) => module.name === name)?.title ?? name).join(", ");
-}
-
-/** What switching this module does to others, or why it cannot be switched. */
-function consequence(module: ModuleView, modules: readonly ModuleView[]): string | null {
-  if (module.missing.length > 0) return `Needs ${titles(module.missing, modules)}, which is switched off`;
-  if (!module.canDisable) return "Always enabled";
-  if (module.enabled && module.disables.length > 0) return `Switching off also switches off ${titles(module.disables, modules)}`;
-  if (!module.enabled && module.enables.length > 0) return `Switching on also switches on ${titles(module.enables, modules)}`;
-  return null;
 }
 
 function NameField({ name, onRename }: { readonly name: string; onRename(name: string): void }) {
@@ -129,8 +120,13 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
   );
 }
 
-export function ProjectSettings({ project, catalog, onRename, onWireReachChange, onModuleChange, close }: ProjectSettingsProps) {
+export function ProjectSettings({ project, catalog, onRename, onWireReachChange, onModuleChange, onEnableUsedModules, close }: ProjectSettingsProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [filter, setFilter] = useState("");
+  const filtered = catalog.modules.length >= FILTER_FROM;
+  const rows = filtered ? filterModules(catalog.modules, filter) : catalog.modules;
+  const offNotice = modulesOffNotice(project.modulesOff, catalog.modules);
+  const otherMods = otherModsNote(catalog.otherMods);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
@@ -170,28 +166,65 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
         <span>Signal groups</span>
         <span>Factorio {catalog.gameVersion}</span>
       </div>
-      {catalog.modulesFixed ? (
-        <p className="muted-note" data-note="modules-fixed">
-          As in your game: the data was read from your game, so everything it had loaded is on and nothing can be switched here. The project keeps its own list for the built-in data.
-        </p>
-      ) : (
-        <p className="muted-note">Signals of a group that is switched off stay in the source and are marked with a warning.</p>
+      <p className="muted-note">Signals and entities of a group that is switched off stay in the source and are marked with a warning.</p>
+      {offNotice !== null && (
+        <div className="modules-off" role="status" data-note="modules-off">
+          <p>{offNotice}</p>
+          <button type="button" className="settings-button" onClick={onEnableUsedModules}>
+            Switch {project.modulesOff.length === 1 ? "it" : "them"} on
+          </button>
+        </div>
       )}
-      <ul className="module-list">
-        {catalog.modules.map((module) => {
+      {filtered && (
+        <input
+          type="search"
+          className="module-filter"
+          aria-label="Filter signal groups"
+          placeholder={`Filter ${catalog.modules.length} groups`}
+          maxLength={100}
+          spellCheck={false}
+          autoComplete="off"
+          value={filter}
+          onChange={(event) => setFilter(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape" || filter === "") return;
+            event.stopPropagation();
+            setFilter("");
+          }}
+        />
+      )}
+      <ul className={filtered ? "module-list scrolling" : "module-list"} aria-label="Signal groups">
+        {rows.map((module) => {
           const note = consequence(module, catalog.modules);
           return (
-            <li key={module.name} className={module.missing.length > 0 ? "invalid" : undefined} data-module={module.name}>
+            <li key={module.name} className={module.missing.length > 0 ? "invalid" : undefined} data-module={module.name} data-game={module.game ? "" : undefined}>
               <label>
                 <input type="checkbox" checked={module.enabled} disabled={!module.canDisable} onChange={(event) => onModuleChange(module.name, event.target.checked)} />
-                <span className="module-title">{module.title}</span>
-                <span className="module-count">{catalog.modulesFixed ? module.version : `${module.signalCount} signals`}</span>
+                <span className="module-title" title={module.name}>
+                  {module.title}
+                </span>
+                <span className="module-count">{moduleCounts(module)}</span>
               </label>
               {note && <small>{note}</small>}
             </li>
           );
         })}
       </ul>
+      {rows.length === 0 && (
+        <p className="muted-note" data-note="no-match">
+          No signal group matches the filter.
+        </p>
+      )}
+      {otherMods !== null && (
+        <p className="muted-note" data-note="other-mods">
+          {otherMods}
+        </p>
+      )}
+      {!project.gameData && (
+        <p className="muted-note" data-note="mods-hint">
+          {MODS_HINT}
+        </p>
+      )}
       {catalog.unknownModules.length > 0 && <p className="muted-note">Not part of this catalog, kept in the project file: {catalog.unknownModules.join(", ")}.</p>}
       {project.madeWith !== null && (
         <p className="muted-note" data-note="made-with">

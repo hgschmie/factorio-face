@@ -1,7 +1,7 @@
 // Project files through the desktop bridge: new, open, save, save as, dirty tracking and what survives a round trip.
 import { describe, expect, it } from "vitest";
 import type { ProjectManifest } from "../../../desktop/src/ipc.ts";
-import { emptyProject, isDirty, openProjectFile, toProjectData } from "../../src/session/persistence.ts";
+import { defaultModules, emptyProject, isDirty, openProjectFile, toProjectData, withModules } from "../../src/session/persistence.ts";
 import { ProjectSession } from "../../src/session/projectSession.ts";
 import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, EMPTY_SOURCE, errorsOf, exampleProject, fakeDesktop, idOf, IRREGULAR, ManualScheduler, MANIFEST, project, type } from "./helpers.ts";
@@ -291,6 +291,21 @@ describe("project file mapping", () => {
   it("starts from the empty project the desktop shell creates for a new one", async () => {
     expect(emptyProject()).toEqual((await fakeDesktop().api.newProject() as { value: unknown }).value);
     expect(emptyProject()).toEqual({ path: null, data: { manifest: { ...MANIFEST, name: "Untitled circuit" }, files: [{ name: "main.face", source: EMPTY_SOURCE }] } });
+  });
+
+  it("gives a new project the game's own modules that the data in use has, and no mod", () => {
+    const modules = (...names: string[]) => ({ modules: names.map((name) => ({ name })) });
+    expect(defaultModules(modules("base", "elevated-rails", "recycler", "quality", "space-age"))).toEqual(MANIFEST.modules);
+    expect(defaultModules(modules("base", "elevated-rails", "recycler", "space-age", "some-mod", "another-mod"))).toEqual(["base", "space-age", "recycler", "elevated-rails"]);
+    expect(defaultModules(modules("base", "some-mod"))).toEqual(["base"]);
+    expect(defaultModules(modules())).toEqual([]);
+    const empty = emptyProject();
+    const adapted = withModules(empty, ["base"]);
+    expect(adapted).toEqual({ path: null, data: { ...empty.data, manifest: { ...empty.data.manifest, modules: ["base"] } } });
+    expect(empty.data.manifest.modules).toEqual(MANIFEST.modules);
+    // It is the project as loaded: nothing is unsaved.
+    const { file, source, settings } = openProjectFile(adapted);
+    expect([settings.modules, isDirty(file, source, settings)]).toEqual([["base"], false]);
   });
 });
 

@@ -82,7 +82,9 @@ function entryOf(prototype: PrototypeName): PaletteEntry {
  * subgroup and order string, which the catalog has for every entity (its signals of kind `entity`; `pickerTree` puts them in
  * that order with the changes a module makes, as it does for the signal picker). Of those the entity table says which ones a
  * circuit wire connects to, which the game hides (the chests of its editor, the loaders) and which module adds them.
- * A module set the catalog cannot order (a hand-edited project file) leaves the groups empty; the pinned row stays.
+ * A tab and a block of rows are there with an entity in them, whichever module created the group or the subgroup (`pickerTree`):
+ * an entity of a mod may sit in a subgroup of another one. Data the catalog cannot order (a signal without its subgroup) leaves
+ * the groups empty; the pinned row stays.
  */
 export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: Iterable<string>): EntityRegistry {
   const active = new Set(enabled);

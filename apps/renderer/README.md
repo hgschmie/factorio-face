@@ -33,6 +33,7 @@ src/
     simulationRunner.ts  compile on change, keep state by semantic fingerprint, timer, bounded history, SimulationView
     simulationView.ts  snapshots to dock traces and card statuses                    (pure)
     catalogService.ts  per module set: SignalResolver, signal info, picker tree, module list for the settings
+    moduleUse.ts       which switched-off modules a source uses (the game data of one analysis, recording)
     environment.ts     simulation environment from the catalog (order, stack sizes, rocket capacity, qualities)   (pure)
     persistence.ts     project file mapping, dirty comparison, the empty project a session begins with   (pure)
     blueprints.ts      blueprints of the game: what a pasted text or a file holds, the list of a book, the wording of the import
@@ -102,7 +103,8 @@ src/
   picker/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
   settings/
-    ProjectSettings.tsx  project name, wire reach and the five standard modules as signal groups
+    ProjectSettings.tsx  project name, wire reach and the modules of the project as signal groups (the game's, and the mods of a game that was read)
+    moduleList.ts        the module list in words: row notes, counts, filter, the notes around the list
     wireReach.ts       the text of the wire reach field as a number in range   (pure)
     AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from, the game data (modal)
     appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
@@ -151,7 +153,7 @@ interface WorkbenchController {
 
 `WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
-(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, modulesFixed, qualities,
+(`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, otherMods, unknownModules, qualities,
 `speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
@@ -159,7 +161,7 @@ below).
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
 `toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `placeHere`, `unplace`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
-`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
+`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `enableUsedModules`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
 `loadProject`, `openExample`, `save`, `saveAs`) and blueprints (`readBlueprint`, `openBlueprint`, `chooseBlueprintFile`, `exportBlueprint`,
 `saveBlueprintFile`; see "Blueprints of the game").
 
@@ -301,6 +303,20 @@ simulation (`run`, `pause`,
 - **Catalog.** `CatalogService` is rebuilt when the project's module list changes. It is the language's `SignalResolver` (unknown and
   disabled signals are warnings; text is never touched), the source of names and icon ids, and the picker tree. `SignalField` receives
   the wildcards its slot accepts (`SIGNAL_SLOTS` of the language) and the picker offers no others.
+- **Modules.** The enabled modules are the project's list (`modules` of `face.json`), whatever data is in use; `base` is on in any
+  case. What the project switches (`CatalogView.modules`, `listedModules` of the catalog package) is the game's own modules that
+  the data has and, with data read from a game, every mod that a signal or a record of the entity table names as its module; the
+  other mods are counted (`otherMods`), never listed and never written into a project. A module switches on with what it requires
+  and recommends and off with what requires it, also through mods that are not listed. Names of the project file that are not in
+  the list are kept at its end; those the data does not know at all are shown (`unknownModules`).
+  A signal or an entity of a module that is off stays in the source and is parsed, drawn, simulated and exported; it gets a warning
+  that names the module by its title (`disabled-signal`, `disabled-prototype`; the service is the language's `SignalResolver`
+  and has its `PrototypeResolver` as `prototypes`) and is not offered: not in the picker, not in the selector (`registry.offers`),
+  not in the Type field (`alternativePrototypes`), not in the completion (`offersPrototype`). Every analysis runs on a recording
+  stand-in (`moduleUse`), so the session knows which switched-off modules the source uses: `ProjectView.modulesOff`, which
+  `enableUsedModules` switches on, each with what it requires, as one change of the settings.
+  A new project (the one the window starts with, File > New Project) has `defaultModules`: the game's own modules that the data in
+  use has, in the order of the empty project, and no mod. An existing project is opened with the list it has.
 - **Simulation.** `SimulationRunner` compiles each new valid circuit with the catalog environment. If `semanticFingerprint` is unchanged
   (moves, renames, comments) the running engine, its tick and its history stay; otherwise it starts at tick 0. It has no reference to the
   document, so no simulation activity can create an edit. While the source has errors it is blocked with a notice and resumes afterwards.
@@ -929,6 +945,10 @@ session has five commands for it. `Workbench` holds which of the four dialogs is
   its tile) and it counts as changed until it is saved (`neverSaved`), so Save asks for a location, the window asks before it closes,
   and it is not a recent project. The prompt for unsaved changes of the project it replaces comes first; `openBlueprint` resolves
   false when the user kept that project. The speaker's instruments are those of the modules a new project has.
+  The modules of the project are those of a new one and every module that a signal or an entity of the circuit is of, with what
+  those require and without what they only recommend (`importModules` of the session: the printed circuit is analyzed against the
+  modules of a new project, and what turns out to be off is switched on). What that adds is in the report under "Signal groups":
+  "Switched on: Some Mod, ...", by title, twelve at most by name. A blueprint that arrives whole and needs nothing more has no report.
 - **The paste dialog** (`ImportBlueprint`, dialog "Paste blueprint string"): a text box that starts with the focus, read on every
   change (`useDeferredValue`, so typing does not wait for a long string). Below it, while the box is not blank: the error
   (`[data-message="error"]`, the box is `aria-invalid`), or what the blueprint is (`[data-message="blueprint"]`: `"Name": 4 entities.`
@@ -996,13 +1016,22 @@ in a native dialog of its own before it starts the game.
   one of an earlier format, which asks for the game to be read again. The
   workbench shows that reason at the right end of the title bar (`.data-hint`, with "Game data..." and a dismiss button), in place of
   the icon hint.
-- **The session** gets the `DataInUse` (`SessionOptions.data`). With data read from a game the catalog is of one set:
-  `CatalogService` is created `fixed`, all modules of the catalog are on, `CatalogView.modulesFixed` is true, `setModuleEnabled` does
-  nothing, and the project settings show the modules checked and disabled with the note "As in your game" (`[data-note="modules-fixed"]`)
-  and each module's version in place of a signal count; a mod is listed by the title of its `info.json`. The records of such data
-  name the mod that created them (`modules`) and the catalog's head has each mod's hard dependencies (`requires`); with everything
-  on that changes nothing, and nothing switches by it yet. The module list of the project file is not touched and is written back as it
-  was read.
+- **The session** gets the `DataInUse` (`SessionOptions.data`). With data read from a game the catalog is of one set, each
+  record of which names the mod that created it (`modules`), and the catalog's head has each mod's title and dependencies. The
+  project switches those mods like the game's own modules (see "Modules" above): one list with one meaning, whatever data is in
+  use. A new project has the game's own modules on and the mods off; a project saved before the mods could be switched has no mod
+  in its list and opens with the warnings and the button below, without a conversion. `ProjectView.gameData` says that the data
+  was read from a game.
+- **The module list in the project settings** (`ProjectSettings.tsx`, in words by `settings/moduleList.ts`). One row per module
+  (`.module-list li[data-module]`, the game's own first, `data-game`): the checkbox, the title (a mod's own text, rendered as text
+  and cut by the row), "N signals" with ", M entities" where it adds some to the selector (`.module-count`), and the note of what
+  switching it does ("Switching on also switches on ...", "Always enabled" for `base`). From eleven rows on the list scrolls by
+  itself (`.module-list.scrolling`) and has a filter field above it ("Filter signal groups": title or name, any case; Escape
+  empties it; `[data-note="no-match"]`). Below the list: the mods that are not in it, counted (`[data-note="other-mods"]`, "14
+  other mods of your game add no signals or entities."); with the built-in data the line that the mods of the game appear here
+  after the game has been read in the application settings (`[data-note="mods-hint"]`); and the names the data does not know.
+  Above the list, when the project uses signals or entities of modules that are off (`[data-note="modules-off"]`): which, by
+  title and counted after four, and the button "Switch them on" (`enableUsedModules`).
 - **The record of the mods** (`gameData/projectMods.ts`). `toProjectData` gets `modsRecord(data)`: the game version and what the game
   had loaded, when the data was read from a game with at least one mod; it replaces the project's `gameMods`. Otherwise the record
   the project was loaded with is written back unchanged. When a project is loaded, `modsNotice` compares its record with the data in

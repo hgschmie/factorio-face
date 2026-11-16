@@ -146,14 +146,17 @@ describe("entity registry", () => {
     expect(spaceAge.entries.flatMap((entry) => keyedKindOf(entry) ?? [])).toEqual(["constant", "arithmetic", "decider", "selector", "lamp"]);
   });
 
-  it("is a function of its tables: another entity table gives other tabs, and a module set the catalog cannot order none", () => {
+  it("is a function of its tables: another entity table gives other tabs, and a module without the ones it needs keeps its tabs", () => {
     const fewer: EntityTable = { ...STANDARD_ENTITY_TABLE, entities: STANDARD_ENTITY_TABLE.entities.filter((game) => game.type !== "inserter"), byName: new Map([...STANDARD_ENTITY_TABLE.byName].filter(([, game]) => game.type !== "inserter")) };
     expect(Object.keys(rows(registryFor(SPACE_AGE, fewer), "logistics"))).not.toContain("inserter");
     expect(registryFor(SPACE_AGE, fewer).entries).toHaveLength(79);
-    // Space Age without the modules it needs: its subgroups have no group. The pinned row stays.
-    const broken = registryFor(["space-age"]);
-    expect(broken.groups).toEqual([]);
-    expect(broken.pinned.map((entry) => entry.prototype)).toEqual(COMBINATORS);
+    // Space Age without the modules it needs: its entities are in the subgroups and groups of `base` all the same, which are
+    // there with something in them. The pinned row stays.
+    const alone = registryFor(["space-age"]);
+    expect(alone.groups.map((group) => group.name)).toEqual(["logistics", "production", "space", "combat"]);
+    expect(rows(alone, "logistics")).toEqual({ belt: ["turbo-transport-belt", "turbo-splitter"], inserter: ["stack-inserter"] });
+    expect(rows(alone, "space")).toEqual({ "space-platform": ["space-platform-hub", "asteroid-collector", "crusher"] });
+    expect(alone.pinned.map((entry) => entry.prototype)).toEqual(COMBINATORS);
   });
 });
 

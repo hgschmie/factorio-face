@@ -55,6 +55,23 @@ export interface ImportReportView {
   readonly settings: readonly ReportNote[];
   /** Warnings about the blueprint as a whole, and what of it is not kept. */
   readonly remarks: readonly string[];
+  /** What the project has on that a new one has not, in a line: "Switched on: Some Mod." None when nothing was. */
+  readonly modules: readonly string[];
+}
+
+/** The modules of the project an imported circuit opens as, and the titles of those among them that a new project has off. */
+export interface ImportModules {
+  readonly modules: readonly string[];
+  readonly switchedOn: readonly string[];
+}
+
+/** Modules named in the report before it says how many more there are; a title is a mod's own text and is cut like a name. */
+const MODULES_NAMED = 12;
+
+function switchedOnLine(titles: readonly string[]): string {
+  const more = titles.length - MODULES_NAMED;
+  const named = `${titles.slice(0, MODULES_NAMED).map((title) => clip(title)).join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+  return `Switched on: ${named}. The blueprint has ${titles.length === 1 ? "its" : "their"} signals or entities; a new project has only the modules of the game itself on.`;
 }
 
 const NOTE_WORDS: Readonly<Record<NoteKind, string>> = { ignored: "Ignored", invalid: "Invalid", changed: "Changed", reset: "Reset" };
@@ -65,10 +82,11 @@ export function noteWord(kind: NoteKind): string {
 }
 
 /**
- * The report of an import, or null when the blueprint arrived whole. The icons of a blueprint are not worth a report: every blueprint
- * of the game has them and an export makes new ones.
+ * The report of an import, or null when the blueprint arrived whole and the project it opens as has the modules of a new one.
+ * `switchedOn` are the titles of the modules it has on beyond those. The icons of a blueprint are not worth a report: every
+ * blueprint of the game has them and an export makes new ones.
  */
-export function importReport(report: ImportReport): ImportReportView | null {
+export function importReport(report: ImportReport, switchedOn: readonly string[] = []): ImportReportView | null {
   const dropped = report.dropped.slice(0, REPORT_LINES).map(({ name, count: amount, reason }) => `${amount} x ${clip(name)}${reason === "invalid" ? " (without a usable entity number or position)" : ""}`);
   const unlisted = report.dropped.slice(REPORT_LINES);
   if (unlisted.length > 0) dropped.push(`${count(unlisted.reduce((sum, entry) => sum + entry.count, 0), "entity", "entities")} of ${count(unlisted.length, "more prototype")}`);
@@ -88,10 +106,11 @@ export function importReport(report: ImportReport): ImportReportView | null {
     ...(report.settings.length > REPORT_LINES ? [`${count(report.settings.length - REPORT_LINES, "more note")} on settings ${report.settings.length - REPORT_LINES === 1 ? "is" : "are"} not listed.`] : []),
     ...(ignored.length > 0 ? [`Not kept from the blueprint itself: ${clip(ignored.map((field) => clip(field)).join(", "), MESSAGE_LENGTH)}.`] : []),
   ];
-  if (dropped.length + wires.length + settings.length + remarks.length === 0) return null;
+  const modules = switchedOn.length > 0 ? [switchedOnLine(switchedOn)] : [];
+  if (dropped.length + wires.length + settings.length + remarks.length + modules.length === 0) return null;
   const total = report.entities + report.dropped.reduce((sum, entry) => sum + entry.count, 0);
   const entities = total === report.entities ? count(total, "entity", "entities") : `${report.entities} of ${count(total, "entity", "entities")}`;
-  return { summary: `Imported ${entities} and ${count(report.wires.imported, "wire")}.`, dropped, wires, settings, remarks };
+  return { summary: `Imported ${entities} and ${count(report.wires.imported, "wire")}.`, dropped, wires, settings, remarks, modules };
 }
 
 /** One line of the list of a blueprint book: an item of the book, in the order and the nesting of the book. */
@@ -133,6 +152,8 @@ export interface ImportedBlueprint {
   /** How many entities the circuit has, and how many the blueprint had. */
   readonly entities: number;
   readonly total: number;
+  /** The modules of the project it opens as; those of the empty project when absent. */
+  readonly modules?: readonly string[];
   readonly report: ImportReportView | null;
 }
 
@@ -152,9 +173,10 @@ export function importedProjectName(label: string): string {
 /**
  * What a text holds: a blueprint string or the plain JSON of one, pasted or read from a file. The text is untrusted; the importer
  * bounds its size and never throws. `select` names a blueprint of a book (`BookRow.path`). A blueprint without an entity the editor
- * knows is an error: there is nothing to open.
+ * knows is an error: there is nothing to open. `modulesOf` says which modules the source of the circuit needs (the session knows
+ * the catalog); without it the project gets those of the empty project.
  */
-export function readBlueprint(text: string, instruments: readonly SpeakerInstrument[], select?: readonly number[]): BlueprintReading {
+export function readBlueprint(text: string, instruments: readonly SpeakerInstrument[], select?: readonly number[], modulesOf?: (source: string) => ImportModules): BlueprintReading {
   const result = importBlueprintString(text, { instruments, ...IMPORT_SCALE, select });
   if (!result.ok) {
     const message = sentence(result.message);
@@ -167,13 +189,17 @@ export function readBlueprint(text: string, instruments: readonly SpeakerInstrum
     const message = total === 0 ? "This blueprint has no entities." : `The editor knows none of the ${count(total, "entity", "entities")} of this blueprint (${names}${report.dropped.length > 5 ? ", ..." : ""}), so there is nothing to import.`;
     return { kind: "error", message };
   }
-  return { kind: "blueprint", blueprint: { name: importedProjectName(circuit.name), source: printCircuit(circuit), entities: circuit.entities.length, total, report: importReport(report) } };
+  const source = printCircuit(circuit);
+  const needed = modulesOf?.(source);
+  const blueprint: ImportedBlueprint = { name: importedProjectName(circuit.name), source, entities: circuit.entities.length, total, ...(needed && { modules: needed.modules }), report: importReport(report, needed?.switchedOn) };
+  return { kind: "blueprint", blueprint };
 }
 
-/** The project an imported blueprint opens as: the empty project with the name of the blueprint and its circuit. It has no file. */
-export function importedProject(empty: ProjectData, blueprint: Pick<ImportedBlueprint, "name" | "source">): LoadedProject {
+/** The project an imported blueprint opens as: the empty project with the name of the blueprint, its circuit and the modules that needs. It has no file. */
+export function importedProject(empty: ProjectData, blueprint: Pick<ImportedBlueprint, "name" | "source" | "modules">): LoadedProject {
   const fileName = empty.manifest.circuits[0] ?? DEFAULT_FILE_NAME;
-  return { path: null, data: { manifest: { ...empty.manifest, name: blueprint.name, circuits: [fileName] }, files: [{ name: fileName, source: blueprint.source }] } };
+  const modules = blueprint.modules ? [...blueprint.modules] : empty.manifest.modules;
+  return { path: null, data: { manifest: { ...empty.manifest, name: blueprint.name, modules, circuits: [fileName] }, files: [{ name: fileName, source: blueprint.source }] } };
 }
 
 // Export

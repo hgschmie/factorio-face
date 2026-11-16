@@ -1,6 +1,7 @@
 // Bringing a blueprint of the game in. The game has no blueprint files: it shows a text box to copy a blueprint string from, so the
 // dialog here has a text box to paste one into. The same dialog shows what is in the way of a file the user chose, and the
-// blueprints of a blueprint book to choose from. After an import that left something out, a second dialog reports it.
+// blueprints of a blueprint book to choose from. After an import that left something out, or that switched on mods of the
+// game, a second dialog reports it.
 // Presentational: reading the text and opening the project are the session's.
 import { useDeferredValue, useId, useMemo, useState } from "react";
 import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
@@ -152,7 +153,7 @@ export interface ImportReportProps {
   close(): void;
 }
 
-/** What an import left out or changed: shown once, after the blueprint is open. */
+/** What an import left out, changed or switched on: shown once, after the blueprint is open. */
 export function ImportReport({ name, report, close }: ImportReportProps) {
   const list = (label: string, lines: readonly string[]) =>
     lines.length > 0 && (
@@ -170,6 +171,7 @@ export function ImportReport({ name, report, close }: ImportReportProps) {
       <p className="blueprint-summary" data-message="summary">
         "{name}": {report.summary}
       </p>
+      {list("Signal groups", report.modules)}
       {list("Dropped entities", report.dropped)}
       {list("Wires", report.wires)}
       {report.settings.length > 0 && (

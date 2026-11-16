@@ -473,6 +473,7 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
           onRename={commands.setProjectName}
           onWireReachChange={commands.setWireReach}
           onModuleChange={commands.setModuleEnabled}
+          onEnableUsedModules={commands.enableUsedModules}
           close={closeSettings}
         />
       )}

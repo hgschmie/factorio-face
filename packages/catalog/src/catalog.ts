@@ -176,6 +176,11 @@ export interface PickerGroup {
 /**
  * The signal picker for a module set, organised like the in-game dialog: groups (tabs), subgroups (row blocks) and
  * signals, each level in game order. Groups and subgroups without signals are omitted.
+ *
+ * A subgroup is there whenever a signal that exists sits in it, and a group whenever such a subgroup sits in it, whichever
+ * module created the subgroup or the group: in data read from a game, signals of one mod sit in subgroups of another that
+ * theirs does not require, and signals of `base` in subgroups of Space Age. So no set of modules throws; only a signal whose
+ * subgroup, or a subgroup whose group, the catalog does not have at all does.
  */
 export function pickerTree(catalog: Catalog, enabled: Iterable<string>, options: PickerOptions = {}): PickerGroup[] {
   const active = enabledSet(enabled);
@@ -193,7 +198,7 @@ export function pickerTree(catalog: Catalog, enabled: Iterable<string>, options:
   const byGroup = new Map<string, PickerSubgroup[]>();
   for (const [name, signals] of bySubgroup) {
     const stored = catalog.subgroupsByName.get(name);
-    if (!stored || !isAvailable(stored, active)) throw new Error(`Signals reference subgroup "${name}", which does not exist for the enabled modules`);
+    if (!stored) throw new Error(`Signals reference subgroup "${name}", which the catalog does not have`);
     const subgroup = applyVariants(stored, active);
     signals.sort((a, b) => compareText(a.order, b.order) || (KIND_INDEX.get(a.kind) ?? 99) - (KIND_INDEX.get(b.kind) ?? 99) || compareText(a.name, b.name));
     const list = byGroup.get(subgroup.group);
@@ -203,7 +208,7 @@ export function pickerTree(catalog: Catalog, enabled: Iterable<string>, options:
   const tree: PickerGroup[] = [];
   for (const [name, subgroups] of byGroup) {
     const stored = catalog.groupsByName.get(name);
-    if (!stored || !isAvailable(stored, active)) throw new Error(`Subgroups reference group "${name}", which does not exist for the enabled modules`);
+    if (!stored) throw new Error(`Subgroups reference group "${name}", which the catalog does not have`);
     subgroups.sort((a, b) => compareOrdered(a.subgroup, b.subgroup));
     tree.push({ group: applyVariants(stored, active), subgroups });
   }

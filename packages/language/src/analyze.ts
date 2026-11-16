@@ -1,7 +1,8 @@
 // Semantic analysis: CST -> Circuit, diagnostics, source map and stable entity identity.
 
 import {
-  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, hasTerminal, isInt32, isTileCenter,
+  BOTH_NETWORKS, canRotate, COMPARATORS, conditionKey, conditionRole, DEFAULT_ENTITY, DEFAULT_WIRE_REACH, describeWireDistance, describeWireReach, facingOf, findTileOverlaps, gamePrototype, hasTerminal, isInt32,
+  isTileCenter,
   normalizedSettings, normalizeWire, prototypeData, settingSpecsOf, signalKey, SPEAKER_VOLUME_RANGE, TERMINALS, tileCenter, tileOrigin, tileSize, UNSET_CONDITION, wildcardOf, wildcardSignal, WILDCARDS, wireEndsNoun, wireKey, wireSpan,
   withArticle,
   type ArithmeticOperation, type Circuit, type Comparator, type Condition, type ConditionValue, type ConstantFilter, type ConstantSection, type DeciderCondition, type DeciderOutput, type Direction,
@@ -24,10 +25,35 @@ import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts"
 /** Catalog awareness is injected; the language itself knows no signal names. */
 export interface SignalResolver {
   status(id: SignalId): "known" | "unknown" | "disabled";
+  /**
+   * For a disabled signal: the titles of the modules it is of that are switched off, which its warning names. None, or no such
+   * method, where there is no module to name (another module removes the signal): the warning then says it in general.
+   */
+  switchedOff?(id: SignalId): readonly string[];
+}
+
+/** The modules of the entities, injected like those of the signals: an entity of the game data in use may be of a module that the project has switched off. */
+export interface PrototypeResolver {
+  /** The titles of the modules the entity is of that are switched off; none when it is available. */
+  switchedOff(prototype: PrototypeName): readonly string[];
+}
+
+/** Modules named in one warning; a title is a text of a mod, so it is cut to `MAX_TITLE` characters as well. */
+const MAX_MODULES_NAMED = 3;
+const MAX_TITLE = 80;
+
+/** "Space Age, which is switched off" / "Space Age and Quality, which are switched off", with the titles bounded. */
+function switchedOffText(titles: readonly string[]): string {
+  const named = titles.slice(0, MAX_MODULES_NAMED).map((title) => (title.length > MAX_TITLE ? `${title.slice(0, MAX_TITLE)}...` : title));
+  const more = titles.length - named.length;
+  const list = more > 0 ? `${named.join(", ")} and ${more} more` : named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
+  return `${list}, which ${titles.length > 1 ? "are" : "is"} switched off in the project settings`;
 }
 
 export interface AnalyzeOptions {
   readonly signals?: SignalResolver;
+  /** Without it no entity gets the warning `disabled-prototype`. */
+  readonly prototypes?: PrototypeResolver;
   /** The instruments of the game's speaker with their notes (game data); without them the names in a speaker are not checked. */
   readonly instruments?: readonly SpeakerInstrument[];
   /**
@@ -207,7 +233,7 @@ function describeValues(spec: PropertySpec): string {
 class Analyzer {
   readonly diagnostics: Diagnostic[] = [];
 
-  constructor(private readonly resolver: SignalResolver | undefined, private readonly instruments?: readonly SpeakerInstrument[]) {}
+  constructor(private readonly resolver: SignalResolver | undefined, private readonly instruments?: readonly SpeakerInstrument[], private readonly prototypes?: PrototypeResolver) {}
 
   report(range: Range, code: DiagnosticCode, message: string): void {
     this.diagnostics.push(diagnostic(range, code, message));
@@ -249,7 +275,16 @@ class Analyzer {
   private resolve(range: Range, id: SignalId, label: string): void {
     const status = this.resolver?.status(id) ?? "known";
     if (status === "unknown") this.report(range, "unknown-signal", `Unknown ${label}`);
-    else if (status === "disabled") this.report(range, "disabled-signal", `The ${label} belongs to a disabled module or group`);
+    else if (status === "disabled") {
+      const titles = this.resolver?.switchedOff?.(id) ?? [];
+      this.report(range, "disabled-signal", titles.length > 0 ? `The ${label} is of ${switchedOffText(titles)}` : `The ${label} belongs to a disabled module or group`);
+    }
+  }
+
+  /** An entity of a module that is switched off stays what it is, with a warning on its word. */
+  private checkModules(node: CstEntity): void {
+    const titles = this.prototypes?.switchedOff(node.prototype) ?? [];
+    if (titles.length > 0) this.report(node.word, "disabled-prototype", `'${node.prototype}' (${gamePrototype(node).displayName}) is an entity of ${switchedOffText(titles)}`);
   }
 
   slot(token: Token | undefined, slot: SignalSlot): SignalId | undefined {
@@ -405,6 +440,7 @@ class Analyzer {
   entity(node: CstEntity, id: EntityId, name: string, position: Point): Entity {
     const statements = node.body?.statements ?? [];
     const { kind, prototype } = node;
+    this.checkModules(node);
     const operation = kind === "selector" ? this.selectorOperation(statements) : undefined;
     const sorted = this.sort(kind, statements, false, kind === "entity" ? prototype : operation);
     const tile = this.point(node.tile, false);
@@ -1021,7 +1057,7 @@ function sortDiagnostics(...lists: readonly (readonly Diagnostic[])[]): Diagnost
  */
 export function analyze(source: string, previous?: ParseResult, options: AnalyzeOptions = {}): ParseResult {
   const syntax = parse(source);
-  const analyzer = new Analyzer(options.signals, options.instruments);
+  const analyzer = new Analyzer(options.signals, options.instruments, options.prototypes);
   const { entityNodes, entities, wires, sources, match } = analyzeMembers(syntax.cst.circuit?.members ?? [], syntax.cst.circuit?.passed ?? [], analyzer, previous?.identity);
   checkPlacement(entityNodes, entities, analyzer);
   checkWireReach(sources.wires, entities, options.wireReach ?? DEFAULT_WIRE_REACH, analyzer);

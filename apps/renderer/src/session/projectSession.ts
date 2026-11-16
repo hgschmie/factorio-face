@@ -11,7 +11,6 @@ import { currentCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
 import { canRotate, DEFAULT_FACING, facingOf, isPrototypeName, isWireReach, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point, type PrototypeName } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
-import { DEFAULT_MODULES } from "../../../desktop/src/emptyProject.ts";
 import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
@@ -24,14 +23,17 @@ import {
   type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
 import { Analysis } from "./analysis.ts";
-import { exportCircuit, importedProject, INVALID_SOURCE_PROBLEM, readBlueprint } from "./blueprints.ts";
+import { exportCircuit, importedProject, INVALID_SOURCE_PROBLEM, readBlueprint, type ImportModules } from "./blueprints.ts";
 import { CatalogService } from "./catalogService.ts";
 import { clipboardText, pasteShift, readClipboardText } from "./clipboard.ts";
 import { SourceDocument } from "./document.ts";
 import { checkDraft, normalizeEntity } from "./drafts.ts";
 import { languageSupport, lintTransaction } from "./editorSupport.ts";
 import { createCatalogEnvironment } from "./environment.ts";
-import { emptyProject, isDirty, neverSaved, openProjectFile, PROJECT_NAME_LIMIT, savedProjectFile, toProjectData, type ProjectFile, type ProjectSettings } from "./persistence.ts";
+import { moduleUse, modulesUsedOff } from "./moduleUse.ts";
+import {
+  defaultModules, emptyProject, isDirty, neverSaved, openProjectFile, PROJECT_NAME_LIMIT, savedProjectFile, toProjectData, withModules, type ProjectFile, type ProjectSettings,
+} from "./persistence.ts";
 import { SimulationRunner, type Scheduler } from "./simulationRunner.ts";
 
 const NO_DESKTOP = "Projects can only be opened and saved in the desktop app.";
@@ -39,6 +41,7 @@ const LAST_PROJECT_NOT_REOPENED = "The last project could not be reopened.";
 const NOT_A_FRAGMENT = "Nothing was pasted: the clipboard does not hold entities of a circuit.";
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
 const NO_WIRES: readonly string[] = [];
+const NO_MODULES: readonly string[] = [];
 
 function sameList(a: readonly string[], b: readonly string[]): boolean {
   return a.length === b.length && a.every((item, index) => item === b[index]);
@@ -50,14 +53,14 @@ export interface SessionOptions {
   readonly catalog?: Catalog;
   /**
    * Where the catalog and the model's entity table come from (`loadDataInUse`, which has applied them). With data read from a
-   * game the modules are fixed, a save records the game's mods in the project file, and a project that was made with another
-   * game says so when it is opened. Defaults to the built-in data.
+   * game a save records the game's mods in the project file, and a project that was made with another game says so when it is
+   * opened. Defaults to the built-in data.
    */
   readonly data?: DataInUse;
   /** Editor behaviour and appearance added to the document state. Defaults to the workbench's editor chrome. */
   readonly editorExtensions?: Extension;
   readonly scheduler?: Scheduler;
-  /** The project to start with. Defaults to an empty, unsaved project. */
+  /** The project to start with. Defaults to an empty, unsaved project with the modules of a new one. */
   readonly project?: LoadedProject;
 }
 
@@ -74,15 +77,15 @@ export class ProjectSession {
   private readonly api: FaceApi | undefined;
   private readonly catalog: Catalog;
   private readonly data: DataInUse;
-  /** The catalog is of one game as it was loaded: its modules are all on. */
-  private readonly fixedModules: boolean;
   private readonly analysis = new Analysis();
   private services: CatalogService;
   private file: ProjectFile;
   private settings: ProjectSettings;
   private epoch = 0;
-  /** The speaker's instruments as a new project has them, which is what an imported blueprint opens as. Made on first use. */
-  private importInstruments: CatalogService["instruments"] | undefined;
+  /** The catalog as a new project has it, which is what an imported blueprint starts from. Made on first use. */
+  private importServices: CatalogService | undefined;
+  /** The modules the source uses although they are off, as the latest analysis found them. */
+  private modulesOff: readonly string[] = NO_MODULES;
   /** Set once the start has asked for the last project; settles when that is on show or it is clear that the empty project stays. */
   private started: Promise<void> | undefined;
 
@@ -116,8 +119,7 @@ export class ProjectSession {
     this.api = options.api;
     this.catalog = options.catalog ?? currentCatalog();
     this.data = options.data ?? builtInData();
-    this.fixedModules = this.data.source.kind === "game";
-    const { file, source, settings } = openProjectFile(options.project ?? emptyProject());
+    const { file, source, settings } = openProjectFile(options.project ?? this.asNew(emptyProject()));
     this.file = file;
     this.settings = settings;
     this.services = this.servicesFor(settings.modules);
@@ -195,7 +197,10 @@ export class ProjectSession {
     const dirty = isDirty(this.file, this.document.text, this.settings);
     const record = this.file.manifest.gameMods;
     const madeWith = record ? describeRecord(record) : null;
-    const project: ProjectView = { name: this.settings.name, path: this.file.path, fileName: this.file.fileName, dirty, wireReach: this.settings.wireReach, epoch: this.epoch, madeWith, modsNotice: this.modsNotice() };
+    const project: ProjectView = {
+      ...{ name: this.settings.name, path: this.file.path, fileName: this.file.fileName, dirty, wireReach: this.settings.wireReach, epoch: this.epoch },
+      ...{ madeWith, modsNotice: this.modsNotice(), gameData: this.data.source.kind === "game", modulesOff: this.modulesOff },
+    };
     // The view keeps its identity while nothing in it changed.
     const shown = this.projectView;
     if (!shown || (Object.keys(project) as (keyof ProjectView)[]).some((key) => project[key] !== shown[key])) this.projectView = project;
@@ -221,7 +226,27 @@ export class ProjectSession {
   }
 
   private servicesFor(modules: readonly string[]): CatalogService {
-    return new CatalogService(this.catalog, modules, this.fixedModules);
+    return new CatalogService(this.catalog, modules);
+  }
+
+  private freshServices(): CatalogService {
+    return (this.importServices ??= this.servicesFor(defaultModules(this.catalog)));
+  }
+
+  /** The empty project as a new one is with the data in use: the game's own modules that the data has are on, mods are off. */
+  private asNew(empty: LoadedProject): LoadedProject {
+    return withModules(empty, defaultModules(this.catalog));
+  }
+
+  /**
+   * The modules an imported circuit opens with: those of a new project, and every module a signal or an entity of the circuit
+   * is of, with what it requires. `switchedOn` are the titles of what that adds.
+   */
+  private importModules(source: string): ImportModules {
+    const fresh = this.freshServices();
+    const modules = fresh.withModulesOn(modulesUsedOff(source, fresh));
+    if (!modules) return { modules: fresh.requested, switchedOn: NO_MODULES };
+    return { modules, switchedOn: modules.filter((name) => !fresh.enabled.includes(name)).map((name) => fresh.titleOf(name)) };
   }
 
   /** What the game the project was made with had that the data in use has not; null without a record or a difference. */
@@ -258,7 +283,11 @@ export class ProjectSession {
   }
 
   private analyze(): void {
-    this.acceptAnalysis(this.analysis.request(this.document.text, this.document.version, this.services, this.settings.wireReach));
+    const use = moduleUse(this.services);
+    const result = this.analysis.request(this.document.text, this.document.version, use.game, this.settings.wireReach);
+    const off = use.off();
+    if (!sameList(off, this.modulesOff)) this.modulesOff = off;
+    this.acceptAnalysis(result);
   }
 
   /**
@@ -543,6 +572,10 @@ export class ProjectSession {
         const modules = this.services.withModule(name, enabled);
         if (modules) this.applySettings({ ...this.settings, modules });
       }),
+      enableUsedModules: changing(() => {
+        const modules = this.services.withModulesOn(this.modulesOff);
+        if (modules) this.applySettings({ ...this.settings, modules });
+      }),
       setProjectName: changing((name) => {
         const trimmed = name.trim().slice(0, PROJECT_NAME_LIMIT);
         if (trimmed !== "" && trimmed !== this.settings.name) this.settings = { ...this.settings, name: trimmed };
@@ -551,7 +584,10 @@ export class ProjectSession {
         if (isWireReach(wireReach) && wireReach !== this.settings.wireReach) this.applySettings({ ...this.settings, wireReach });
       }),
 
-      newProject: async () => void (await this.replaceProject((api) => api.newProject())),
+      newProject: async () => void (await this.replaceProject(async (api) => {
+        const empty = await api.newProject();
+        return empty.ok ? { ok: true, value: this.asNew(empty.value) } : empty;
+      })),
       openProject: async () => void (await this.replaceProject((api) => api.openProject())),
       loadProject: async (path) => void (await this.replaceProject((api) => api.loadProject(path))),
       openExample: async (file) => void (await this.replaceProject((api) => api.openExample(file))),
@@ -568,12 +604,12 @@ export class ProjectSession {
         return this.unwrap(await api.applyGameData()) !== undefined;
       },
 
-      readBlueprint: (text, select) => readBlueprint(text, (this.importInstruments ??= this.servicesFor(DEFAULT_MODULES).instruments), select),
+      readBlueprint: (text, select) => readBlueprint(text, this.freshServices().instruments, select, (source) => this.importModules(source)),
       // The main process hands out the empty project and learns by it that the window shows a project without a file.
       openBlueprint: (blueprint) =>
         this.replaceProject(async (api) => {
           const empty = await api.newProject();
-          return empty.ok ? { ok: true, value: importedProject(empty.value.data, blueprint) } : empty;
+          return empty.ok ? { ok: true, value: importedProject(this.asNew(empty.value).data, blueprint) } : empty;
         }, true),
       chooseBlueprintFile: async () => {
         const api = this.api;

@@ -1,6 +1,14 @@
-// Dependency-aware enabling and disabling of modules (the five standard modules act as signal groups).
+// Dependency-aware enabling and disabling of modules: the game's own five and, with data read from a game, its mods.
 
-import type { ModuleInfo, ModuleScoped } from "./types.ts";
+import { STANDARD_MODULES, type ModuleInfo, type ModuleScoped } from "./types.ts";
+
+/** The module no game is without: it is on whatever a project lists. */
+export const BASE_MODULE = "base";
+
+/** Whether a module is one of the game's own, as opposed to a mod. */
+export function isGameModule(name: string): boolean {
+  return (STANDARD_MODULES as readonly string[]).includes(name);
+}
 
 export interface ModuleResolution {
   /** The known enabled modules in catalog order, without duplicates. */
@@ -84,6 +92,38 @@ export function disableModule(modules: readonly ModuleInfo[], enabled: Iterable<
   const before = new Set(enabled);
   const removed = [name, ...dependentModules(modules, before, name)].filter((module) => before.has(module));
   return { enabled: ordered(modules, [...before].filter((module) => !removed.includes(module))), changed: ordered(modules, removed) };
+}
+
+/** The names of the modules the records name as theirs, added to `into`. */
+export function namedModules(records: Iterable<ModuleScoped>, into: Set<string> = new Set()): Set<string> {
+  for (const record of records) for (const name of record.modules) into.add(name);
+  return into;
+}
+
+/**
+ * The modules a project switches: the game's own, and of the mods those that `contributing` names (the ones that add a
+ * record). A mod that adds nothing is left out, and the others see through it: `requires` of a listed module is everything
+ * listed that it needs, directly or through any chain of modules, and `recommends` what it recommends itself. The functions
+ * above work on the result as on any module list. A name no module has is passed over.
+ */
+export function listedModules(modules: readonly ModuleInfo[], contributing: ReadonlySet<string>): ModuleInfo[] {
+  const byName = new Map(modules.map((module) => [module.name, module]));
+  const listed = new Set(modules.filter((module) => isGameModule(module.name) || contributing.has(module.name)).map((module) => module.name));
+  const needed = (name: string): Set<string> => {
+    const seen = new Set<string>();
+    const pending = [...(byName.get(name)?.requires ?? [])];
+    for (let current = pending.pop(); current !== undefined; current = pending.pop()) {
+      if (current === name || seen.has(current) || !byName.has(current)) continue;
+      seen.add(current);
+      pending.push(...byName.get(current)!.requires);
+    }
+    return seen;
+  };
+  const names = modules.map((module) => module.name).filter((name) => listed.has(name));
+  return modules.filter((module) => listed.has(module.name)).map((module) => {
+    const requires = needed(module.name);
+    return { ...module, requires: names.filter((other) => requires.has(other)), recommends: module.recommends.filter((other) => other !== module.name && listed.has(other)) };
+  });
 }
 
 /** Whether an entry exists for the given enabled modules. Does not validate the module set itself. */

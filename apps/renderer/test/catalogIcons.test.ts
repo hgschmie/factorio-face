@@ -8,9 +8,9 @@ import { prototypeIconId } from "../src/entities/registry.ts";
 import { applyData } from "../src/gameData/dataInUse.ts";
 import { catalogEntityIconUrl, prototypesWithIcon } from "../src/icons/catalogEntityIcons.ts";
 import { catalogIconResolver, isDrawable, probeIcon } from "../src/icons/catalogSignalIcons.ts";
-import { MOD_ENTITY, MOD_SIGNAL, moddedData, STANDARD_ICONS } from "./fixtures/moddedData.ts";
+import { MOD_ENTITY, MOD_SIGNAL, MODDED_MODULES, moddedData, STANDARD_ICONS } from "./fixtures/moddedData.ts";
 import { moddedKindsData } from "./fixtures/moddedKinds.ts";
-import { createSession, EMPTY_SOURCE } from "./session/helpers.ts";
+import { createSession, EMPTY_SOURCE, project } from "./session/helpers.ts";
 
 const ROOT = "face-asset://catalog/";
 const DRAWABLE = new Set(STANDARD_ICONS);
@@ -55,7 +55,7 @@ describe("the built-in data", () => {
 describe("a signal with an icon of a mod", () => {
   it("is written by its short name in a status row, laid out as text, beside a signal with an icon", () => {
     const data = applyData(moddedData());
-    const catalog = createSession(EMPTY_SOURCE, { data }).session.state.catalog;
+    const catalog = createSession(EMPTY_SOURCE, { data, project: project(EMPTY_SOURCE, { modules: MODDED_MODULES }) }).session.state.catalog;
     const iconUrl = catalogIconResolver(ROOT, 0, data.icons);
     // As the app describes a signal for the views: the icon the catalog names, when it can be drawn.
     const iconOf = (id: typeof A): string | undefined => {

@@ -7,11 +7,14 @@ import type { GameDataInUse, GameMod } from "../../../desktop/src/ipc.ts";
 import catalog from "../../../../packages/catalog/data/catalog-2.1.24.json" with { type: "json" };
 import icons from "../../../../packages/catalog/data/icons-2.1.24.json" with { type: "json" };
 import entities from "../../../../packages/model/data/entities-2.1.24.json" with { type: "json" };
+import { MANY_MODS, manyModsCatalog, manyModsEntities } from "../../../../tests/fixtures/game/moddedCatalog.ts";
 
 export const MOD = "some-mod";
 export const MOD_ENTITY = "mod-crate";
 export const MOD_SIGNAL = "mod-signal";
 export const MOD_MODULE = { name: MOD, title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] } as const;
+/** The module list of a project that has everything of this game on: the mod is off in a new one. */
+export const MODDED_MODULES: readonly string[] = [...catalog.modules.map((module) => module.name), MOD];
 export const MODDED_MODS: readonly GameMod[] = [...catalog.modules.map(({ name, version }) => ({ name, version })), { name: MOD, version: "1.2.3" }];
 export const MODDED_SOURCE = { kind: "game", version: "2.1.24", build: 87808, readAt: "2026-11-14T12:00:00.000Z", mods: 1 } as const;
 /** The ids of the standard icon table: what the main process says it can draw, for the built-in data and for this game. */
@@ -36,4 +39,10 @@ export function moddedData(without: readonly string[] = []): GameDataInUse {
     entities: { ...entities, entities: [...entities.entities.filter((entity) => !without.includes(entity.name)), { name: MOD_ENTITY, type: "container", displayName: "Mod crate", width: 2, height: 2, modules: [MOD] }] },
     icons: STANDARD_ICONS,
   };
+}
+
+/** The game with the many mods of tests/fixtures/game/moddedCatalog.ts, as a window gets it. */
+export function manyModsData(): GameDataInUse {
+  const mods = [...catalog.modules, ...MANY_MODS].map(({ name, version }) => ({ name, version }));
+  return { source: { ...MODDED_SOURCE, mods: MANY_MODS.length }, problem: null, mods, catalog: manyModsCatalog(), entities: manyModsEntities(), icons: STANDARD_ICONS };
 }

@@ -29,7 +29,7 @@ function signalOrder(catalog: Catalog, enabled: ReadonlySet<string>): string[] {
   try {
     return pickerTree(catalog, enabled, { wildcards: true, parameters: true, hidden: true }).flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals.map((entry) => entry.key)));
   } catch {
-    // A module set the game would not accept (hand-edited project file) can leave signals without their group; the engine then orders by key.
+    // Data with a signal whose subgroup it lacks: the engine then orders by key.
     return [];
   }
 }

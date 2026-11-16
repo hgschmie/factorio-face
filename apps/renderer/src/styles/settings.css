@@ -86,7 +86,40 @@
   list-style: none;
 }
 
+/* With the mods of a game the list is long: it scrolls by itself, so that the rest of the panel stays in view. */
+.module-list.scrolling {
+  flex: none;
+  max-height: 290px;
+  padding-right: 3px;
+  overflow-y: auto;
+}
+
+.module-filter {
+  flex: none;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+}
+
+.modules-off {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--notice-border);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--status-warning);
+  overflow-wrap: anywhere;
+}
+
+.modules-off p {
+  margin: 0;
+}
+
 .module-list li {
+  flex: none;
   padding: 7px 9px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -107,9 +140,14 @@
 
 .module-title {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .module-count {
+  flex: none;
   font-family: var(--font-mono);
   font-size: var(--text-sm);
   color: var(--text-dim);

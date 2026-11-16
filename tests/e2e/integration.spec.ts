@@ -540,6 +540,11 @@ test("the signal picker selects a Space Age signal with its icon, and the module
   const settings = page.getByRole("dialog", { name: "Project settings" });
   await expect(settings.locator(".module-list li")).toHaveCount(5);
   await expect(settings.getByRole("checkbox", { name: /Base Mod/ })).toBeDisabled();
+  // With the built-in data the list is the game's five modules, and a line says where the mods of a game come from.
+  await expect(settings.locator('[data-module="space-age"] .module-count')).toHaveText("289 signals, 17 entities");
+  await expect(settings.locator('[data-note="mods-hint"]')).toHaveText("The mods of your game appear here after the game has been read in the application settings.");
+  await expect(settings.getByLabel("Filter signal groups")).toHaveCount(0);
+  await expect(settings.locator('[data-note="other-mods"], [data-note="modules-off"]')).toHaveCount(0);
   await settings.getByRole("checkbox", { name: /Space Age/ }).uncheck();
   // Dependencies are spelled out: with Space Age off, Recycler is now only needed by Quality.
   await expect(settings.locator('[data-module="recycler"] small')).toHaveText("Switching off also switches off Quality");
@@ -558,7 +563,7 @@ test("the signal picker selects a Space Age signal with its icon, and the module
   await expect(page.getByRole("button", { name: "Step" })).toBeEnabled();
 
   // Switching Quality off as well flags the quality; Space Age brings both back and clears the warnings.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await settings.getByRole("checkbox", { name: /Quality/ }).uncheck();
   await expect(problems.locator("li")).toHaveCount(1);
   await settings.getByRole("checkbox", { name: /Space Age/ }).check();

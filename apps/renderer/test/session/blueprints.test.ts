@@ -179,6 +179,7 @@ describe("the import report", () => {
       ],
       settings: [{ kind: "ignored", text: "small-lamp: quality is something the editor does not have", entities: "1 entity: lamp2" }],
       remarks: ["Not kept from the blueprint itself: description, snap-to-grid."],
+      modules: [],
     });
   });
 
@@ -193,11 +194,40 @@ describe("the import report", () => {
       ],
       settings: [],
       remarks: [],
+      modules: [],
     });
     expect(importReport({ ...CLEAN, entities: 1, dropped: [{ name: "small-lamp", count: 2, reason: "invalid" }, { name: "gate", count: 1, reason: "unknown" }] })).toMatchObject({
       summary: "Imported 1 of 4 entities and 2 wires.",
       dropped: ["2 x small-lamp (without a usable entity number or position)", "1 x gate"],
     });
+  });
+
+  it("names the modules that were switched on, also when nothing else is to report, and bounds what a mod calls itself", () => {
+    expect(importReport(CLEAN)).toBeNull();
+    expect(importReport(CLEAN, [])).toBeNull();
+    expect(importReport(CLEAN, ["Some Mod"])).toMatchObject({
+      dropped: [],
+      remarks: [],
+      modules: ["Switched on: Some Mod. The blueprint has its signals or entities; a new project has only the modules of the game itself on."],
+    });
+    expect(importReport(CLEAN, ["Space Age", "Bob's <b>Logistics</b>"])?.modules).toEqual(["Switched on: Space Age, Bob's <b>Logistics</b>. The blueprint has their signals or entities; a new project has only the modules of the game itself on."]);
+    const many = importReport(CLEAN, [...Array.from({ length: 14 }, (_, index) => `Mod ${index + 1}`), "t".repeat(200)])!.modules[0]!;
+    expect(many).toContain("Mod 12 and 3 more. The blueprint has their signals");
+    expect(importReport(CLEAN, ["t".repeat(200)])!.modules[0]).toContain(`Switched on: ${"t".repeat(80)}.... The`);
+  });
+
+  it("asks which modules the circuit needs, when it is told whom", () => {
+    const text = encodeBlueprintString(blueprint({ label: "Lamp", entities: [lamp(1, 0)] }));
+    const asked: string[] = [];
+    const reading = readBlueprint(text, [], undefined, (source) => {
+      asked.push(source);
+      return { modules: ["base", "some-mod"], switchedOn: ["Some Mod"] };
+    });
+    expect(reading).toMatchObject({ kind: "blueprint", blueprint: { modules: ["base", "some-mod"], report: { summary: "Imported 1 entity and 0 wires.", modules: [expect.stringMatching(/^Switched on: Some Mod\./)] } } });
+    expect(asked).toEqual([reading.kind === "blueprint" ? reading.blueprint.source : ""]);
+    // Without it the project has the modules of the empty one, and nothing is reported.
+    expect(imported(text)).toMatchObject({ report: null });
+    expect(imported(text)).not.toHaveProperty("modules");
   });
 
   it("names the entities of a note, the first few of many, and the kind of the note in a word", () => {
@@ -244,6 +274,9 @@ describe("the project of an imported blueprint", () => {
       path: null,
       data: { manifest: { ...empty.manifest, name: "Two lamps", circuits: ["main.face"] }, files: [{ name: "main.face", source: "circuit {}" }] },
     });
+    // With the modules the circuit needs, where the blueprint says them.
+    expect(importedProject(empty, { name: "Two lamps", source: "circuit {}", modules: ["base", "some-mod"] }).data.manifest.modules).toEqual(["base", "some-mod"]);
+    expect(empty.manifest.modules).toEqual(["base", "space-age", "quality", "recycler", "elevated-rails"]);
   });
 
   it("opens on the blueprint board as a project that was never saved, and tells the desktop that the window has no file", async () => {
