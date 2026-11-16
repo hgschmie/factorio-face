@@ -13,7 +13,7 @@ import { modDirectoryFromEnv, planGameRead, type GameReadPlan } from "../../src/
 import { GameDataService, NO_INSTALLATION, usableGameData, type GameDataServiceOptions } from "../../src/gameData/service.ts";
 import type { GameDataRun } from "../../src/ipc.ts";
 import { ValidationError } from "../../src/validation.ts";
-import { MOD_ENTITY, fakeGameStarts, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
+import { MOD_ENTITY, SOME_MOD_INFO, fakeGameStarts, modArchive, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
 import { writeGameData } from "../support/fakeGame.ts";
 import { useScratch } from "../support/scratch.ts";
 
@@ -53,7 +53,7 @@ async function setup(name: string, dump: CannedDump = {}, behaviour: Partial<Fak
   const mods = join(home, ".factorio", "mods");
   await mkdir(mods, { recursive: true });
   await writeFile(join(mods, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "some-mod", enabled: true }] }));
-  await writeFile(join(mods, "some-mod_1.2.3.zip"), "a mod");
+  await writeFile(join(mods, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
   const inspection = await inspectDataDirectory(dataDirectory, "2.1.24");
   if (!inspection.ok) throw new Error(inspection.message);
   const host: Host = { platform: "linux", env: {}, home };
@@ -197,6 +197,11 @@ describe("reading the game", () => {
     expect(service.activate()).toBe(false);
     const current = service.current();
     expect(current).toMatchObject({ source: MODDED, problem: null, mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }] });
+    // The window gets the mod as its info.json describes it, and every record with the mod that created it.
+    expect(current.catalog!.modules[1]).toEqual({ name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] });
+    expect(current.catalog!.signals.virtual!.map((signal) => [signal.name, signal.modules])).toEqual([["mod-signal", ["some-mod"]], ["signal-A", ["base"]]]);
+    expect(parseEntityTable(current.entities).byName.get(MOD_ENTITY)!.modules).toEqual(["some-mod"]);
+    expect(parseEntityTable(current.entities).byName.get("small-lamp")!.modules).toEqual(["base"]);
     expect(parseEntityTable(current.entities).byName.has(MOD_ENTITY)).toBe(true);
     expect(current.catalog!.signals.virtual!.map((signal) => signal.name)).toEqual(["mod-signal", "signal-A"]);
     expect(service.iconTable!.icons.has("virtual/signal-A")).toBe(true);
@@ -357,6 +362,19 @@ describe("the cache at start", () => {
     expect(await service.discard()).toMatchObject({ problem: null, discardable: false, pending: null });
     expect(existsSync(cacheFile)).toBe(false);
     expect(activations).toEqual([]);
+  });
+
+  it("falls back for a file of the earlier format and asks to read the game again, which replaces it", async () => {
+    const { restart, cacheFile } = await stored("outdated");
+    const file = JSON.parse(await readFile(cacheFile, "utf8")) as Record<string, unknown>;
+    await writeFile(cacheFile, JSON.stringify({ ...file, version: 1 }));
+    const service = await restart();
+    const problem = "The data read from your game was stored by an earlier version of this app and cannot be used by this one. Read the game again to work with your game's data. The built-in data is in use.";
+    expect(service.current()).toEqual({ source: BUILT_IN, problem, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
+    expect(await service.status()).toMatchObject({ inUse: BUILT_IN, pending: null, problem, discardable: true, unavailable: null });
+    expect(await service.read()).toMatchObject({ inUse: BUILT_IN, pending: MODDED, problem: null, run: { state: "done" } });
+    expect(JSON.parse(await readFile(cacheFile, "utf8"))).toMatchObject({ version: 2 });
+    expect((await restart()).current()).toMatchObject({ source: MODDED, problem: null });
   });
 
   it("falls back when the data lacks one of the editor's prototypes, and a new read replaces it", async () => {

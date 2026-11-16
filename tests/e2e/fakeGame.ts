@@ -5,7 +5,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { executablePath } from "../../apps/desktop/src/gameData/executable.ts";
 import { decodePng, encodePng } from "../../apps/desktop/src/gameIcons/png.ts";
-import { writeCannedDump, writeFakeGame as writeFakeProgram, type CannedDump, type FakeGameControl } from "../../apps/desktop/test/support/cannedDump.ts";
+import { SOME_MOD_INFO, modArchive, writeCannedDump, writeFakeGame as writeFakeProgram, type CannedDump, type FakeGameControl } from "../../apps/desktop/test/support/cannedDump.ts";
 import { GAMES_DIR } from "./app.ts";
 
 export type Color = readonly [number, number, number, number];
@@ -63,13 +63,14 @@ export interface FakeProgram {
   readonly executable: string;
   /** What the program does; `setFakeProgram` changes it between runs. */
   readonly control: FakeGameControl;
-  /** The mod directory to launch the app with (FACE_GAME_MODS_DIR): one mod, `some-mod` 1.2.3, enabled. */
+  /** The mod directory to launch the app with (FACE_GAME_MODS_DIR): one mod, `some-mod` 1.2.3, enabled; its archive has the `info.json` the app reads its title and dependencies from. */
   readonly modDirectory: string;
 }
 
 /**
  * Gives an installation its program: the stand-in of the unit tests (apps/desktop/test/support/fakeFactorio.mjs), which
- * writes a canned dump of a game the editor can work with and one mod. Nothing of the real game is started.
+ * writes a canned dump of a game the editor can work with and one mod, each prototype with the mod that created it. Nothing of
+ * the real game is started.
  */
 export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, behaviour: Partial<FakeGameControl> = {}): Promise<FakeProgram> {
   const executable = executablePath(game.dataDirectory, process.platform);
@@ -81,7 +82,7 @@ export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, beha
   const modDirectory = join(parent, "user", "mods");
   await mkdir(modDirectory, { recursive: true });
   await writeFile(join(modDirectory, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "some-mod", enabled: true }] }));
-  await writeFile(join(modDirectory, "some-mod_1.2.3.zip"), "a mod");
+  await writeFile(join(modDirectory, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
   return { executable, control, modDirectory };
 }
 

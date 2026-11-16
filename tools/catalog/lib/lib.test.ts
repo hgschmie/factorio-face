@@ -8,6 +8,7 @@ import { join, resolve } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { iconSource, renderIcon } from "../../../apps/desktop/src/gameIcons/iconRenderer.ts";
 import { COMPACT_ENCODING, decodePng, encodePng, type RgbaImage } from "../../../apps/desktop/src/gameIcons/png.ts";
+import { moduleInfo } from "./commands.ts";
 import { iconFileRenderer, iconTableText } from "./iconFiles.ts";
 import { iconLayers, normaliseColor } from "./prototypeIcons.ts";
 
@@ -134,6 +135,23 @@ describe("module sets", () => {
     expect(dump.parseDependency("+ quality >= 2.1.0")).toMatchObject({ name: "quality", kind: "recommended" });
     expect(dump.parseDependency("(?) some-mod")).toMatchObject({ name: "some-mod", kind: "optional" });
     expect(dump.parseDependency("! other")).toMatchObject({ name: "other", kind: "incompatible" });
+    expect(dump.parseDependency("~ late-mod>=1.0")).toEqual({ name: "late-mod", kind: "required", constraint: ">=1.0" });
+    expect(dump.parseDependency("?optional")).toMatchObject({ name: "optional", kind: "optional" });
+    // Older mods have spaces and dots in their names: the name ends where the version constraint begins.
+    expect(dump.parseDependency("  Squeak Through 2.0 >= 1.8.2 ")).toEqual({ name: "Squeak Through 2.0", kind: "required", constraint: ">= 1.8.2" });
+    for (const text of ["", "  ", ">= 1.0", "? ", "a/b", "name\nother", "(?)(?) twice"]) expect(() => dump.parseDependency(text), text).toThrow(/Unparseable dependency/);
+    // A text made to cost time does not: the parser never looks at a character twice.
+    const started = performance.now();
+    expect(() => dump.parseDependency(`a${" ".repeat(60_000)}\n${" ".repeat(60_000)}!`)).toThrow(/Unparseable dependency/);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+
+  it("describes a module by its info.json: title, hard and recommended dependencies, feature flags", () => {
+    const info = { name: "ignored", version: "9.9.9", title: "Space Age", dependencies: ["base >= 2.1.0", "+ quality >= 2.1.0", "? some-mod", "! other", "~ recycler"], quality_required: true, space_travel_required: true, expansion_shaders_required: false, "Odd_required": true, factorio_version: "2.1" };
+    expect(moduleInfo("space-age", "2.1.24", info)).toEqual({ name: "space-age", title: "Space Age", version: "2.1.24", requires: ["base", "recycler"], recommends: ["quality"], featureFlags: ["quality", "space-travel"] });
+    expect(moduleInfo("bare", "1.0.0", {})).toEqual({ name: "bare", title: "bare", version: "1.0.0", requires: [], recommends: [], featureFlags: [] });
+    expect(moduleInfo("bare", "1.0.0", { title: 7 }).title).toBe("bare");
+    for (const dependencies of ["base", [7], ["base", ""], { base: true }]) expect(() => moduleInfo("bad", "1.0.0", { dependencies }), JSON.stringify(dependencies)).toThrow();
   });
 
   it("enumerates exactly the dependency-closed module sets", () => {

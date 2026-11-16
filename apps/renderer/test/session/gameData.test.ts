@@ -1,10 +1,12 @@
 // A session on data read from the user's game: the game's modules are all on and cannot be switched, what a mod brings can be
 // placed and picked, a save records the game's mods in the project file, and a project made with other mods says so when it
 // is opened. With the built-in data the record of a project is kept as it is.
+import { createCatalog } from "@face/catalog";
 import { signal } from "@face/model";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProjectMods } from "../../../desktop/src/ipc.ts";
 import { applyData, builtInData, type DataInUse } from "../../src/gameData/dataInUse.ts";
+import { CatalogService } from "../../src/session/catalogService.ts";
 import { ProjectSession } from "../../src/session/projectSession.ts";
 import { MOD, MOD_ENTITY, MOD_SIGNAL, MODDED_MODS, moddedData } from "../fixtures/moddedData.ts";
 import { createSession, EMPTY_SOURCE, errorsOf, fakeDesktop, MANIFEST, project, type TestSession } from "./helpers.ts";
@@ -48,6 +50,31 @@ describe("with data read from the game", () => {
     session.commands.setModuleEnabled(MOD, false);
     expect(session.state.catalog).toBe(catalog);
     expect(session.state.project.dirty).toBe(false);
+  });
+
+  it("shows a mod by its title and has what it brings as the mod's own, without that changing anything yet", () => {
+    const { session } = modded();
+    const { catalog } = session.state;
+    expect(catalog.modules.at(-1)).toEqual({ name: MOD, title: "Some Mod", version: "1.2.3", enabled: true, canDisable: false, enables: [], disables: [], missing: [], signalCount: 1 });
+    expect(catalog.modules[0]).toMatchObject({ name: "base", enabled: true, canDisable: false, disables: ["elevated-rails", "recycler", "quality", "space-age", MOD] });
+    const data = createCatalog(moddedData().catalog!);
+    expect(data.signalsByKey.get(`virtual:${MOD_SIGNAL}`)!.modules).toEqual([MOD]);
+    expect(new CatalogService(data, [], true).withModule(MOD, false)).toBeUndefined();
+
+    // The same data with a module list of its own, as nothing uses it yet: the mod switches like a module of the game.
+    const without = new CatalogService(data, ["base", "space-age", "elevated-rails", "recycler"]);
+    expect(without.modulesFixed).toBe(false);
+    expect(without.describe(signal("virtual", MOD_SIGNAL)).status).toBe("disabled");
+    expect(without.entities().offers(MOD_ENTITY)).toBe(false);
+    expect(without.picker().flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals.map((entry) => entry.key)))).not.toContain(`virtual:${MOD_SIGNAL}`);
+    expect(without.modules.at(-1)).toMatchObject({ name: MOD, enabled: false, canDisable: true, enables: [], missing: [] });
+    const enabled = without.withModule(MOD, true);
+    expect(enabled).toEqual(["base", "elevated-rails", "recycler", "space-age", MOD]);
+    const again = new CatalogService(data, enabled!);
+    expect(again.describe(signal("virtual", MOD_SIGNAL)).status).toBe("known");
+    expect(again.entities().offers(MOD_ENTITY)).toBe(true);
+    // Switched on alone, the mod brings what it requires.
+    expect(new CatalogService(data, []).withModule(MOD, true)).toEqual(["base", MOD]);
   });
 
   it("offers what the mod brings in the selector and the picker, and places it", () => {

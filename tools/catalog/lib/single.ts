@@ -3,15 +3,20 @@
 // the user's installation (apps/desktop/src/gameData); the records are built by the generator's own code (build.mjs,
 // entities.mjs). Free of `import.meta` and of syntax that Node's type stripping cannot run.
 //
-// What one dump cannot say is which module adds a record, so every record is there with any modules enabled (`modules: []`,
-// no `removedBy`, no `variants`), and the head lists what the game had loaded. Icons that are not made of image files of the
-// game's own modules (a mod's) are left out of the icon table: the app has nowhere to read them from, and an icon id the table
-// lacks is answered like any unknown icon.
+// One dump cannot say what a record would be with fewer mods, so there is no `removedBy` and there are no `variants`: a record
+// is as it is with everything loaded. Which mod adds it, the game says (`created` of the runtime dump, from
+// `prototypes.get_history`): every record has that one mod as its `modules`. Two rules beside that. `core`, the engine's own
+// data, is no module of the catalog and no game is without it: its records count as `base`'s. And a record whose creator is
+// not among what the game had loaded (the game did not say, or a game without `base`) has `modules: []`: it is there whatever
+// is enabled, so nothing is lost and nothing names a module the head does not have. `untagged` names those.
+//
+// Icons that are not made of image files of the game's own modules (a mod's) are left out of the icon table: the app has
+// nowhere to read them from, and an icon id the table lacks is answered like any unknown icon.
 import type { CatalogData, ModuleInfo } from "@face/catalog";
 import { iconTableFile, parseIconTable, type IconEntry } from "@face/catalog/icons";
 import { parseEntityTable } from "@face/model";
-import { LOCALE_SECTIONS, SPEAKER_LOCALE_SECTIONS, buildCatalog, type DumpSet } from "./build.mjs";
-import { DUMP_COMMANDS, STANDARD_MODULES, gameArguments, modSetId, readModuleInfos, type DumpCommand } from "./commands.ts";
+import { KINDS, LOCALE_SECTIONS, SPEAKER_LOCALE_SECTIONS, buildCatalog, type DumpSet } from "./build.mjs";
+import { DUMP_COMMANDS, STANDARD_MODULES, gameArguments, modSetId, moduleInfo, readModuleInfos, type DumpCommand } from "./commands.ts";
 import { buildEntityTable, type EntityTableFile } from "./entities.mjs";
 import { readLocaleSections } from "./locale.mjs";
 
@@ -20,7 +25,10 @@ export interface ActiveMod {
   readonly version: string;
 }
 
-export const SINGLE_SET_LIMITS = { mods: 2000, modNameLength: 100 } as const;
+export const SINGLE_SET_LIMITS = { mods: 2000, modNameLength: 100, modTitleLength: 200 } as const;
+/** The engine's own data: what it creates counts as created by `base`. */
+const CORE = "core";
+const BASE = "base";
 const MOD_VERSION = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 
 type Fields = Readonly<Record<string, unknown>>;
@@ -50,12 +58,31 @@ export function activeMods(runtime: unknown): ActiveMod[] {
 }
 
 /**
- * The head of the catalog for these mods: the game's own modules as their `info.json` below `dataDir` describes them, a mod
- * by name and version alone (its `info.json` is inside its archive, which is not read).
+ * The head of the catalog for these mods: the game's own modules as their `info.json` below `dataDir` describes them, and a
+ * mod as its own `info.json` does (`modInfos`: the parsed file by mod name, read by the caller and not trusted). A mod
+ * without one, or with one that cannot be made sense of, is there by name and version alone, without dependencies, and is
+ * named in `unread`. `requires` and `recommends` name loaded mods only: the lists are what the module list switches by.
  */
-export function singleSetModules(dataDir: string, mods: readonly ActiveMod[]): ModuleInfo[] {
+export function singleSetModules(dataDir: string, mods: readonly ActiveMod[], modInfos: ReadonlyMap<string, unknown> = new Map()): { modules: ModuleInfo[]; unread: string[] } {
   const own = new Map(readModuleInfos(dataDir, mods.map((mod) => mod.name).filter((name) => STANDARD_MODULES.includes(name))).map((info) => [info.name, info]));
-  return mods.map(({ name, version }) => own.get(name) ?? { name, title: name, version, requires: [], recommends: [], featureFlags: [] });
+  const loaded = new Set(mods.map((mod) => mod.name));
+  const unread: string[] = [];
+  const described = ({ name, version }: ActiveMod): ModuleInfo => {
+    const info = modInfos.get(name);
+    try {
+      if (!isRecord(info)) throw new Error("no info");
+      const module = moduleInfo(name, version, info);
+      return { ...module, title: module.title.replace(/[\s\u0000-\u001f\u007f]+/g, " ").trim().slice(0, SINGLE_SET_LIMITS.modTitleLength) || name };
+    } catch {
+      unread.push(name);
+      return { name, title: name, version, requires: [], recommends: [], featureFlags: [] };
+    }
+  };
+  const modules = mods.map((mod) => own.get(mod.name) ?? described(mod)).map((module) => {
+    const known = (names: readonly string[]): string[] => [...new Set(names)].filter((name) => name !== module.name && loaded.has(name));
+    return { ...module, requires: known(module.requires), recommends: known(module.recommends) };
+  });
+  return { modules, unread };
 }
 
 /**
@@ -99,12 +126,31 @@ export interface SingleSet {
   readonly entities: EntityTableFile & { readonly mods: Readonly<Record<string, string>> };
   /** Remarks for the user: wired entities that were left out and why. */
   readonly notes: string[];
+  /** Records without a creator among the loaded mods, as "item iron-plate", sorted: they have `modules: []`. */
+  readonly untagged: string[];
   readonly mods: ActiveMod[];
 }
 
 /** How entities.mjs begins the note for a wired entity it left out; its other notes are for the generator's log. */
 const LEFT_OUT = "left out: ";
 const commandTemplate = (command: DumpCommand): string => ["factorio", ...gameArguments("<run>/game/config/config.ini", "<run>/game/mods", DUMP_COMMANDS[command])].join(" ");
+
+/**
+ * What gives the records made from one list of the runtime dump their `modules`: the mod that created the prototype of the
+ * record's name, by the rules at the top of this file. `untagged` collects what has none, under `label`.
+ */
+function tagger(runtime: Fields, loaded: ReadonlySet<string>, untagged: Set<string>) {
+  return (section: string, label: string) => {
+    const list = runtime[section];
+    const created = new Map((Array.isArray(list) ? list : []).filter(isRecord).map((entry) => [entry.name, entry.created === CORE ? BASE : entry.created]));
+    return <T extends { readonly name: string }>(record: T): T & { modules: string[] } => {
+      const creator = created.get(record.name);
+      if (typeof creator === "string" && loaded.has(creator)) return { ...record, modules: [creator] };
+      untagged.add(`${label} ${record.name}`);
+      return { ...record, modules: [] };
+    };
+  };
+}
 
 /**
  * Builds the three tables from one dump. Throws when the dump is not what the three commands write for one and the same
@@ -117,15 +163,24 @@ export function buildSingleSet({ raw, runtime, locale, modules, game, generator,
   if (runtime.game_version !== game.version) throw new Error(`The runtime dump is from ${JSON.stringify(runtime.game_version)}, the game is ${game.version}`);
   if (modSetId(modules.map((module) => module.name)) !== modSetId(mods.map((mod) => mod.name))) throw new Error("The modules of the head are not the mods the game loaded");
 
-  // No module of its own and no module algebra: every record is then present "with no module required".
+  // No module of its own and no module algebra: the generator's code then has every record present "with no module
+  // required", and each gets the mod that created it afterwards.
   const set: DumpSet = { id: "the dump", mods: [], raw: raw as DumpSet["raw"], runtime, locale };
   const input = { sets: [set], modules: [], game: { version: game.version, build: game.build } };
   const built = buildCatalog(input);
+  const untagged = new Set<string>();
+  const tagged = tagger(runtime, new Set(mods.map((mod) => mod.name)), untagged);
+  // A speaker and a rocket silo are entities, and so is every record of the entity table.
+  const ofEntity = tagged("entity", "entity");
   const catalog: CatalogData = {
     ...built.catalog,
     modules,
-    // The quality list drops empty fields, the module list among them.
-    qualities: built.catalog.qualities.map((quality) => ({ ...quality, modules: [] })),
+    constants: { ...built.catalog.constants, rocketSilos: built.catalog.constants.rocketSilos.map(ofEntity) },
+    groups: built.catalog.groups.map(tagged("item_group", "group")),
+    subgroups: built.catalog.subgroups.map(tagged("item_subgroup", "subgroup")),
+    qualities: built.catalog.qualities.map(tagged("quality", "quality")),
+    speakers: built.catalog.speakers?.map(ofEntity),
+    signals: Object.fromEntries(KINDS.map(({ kind, section }) => [kind, (built.catalog.signals[kind] ?? []).map(tagged(section, kind))])),
     provenance: {
       generator,
       generatedAt,
@@ -162,5 +217,9 @@ export function buildSingleSet({ raw, runtime, locale, modules, game, generator,
       return false;
     }
   });
-  return { catalog, icons, skippedIcons, entities: { ...head, mods: Object.fromEntries(mods.map((mod) => [mod.name, mod.version])), entities: records }, notes, mods };
+  // As the file has it: a record of the table's default module does not say so.
+  const usual = JSON.stringify(head.defaults.modules);
+  const entityRecords = records.map(ofEntity).map(({ modules: creator, ...record }) => (JSON.stringify(creator) === usual ? record : { ...record, modules: creator }));
+  const table = { ...head, mods: Object.fromEntries(mods.map((mod) => [mod.name, mod.version])), entities: entityRecords };
+  return { catalog, icons, skippedIcons, entities: table, notes, untagged: [...untagged].sort(), mods };
 }

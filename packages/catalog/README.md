@@ -61,7 +61,9 @@ and `order` (recipes and entities inherit them from products and items), compute
 and `LuaAsteroidChunkPrototype.hide_from_signal_gui` / `item_signal_alias` (derived by the engine), `LuaVirtualSignalPrototype.special`,
 `items_to_place_this` of entities, and the rocket silo lift weight. Since 2026-11-14 it also writes `circuit_entities`: for every
 prototype with a wire reach what the entity table needs and `data.raw` lacks or only implies, and for an entity it builds of each whether
-it has a direction (see "Entity table"). `--test-scenario` is new
+it has a direction (see "Entity table"). Since 2026-11-15 every prototype it lists also says which mod created it (`created`, from
+`prototypes.get_history(type, name)` with the prototype's own type: "ammo", "lamp", "planet"; `core` for the engine's own data). That is
+for the single-set mode below; this generator has its exact attribution from the eight sets and does not read the field. `--test-scenario` is new
 in 2.1.24 and runs headless.
 
 Module sets are selected through `mod-list.json` in an isolated mod directory. Dependencies per `info.json`: `elevated-rails -> base`,
@@ -259,12 +261,27 @@ included. The app uses it for the data it reads from the installed game on reque
 own run does not. `buildSingleSet` takes the parsed `data-raw-dump.json` and `face-runtime-dump.json`, the names of the dumped locale
 files (`singleSetLocale`) and the head (`singleSetModules`), and calls `buildCatalog` and `buildEntityTable` with that one set.
 
-What differs from the standard tables, because one dump cannot say which module adds what:
+What differs from the standard tables, because one dump cannot say what a record would be with fewer mods:
 
-- Every record has `modules: []` and neither `removedBy` nor `variants`: it is there with any modules enabled. `modules` in the head of
-  the catalog lists what the game had loaded by its own account (`active_mods` of the runtime dump): its own modules as their
-  `info.json` has them, a mod by name and version alone. `provenance.modSets` has the one set; the entity table has `mods` (name to
-  version) in its head. The icon table's head has no place for them.
+- No record has `removedBy` or `variants`: each is as it is with everything loaded. Its `modules` is the one mod that created its
+  prototype, by the game's own account (`created` of the runtime dump): signals of every kind, groups, subgroups, qualities, speakers,
+  rocket silos and the records of the entity table (a speaker, a silo and a wired entity by their entity prototype; in the entity
+  table `base` is the table's default and is not written). `core`, which is no module of the catalog and which no game is without,
+  counts as `base`. A record whose creator is not among what the game had loaded (the game named none, or a game without `base`)
+  has `modules: []` and is named in `untagged`: it is there whatever is enabled. With the standard game the creator is not always the
+  module the standard catalog names, which is the smallest module set that has the record: the recycler creates the recycling recipes
+  of every module's items (89 of them exist only with another module), `base` creates the barrels of Space Age's fluids (6), and the
+  satellite is removed by Space Age. And a record can sit in a subgroup or group that another module created: with the five modules,
+  43 signals of `base` are in subgroups of Space Age and one subgroup of `base` is in a group of Space Age. A consumer that
+  enables fewer modules than the game had loaded has to expect both; `pickerTree` throws for a signal whose subgroup is not there.
+- `modules` in the head of the catalog lists what the game had loaded by its own account (`active_mods` of the runtime dump): its own
+  modules as their `info.json` has them, and each mod as its own `info.json` describes it (`singleSetModules(dataDir, mods,
+  modInfos)`; the caller reads the files, the app from the user's mod directory): the title, cleaned of control characters and cut
+  to 200 characters, the feature flags, and of its dependencies the hard ones as `requires` and "+" ones as `recommends`, each
+  restricted to what the game had loaded and without the mod itself (optional and incompatible dependencies are in neither). The
+  mapping is `moduleInfo` of `commands.ts`, the one the generator reads the game's own modules with. A mod without a usable
+  `info.json` is there by name and version alone and is named in `unread`. `provenance.modSets` has the one set; the entity table has
+  `mods` (name to version) in its head. The icon table's head has no place for them.
 - An icon that is not made of image files of the game's own modules (a mod's) is left out of the icon table and counted; the table is
   checked one icon at a time with `parseIconTable`.
 - The entity table is built leniently (`buildEntityTable(input, { lenient: true })`): a wired prototype that cannot be derived, or that
@@ -275,7 +292,8 @@ What differs from the standard tables, because one dump cannot say which module 
   catalog borrows "Normal" from a larger set.
 
 `tools/catalog/lib/single.test.ts` builds the `base` set and the full set from the generator's dumps this way and compares signals,
-picker groups, qualities, speaker, constants, icons and wired entities with what the standard tables say for those modules.
+picker groups, qualities, speaker, constants, icons and wired entities with what the standard tables say for those modules, with all
+loaded modules enabled; every record there has one of the loaded modules as its creator.
 
 How the app uses the result (the confirmation before the game is run, the cache file, the switch at the next load of the window,
 the record of the mods in the project file) is in `docs/adr/0001-architecture.md`, item 15. Checked once against the real game

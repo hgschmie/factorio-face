@@ -230,6 +230,10 @@ test("reads the game after the confirmation, shows the steps, loads the window a
     expect(current).toMatchObject({ inUse: { kind: "game", version: "2.1.24", build: 87808, mods: 1 }, pending: null, stale: false, unavailable: null, problem: null, discardable: true, run: { state: "done" } });
     const read = await dataInUse(page);
     expect(read.mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
+    // The mod is described by the info.json in its archive, and what it created names it; nothing of that is a warning.
+    expect(read.catalog!.modules).toEqual([{ name: "base", title: "base", version: "2.1.24", requires: [], recommends: [], featureFlags: [] }, { name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] }]);
+    expect(read.catalog!.signals.virtual!.map((signal) => [signal.name, signal.modules])).toEqual([[MOD_SIGNAL, ["some-mod"]], ["signal-A", ["base"]]]);
+    await expect(message(page, "warnings").locator("li", { hasText: "info.json" })).toHaveCount(0);
     // The window is told which icons the app can draw: those made of the game's own files, not the mod's.
     expect(read.icons).toEqual(expect.arrayContaining(["virtual/signal-A", "item/constant-combinator", "group/g"]));
     expect([`virtual/${MOD_SIGNAL}`, `item/${MOD_ENTITY}`, "item/gadget"].filter((id) => read.icons.includes(id))).toEqual([]);
@@ -312,6 +316,8 @@ test("what a mod brings is in the selector and the picker, is placed, saved and 
       await expect(projectSettings.locator(`[data-module="${module}"] input`)).toBeChecked();
       await expect(projectSettings.locator(`[data-module="${module}"] input`)).toBeDisabled();
     }
+    // A mod is listed by the title its info.json gives it.
+    await expect(projectSettings.locator('[data-module="some-mod"] .module-title')).toHaveText("Some Mod");
     await page.keyboard.press("Escape");
 
     // Saved: the file has the record of the game and its mods, and keeps the module list it had.
@@ -613,6 +619,48 @@ test("a damaged data file falls back to the built-in data with a message, and di
     await expect(message(page, "data-problem")).toHaveCount(0);
     await expect(builtInButton(page)).toBeDisabled();
     expect(existsSync(file)).toBe(false);
+  } finally {
+    await closeApp(app);
+  }
+});
+
+test("a data file of the earlier format falls back to the built-in data and asks to read the game again, which replaces it", async () => {
+  const first = await launchWithGame();
+  const file = join(first.userData, "game-data.json");
+  try {
+    await readGame(first.app, first.page);
+  } finally {
+    await closeApp(first.app);
+  }
+  // As the app wrote it before every record named the mod that adds it.
+  const stored = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
+  expect(stored.version).toBe(2);
+  await writeFile(file, JSON.stringify({ ...stored, version: 1 }));
+
+  const { app, page } = await launchWithGame({ userData: first.userData, program: first.program, folder: resolve(first.dataDirectory, process.platform === "darwin" ? "../.." : "..") });
+  try {
+    const outdated = "The data read from your game was stored by an earlier version of this app and cannot be used by this one. Read the game again to work with your game's data. The built-in data is in use.";
+    const hint = page.locator(".data-hint");
+    await expect(hint).toContainText(outdated);
+    expect(await page.evaluate(() => window.faceSession!.getState().catalog.modulesFixed)).toBe(false);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
+    expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.24" }, catalog: null, entities: null });
+
+    await hint.getByRole("button", { name: "Game data..." }).click();
+    await expect(source(page)).toHaveText(BUILT_IN_SOURCE);
+    await expect(message(page, "data-problem")).toHaveText(outdated);
+    await expect(readButton(page)).toHaveText("Read from the game...");
+    await expect(builtInButton(page)).toBeEnabled();
+
+    // Reading the game again writes a file of the current format; the window is loaded again with it and the message is gone.
+    await answerMessageBoxes(app, { run: true });
+    await readButton(page).click();
+    await expect(source(page)).toHaveText(READ_SOURCE, { timeout: 20_000 });
+    await expect(message(page, "data-problem")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".data-hint")).toHaveCount(0);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
+    expect((JSON.parse(await readFile(file, "utf8")) as { version: number }).version).toBe(2);
   } finally {
     await closeApp(app);
   }

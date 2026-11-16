@@ -2,6 +2,10 @@
 // the app. The file is the app's own, but it is read like any file: with a size limit and through `parseGameData`; a file
 // that is damaged or of another format is ignored and reported, and the built-in data applies. Discarding it returns to the
 // built-in data for good.
+//
+// Format versions: 1 had every record without the mod that adds it (`modules: []`) and the mods by name alone; 2 has the
+// creating mod on every record and each mod's title and dependencies in the catalog's head. A file of version 1 is not
+// converted, since only the game can say what it lacks: the user is asked to read the game again.
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { IconTable } from "@face/catalog/icons";
@@ -10,7 +14,9 @@ import { readRegularFile } from "../regularFile.ts";
 import { gameDataKeyId, parseGameData, type GameData } from "./gameData.ts";
 
 export const GAME_DATA_FILE_NAME = "game-data.json";
-export const GAME_DATA_FILE_VERSION = 1;
+export const GAME_DATA_FILE_VERSION = 2;
+/** For a file of an earlier format, as the other messages without the full stop: the service adds what applies instead. */
+export const OUTDATED_GAME_DATA = "The data read from your game was stored by an earlier version of this app and cannot be used by this one. Read the game again to work with your game's data";
 /** The standard game makes 0.7 MB. */
 export const MAX_GAME_DATA_FILE_BYTES = 128 * 1024 * 1024;
 
@@ -40,7 +46,9 @@ export class GameDataCache {
     try {
       const file = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
       const fields = typeof file === "object" && file !== null ? (file as Record<string, unknown>) : {};
-      if (fields.version !== GAME_DATA_FILE_VERSION) throw new Error("the file is of another format");
+      const { version } = fields;
+      if (typeof version === "number" && Number.isInteger(version) && version >= 1 && version < GAME_DATA_FILE_VERSION) return { status: "damaged", message: OUTDATED_GAME_DATA };
+      if (version !== GAME_DATA_FILE_VERSION) throw new Error("the file is of another format");
       const { data, iconTable } = parseGameData(fields);
       if (fields.keyId !== gameDataKeyId(data.key)) throw new Error("the file does not belong to the game it names");
       return { status: "ok", data, iconTable };

@@ -992,13 +992,16 @@ in a native dialog of its own before it starts the game.
   data read from a game, the catalog and the entity table. `applyData` installs them (`setEntityTable(parseEntityTable(...))` of
   `@face/model`, `setCatalog(createCatalog(...))` of `@face/catalog`), so that the session, the language and every view find them
   where they look (`entityTable()`, `currentCatalog()`). Data the editor cannot use after all, or a call that fails, leaves the
-  built-in data in place with a reason (`DataInUse.problem`), which is also how the main process reports a damaged cache file. The
+  built-in data in place with a reason (`DataInUse.problem`), which is also how the main process reports a damaged cache file and
+  one of an earlier format, which asks for the game to be read again. The
   workbench shows that reason at the right end of the title bar (`.data-hint`, with "Game data..." and a dismiss button), in place of
   the icon hint.
 - **The session** gets the `DataInUse` (`SessionOptions.data`). With data read from a game the catalog is of one set:
   `CatalogService` is created `fixed`, all modules of the catalog are on, `CatalogView.modulesFixed` is true, `setModuleEnabled` does
   nothing, and the project settings show the modules checked and disabled with the note "As in your game" (`[data-note="modules-fixed"]`)
-  and each module's version in place of a signal count. The module list of the project file is not touched and is written back as it
+  and each module's version in place of a signal count; a mod is listed by the title of its `info.json`. The records of such data
+  name the mod that created them (`modules`) and the catalog's head has each mod's hard dependencies (`requires`); with everything
+  on that changes nothing, and nothing switches by it yet. The module list of the project file is not touched and is written back as it
   was read.
 - **The record of the mods** (`gameData/projectMods.ts`). `toProjectData` gets `modsRecord(data)`: the game version and what the game
   had loaded, when the data was read from a game with at least one mod; it replaces the project's `gameMods`. Otherwise the record

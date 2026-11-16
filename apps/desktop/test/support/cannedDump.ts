@@ -1,3 +1,4 @@
+import { strToU8, zipSync } from "fflate";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
@@ -16,6 +17,14 @@ export interface CannedDump {
   readonly without?: readonly string[];
   /** With `editor`: further prototypes a wire connects to, as a mod adds them (`MODDED_KINDS`). */
   readonly entities?: readonly WiredEntity[];
+}
+
+/** The mod of the canned dumps as its `info.json` describes it: what it cannot do without, what it can do with, and what it refuses. */
+export const SOME_MOD_INFO = { name: "some-mod", version: "1.2.3", title: "Some Mod", author: "nobody", factorio_version: "2.1", dependencies: ["base >= 2.1", "? quality", "! not-there", "missing-lib >= 1.0"] };
+
+/** The bytes of a mod's archive: one folder with its `info.json` and a file of code, as the mod portal packs them. */
+export function modArchive(info: { readonly name: string; readonly version: string } & Readonly<Record<string, unknown>>, folder = `${info.name}_${info.version}`): Uint8Array {
+  return zipSync({ [`${folder}/control.lua`]: strToU8("-- nothing\n"), [`${folder}/info.json`]: strToU8(JSON.stringify(info, null, 2)) });
 }
 
 /** What only the mod of an `editor` dump has. */
@@ -63,10 +72,12 @@ export const MODDED_KINDS: readonly WiredEntity[] = [
 /**
  * Writes the files the three dump commands leave below `script-output`, for a game with two items (one with a mod's icon),
  * a lamp a wire connects to and one item group; with `editor` also what the editor needs of a game. Small, and complete
- * enough for the tables to be built from it.
+ * enough for the tables to be built from it. Every prototype says which mod created it, as the game does: `some-mod` what is
+ * the mod's when the game loaded it, `base` everything else, and `core` the item group.
  */
 export async function writeCannedDump(directory: string, { activeMods = { base: "2.1.24" }, gameVersion = "2.1.24", editor = false, without = [], entities = [] }: CannedDump = {}): Promise<string> {
-  const signal = (name: string, type: string): object => ({ name, type, order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
+  const createdBy = (module?: string): string => (module !== undefined && module in activeMods ? module : "base");
+  const signal = (name: string, type: string, module?: string): object => ({ name, type, created: createdBy(module), order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
   const wired = editor ? [...EDITOR_ENTITIES, ...entities].filter((entity) => !without.includes(entity.name)) : [];
   const iconOf = (entity: WiredEntity): string => `__${entity.module ?? "base"}__/graphics/icons/${entity.name}.png`;
   const boxOf = ([width, height]: readonly [number, number], inset: number): number[][] => [[-width / 2 + inset, -height / 2 + inset], [width / 2 - inset, height / 2 - inset]];
@@ -91,11 +102,12 @@ export async function writeCannedDump(directory: string, { activeMods = { base: 
   const runtime = {
     game_version: gameVersion,
     active_mods: activeMods,
-    item: ["plate", "gadget", "lamp", ...wired.map((entity) => entity.name)].map((name) => ({ ...signal(name, "item"), stack_size: 50, weight: 100 })),
-    fluid: [], virtual_signal: Object.keys(virtual).map((name) => signal(name, "virtual-signal")), recipe: [], space_location: [], asteroid_chunk: [], quality: [],
-    entity: [{ ...signal("lamp", "lamp"), items_to_place_this: ["lamp"] }, ...wired.map((entity) => ({ ...signal(entity.name, entity.type), items_to_place_this: [entity.name] }))],
-    item_group: [{ name: "g", order: "a" }],
-    item_subgroup: [{ name: "s", group: "g", order: "a" }],
+    item: [{ name: "plate" }, { name: "gadget", module: "some-mod" }, { name: "lamp" }, ...wired].map(({ name, module }) => ({ ...signal(name, "item", module), stack_size: 50, weight: 100 })),
+    virtual_signal: Object.keys(virtual).map((name) => signal(name, "virtual-signal", name === MOD_SIGNAL ? "some-mod" : undefined)),
+    fluid: [], recipe: [], space_location: [], asteroid_chunk: [], quality: [],
+    entity: [{ ...signal("lamp", "lamp"), items_to_place_this: ["lamp"] }, ...wired.map((entity) => ({ ...signal(entity.name, entity.type, entity.module), items_to_place_this: [entity.name] }))],
+    item_group: [{ name: "g", order: "a", created: "core" }],
+    item_subgroup: [{ name: "s", group: "g", order: "a", created: "base" }],
     utility_constants: { default_item_weight: 100 },
     rocket_silos: {},
     circuit_entities: [fact("lamp", "lamp", [1, 1], false), ...wired.map((entity) => fact(entity.name, entity.type, entity.size, entity.turns === true, entity.poleReach))],

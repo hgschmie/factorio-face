@@ -1,11 +1,12 @@
 // From the files one dump of the game leaves below `script-output` to game data. The files come from a program the app does
 // not control, running mods the app knows nothing about: each is read with a size limit, parsed as JSON and nothing else,
 // and what the build makes of them is accepted only through `parseGameData`. The build itself is the catalog generator's
-// single-set mode (tools/catalog/lib/single.ts).
+// single-set mode (tools/catalog/lib/single.ts): every record of it names the mod that created it, and the head describes
+// each mod by its own `info.json` (modInfo.ts).
 import { iconTableFile, type IconTable } from "@face/catalog/icons";
 import { join } from "node:path";
 import { DUMP_OUTPUTS, RUNTIME_DUMP_FILE } from "../../../../tools/catalog/lib/commands.ts";
-import { LOCALE_DUMP_SECTIONS, activeMods, buildSingleSet, localeDumpFile, singleSetLocale, singleSetModules } from "../../../../tools/catalog/lib/single.ts";
+import { LOCALE_DUMP_SECTIONS, activeMods, buildSingleSet, localeDumpFile, singleSetLocale, singleSetModules, type ActiveMod } from "../../../../tools/catalog/lib/single.ts";
 import { readRegularFile } from "../regularFile.ts";
 import { GAME_DATA_LIMITS, parseGameData, type GameData, type GameDataKey } from "./gameData.ts";
 
@@ -57,22 +58,37 @@ export interface BuildOptions {
   readonly readAt: string;
   /** What the tables name as their origin: the application and its version. */
   readonly generator: string;
+  /** The parsed `info.json` of the loaded mods by name, as `readModInfos` returns it; a mod without one is listed by its name alone. */
+  readonly modInfos?: ReadonlyMap<string, unknown>;
 }
 
+export interface BuiltGameData {
+  readonly data: GameData;
+  readonly iconTable: IconTable;
+  /** Loaded mods whose `info.json` was not there or made no sense: they have no title and no dependencies. */
+  readonly unreadMods: readonly string[];
+  /** Records the game named no creator for, as "item iron-plate": they are there whatever modules are enabled. */
+  readonly untagged: readonly string[];
+}
+
+/** What the game says it loaded; throws for a runtime dump that does not say. */
+export const loadedMods = (dump: RawDump): ActiveMod[] => activeMods(dump.runtime);
+
 /** Builds the three tables from a dump and has them accepted. Throws with the reason when the dump is not usable. */
-export function buildGameData(dump: RawDump, { dataDirectory, game, key, readAt, generator }: BuildOptions): { data: GameData; iconTable: IconTable } {
-  const mods = activeMods(dump.runtime);
+export function buildGameData(dump: RawDump, { dataDirectory, game, key, readAt, generator, modInfos }: BuildOptions): BuiltGameData {
+  const mods = loadedMods(dump);
+  const { modules, unread } = singleSetModules(dataDirectory, mods, modInfos);
   const built = buildSingleSet({
     raw: dump.raw,
     runtime: dump.runtime,
     locale: singleSetLocale(dataDirectory, mods, dump.locale),
-    modules: singleSetModules(dataDirectory, mods),
+    modules,
     game: { version: game.version, build: game.build },
     generator,
     generatedAt: readAt,
   });
   const notes = built.notes.slice(0, GAME_DATA_LIMITS.notes).map((note) => note.slice(0, GAME_DATA_LIMITS.noteLength));
-  return parseGameData({
+  const accepted = parseGameData({
     key: { ...key, version: game.version, build: game.build },
     readAt,
     mods,
@@ -83,4 +99,5 @@ export function buildGameData(dump: RawDump, { dataDirectory, game, key, readAt,
     notes,
     skippedIcons: built.skippedIcons.length,
   });
+  return { ...accepted, unreadMods: unread, untagged: built.untagged };
 }

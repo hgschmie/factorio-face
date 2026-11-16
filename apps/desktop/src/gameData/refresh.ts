@@ -4,9 +4,10 @@
 import type { IconTable } from "@face/catalog/icons";
 import { dirname, isAbsolute, normalize } from "node:path";
 import type { GameInstallation, Host } from "../gameInstallation.ts";
-import { buildGameData, readDump } from "./dump.ts";
+import { buildGameData, loadedMods, readDump } from "./dump.ts";
 import { locateGameExecutable } from "./executable.ts";
-import type { GameData, GameDataKey } from "./gameData.ts";
+import { isGameModule, type GameData, type GameDataKey } from "./gameData.ts";
+import { readModInfos } from "./modInfo.ts";
 import { runGameDump, type GameRunOptions, type RunFailure, type RunProgress, type RunReport } from "./runner.ts";
 import { buildPrivateModDirectory, enabledMods, locateUserData, noUserMods, readUserMods, watchedUserFiles, type UserDataLocation, type UserMods } from "./userMods.ts";
 
@@ -92,6 +93,17 @@ export async function planGameRead(installation: GameInstallation, host: Host): 
   return prepared.ok ? { ok: true, plan: prepared.plan } : prepared;
 }
 
+/** Names in a warning before it says that there are more. */
+const NAMED_MODS = 5;
+
+function unreadWarning(mods: readonly string[]): string[] {
+  if (mods.length === 0) return [];
+  const more = mods.length - NAMED_MODS;
+  const names = `${mods.slice(0, NAMED_MODS).join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+  const [count, listed] = mods.length === 1 ? ["1 mod", "it is listed"] : [`${mods.length} mods`, "they are listed"];
+  return [`The info.json of ${count} could not be read (${names}): ${listed} by name, without what ${mods.length === 1 ? "it depends" : "they depend"} on.`];
+}
+
 function changeWarning(changed: readonly string[]): string[] {
   return changed.length ? [`These files of your game changed while it was read: ${changed.join(", ")}. If you were playing at the same time, that was the game itself.`] : [];
 }
@@ -113,11 +125,21 @@ export async function readGameData(options: RefreshOptions): Promise<RefreshResu
     steam: plan.steam,
     watch,
     prepareMods: (directory) => buildPrivateModDirectory(mods, directory, host.platform),
-    collect: async (scriptOutput, game) => buildGameData(await readDump(scriptOutput), { dataDirectory: installation.dataDirectory, game, key: plan.key, readAt, generator }),
+    collect: async (scriptOutput, game) => {
+      const dump = await readDump(scriptOutput);
+      // Read from the user's own files, which the run only linked to: what the game loaded says which of them to open.
+      const modInfos = await readModInfos(mods.directory, mods.files, loadedMods(dump).filter((mod) => !isGameModule(mod.name)));
+      return buildGameData(dump, { dataDirectory: installation.dataDirectory, game, key: plan.key, readAt, generator, modInfos });
+    },
   });
   const warnings = [...plan.problems, ...changeWarning(result.changed)];
   if (!result.ok) return { ok: false, failure: result.failure, message: result.message, log: result.log, warnings };
-  const { data, iconTable } = result.value;
+  const { data, iconTable, unreadMods, untagged } = result.value;
+  warnings.push(...unreadWarning(unreadMods));
+  if (untagged.length > 0) {
+    const examples = `${untagged.slice(0, NAMED_MODS).join(", ")}${untagged.length > NAMED_MODS ? ", ..." : ""}`;
+    warnings.push(`The game did not say which mod ${untagged.length} of its signals and entities come from (${examples}): they are kept and belong to no mod.`);
+  }
   if (!result.sandboxed && host.platform === "darwin" && options.sandbox !== "off") warnings.push("The game ran without the system's sandbox, which could not be entered here.");
   if (data.skippedIcons > 0) warnings.push(`${data.skippedIcons} icons of mods are not shown: the app reads icons from the game's own files only.`);
   if (data.notes.length > 0) warnings.push(`${data.notes.length} wired entities were left out because the game's data about them is not consistent.`);

@@ -86,22 +86,38 @@ export interface Dependency {
   readonly constraint: string;
 }
 
-/** Parses a dependency string such as "+ quality >= 2.1.0" into { name, kind, constraint }. */
+/**
+ * Parses a dependency string such as "+ quality >= 2.1.0" into { name, kind, constraint }. The name is what stands before the
+ * version constraint: older mods have spaces and dots in theirs.
+ */
 export function parseDependency(text: string): Dependency {
-  const match = /^\s*(\(\?\)|[!?~+])?\s*([A-Za-z0-9_-]+)\s*(.*)$/.exec(text);
-  if (!match) throw new Error(`Unparseable dependency "${text}"`);
   const kinds: Record<string, Dependency["kind"]> = { "": "required", "~": "required", "+": "recommended", "?": "optional", "(?)": "optional", "!": "incompatible" };
-  return { name: match[2]!, kind: kinds[match[1] ?? ""]!, constraint: match[3]!.trim() };
+  const [, prefix = "", rest = ""] = /^\s*(\(\?\)|[!?~+])?\s*(.*)$/s.exec(text) ?? [];
+  const at = rest.search(/[<>=]/);
+  const name = (at < 0 ? rest : rest.slice(0, at)).trim();
+  if (!/^[A-Za-z0-9_ .-]+$/.test(name)) throw new Error(`Unparseable dependency "${text.slice(0, 120)}"`);
+  return { name, kind: kinds[prefix]!, constraint: at < 0 ? "" : rest.slice(at).trim() };
+}
+
+/**
+ * A module as its parsed `info.json` describes it, under the name and version the caller knows it by: its title, what it
+ * cannot do without (`requires`), what it switches on with itself ("+", `recommends`) and the engine features it asks for.
+ * Optional and incompatible dependencies are in neither list. Throws for dependencies that are no list of dependency strings.
+ */
+export function moduleInfo(name: string, version: string, info: Readonly<Record<string, unknown>>): ModuleInfo {
+  const { title, dependencies = [] } = info;
+  if (!Array.isArray(dependencies) || !dependencies.every((entry) => typeof entry === "string")) throw new Error(`${name}: the dependencies are not a list of texts`);
+  const parsed = (dependencies as string[]).map(parseDependency);
+  const pick = (kind: Dependency["kind"]): string[] => parsed.filter((d) => d.kind === kind).map((d) => d.name);
+  const featureFlags = Object.keys(info).filter((key) => /^[a-z0-9_]+_required$/.test(key) && info[key] === true).map((key) => key.slice(0, -"_required".length).replaceAll("_", "-"));
+  return { name, title: typeof title === "string" && title.trim() !== "" ? title : name, version, requires: pick("required"), recommends: pick("recommended"), featureFlags };
 }
 
 /** The `info.json` of the named modules of the game below its `data` directory. */
 export function readModuleInfos(dataDir: string, names: readonly string[] = STANDARD_MODULES): ModuleInfo[] {
   return names.map((name) => {
-    const info = JSON.parse(readFileSync(join(dataDir, name, "info.json"), "utf8")) as Record<string, unknown> & { title: string; version: string; dependencies?: string[] };
-    const dependencies = (info.dependencies ?? []).map(parseDependency);
-    const pick = (kind: Dependency["kind"]): string[] => dependencies.filter((d) => d.kind === kind).map((d) => d.name);
-    const featureFlags = Object.keys(info).filter((key) => key.endsWith("_required") && info[key] === true).map((key) => key.slice(0, -"_required".length).replaceAll("_", "-"));
-    return { name, title: info.title, version: info.version, requires: pick("required"), recommends: pick("recommended"), featureFlags };
+    const info = JSON.parse(readFileSync(join(dataDir, name, "info.json"), "utf8")) as Record<string, unknown> & { version: string };
+    return moduleInfo(name, info.version, info);
   });
 }
 

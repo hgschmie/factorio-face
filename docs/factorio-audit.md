@@ -4,6 +4,7 @@ Audit date: 2026-11-11. Scope: constant, arithmetic, decider and selector combin
 Added 2026-11-12: electric poles (3.9, 6.9, 9.9) and the programmable speaker (3.10, 6.10, 9.10). Where an older section says "the five entities" it means the four combinators and the lamp; what holds for the two additions is said in their own sections.
 Added 2026-11-14: section 12, the blueprint format as `packages/blueprints` reads and writes it, with what that work added to or corrected in sections 3 to 5 and 9.
 Added 2026-11-14: section 13, all 98 prototypes a circuit wire connects to: how they are selected, their footprints, reaches and directions, and which of that is the game's own word. The editor still has the ten prototypes of 3.1.
+Added 2026-11-15: section 15, which mod created a prototype, as the game says it at run time.
 This document drives the model types, the DSL, the blueprint importer/exporter and the simulator of "face".
 
 ## 0. How to read this document
@@ -1814,3 +1815,19 @@ Open:
 - Whether the game takes the kept fields (14.3) back unchanged when modelled fields next to them change: no sample has kept data.
 - `read_fuel` of a lab: no lab of the game burns fuel, so the game has nothing to say about the field.
 - A control behaviour of a generic entity without a wire through a build: settled by fixture F-29. The entity keeps it, with flag and condition, and the game writes it into a blueprint again; a wall and a speaker whose blueprint says nothing but the default (flag on, no condition) are built without one.
+
+## 15. Which mod created a prototype (2026-11-15)
+
+For data read from a game with mods the editor has to know which mod a signal or an entity comes from. `data.raw` does not say; the game does at run time. "[runtime dump]" here is `face-runtime-dump.json` of all eight module sets from `make catalog` on 2026-11-15, whose scenario asks for every prototype it lists; the type argument was tried out in a scenario of its own on the same day.
+
+| Fact | Detail | Source |
+| --- | --- | --- |
+| The call | `prototypes.get_history(type, name)` returns `{ created = "<mod name>", changed = { "<mod name>", ... } }`: the mod that created the prototype and the mods that changed it, in that order | [api: LuaPrototypes.get_history, PrototypeHistory] |
+| `type` | the prototype's own type, which is `LuaPrototypeBase.type`: `ammo` for the item `firearm-magazine`, `lamp` for `small-lamp`, `planet` for `nauvis`, `virtual-signal`, `recipe`, `fluid`, `quality`, `asteroid-chunk`, `item-group`, `item-subgroup`. The kind a prototype is listed under is refused for the others: `("item", "firearm-magazine")`, `("entity", "small-lamp")` and `("space-location", "nauvis")` raise "No history for the given key" | [runtime dump] |
+| A prototype that is not there | raises the same error; the scenario calls through `pcall` and leaves `created` out | [runtime dump] |
+| `core` | is a creator although it is no entry of `script.active_mods`: the eight placeholders `item-unknown`, `fluid-unknown`, `signal-unknown`, `entity-unknown`, `recipe-unknown`, `space-location-unknown`, `asteroid-chunk-unknown` and `quality-unknown`. The quality `normal` is created by `base` and changed by `quality` | [runtime dump] |
+| Every prototype has a creator | all 2400 signals, groups and subgroups of the eight sets, and the creator of a prototype is the same in every set that has it | [runtime dump] |
+
+The creator is not the module set a prototype exists with, which is what the standard catalog's `modules` say. Of the 2400 records 2297 name their creator as their `modules`, and 8 more do once `core` counts as `base`. The others: the recycler creates the recycling recipe of every item it finds, so 89 recipes created by `recycler` exist only with Space Age (84), Quality (3) or Elevated Rails (2); `base` creates the barrel items and recipes of every fluid, so the 6 of Space Age's fluoroketone are created by `base`; and the satellite with its two recipes, created by `base` and `recycler`, is gone with Space Age (`removedBy`), which a creator cannot say. In the entity table the 98 creators are the table's modules [runtime dump against `packages/catalog/data/catalog-2.1.24.json` and `packages/model/data/entities-2.1.24.json`].
+
+A module also moves what another created: with the five modules loaded, 43 signals created by `base` are in item subgroups that Space Age created (`rocket-silo`, `cargo-landing-pad`, `rocket-part` among them), and the subgroup `space-related` of `base` is in a group of Space Age [game: read by the app on 2026-11-15]. The same holds for mods, more so: in one game with 44 mods, 1467 signals created by the game's own modules were in subgroups of mods; the recycler alone created 1906 signals there against 317 in the standard game, a recycling recipe for every item of a mod.

@@ -3,6 +3,10 @@
 -- script-output/face-runtime-dump.json and ends the test on the first tick. For every prototype a wire connects to it also
 -- writes what the entity table (tools/catalog/lib/entities.mjs) derives from data.raw or cannot find there, so that the
 -- generator can check the table against the game: `circuit_entities`. What only an entity says, it builds one for.
+--
+-- Every prototype that becomes a record of the catalog or of the entity table says which mod created it (`created`), for the
+-- single-set build (tools/catalog/lib/single.ts): one dump of a game with mods cannot tell otherwise. The generator of the
+-- standard tables has its own, exact attribution from its module sets and does not read the field.
 
 local function names(list)
   local out = {}
@@ -10,10 +14,18 @@ local function names(list)
   return out
 end
 
+-- The mod that created a prototype, `core` for the engine's own data; nil (so absent from the JSON) when the game does not
+-- say. `type` is the prototype's own type ("ammo", "lamp", "planet"), not the kind it is listed under.
+local function creator(type, name)
+  local ok, history = pcall(prototypes.get_history, type, name)
+  return ok and history.created or nil
+end
+
 local function base(proto)
   return {
     name = proto.name,
     type = proto.type,
+    created = creator(proto.type, proto.name),
     order = proto.order,
     group = proto.group.name,
     subgroup = proto.subgroup.name,
@@ -174,11 +186,11 @@ local function dump()
   end
   out.item_group = {}
   for _, group in pairs(prototypes.item_group) do
-    out.item_group[#out.item_group + 1] = { name = group.name, order = group.order }
+    out.item_group[#out.item_group + 1] = { name = group.name, order = group.order, created = creator("item-group", group.name) }
   end
   out.item_subgroup = {}
   for _, subgroup in pairs(prototypes.item_subgroup) do
-    out.item_subgroup[#out.item_subgroup + 1] = { name = subgroup.name, order = subgroup.order, group = subgroup.group.name }
+    out.item_subgroup[#out.item_subgroup + 1] = { name = subgroup.name, order = subgroup.order, group = subgroup.group.name, created = creator("item-subgroup", subgroup.name) }
   end
   out.utility_constants = { default_item_weight = prototypes.utility_constants.default_item_weight }
   out.rocket_silos = {}
