@@ -553,7 +553,7 @@ test("the signal picker selects a Space Age signal with its icon, and the module
   expect(await sourceText(page)).toBe(withSignal);
   await expect(page.locator("g.card")).toHaveCount(4);
   await selectEntity(page, "source");
-  await expect(inspector.locator(".field-warning")).toHaveText("Belongs to a signal group that is switched off");
+  await expect(inspector.locator(".field-warning")).toHaveText("Belongs to Space Age, which is switched off in the project settings");
   await mode(page, "Split").click();
   const problems = page.getByRole("region", { name: "Diagnostics" });
   await expect(problems.locator('li[data-code="disabled-signal"]')).toContainText("carbon-fiber");
