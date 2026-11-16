@@ -4,7 +4,10 @@
 // built-in data for good.
 //
 // Format versions: 1 had every record without the mod that adds it (`modules: []`) and the mods by name alone; 2 has the
-// creating mod on every record and each mod's title and dependencies in the catalog's head. A file of version 1 is not
+// creating mod on every record and each mod's title and dependencies in the catalog's head; 3 is 2 with, on a recipe, the
+// mods of what it consumes and produces after its creator, and on an item those of the recipes its creator makes it with. A
+// file of 2 would be read without complaint, and its recipes of a mod's items would stay on offer with the mod switched off;
+// hence the number. A file of an earlier version is not
 // converted, since only the game can say what it lacks: the user is asked to read the game again.
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -14,7 +17,7 @@ import { readRegularFile } from "../regularFile.ts";
 import { gameDataKeyId, parseGameData, type GameData } from "./gameData.ts";
 
 export const GAME_DATA_FILE_NAME = "game-data.json";
-export const GAME_DATA_FILE_VERSION = 2;
+export const GAME_DATA_FILE_VERSION = 3;
 /** For a file of an earlier format, as the other messages without the full stop: the service adds what applies instead. */
 export const OUTDATED_GAME_DATA = "The data read from your game was stored by an earlier version of this app and cannot be used by this one. Read the game again to work with your game's data";
 /** The standard game makes 0.7 MB. */

@@ -373,7 +373,7 @@ describe("the cache at start", () => {
     expect(service.current()).toEqual({ source: BUILT_IN, problem, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
     expect(await service.status()).toMatchObject({ inUse: BUILT_IN, pending: null, problem, discardable: true, unavailable: null });
     expect(await service.read()).toMatchObject({ inUse: BUILT_IN, pending: MODDED, problem: null, run: { state: "done" } });
-    expect(JSON.parse(await readFile(cacheFile, "utf8"))).toMatchObject({ version: 2 });
+    expect(JSON.parse(await readFile(cacheFile, "utf8"))).toMatchObject({ version: 3 });
     expect((await restart()).current()).toMatchObject({ source: MODDED, problem: null });
   });
 

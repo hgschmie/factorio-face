@@ -7,13 +7,12 @@ import { useGameData } from "./gameData/useGameData.ts";
 import { useCatalogEntityIcons } from "./icons/catalogEntityIcons.ts";
 import { useCatalogIcons } from "./icons/catalogSignalIcons.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "./inspector/SignalField.tsx";
+import { signalWarning } from "./inspector/signalWarning.ts";
 import { SignalPicker } from "./picker/SignalPicker.tsx";
 import { useAppSettings } from "./settings/useAppSettings.ts";
 import { useProjectSession } from "./session/useProjectSession.ts";
 import type { WireIconResolver } from "./workbench/CanvasStrip.tsx";
 import { Workbench } from "./workbench/Workbench.tsx";
-
-const STATUS_WARNINGS = { known: undefined, unknown: "Not a signal of Factorio's catalog", disabled: "Belongs to a signal group that is switched off" } as const;
 
 export interface AppProps {
   /** The game data the window works with, applied before anything was rendered. */
@@ -38,7 +37,7 @@ export function App({ data }: AppProps) {
   const describeSignal = useMemo<SignalDescriber>(() => {
     return (signal) => {
       const info = catalog.describe(signal);
-      return { displayName: info.displayName, iconUrl: info.icon === undefined ? undefined : iconUrl(info.icon), warning: STATUS_WARNINGS[info.status] };
+      return { displayName: info.displayName, iconUrl: info.icon === undefined ? undefined : iconUrl(info.icon), warning: signalWarning(info) };
     };
   }, [catalog, iconUrl]);
 

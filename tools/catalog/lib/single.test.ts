@@ -111,6 +111,66 @@ describe("single-set build of a made-up dump", () => {
     expect(catalog.signalsByKey.get("entity:lamp")).toMatchObject({ icon: "item/lamp", visibility: "hidden" });
   });
 
+  it("gives a recipe the modules of what it consumes and produces after its creator, but not base and not a mod that changed it, and an item those of the recipes its creator makes it with", () => {
+    const part = (type: string, name: string) => ({ type, name });
+    const recipe = (name: string, created: string | null, ingredients: unknown, products: unknown, changed?: unknown) => ({ ...signal(name, "recipe", created), hide_from_signal_gui: false, ingredients, products, ...(changed !== undefined && { changed }) });
+    const recipes = [
+      // The stand-in for the recycler: one module makes a recipe for every item, the mod's included.
+      recipe("gadget-recycling", "quality", [part("item", "gadget")], [part("item", "plate")], {}),
+      recipe("plate-recycling", "quality", [part("item", "plate")], [part("item", "plate")]),
+      // The barrels: base makes a recipe for the mod's fluid; the one that empties it only names the mod among its products.
+      recipe("fill-goo", "core", [part("fluid", "goo"), part("item", "plate")], [part("item", "plate")]),
+      recipe("empty-goo", "base", [part("item", "plate")], [part("item", "plate"), part("fluid", "goo")]),
+      // A recipe of base that the mod gave an ingredient of its own is there without the mod.
+      recipe("plate", "base", [part("item", "gadget")], [part("item", "plate")], ["some-mod"]),
+      recipe("gadget", "some-mod", [part("item", "plate"), part("item", "gadget"), part("fluid", "goo")], [part("item", "gadget"), part("item", "gadget")]),
+      // A part the dump has no record of, a product that is no item, a part without a creator, lists that are none.
+      recipe("odd", "base", [part("item", "nothing"), part("fluid", "gadget"), "gadget", { type: "item" }], [{ type: "research-progress" }, part("item", "orphan")]),
+      recipe("bare", "base", {}, "gadget"),
+      // No creator among what the game loaded: the recipe still needs the mod of its part.
+      recipe("stray", "gone-mod", [part("item", "gadget")], {}),
+      // The barrel itself: an item of base that base only makes of the mod's fluid. The recycler's recipe for it, which has the
+      // barrel among its products as well, says nothing about the barrel and needs the mod as the barrel does.
+      recipe("goo-barrel", "base", [part("fluid", "goo"), part("item", "plate")], [part("item", "goo-barrel")]),
+      recipe("goo-barrel-recycling", "quality", [part("item", "goo-barrel")], [part("item", "goo-barrel")]),
+      // Not every recipe of its creator for the lamp needs the mod; the crate is made by the mod alone, which is not its creator.
+      recipe("lamp", "base", [part("item", "plate")], [part("item", "lamp")]),
+      recipe("lamp-of-goo", "base", [part("fluid", "goo")], [part("item", "lamp")]),
+      recipe("crate", "some-mod", [part("item", "gadget")], [part("item", "crate")]),
+    ];
+    const icon = { icon: "__base__/graphics/icons/plate.png" };
+    const items = [signal("orphan", "item", null), signal("goo-barrel", "item"), signal("crate", "item")];
+    const more = buildSingleSet({
+      raw: { ...raw, item: { ...raw.item, orphan: icon, "goo-barrel": icon, crate: icon }, fluid: { goo: icon }, recipe: Object.fromEntries(recipes.map((entry) => [entry.name, icon])) },
+      runtime: { ...runtime, item: [...runtime.item, ...items.map((entry) => ({ ...entry, stack_size: 1, weight: 1 }))], fluid: [signal("goo", "fluid", "some-mod")], recipe: recipes },
+      locale, modules, ...HEAD,
+    });
+    expect(Object.fromEntries(more.catalog.signals.recipe!.map((record) => [record.name, record.modules]))).toEqual({
+      "gadget-recycling": ["quality", "some-mod"], "plate-recycling": ["quality"], "fill-goo": ["base", "some-mod"], "empty-goo": ["base", "some-mod"],
+      plate: ["base"], gadget: ["some-mod"], odd: ["base"], bare: ["base"], stray: ["some-mod"],
+      "goo-barrel": ["base", "some-mod"], "goo-barrel-recycling": ["quality", "some-mod"], lamp: ["base"], "lamp-of-goo": ["base", "some-mod"], crate: ["some-mod"],
+    });
+    expect(more.untagged).toEqual([...built.untagged, "item orphan", "recipe stray"].sort());
+    // Of the items the barrel alone has a second module; the fluid keeps its creator; and each is there with all of its modules only.
+    expect(more.catalog.signals.item!.filter((record) => record.modules.length !== 1).map((record) => [record.name, record.modules])).toEqual([["goo-barrel", ["base", "some-mod"]], ["orphan", []]]);
+    expect(more.catalog.signals.fluid!.map((record) => record.modules)).toEqual([["some-mod"]]);
+    const catalog = createCatalog(more.catalog);
+    const recipesWith = (enabled: readonly string[]) => availableSignals(catalog, enabled, { kinds: ["recipe"] }).map((entry) => entry.name).sort();
+    expect(recipesWith(["base", "quality"])).toEqual(["bare", "lamp", "odd", "plate", "plate-recycling"]);
+    expect(recipesWith(["base", "some-mod"])).toEqual(["bare", "crate", "empty-goo", "fill-goo", "gadget", "goo-barrel", "lamp", "lamp-of-goo", "odd", "plate", "stray"]);
+    expect(recipesWith(["quality", "some-mod"])).toEqual(["crate", "gadget", "gadget-recycling", "goo-barrel-recycling", "plate-recycling", "stray"]);
+    const added = ["goo-barrel", "crate", "lamp", "orphan"];
+    const itemsWith = (enabled: readonly string[]) => availableSignals(catalog, enabled, { kinds: ["item"] }).map((entry) => entry.name).filter((name) => added.includes(name)).sort();
+    expect([itemsWith(["base"]), itemsWith(["base", "some-mod"])]).toEqual([["crate", "lamp", "orphan"], ["crate", "goo-barrel", "lamp", "orphan"]]);
+    // A dump of a scenario that did not write the lists yet: every recipe has its creator alone.
+    const before = buildSingleSet({
+      raw: { ...raw, fluid: { goo: icon }, recipe: { "fill-goo": icon } },
+      runtime: { ...runtime, fluid: [signal("goo", "fluid", "some-mod")], recipe: [{ ...signal("fill-goo", "recipe"), hide_from_signal_gui: false }] },
+      locale, modules, ...HEAD,
+    });
+    expect(before.catalog.signals.recipe!.map((record) => record.modules)).toEqual([["base"]]);
+  });
+
   it("leaves icons of mods out of the icon table and names them", () => {
     expect(built.skippedIcons).toEqual(["item/gadget"]);
     expect([...built.icons.keys()]).toEqual(["entity/ghost-lamp", "entity/odd-lamp", "group/g", "item/lamp", "item/plate"]);
@@ -208,7 +268,27 @@ describe.skipIf(!local)("single-set build of the generator's dumps", () => {
     subgroups: subgroups.map(({ subgroup, signals }) => ({ subgroup: plain({ ...subgroup }), signals: signals.map((entry) => entry.key) })),
   }));
 
-  it.each([["base", 0], ["base+elevated-rails+recycler+quality+space-age", 0]])("says for %s what the standard tables say for that set", (setId) => {
+  // Where the modules of a record are not, with what they require, the ones the standard catalog names, which knows the
+  // record from every module set: recipes that the recycler makes from a recipe Space Age changed (their products are Space
+  // Age's, without it they have others).
+  const CHANGED_BY_SPACE_AGE = ["artillery-shell", "artillery-turret", "artillery-wagon", "cliff-explosives", "efficiency-module-3", "personal-roboport-mk2-equipment", "productivity-module-3", "quality-module-3", "speed-module-3", "spidertron"];
+  const changed = (enabled: readonly string[]): string[] => (enabled.includes("space-age") ? CHANGED_BY_SPACE_AGE.filter((name) => name !== "quality-module-3" || enabled.includes("quality")) : []);
+  const otherModules = (enabled: readonly string[]): string[] => changed(enabled).map((name) => `recipe:${name}-recycling`);
+  const needed = (names: readonly string[]): string[] => [...new Set(names.flatMap((name) => [name, ...needed(standard.modules.find((module) => module.name === name)!.requires)]))].sort();
+  const SETS = ["base", "base+elevated-rails", "base+recycler", "base+elevated-rails+recycler", "base+recycler+quality", "base+elevated-rails+recycler+quality", "base+elevated-rails+recycler+space-age", "base+elevated-rails+recycler+quality+space-age"];
+
+  it.each(SETS)("names for %s the modules the standard catalog names, but for recipes made of what another module changed", (setId) => {
+    const enabled = setId.split("+");
+    const catalog = createCatalog(build(setId).catalog);
+    expect(catalog.signals.filter((entry) => String(needed(entry.modules)) !== String(needed(standard.signalsByKey.get(entry.key)!.modules))).map((entry) => entry.key).sort()).toEqual(otherModules(enabled));
+    // More than one module have the recipes made of another module's things and the barrels of Space Age's fluid, which `base` makes.
+    const several = catalog.signals.filter((entry) => entry.modules.length > 1);
+    expect(several.filter((entry) => entry.kind !== "recipe").map((entry) => [entry.key, entry.modules])).toEqual(enabled.includes("space-age") ? ["cold", "hot"].map((kind) => [`item:fluoroketone-${kind}-barrel`, ["base", "space-age"]]) : []);
+    // The recycler has a recipe for the items of every other module. Dumps without the parts of a recipe are from before the scenario wrote them.
+    if (enabled.includes("recycler") && enabled.length > 2) expect(several.some((entry) => entry.modules[0] === "recycler"), "the dumps predate `ingredients`: run `make catalog` to dump again").toBe(true);
+  }, 60_000);
+
+  it.each(["base", "base+elevated-rails+recycler+quality+space-age"])("says for %s what the standard tables say for that set", (setId) => {
     const enabled = setId.split("+");
     const built = build(setId);
     expect(built.mods.map((mod) => mod.name)).toEqual(standard.modules.map((module) => module.name).filter((name) => enabled.includes(name)));
@@ -219,12 +299,12 @@ describe.skipIf(!local)("single-set build of the generator's dumps", () => {
     expect(built.untagged, "the dumps predate `created`: run `make catalog` to dump again").toEqual([]);
 
     // Signals: the same ones, each with the attributes the standard catalog resolves for these modules and the same picture.
-    // Each is of one of the loaded modules, so with all of them enabled everything is there.
+    // Each is of loaded modules, so with all of them enabled everything is there.
     const catalog = createCatalog(built.catalog);
     const icons = parseIconTable(iconTableFile({ game: local!.game, icons: built.icons })).icons;
     const expected = new Map(availableSignals(standard, enabled).map((entry) => [entry.key, entry]));
     const actual = new Map(availableSignals(catalog, enabled).map((entry) => [entry.key, entry]));
-    for (const entry of catalog.signals) expect(entry.modules.length === 1 && enabled.includes(entry.modules[0]!), entry.key).toBe(true);
+    for (const entry of catalog.signals) expect(entry.modules.length >= 1 && entry.modules.every((name) => enabled.includes(name)), entry.key).toBe(true);
     expect([...actual.keys()]).toEqual([...expected.keys()]);
     expect(actual.size).toBe(catalog.signals.length);
     const picture = (table: ReadonlyMap<string, IconEntry>, entry: CatalogSignal | { icon: string }): IconEntry | undefined => table.get(entry.icon);

@@ -48,6 +48,8 @@ export interface InspectorProps {
   readonly renderSignalPicker?: SignalPickerRenderer;
   /** Catalog names and icons for the signals shown in the forms. */
   readonly describeSignal?: SignalDescriber;
+  /** The warning the source has on the declaration of an entity of modules that are switched off; shown under its title. */
+  readonly entityWarning?: (prototype: PrototypeName) => string | undefined;
   /** An edit of the selected entity that is not written to the source yet; the form shows it in place of the entity. */
   readonly draft?: InspectorDraft | null;
   /** Slot for the settings form. Defaults to the built-in forms of the entity kinds. */
@@ -337,6 +339,7 @@ function EntityInspector(props: EntityInspectorProps) {
   const editKey = useRef<string | undefined>(undefined);
   const change = (next: Entity): void => props.onChange(next, editKey.current === undefined ? undefined : { coalesce: editKey.current });
   const shown = draft?.entity ?? entity;
+  const warning = props.entityWarning?.(entity.prototype);
   return (
     <>
       <header className="inspector-identity">
@@ -349,6 +352,11 @@ function EntityInspector(props: EntityInspectorProps) {
           <p>{entityDescription(entity)}</p>
         </div>
       </header>
+      {warning && (
+        <p className="entity-warning" role="note">
+          {warning}
+        </p>
+      )}
       <fieldset className="inspector-fieldset" disabled={!editable}>
         <div className="inspector-primary">
           <NameField entity={entity} circuit={circuit} onRename={(name) => props.onRename(entity.id, name)} />

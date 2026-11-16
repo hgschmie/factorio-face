@@ -11,7 +11,7 @@ import { MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump } from "../../app
 import type { GameDataInUse, GameDataStatus } from "../../apps/desktop/src/ipc.ts";
 import { decodeBlueprintString, encodeBlueprintString } from "../../packages/blueprints/src/string.ts";
 import {
-  APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, pin, readProjectEntries, SCREENSHOT_DIR, showDisplay, sourceText, test,
+  APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, pin, readProjectEntries, SCREENSHOT_DIR, selectEntity, showDisplay, sourceText, test,
   type RunningApp,
 } from "./app.ts";
 import { inspector, setSource } from "./board.ts";
@@ -357,6 +357,14 @@ test("a mod is switched on in the project settings; what it brings is then in th
     await expect(card(page, "mod_crate1")).toHaveCount(1);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
     await expect(page.locator(".statusbar")).toContainText("2 warnings");
+    // The inspector says the same, in the same words: under the title of the entity, and under the field of the signal.
+    await selectEntity(page, "mod_crate1");
+    await expect(inspector.locator(".entity-warning")).toHaveText("'mod-crate' (Mod crate) is an entity of Some Mod, which is switched off in the project settings");
+    await selectEntity(page, "constant1");
+    await expect(inspector.locator(".entity-warning")).toHaveCount(0);
+    await expect(inspector.locator(".field-warning")).toHaveText("Belongs to Some Mod, which is switched off in the project settings");
+    await selectEntity(page, "mod_crate1");
+    await page.screenshot({ path: resolve(SHOTS, "inspector-mod-off.png") });
     await page.locator("[data-settings-toggle]").click();
     const unused = projectSettings.locator('[data-note="modules-off"]');
     await expect(unused).toContainText("This project uses signals or entities of Some Mod, which is switched off.");
@@ -366,6 +374,8 @@ test("a mod is switched on in the project settings; what it brings is then in th
     await expect(moduleRow(page, "some-mod").locator("input")).toBeChecked();
     await page.keyboard.press("Escape");
     expect(await problems(page)).toEqual([]);
+    await expect(card(page, "mod_crate1")).toHaveClass(/selected/);
+    await expect(inspector.locator(".entity-warning")).toHaveCount(0);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
 
     // Saved: the file has the record of the game and its mods, and the module list of the project with the mod in it.
@@ -582,8 +592,10 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     await page.locator("[data-settings-toggle]").click();
     const projectSettings = projectSettingsOf(page);
     const rows = projectSettings.locator(".module-list li");
-    const listed = ["base", ...CRATES.map((number) => `crates-${number}`), "some-mod"];
+    // The game's module, then the mods by title: the one whose title begins with a tag comes before the letters.
+    const listed = ["base", "crates-03", ...CRATES.filter((number) => number !== "03").map((number) => `crates-${number}`), "some-mod"];
     expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(listed);
+    await expect(moduleRow(page, "crates-01").locator(".module-title")).toHaveAttribute("title", "Crates 01 (crates-01)");
     await expect(projectSettings.locator('[data-note="other-mods"]')).toHaveText("2 other mods of your game add no signals or entities.");
     await expect(projectSettings.locator('[data-note="mods-hint"]')).toHaveCount(0);
     await expect(moduleRow(page, "crates-01").locator(".module-count")).toHaveText("1 signal, 1 entity");
@@ -816,7 +828,7 @@ test("a data file of the earlier format falls back to the built-in data and asks
   }
   // As the app wrote it before every record named the mod that adds it.
   const stored = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-  expect(stored.version).toBe(2);
+  expect(stored.version).toBe(3);
   await writeFile(file, JSON.stringify({ ...stored, version: 1 }));
 
   const { app, page } = await launchWithGame({ userData: first.userData, program: first.program, folder: resolve(first.dataDirectory, process.platform === "darwin" ? "../.." : "..") });
@@ -844,7 +856,7 @@ test("a data file of the earlier format falls back to the built-in data and asks
     await gameDataInUse(page);
     await switchOn(page);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
-    expect((JSON.parse(await readFile(file, "utf8")) as { version: number }).version).toBe(2);
+    expect((JSON.parse(await readFile(file, "utf8")) as { version: number }).version).toBe(3);
   } finally {
     await closeApp(app);
   }

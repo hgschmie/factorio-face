@@ -10,6 +10,12 @@
 // not among what the game had loaded (the game did not say, or a game without `base`) has `modules: []`: it is there whatever
 // is enabled, so nothing is lost and nothing names a module the head does not have. `untagged` names those.
 //
+// For a recipe the creator is not enough: the recycler makes a recycling recipe for every item of every mod, and `base` the
+// barrel recipes of every fluid. Such a recipe is there only with the mod of its item, so a recipe names, after its creator,
+// the modules of what it consumes and produces (`recipeModules`). The same holds for an item that its creator makes of
+// another mod's things, as `base` makes the barrel of every fluid: an item names, after its creator, what every recipe of
+// that creator needs that produces it (`itemModules`). Every other record has its creator alone.
+//
 // Icons that are not made of image files of the game's own modules (a mod's) are left out of the icon table: the app has
 // nowhere to read them from, and an icon id the table lacks is answered like any unknown icon.
 import type { CatalogData, ModuleInfo } from "@face/catalog";
@@ -141,8 +147,7 @@ const commandTemplate = (command: DumpCommand): string => ["factorio", ...gameAr
  */
 function tagger(runtime: Fields, loaded: ReadonlySet<string>, untagged: Set<string>) {
   return (section: string, label: string) => {
-    const list = runtime[section];
-    const created = new Map((Array.isArray(list) ? list : []).filter(isRecord).map((entry) => [entry.name, entry.created === CORE ? BASE : entry.created]));
+    const created = new Map(entries(runtime[section]).map((entry) => [entry.name, entry.created === CORE ? BASE : entry.created]));
     return <T extends { readonly name: string }>(record: T): T & { modules: string[] } => {
       const creator = created.get(record.name);
       if (typeof creator === "string" && loaded.has(creator)) return { ...record, modules: [creator] };
@@ -150,6 +155,61 @@ function tagger(runtime: Fields, loaded: ReadonlySet<string>, untagged: Set<stri
       return { ...record, modules: [] };
     };
   };
+}
+
+/** A record with the modules it is of. */
+interface Tagged {
+  readonly name: string;
+  readonly modules: readonly string[];
+}
+
+/** The entries of a list of the runtime dump that are records; none for anything else (the game writes an empty list as `{}`). */
+const entries = (list: unknown): Fields[] => (Array.isArray(list) ? list.filter(isRecord) : []);
+
+/**
+ * The recipes with the modules of their parts: after its creator a recipe names the module of every item and fluid among its
+ * `ingredients` and `products` (`parts`: the modules by "item <name>" and "fluid <name>"), each once. `base` adds nothing, no
+ * game is without it. Neither does a mod that changed the recipe after its creation (`changed`): the game does not say what the
+ * recipe was before, and a recipe of `base` that Space Age gives another ingredient is there without Space Age. A recipe of a
+ * dump without these lists keeps its creator alone.
+ */
+function recipeModules<T extends Tagged>(recipes: readonly T[], runtime: Fields, parts: ReadonlyMap<string, readonly string[]>): T[] {
+  const facts = new Map(entries(runtime.recipe).map((entry) => [entry.name, entry]));
+  return recipes.map((recipe) => {
+    const fact = facts.get(recipe.name);
+    const changed = Array.isArray(fact?.changed) ? fact.changed : [];
+    const of = [...entries(fact?.ingredients), ...entries(fact?.products)].flatMap((part) => parts.get(`${String(part.type)} ${String(part.name)}`) ?? []);
+    const added = of.filter((name) => name !== BASE && !changed.includes(name));
+    return added.length === 0 ? recipe : { ...recipe, modules: [...new Set([...recipe.modules, ...added])] };
+  });
+}
+
+/**
+ * The items with the modules of the recipes that make them: after its creator an item names every module that all the recipes
+ * of that same creator need which have it among their `products` (`recipes`: the recipes as `recipeModules` left them). So
+ * the barrel that `base` makes for a mod's fluid is there only with the mod. What other mods make of an item says nothing
+ * about it (the recycler has a recipe for every item, with the item among its products), and an item without a recipe of its
+ * creator keeps its creator alone, as does one without a creator.
+ */
+function itemModules<T extends Tagged>(items: readonly T[], runtime: Fields, recipes: readonly Tagged[]): T[] {
+  const needed = new Map(recipes.map((recipe) => [recipe.name, recipe.modules]));
+  /** By the name of an item: the creator and the modules of every recipe that produces it. */
+  const makers = new Map<unknown, { readonly creator: unknown; readonly modules: readonly string[] }[]>();
+  for (const fact of entries(runtime.recipe)) {
+    const maker = { creator: fact.created === CORE ? BASE : fact.created, modules: needed.get(String(fact.name)) ?? [] };
+    for (const product of entries(fact.products)) {
+      if (product.type !== "item") continue;
+      const list = makers.get(product.name);
+      if (list) list.push(maker);
+      else makers.set(product.name, [maker]);
+    }
+  }
+  return items.map((item) => {
+    const [creator] = item.modules;
+    const own = creator === undefined ? [] : (makers.get(item.name) ?? []).filter((maker) => maker.creator === creator);
+    const added = own.length === 0 ? [] : own[0]!.modules.filter((name) => name !== creator && name !== BASE && own.every((maker) => maker.modules.includes(name)));
+    return added.length === 0 ? item : { ...item, modules: [...item.modules, ...added] };
+  });
 }
 
 /**
@@ -172,6 +232,12 @@ export function buildSingleSet({ raw, runtime, locale, modules, game, generator,
   const tagged = tagger(runtime, new Set(mods.map((mod) => mod.name)), untagged);
   // A speaker and a rocket silo are entities, and so is every record of the entity table.
   const ofEntity = tagged("entity", "entity");
+  const signals = Object.fromEntries(KINDS.map(({ kind, section }) => [kind, (built.catalog.signals[kind] ?? []).map(tagged(section, kind))]));
+  const parts = () => new Map(["item", "fluid"].flatMap((kind) => signals[kind]!.map((signal): [string, readonly string[]] => [`${kind} ${signal.name}`, signal.modules])));
+  signals.recipe = recipeModules(signals.recipe!, runtime, parts());
+  signals.item = itemModules(signals.item!, runtime, signals.recipe);
+  // Once more with what the items gained: the recycling recipe of such a barrel needs the mod as the barrel does.
+  signals.recipe = recipeModules(signals.recipe, runtime, parts());
   const catalog: CatalogData = {
     ...built.catalog,
     modules,
@@ -180,7 +246,7 @@ export function buildSingleSet({ raw, runtime, locale, modules, game, generator,
     subgroups: built.catalog.subgroups.map(tagged("item_subgroup", "subgroup")),
     qualities: built.catalog.qualities.map(tagged("quality", "quality")),
     speakers: built.catalog.speakers?.map(ofEntity),
-    signals: Object.fromEntries(KINDS.map(({ kind, section }) => [kind, (built.catalog.signals[kind] ?? []).map(tagged(section, kind))])),
+    signals,
     provenance: {
       generator,
       generatedAt,

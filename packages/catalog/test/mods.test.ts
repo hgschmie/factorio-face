@@ -68,6 +68,14 @@ describe("a record of two modules", () => {
     expect(findSignal(catalog, recycling, ["base", "recycler", ORE])?.key).toBe(recycling);
     expect([findSignal(catalog, recycling, ["base", "recycler"]), findSignal(catalog, recycling, ["base", ORE])]).toEqual([undefined, undefined]);
   });
+
+  it("makes a mod one that a project switches wherever the record names it", () => {
+    expect([...namedModules([{ modules: ["recycler", ORE] }, { modules: [ORE, "d-glue", ORE] }, { modules: [] }])]).toEqual(["recycler", ORE, "d-glue"]);
+    // A mod that only a recipe of another module names, in the second place, is listed as the others are.
+    const second = namedModules([{ modules: ["recycler", "d-glue"] }]);
+    expect(listedModules(catalog.modules, second).map((entry) => entry.name)).toEqual([...GAME, "d-glue"]);
+    expect(listedModules(catalog.modules, second).at(-1)).toMatchObject({ requires: ["base"], recommends: [] });
+  });
 });
 
 describe("the picker tree with mods", () => {

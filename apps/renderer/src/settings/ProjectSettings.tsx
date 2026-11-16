@@ -5,7 +5,7 @@ import { DEFAULT_WIRE_REACH, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE } from "@fac
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../icons/Icon.tsx";
 import type { CatalogView, ProjectView } from "../workbench/controller.ts";
-import { consequence, FILTER_FROM, filterModules, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote } from "./moduleList.ts";
+import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote, rowHint } from "./moduleList.ts";
 import { parseWireReach, WIRE_REACH_ERROR } from "./wireReach.ts";
 
 export interface ProjectSettingsProps {
@@ -124,7 +124,7 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
   const panelRef = useRef<HTMLDivElement>(null);
   const [filter, setFilter] = useState("");
   const filtered = catalog.modules.length >= FILTER_FROM;
-  const rows = filtered ? filterModules(catalog.modules, filter) : catalog.modules;
+  const rows = listOrder(filtered ? filterModules(catalog.modules, filter) : catalog.modules);
   const offNotice = modulesOffNotice(project.modulesOff, catalog.modules);
   const otherMods = otherModsNote(catalog.otherMods);
 
@@ -200,7 +200,7 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
             <li key={module.name} className={module.missing.length > 0 ? "invalid" : undefined} data-module={module.name} data-game={module.game ? "" : undefined}>
               <label>
                 <input type="checkbox" checked={module.enabled} disabled={!module.canDisable} onChange={(event) => onModuleChange(module.name, event.target.checked)} />
-                <span className="module-title" title={module.name}>
+                <span className="module-title" title={rowHint(module)}>
                   {module.title}
                 </span>
                 <span className="module-count">{moduleCounts(module)}</span>

@@ -2,6 +2,7 @@
 // dependencies, what a signal or an entity of a module that is off does, that no set of modules breaks the picker, the
 // selector or the simulation, and the blueprint import, which switches on what it needs.
 import { encodeBlueprintString } from "@face/blueprints";
+import { loadStandardCatalog } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
 import { signal } from "@face/model";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -58,6 +59,7 @@ describe("the module list with the mods of a game", () => {
     expect(row(session, MACHINES)).toMatchObject({ title: MACHINES_TITLE, signalCount: 1, entityCount: 1, canDisable: true, enables: [ORE, FILLERS[0]] });
     // The recycling recipe of the ore counts for the recycler as well; a mod with hidden signals only is listed with none.
     expect(row(session, ORE)).toMatchObject({ signalCount: 2, entityCount: 0, enables: [] });
+    expect(row(session, "recycler").signalCount).toBe(loadStandardCatalog().signals.filter((entry) => entry.visibility === "normal" && entry.modules.includes("recycler")).length + 1);
     expect(row(session, UNREAD)).toMatchObject({ title: UNREAD, signalCount: 0, entityCount: 0, canDisable: true, enables: [] });
   });
 
@@ -132,6 +134,9 @@ describe("a signal or an entity of a mod that is switched off", () => {
       ["disabled-signal", `The signal 'virtual:${UNREAD_SIGNAL}' is of ${UNREAD}, which is switched off in the project settings`],
     ]);
     expect(session.state.circuit.entities.map((entity) => entity.prototype)).toEqual([MACHINE_CRATE, "constant-combinator"]);
+    // The inspector's sentence for the entity is the warning of the source; an entity of modules that are on has none.
+    expect(session.state.catalog.entityWarning(MACHINE_CRATE)).toBe(session.state.diagnostics[0]!.message);
+    expect(session.state.catalog.entityWarning("constant-combinator")).toBeUndefined();
     // In the order of the list, each once.
     expect(session.state.project.modulesOff).toEqual(["recycler", ORE, MACHINES, UNREAD]);
     expect(modulesUsedOff(USES_MODS, session.state.catalog as CatalogService)).toEqual(["recycler", ORE, MACHINES, UNREAD]);
@@ -145,6 +150,7 @@ describe("a signal or an entity of a mod that is switched off", () => {
     session.commands.enableUsedModules();
     expect(enabledOf(session)).toEqual(["base", "recycler", ORE, MACHINES, UNREAD]);
     expect(session.state).toMatchObject({ diagnostics: [], source: USES_MODS, project: { modulesOff: [], dirty: true } });
+    expect(session.state.catalog.entityWarning(MACHINE_CRATE)).toBeUndefined();
   });
 
   it("is not offered: not in the picker, the selector, the Type field or the completion", () => {
@@ -204,6 +210,32 @@ describe("a blueprint import with the mods of a game", () => {
     expect(enabledOf(session)).toEqual([...GAME, ORE, MACHINES, FILLERS[2]]);
     expect(session.state).toMatchObject({ diagnostics: [], displayMode: "blueprint", project: { name: "Modded", dirty: true, modulesOff: [] } });
     expect(session.state.circuit.entities.map((entity) => entity.prototype)).toEqual([MACHINE_CRATE, "constant-combinator"]);
+  });
+
+  it("switches on every module of a recipe that two modules make, and names the one a new project has off", async () => {
+    // The recycling recipe of the mod's ore is the recycler's and the mod's: the recycler is on in a new project, the mod is not.
+    const sections = { sections: [{ index: 1, filters: [filter(1, "recipe", ORE_RECYCLING)] }] };
+    const recycled = blueprint([{ entity_number: 1, name: "constant-combinator", ...at(0.5, 0.5), control_behavior: { sections } }]);
+    const desktop = fakeDesktop();
+    const session = sessionWith(["base"], EMPTY_SOURCE, desktop.api);
+    const reading = session.commands.readBlueprint(recycled);
+    if (reading.kind !== "blueprint") throw new Error(JSON.stringify(reading));
+    expect(reading.blueprint.source).toContain(`recipe:${ORE_RECYCLING} = 1`);
+    expect(reading.blueprint.modules).toEqual([...GAME, ORE]);
+    expect(reading.blueprint.report?.modules).toEqual(["Switched on: Ore Mod. The blueprint has its signals or entities; a new project has only the modules of the game itself on."]);
+    expect(await session.commands.openBlueprint(reading.blueprint)).toBe(true);
+    expect(enabledOf(session)).toEqual([...GAME, ORE]);
+    expect(session.state).toMatchObject({ diagnostics: [], project: { modulesOff: [] } });
+    expect(picked(session)).toContain(`recipe:${ORE_RECYCLING}`);
+    // Either of its modules switched off takes the recipe away, and the warning names the one that is off.
+    for (const [name, title] of [["recycler", "Recycler"], [ORE, "Ore Mod"]] as const) {
+      session.commands.setModuleEnabled(name, false);
+      expect(session.state.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([`The signal 'recipe:${ORE_RECYCLING}' is of ${title}, which is switched off in the project settings`]);
+      expect(session.state.project.modulesOff).toEqual([name]);
+      expect(picked(session)).not.toContain(`recipe:${ORE_RECYCLING}`);
+      session.commands.enableUsedModules();
+      expect(session.state.diagnostics).toEqual([]);
+    }
   });
 
   it("opens a blueprint of the game itself with the modules of a new project and no report", async () => {

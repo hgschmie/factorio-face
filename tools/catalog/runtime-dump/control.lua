@@ -5,8 +5,10 @@
 -- generator can check the table against the game: `circuit_entities`. What only an entity says, it builds one for.
 --
 -- Every prototype that becomes a record of the catalog or of the entity table says which mod created it (`created`), for the
--- single-set build (tools/catalog/lib/single.ts): one dump of a game with mods cannot tell otherwise. The generator of the
--- standard tables has its own, exact attribution from its module sets and does not read the field.
+-- single-set build (tools/catalog/lib/single.ts): one dump of a game with mods cannot tell otherwise. A recipe also says
+-- what it consumes (`ingredients`, beside its `products`) and which mods changed it after its creation (`changed`): it is
+-- there only with the mods of its items and fluids. The generator of the standard tables has its own, exact attribution
+-- from its module sets and reads none of these fields.
 
 local function names(list)
   local out = {}
@@ -14,11 +16,16 @@ local function names(list)
   return out
 end
 
--- The mod that created a prototype, `core` for the engine's own data; nil (so absent from the JSON) when the game does not
--- say. `type` is the prototype's own type ("ammo", "lamp", "planet"), not the kind it is listed under.
+-- What the game says of a prototype's past: the mod that created it (`created`, `core` for the engine's own data) and the
+-- mods that changed it afterwards (`changed`, in order). Empty when the game does not say, so the fields are absent from the
+-- JSON. `type` is the prototype's own type ("ammo", "lamp", "planet"), not the kind it is listed under.
+local function history(type, name)
+  local ok, result = pcall(prototypes.get_history, type, name)
+  return ok and result or {}
+end
+
 local function creator(type, name)
-  local ok, history = pcall(prototypes.get_history, type, name)
-  return ok and history.created or nil
+  return history(type, name).created
 end
 
 local function base(proto)
@@ -34,8 +41,15 @@ local function base(proto)
   }
 end
 
-local function product(entry)
+-- An ingredient or a product by what it is of: `type` is "item" or "fluid" (a product may be research progress, which has no name).
+local function part(entry)
   return entry and { type = entry.type, name = entry.name } or nil
+end
+
+local function parts(list)
+  local out = {}
+  for _, entry in pairs(list) do out[#out + 1] = part(entry) end
+  return out
 end
 
 local extra = {
@@ -48,9 +62,10 @@ local extra = {
   entity = function(proto, out) out.items_to_place_this = names(proto.items_to_place_this) end,
   recipe = function(proto, out)
     out.hide_from_signal_gui = proto.hide_from_signal_gui
-    out.main_product = product(proto.main_product)
-    out.products = {}
-    for _, entry in pairs(proto.products) do out.products[#out.products + 1] = product(entry) end
+    out.main_product = part(proto.main_product)
+    out.ingredients = parts(proto.ingredients)
+    out.products = parts(proto.products)
+    out.changed = history(proto.type, proto.name).changed
   end,
   space_location = function() end,
   asteroid_chunk = function(proto, out)

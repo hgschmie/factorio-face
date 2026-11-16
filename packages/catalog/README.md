@@ -63,8 +63,10 @@ and `LuaAsteroidChunkPrototype.hide_from_signal_gui` / `item_signal_alias` (deri
 prototype with a wire reach what the entity table needs and `data.raw` lacks or only implies, and for an entity it builds of each whether
 it has a direction (see "Entity table"). Since 2026-11-15 every prototype it lists also says which mod created it (`created`, from
 `prototypes.get_history(type, name)` with the prototype's own type: "ammo", "lamp", "planet"; `core` for the engine's own data). That is
-for the single-set mode below; this generator has its exact attribution from the eight sets and does not read the field. `--test-scenario` is new
-in 2.1.24 and runs headless.
+for the single-set mode below, as are three fields of a recipe: what it consumes (`ingredients`) and produces (`products`), each entry
+by `type` ("item" or "fluid") and `name`, and the mods that changed the recipe after its creation (`changed`, the second half of the
+same history; the game writes an empty list as `{}`). This generator has its exact attribution from the eight sets and reads none of
+these fields. `--test-scenario` is new in 2.1.24 and runs headless.
 
 Module sets are selected through `mod-list.json` in an isolated mod directory. Dependencies per `info.json`: `elevated-rails -> base`,
 `recycler -> base`, `quality -> base, recycler`, `space-age -> base, elevated-rails, recycler, + quality`. The `+` marker (changelog 2.1.0:
@@ -264,22 +266,38 @@ files (`singleSetLocale`) and the head (`singleSetModules`), and calls `buildCat
 
 What differs from the standard tables, because one dump cannot say what a record would be with fewer mods:
 
-- No record has `removedBy` or `variants`: each is as it is with everything loaded. Its `modules` is the one mod that created its
-  prototype, by the game's own account (`created` of the runtime dump): signals of every kind, groups, subgroups, qualities, speakers,
+- No record has `removedBy` or `variants`: each is as it is with everything loaded. Its `modules` begins with the mod that created its
+  prototype, by the game's own account (`created` of the runtime dump), and for all but the recipes and a few items of the next point
+  that is all of it: signals of every kind, groups, subgroups, qualities, speakers,
   rocket silos and the records of the entity table (a speaker, a silo and a wired entity by their entity prototype; in the entity
   table `base` is the table's default and is not written). `core`, which is no module of the catalog and which no game is without,
   counts as `base`. A record whose creator is not among what the game had loaded (the game named none, or a game without `base`)
   has `modules: []` and is named in `untagged`: it is there whatever is enabled. With the standard game the creator is not always the
   module the standard catalog names, which is the smallest module set that has the record: the recycler creates the recycling recipes
   of every module's items (89 of them exist only with another module), `base` creates the barrels of Space Age's fluids (6), and the
-  satellite is removed by Space Age. And a record can sit in a subgroup or group that another module created: with the five modules,
+  satellite is removed by Space Age. The next point is about the first two. And a record can sit in a subgroup or group that another module created: with the five modules,
   43 signals of `base` are in subgroups of Space Age and one subgroup of `base` is in a group of Space Age. A consumer that
   enables fewer modules than the game had loaded has to expect both. `pickerTree` does: a subgroup is in the tree whenever a
   signal that exists sits in it, and a group whenever such a subgroup sits in it, whichever module created the subgroup or the
   group (their own `modules` say who created them, not when they are there). So no set of modules makes it throw; it throws only
   for data with a signal whose subgroup, or a subgroup whose group, is in no record at all.
-- A record may name several modules (planned for a recycling recipe of a mod's item: `["recycler", "<mod>"]`): it exists when
-  all of them are enabled (`isAvailable`), as in the standard catalog.
+- A record may name several modules: it exists when all of them are enabled (`isAvailable`), as in the standard catalog. Two
+  kinds of record do, each with its creator first:
+  - A recipe names the modules of every item and fluid among its `ingredients` and `products` (`recipeModules`): the recycling
+    recipe of a mod's item is `["recycler", "<mod>"]`, the barrel recipes of a mod's fluid `["base", "<mod>"]`. `base` is never
+    added. Neither is a mod that changed the recipe after its creation (`changed`): one dump does not say what the recipe was
+    before, and a recipe of `base` that Space Age gives an ingredient of its own is there without Space Age (48 recipes of `base`
+    in the full standard set, ten of them with a part of Space Age).
+  - An item names the modules that every recipe of its own creator needs which has the item among its products (`itemModules`):
+    the barrel that `base` makes of a mod's fluid is `["base", "<mod>"]`. Recipes of other mods say nothing about an item (the
+    recycler has one for every item), and an item without a recipe of its creator keeps its creator alone. The recipes are then
+    derived once more, so that the recycling recipe of such a barrel needs the mod too.
+
+  Against the committed catalog, over the eight standard sets: all 95 records agree but ten recycling recipes in the sets with
+  Space Age (nine without Quality): `artillery-shell-recycling` and the like, made from a recipe that Space Age changed. Their
+  products are Space Age's, so they name it, although without Space Age they exist with other products. A recipe of a dump
+  without the three fields keeps its creator alone. The rules are as good as the mods' dependencies: a recipe or an item that a
+  mod makes with another mod's things only when that mod is there names both, and is taken for absent without the other.
 - `modules` in the head of the catalog lists what the game had loaded by its own account (`active_mods` of the runtime dump): its own
   modules as their `info.json` has them, and each mod as its own `info.json` describes it (`singleSetModules(dataDir, mods,
   modInfos)`; the caller reads the files, the app from the user's mod directory): the title, cleaned of control characters and cut
@@ -299,7 +317,8 @@ What differs from the standard tables, because one dump cannot say what a record
 
 `tools/catalog/lib/single.test.ts` builds the `base` set and the full set from the generator's dumps this way and compares signals,
 picker groups, qualities, speaker, constants, icons and wired entities with what the standard tables say for those modules, with all
-loaded modules enabled; every record there has one of the loaded modules as its creator.
+loaded modules enabled; every record there is of loaded modules. For each of the eight sets it also compares the `modules` of every
+signal, with what they require, to those of the standard catalog: the ten recipes above are the only difference.
 
 How the app uses the result (the confirmation before the game is run, the cache file, the switch at the next load of the window,
 the record of the mods in the project file) is in `docs/adr/0001-architecture.md`, item 15. Checked once against the real game

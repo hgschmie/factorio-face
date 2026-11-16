@@ -1,6 +1,6 @@
 // The module list of the project settings in words: the note of a row, its counts, the filter, and the notes around the list.
 import { describe, expect, it } from "vitest";
-import { consequence, FILTER_FROM, filterModules, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, otherModsNote } from "../src/settings/moduleList.ts";
+import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, otherModsNote, rowHint } from "../src/settings/moduleList.ts";
 import type { ModuleView } from "../src/workbench/controller.ts";
 
 const view = (name: string, title: string, more: Partial<ModuleView> = {}): ModuleView => ({ name, title, version: "1.0.0", game: false, enabled: true, canDisable: true, enables: [], disables: [], missing: [], signalCount: 0, entityCount: 0, ...more });
@@ -62,5 +62,24 @@ describe("the notes around the list", () => {
     expect(otherModsNote(1)).toBe("1 other mod of your game adds no signals or entities.");
     expect(otherModsNote(14)).toBe("14 other mods of your game add no signals or entities.");
     expect(MODS_HINT).toBe("The mods of your game appear here after the game has been read in the application settings.");
+  });
+});
+
+describe("the order of the rows", () => {
+  it("has the game's modules as they come and the mods by title, whatever the case of title or name", () => {
+    // As a game lists its mods: by name, capitals first.
+    const titles = { LogisticTrainNetwork: "LTN - Logistic Train Network", Warehousing: "Warehousing Mod", "cargo-ships": "Cargo Ships", "crates-10": "crates 10", "crates-2": "Crates 2", "b-twin": "Twin", "a-twin": "Twin" };
+    const mods = Object.entries(titles).map(([name, title]) => view(name, title));
+    const listed = [...MODULES.slice(0, 3), ...mods];
+    expect(listOrder(listed).map((module) => module.name)).toEqual(["base", "space-age", "quality", "cargo-ships", "crates-2", "crates-10", "LogisticTrainNetwork", "a-twin", "b-twin", "Warehousing"]);
+    expect(listOrder(MODULES.slice(0, 3))).toEqual(MODULES.slice(0, 3));
+    expect(listOrder([])).toEqual([]);
+    // The list it is given stays as it is.
+    expect(listed.map((module) => module.name).slice(3, 5)).toEqual(["LogisticTrainNetwork", "Warehousing"]);
+  });
+
+  it("says the title in full and the name on hover, the name alone where the mod has no other title", () => {
+    expect(rowHint(view("LogisticTrainNetwork", "LTN - Logistic Train Network"))).toBe("LTN - Logistic Train Network (LogisticTrainNetwork)");
+    expect(rowHint(view("f-unread", "f-unread"))).toBe("f-unread");
   });
 });

@@ -8,8 +8,8 @@ import {
   speakerInstruments,
   type Catalog, type ModuleInfo, type PickerGroup, type SpeakerInstrumentInfo,
 } from "@face/catalog";
-import type { PrototypeResolver, SignalResolver } from "@face/language";
-import { entityTable, isPrototypeName, NORMAL_QUALITY, signalKey, type SignalId, type SpeakerInstrument } from "@face/model";
+import { disabledPrototypeMessage, type PrototypeResolver, type SignalResolver } from "@face/language";
+import { entityTable, isPrototypeName, NORMAL_QUALITY, signalKey, type PrototypeName, type SignalId, type SpeakerInstrument } from "@face/model";
 import { entityRegistry, type EntityRegistry } from "../entities/registry.ts";
 import type { CatalogView, ModuleView, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
 
@@ -117,7 +117,7 @@ export class CatalogService implements CatalogView, SignalResolver {
 
   /** `SignalResolver`: the titles of the switched-off modules a disabled signal is of. */
   switchedOff(id: SignalId): readonly string[] {
-    return this.signalModulesOff(id).map((name) => this.titleOf(name));
+    return this.lookup(id).info.switchedOff ?? NONE;
   }
 
   describe(id: SignalId): SignalInfo {
@@ -133,6 +133,12 @@ export class CatalogService implements CatalogView, SignalResolver {
   prototypeModulesOff(prototype: string): readonly string[] {
     const game = entityTable().byName.get(prototype);
     return game ? this.off(game.modules) : NONE;
+  }
+
+  entityWarning(prototype: PrototypeName): string | undefined {
+    const off = this.prototypeModulesOff(prototype);
+    const game = entityTable().byName.get(prototype);
+    return game && off.length > 0 ? disabledPrototypeMessage(prototype, game.displayName, off.map((name) => this.titleOf(name))) : undefined;
   }
 
   /** Whether an entity is offered: the data has it for these modules. One of a module that is off stays in a source, with a warning. */
@@ -165,7 +171,8 @@ export class CatalogService implements CatalogView, SignalResolver {
     const status: SignalStatus = !entry ? "disabled" : !named ? "known" : !quality ? "unknown" : isAvailable(quality, this.active) ? "known" : "disabled";
     const shown = entry ?? stored;
     const off = status === "disabled" ? [...new Set([...this.off(stored.modules), ...(quality ? this.off(quality.modules) : NONE)])] : NONE;
-    return { info: { status, displayName: quality ? `${shown.displayName} (${quality.displayName})` : shown.displayName, icon: shown.icon }, off };
+    const switchedOff = off.length > 0 ? { switchedOff: off.map((name) => this.titleOf(name)) } : {};
+    return { info: { status, displayName: quality ? `${shown.displayName} (${quality.displayName})` : shown.displayName, icon: shown.icon, ...switchedOff }, off };
   }
 
   picker(): readonly PickerGroup[] {

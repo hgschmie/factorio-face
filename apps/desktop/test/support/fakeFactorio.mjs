@@ -1,9 +1,9 @@
 // A stand-in for the game in the tests of the dump runner. It takes the arguments of a dump run, reads the private
 // configuration it is given, rewrites the two files the game rewrites in its mod directory, and writes canned dump files.
-// Started through a launcher that names a control file: { record, dump, mode?, at?, outside?, delayMs? }. Every start appends its
+// Started through a launcher that names a control file: { record, dump, mode?, at?, outside?, delayMs?, error? }. Every start appends its
 // arguments, environment and working directory to `record`; `delayMs` makes every start take that long. `mode` (at the
 // command `at`, default every command):
-//   fail       print an error and exit with code 3
+//   fail       print an error (`error`, or one that names no mod) and exit with code 3
 //   hang       never end
 //   flood      print without end
 //   no-output  end well without writing anything
@@ -60,7 +60,7 @@ fs.writeFileSync(path.join(mods, "mod-settings.dat"), Buffer.alloc(16));
 if (control.delayMs) await new Promise((done) => setTimeout(done, control.delayMs));
 if (mode === "linger") spawn(process.execPath, ["-e", "setTimeout(() => undefined, 5000)"], { stdio: "inherit", detached: true }).unref();
 if (mode === "fail") {
-  process.stderr.write("   0.500 Error ModManager.cpp:1: Failed to load mods: something is wrong\n");
+  process.stderr.write(control.error ?? "   0.500 Error ModManager.cpp:1: Failed to load mods: something is wrong\n");
   process.exit(3);
 } else if (mode === "hang") {
   setInterval(() => undefined, 1000);

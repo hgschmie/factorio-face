@@ -4,6 +4,7 @@ import { analyze, completionContext } from "@face/language";
 import { signal, wildcardSignal } from "@face/model";
 import { compile, createSimulation } from "@face/simulation";
 import { describe, expect, it } from "vitest";
+import { signalWarning } from "../../src/inspector/signalWarning.ts";
 import { CatalogService } from "../../src/session/catalogService.ts";
 import { completionCandidates } from "../../src/session/completion.ts";
 import { createCatalogEnvironment, environmentData, rocketCapacityOf, rocketLiftWeight, UNLIMITED_LIFT_WEIGHT } from "../../src/session/environment.ts";
@@ -53,7 +54,9 @@ describe("signal status and module settings", () => {
     expect(session.document.version).toBe(version);
     expect(session.state.circuit.entities).toHaveLength(1);
     expect(session.state.catalog.modules.map((module) => [module.name, module.enabled])).toEqual([["base", true], ["elevated-rails", true], ["recycler", true], ["quality", true], ["space-age", false]]);
-    expect(session.state.catalog.describe(signal("item", "carbon-fiber"))).toMatchObject({ status: "disabled", displayName: "Carbon fiber" });
+    expect(session.state.catalog.describe(signal("item", "carbon-fiber"))).toEqual({ status: "disabled", displayName: "Carbon fiber", icon: "item/carbon-fiber", switchedOff: ["Space Age"] });
+    // The inspector's field says it in the words of the warning.
+    expect(signalWarning(session.state.catalog.describe(signal("item", "carbon-fiber")))).toBe("Belongs to Space Age, which is switched off in the project settings");
     expect(session.state.project.dirty).toBe(true);
 
     // Recycler takes Quality with it: the rare iron plate is now flagged too. Nothing is deleted.
@@ -62,6 +65,8 @@ describe("signal status and module settings", () => {
     expect(codes()).toEqual(["warning:disabled-signal:4", "warning:disabled-signal:5", "warning:unknown-signal:7"]);
     expect(session.state.diagnostics[1]!.message).toBe("The signal 'item:iron-plate@rare' is of Quality, which is switched off in the project settings");
     expect(session.state.project.modulesOff).toEqual(["quality", "space-age"]);
+    expect(session.state.catalog.describe(signal("item", "iron-plate", "rare"))).toMatchObject({ status: "disabled", switchedOff: ["Quality"] });
+    expect(signalWarning(session.state.catalog.describe(signal("item", "carbon-fiber", "rare")))).toBe("Belongs to Space Age and Quality, which are switched off in the project settings");
     expect(session.state.catalog.qualities).toEqual([]);
     expect(session.state.source).toBe(SPACE);
 
@@ -72,6 +77,12 @@ describe("signal status and module settings", () => {
     expect(session.state.catalog.qualities.map((quality) => quality.name)).toEqual(["normal", "uncommon", "rare", "epic", "legendary"]);
     expect(session.state.project.dirty).toBe(false);
     expect(session.state.canUndo).toBe(false);
+    // Nothing to say for a signal that is there; other words for one the data lacks, and for one that a module of the project removes.
+    expect(signalWarning(session.state.catalog.describe(signal("item", "carbon-fiber")))).toBeUndefined();
+    expect(signalWarning(session.state.catalog.describe(signal("item", "no-such-thing")))).toBe("Not a signal of Factorio's catalog");
+    const removed = session.state.catalog.describe(signal("item", "satellite"));
+    expect(removed).toEqual({ status: "disabled", displayName: "Satellite", icon: "item/satellite" });
+    expect(signalWarning(removed)).toBe("Not available with the signal groups of this project");
   });
 
   it("flags an entity of a module that is switched off, keeps it in the circuit, and offers it no more", () => {
@@ -87,6 +98,9 @@ describe("signal status and module settings", () => {
     ]);
     expect(session.state).toMatchObject({ source, editable: true, project: { modulesOff: ["space-age"] } });
     expect(session.state.circuit.entities.map((entity) => entity.prototype)).toEqual(["turbo-transport-belt", "transport-belt"]);
+    // The inspector says under the entity's title what the source says on its declaration, and nothing for an entity that is there.
+    expect(session.state.catalog.entityWarning("turbo-transport-belt")).toBe(session.state.diagnostics[0]!.message);
+    expect(session.state.catalog.entityWarning("transport-belt")).toBeUndefined();
     const registry = session.state.catalog.entities();
     expect([registry.offers("turbo-transport-belt"), registry.offers("transport-belt"), registry.entry("turbo-transport-belt")?.label]).toEqual([false, true, "Turbo transport belt"]);
     expect(labels()).toContain("transport-belt");
@@ -101,6 +115,7 @@ describe("signal status and module settings", () => {
     session.commands.enableUsedModules();
     expect(session.state.catalog.modules.filter((module) => module.enabled).map((module) => module.name)).toEqual(["base", "elevated-rails", "recycler", "space-age"]);
     expect(session.state).toMatchObject({ diagnostics: [], project: { modulesOff: [] } });
+    expect(session.state.catalog.entityWarning("turbo-transport-belt")).toBeUndefined();
   });
 
   it("describes what switching a module does and refuses to switch off the base module", () => {

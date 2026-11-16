@@ -572,6 +572,7 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
           prototypes={state.catalog.entities()}
           renderSignalPicker={renderSignalPicker}
           describeSignal={describeSignal}
+          entityWarning={(prototype) => state.catalog.entityWarning(prototype)}
           draft={state.draft}
           onRename={commands.renameEntity}
           onChange={commands.updateEntity}

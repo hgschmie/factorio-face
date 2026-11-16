@@ -257,6 +257,8 @@ export interface SignalInfo {
   readonly displayName?: string;
   /** Icon id below the catalog icon root, without extension, for example `item/iron-plate`. */
   readonly icon?: string;
+  /** For a disabled signal: the titles of the modules it is of that are switched off. None when another module removes it. */
+  readonly switchedOff?: readonly string[];
 }
 
 export interface QualityOption {
@@ -283,7 +285,7 @@ export interface ModuleView {
   readonly disables: readonly string[];
   /** Hard dependencies that are not enabled; non-empty only for a hand-edited project file. */
   readonly missing: readonly string[];
-  /** Number of selectable signals the module contributes. */
+  /** Number of selectable signals that are there only with the module: its own, and what another module makes of its items or fluids (a recipe, a barrel), which counts for both. */
   readonly signalCount: number;
   /** Number of entities it adds to the selector. */
   readonly entityCount: number;
@@ -307,6 +309,8 @@ export interface CatalogView {
   /** The entity selector for the enabled modules: what can be placed, in the game's groups and order. Built on first use. */
   entities(): EntityRegistry;
   describe(signal: SignalId): SignalInfo;
+  /** The warning of an entity of modules that are switched off, in the words the source has on its declaration; undefined for any other entity. */
+  entityWarning(prototype: PrototypeName): string | undefined;
 }
 
 /** An inspector edit that the circuit language cannot express yet. It lives next to the document and is never written as it is. */

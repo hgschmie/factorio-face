@@ -96,6 +96,7 @@ src/
     conditionEdits.ts  a condition with a switch (lamp, generic entity): the unset one as its fields show it, and what an edit makes of it   (pure)
     instruments.ts     `InstrumentsContext`: the speaker's instruments and notes from the catalog, for the form and the cards
     SignalField.tsx    validated `kind:name[@quality]` input with icon, name, warning and the picker slot
+    signalWarning.ts   the note under a signal field for a signal the project does not provide, in the words of the source's warning   (pure)
     fields.tsx         text, integer, number, select and checkbox fields, the red/green NetworkToggle, the text a field holds on its own
     formParts.tsx      sections, list items, the operand and the circuit condition (`ConditionFields`: speaker; `SwitchedConditionFields`:
                        lamp and generic entity, where a condition in use without a signal is the unset one)
@@ -154,7 +155,7 @@ interface WorkbenchController {
 `WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, otherMods, unknownModules, qualities,
-`speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
+`speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`, `entityWarning(prototype)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `flipEntities`, `updateEntity`,
@@ -315,6 +316,15 @@ simulation (`run`, `pause`,
   not in the Type field (`alternativePrototypes`), not in the completion (`offersPrototype`). Every analysis runs on a recording
   stand-in (`moduleUse`), so the session knows which switched-off modules the source uses: `ProjectView.modulesOff`, which
   `enableUsedModules` switches on, each with what it requires, as one change of the settings.
+  A record may be of several modules (with data read from a game: a recipe that one mod makes of another's item, such as the
+  recycler's, and the barrel of a mod's fluid): it is there with all of them on, its warning names those that are off, and it
+  counts for each in the list.
+  The inspector says the same in the same words. Under the title of an entity of modules that are off stands the sentence of
+  its `disabled-prototype` warning (`p.entity-warning`, from `CatalogView.entityWarning`, which calls the language's
+  `disabledPrototypeMessage`). Under a signal field stands "Belongs to Space Age, which is switched off in the project
+  settings" (`small.field-warning`, from `signalWarning` of `inspector/signalWarning.ts` with `SignalInfo.switchedOff` and the
+  language's `switchedOffText`); "Not available with the signal groups of this project" for a signal that a module of the project
+  removes, which has no module to name; "Not a signal of Factorio's catalog" for one the data does not have.
   A new project (the one the window starts with, File > New Project) has `defaultModules`: the game's own modules that the data in
   use has, in the order of the empty project, and no mod. An existing project is opened with the list it has.
 - **Simulation.** `SimulationRunner` compiles each new valid circuit with the catalog environment. If `semanticFingerprint` is unchanged
@@ -1023,9 +1033,12 @@ in a native dialog of its own before it starts the game.
   in its list and opens with the warnings and the button below, without a conversion. `ProjectView.gameData` says that the data
   was read from a game.
 - **The module list in the project settings** (`ProjectSettings.tsx`, in words by `settings/moduleList.ts`). One row per module
-  (`.module-list li[data-module]`, the game's own first, `data-game`): the checkbox, the title (a mod's own text, rendered as text
-  and cut by the row), "N signals" with ", M entities" where it adds some to the selector (`.module-count`), and the note of what
-  switching it does ("Switching on also switches on ...", "Always enabled" for `base`). From eleven rows on the list scrolls by
+  (`.module-list li[data-module]`, the game's own first, `data-game`, then the mods by title whatever its case, `listOrder`; the
+  catalog has them by name): the checkbox, the title (a mod's own text, rendered as text and cut by the row; on hover the title
+  in full with the name, `rowHint`), "N signals" with ", M entities" where it adds some to the selector (`.module-count`), and the note of what
+  switching it does ("Switching on also switches on ...", "Always enabled" for `base`). The signals counted are the selectable
+  ones that are there only with the module: those it created, and those of another creator that need it, so a record of two
+  modules counts in both rows (the sum of the rows can exceed the number of signals). From eleven rows on the list scrolls by
   itself (`.module-list.scrolling`) and has a filter field above it ("Filter signal groups": title or name, any case; Escape
   empties it; `[data-note="no-match"]`). Below the list: the mods that are not in it, counted (`[data-note="other-mods"]`, "14
   other mods of your game add no signals or entities."); with the built-in data the line that the mods of the game appear here

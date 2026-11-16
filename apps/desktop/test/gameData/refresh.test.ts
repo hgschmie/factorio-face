@@ -200,6 +200,21 @@ describe("readGameData", () => {
     expect(failed.ok ? "" : failed.log).toContain("Failed to load mods");
     expect(await readdir(failing.options.runsDirectory)).toEqual([]);
 
+    // Where the game's log names the mod that failed, the message does too, before what it said without.
+    const error = [
+      "   4.307 Error RunTest.cpp:67: Error loading scenario: The mod Some Mod (1.2.3) caused a non-recoverable error.",
+      "Please report this error to the mod author.",
+      "",
+      "Error while running event some-mod::on_init()",
+      "__some-mod__/control.lua:26: assertion failed!",
+      "   4.355 Goodbye",
+      "",
+    ].join("\n");
+    const blaming = await setup("failing-mod", {}, { mode: "fail", at: "runtime", error });
+    const blamed = await readGameData(blaming.options);
+    expect(blamed).toMatchObject({ ok: false, failure: "exit", message: "The mod Some Mod 1.2.3 (some-mod) failed while the game started, and the game cannot be read with it enabled. The game ended with exit code 3" });
+    expect(blamed.ok ? "" : blamed.log).toContain("__some-mod__/control.lua:26: assertion failed!");
+
     const other = await setup("other-version", { gameVersion: "2.1.30" });
     expect(await readGameData(other.options)).toMatchObject({ ok: false, failure: "invalid-dump", message: 'The runtime dump is from "2.1.30", the game is 2.1.24' });
     const damaged = await setup("damaged");
@@ -318,16 +333,16 @@ describe("game data cache", () => {
     expect(await cache.load()).toEqual({ status: "none" });
   });
 
-  it("asks to read the game again for a file of the earlier format, which has no mod on its records", async () => {
+  it("asks to read the game again for a file of an earlier format, which lacks mods on its records", async () => {
     const file = scratch("outdated-cache", GAME_DATA_FILE_NAME);
     const cache = new GameDataCache(file);
     const data = await read("outdated-cache-source");
     await cache.store(data);
     const stored = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-    expect(stored.version).toBe(2);
-    expect(GAME_DATA_FILE_VERSION).toBe(2);
-    // Whatever else it holds: a file of that version is not looked into.
-    for (const content of [{ ...stored, version: 1 }, { version: 1 }, { ...stored, version: 1, catalog: "damaged" }]) {
+    expect(stored.version).toBe(3);
+    expect(GAME_DATA_FILE_VERSION).toBe(3);
+    // Whatever else it holds: a file of such a version is not looked into. Version 2 has the same fields as this one.
+    for (const content of [{ ...stored, version: 1 }, { ...stored, version: 2 }, { version: 1 }, { ...stored, version: 1, catalog: "damaged" }]) {
       await writeFile(file, JSON.stringify(content));
       expect(await cache.load()).toEqual({ status: "damaged", message: OUTDATED_GAME_DATA });
     }

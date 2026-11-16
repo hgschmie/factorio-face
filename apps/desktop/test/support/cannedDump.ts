@@ -134,6 +134,8 @@ export interface FakeGameControl {
   readonly outside?: string;
   /** How long every start takes before it ends, in milliseconds. */
   readonly delayMs?: number;
+  /** What the mode "fail" prints in place of its own error, which names no mod. */
+  readonly error?: string;
 }
 
 export interface FakeGameStart {

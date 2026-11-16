@@ -6,6 +6,7 @@ import { dirname, isAbsolute, normalize } from "node:path";
 import type { GameInstallation, Host } from "../gameInstallation.ts";
 import { buildGameData, loadedMods, readDump } from "./dump.ts";
 import { locateGameExecutable } from "./executable.ts";
+import { failedMod, failedModMessage } from "./failedMod.ts";
 import { isGameModule, type GameData, type GameDataKey } from "./gameData.ts";
 import { readModInfos } from "./modInfo.ts";
 import { runGameDump, type GameRunOptions, type RunFailure, type RunProgress, type RunReport } from "./runner.ts";
@@ -133,7 +134,11 @@ export async function readGameData(options: RefreshOptions): Promise<RefreshResu
     },
   });
   const warnings = [...plan.problems, ...changeWarning(result.changed)];
-  if (!result.ok) return { ok: false, failure: result.failure, message: result.message, log: result.log, warnings };
+  if (!result.ok) {
+    // A game that ended with an error may say in its log which mod it was: that goes first, in plain words.
+    const blamed = result.failure === "exit" ? failedMod(result.log) : undefined;
+    return { ok: false, failure: result.failure, message: blamed ? `${failedModMessage(blamed)}. ${result.message}` : result.message, log: result.log, warnings };
+  }
   const { data, iconTable, unreadMods, untagged } = result.value;
   warnings.push(...unreadWarning(unreadMods));
   if (untagged.length > 0) {

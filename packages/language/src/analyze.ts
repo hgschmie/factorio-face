@@ -42,12 +42,20 @@ export interface PrototypeResolver {
 const MAX_MODULES_NAMED = 3;
 const MAX_TITLE = 80;
 
-/** "Space Age, which is switched off" / "Space Age and Quality, which are switched off", with the titles bounded. */
-function switchedOffText(titles: readonly string[]): string {
+/**
+ * "Space Age, which is switched off in the project settings" / "Space Age and Quality, which are ...", with the titles
+ * bounded: how a warning names the modules that something is of. The editor's forms say it in the same words.
+ */
+export function switchedOffText(titles: readonly string[]): string {
   const named = titles.slice(0, MAX_MODULES_NAMED).map((title) => (title.length > MAX_TITLE ? `${title.slice(0, MAX_TITLE)}...` : title));
   const more = titles.length - named.length;
   const list = more > 0 ? `${named.join(", ")} and ${more} more` : named.length > 1 ? `${named.slice(0, -1).join(", ")} and ${named.at(-1)}` : named[0];
   return `${list}, which ${titles.length > 1 ? "are" : "is"} switched off in the project settings`;
+}
+
+/** The warning for an entity of modules that are switched off (`disabled-prototype`); `displayName` is the entity's name in the game. */
+export function disabledPrototypeMessage(prototype: PrototypeName, displayName: string, titles: readonly string[]): string {
+  return `'${prototype}' (${displayName}) is an entity of ${switchedOffText(titles)}`;
 }
 
 export interface AnalyzeOptions {
@@ -284,7 +292,7 @@ class Analyzer {
   /** An entity of a module that is switched off stays what it is, with a warning on its word. */
   private checkModules(node: CstEntity): void {
     const titles = this.prototypes?.switchedOff(node.prototype) ?? [];
-    if (titles.length > 0) this.report(node.word, "disabled-prototype", `'${node.prototype}' (${gamePrototype(node).displayName}) is an entity of ${switchedOffText(titles)}`);
+    if (titles.length > 0) this.report(node.word, "disabled-prototype", disabledPrototypeMessage(node.prototype, gamePrototype(node).displayName, titles));
   }
 
   slot(token: Token | undefined, slot: SignalSlot): SignalId | undefined {

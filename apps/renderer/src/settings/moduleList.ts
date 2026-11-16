@@ -32,6 +32,22 @@ export function moduleCounts(module: ModuleView): string {
   return `${count(module.signalCount, "signal")}${module.entityCount > 0 ? `, ${count(module.entityCount, "entity", "entities")}` : ""}`;
 }
 
+const byTitle = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+
+/**
+ * The rows in the order they are shown: the game's own modules as the catalog has them, then the mods by title, whatever its
+ * case (the catalog has them by name, capitals first, which is no order of what the rows show).
+ */
+export function listOrder(modules: readonly ModuleView[]): readonly ModuleView[] {
+  const mods = modules.filter((module) => !module.game).sort((a, b) => byTitle.compare(a.title, b.title) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return [...modules.filter((module) => module.game), ...mods];
+}
+
+/** What a row says on hover: the title in full, which the row may cut, and the name where it is another. */
+export function rowHint(module: ModuleView): string {
+  return module.title === module.name ? module.name : `${module.title} (${module.name})`;
+}
+
 /** The rows whose title or name contains the text, whatever its case; all of them for an empty text. */
 export function filterModules(modules: readonly ModuleView[], text: string): readonly ModuleView[] {
   const query = text.trim().toLowerCase();
