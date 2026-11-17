@@ -59,7 +59,7 @@ export interface ImportReportView {
   readonly modules: readonly string[];
 }
 
-/** The modules of the project an imported circuit opens as, and the titles of those among them that a new project has off. */
+/** The modules of the project an imported circuit opens as, and the titles of those among them that a new project has off, in the order of the rows of the project settings. */
 export interface ImportModules {
   readonly modules: readonly string[];
   readonly switchedOn: readonly string[];

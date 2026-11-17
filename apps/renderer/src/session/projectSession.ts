@@ -22,6 +22,7 @@ import {
   type Diagnostic, type DisplayMode, type EntityTile, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands,
   type WorkbenchController, type WorkbenchMode, type WorkbenchState,
 } from "../workbench/controller.ts";
+import { listOrder } from "../workbench/moduleOrder.ts";
 import { Analysis } from "./analysis.ts";
 import { exportCircuit, importedProject, INVALID_SOURCE_PROBLEM, readBlueprint, type ImportModules } from "./blueprints.ts";
 import { CatalogService } from "./catalogService.ts";
@@ -240,13 +241,13 @@ export class ProjectSession {
 
   /**
    * The modules an imported circuit opens with: those of a new project, and every module a signal or an entity of the circuit
-   * is of, with what it requires. `switchedOn` are the titles of what that adds.
+   * is of, with what it requires. `switchedOn` are the titles of what that adds, in the order of the rows of the project settings.
    */
   private importModules(source: string): ImportModules {
     const fresh = this.freshServices();
     const modules = fresh.withModulesOn(modulesUsedOff(source, fresh));
     if (!modules) return { modules: fresh.requested, switchedOn: NO_MODULES };
-    return { modules, switchedOn: modules.filter((name) => !fresh.enabled.includes(name)).map((name) => fresh.titleOf(name)) };
+    return { modules, switchedOn: listOrder(fresh.modules.filter((module) => !module.enabled && modules.includes(module.name))).map((module) => module.title) };
   }
 
   /** What the game the project was made with had that the data in use has not; null without a record or a difference. */

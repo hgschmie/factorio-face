@@ -47,6 +47,52 @@ test("the inspector offers rename and Delete at the top", async ({ page }) => {
   await expect(inspector).toContainText("Every signal starts somewhere.");
 });
 
+/** Two constants with more signals each than the inspector has room for at any window height. */
+const MANY_SIGNALS = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ", ..."0123"].map((name, index) => `        virtual:signal-${name} = ${index + 1}`).join("\n");
+const LONG_FORMS = `circuit "Long forms" {
+    constant-combinator first at (40, 80) {
+${MANY_SIGNALS}
+    }
+
+    constant-combinator second at (300, 80) {
+${MANY_SIGNALS}
+    }
+}
+`;
+
+test("another entity is shown from the top of the inspector, and an edit leaves it where it was scrolled to", async ({ page }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  const scrollTop = (): Promise<number> => inspector.evaluate((element) => element.scrollTop);
+  const scrollToEnd = (): Promise<number> => inspector.evaluate((element) => (element.scrollTop = element.scrollHeight));
+  await page.evaluate((text) => window.faceSession!.commands.setSource(text), LONG_FORMS);
+  await selectEntity(page, "first");
+  await expect(inspector.getByLabel("Entity name")).toHaveValue("first");
+  await scrollToEnd();
+  expect(await scrollTop()).toBeGreaterThan(0);
+
+  // An edit of the entity that is shown: the form stays where it is.
+  const lastCount = inspector.getByLabel("Count", { exact: true }).last();
+  await lastCount.focus();
+  const scrolled = await scrollTop();
+  expect(scrolled).toBeGreaterThan(0);
+  await lastCount.fill("99");
+  await expect.poll(() => sourceText(page)).toContain("virtual:signal-3 = 99");
+  expect(await scrollTop()).toBe(scrolled);
+
+  // Another entity: its title is in view, the form at its top.
+  await selectEntity(page, "second");
+  await expect(inspector.getByLabel("Entity name")).toHaveValue("second");
+  expect(await scrollTop()).toBe(0);
+  await expect(inspector.locator(".inspector-identity h2")).toBeInViewport();
+
+  // And back, although it is the entity that was scrolled before.
+  await scrollToEnd();
+  expect(await scrollTop()).toBeGreaterThan(0);
+  await selectEntity(page, "first");
+  await expect(inspector.getByLabel("Entity name")).toHaveValue("first");
+  expect(await scrollTop()).toBe(0);
+});
+
 test("the inspector edits settings of each kind as controlled forms", async ({ page }) => {
   const inspector = page.getByRole("complementary", { name: "Inspector" });
   const select = async (name: string) => {

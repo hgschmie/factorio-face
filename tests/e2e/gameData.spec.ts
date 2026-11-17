@@ -562,7 +562,9 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
 const CRATES = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 /** A title as a mod may write it: it is shown as the text it is. */
 const BOLD_TITLE = "<b>Bold</b> crates 03";
-const crateTitle = (number: string): string => (number === "03" ? BOLD_TITLE : `Crates ${number}`);
+/** A title too long for one line of a row, which by title comes before the mods that by name come before it. */
+const LONG_TITLE = "A Dozen Crates - Logistic Crate Network, Extended Edition";
+const crateTitle = (number: string): string => (number === "03" ? BOLD_TITLE : number === "12" ? LONG_TITLE : `Crates ${number}`);
 const MANY_MODS: readonly FakeMod[] = [
   // crates-02 needs crates-01, and crates-05 needs crates-04 through a mod that adds nothing.
   ...CRATES.map((number) => ({ name: `crates-${number}`, version: "1.0.0", title: crateTitle(number), dependencies: ["base >= 2.1", ...(number === "02" ? ["crates-01"] : number === "05" ? ["glue-lib >= 0.1"] : [])] })),
@@ -592,8 +594,8 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     await page.locator("[data-settings-toggle]").click();
     const projectSettings = projectSettingsOf(page);
     const rows = projectSettings.locator(".module-list li");
-    // The game's module, then the mods by title: the one whose title begins with a tag comes before the letters.
-    const listed = ["base", "crates-03", ...CRATES.filter((number) => number !== "03").map((number) => `crates-${number}`), "some-mod"];
+    // The game's module, then the mods by title: the one whose title begins with a tag comes before the letters, "A Dozen" before "Crates".
+    const listed = ["base", "crates-03", "crates-12", ...CRATES.filter((number) => number !== "03" && number !== "12").map((number) => `crates-${number}`), "some-mod"];
     expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(listed);
     await expect(moduleRow(page, "crates-01").locator(".module-title")).toHaveAttribute("title", "Crates 01 (crates-01)");
     await expect(projectSettings.locator('[data-note="other-mods"]')).toHaveText("2 other mods of your game add no signals or entities.");
@@ -602,9 +604,24 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     // A title is text, whatever a mod writes into it.
     await expect(moduleRow(page, "crates-03").locator(".module-title")).toHaveText(BOLD_TITLE);
     await expect(moduleRow(page, "crates-03").locator("b")).toHaveCount(0);
-    // Fourteen rows have their own scrolling area, so that the rest of the panel stays in reach.
+    // Fourteen rows have their own scrolling area, and it is the only one: the panel is as high as its content, so the
+    // filter above the list and the line below it stay in view whatever the list is scrolled to.
     const list = projectSettings.locator(".module-list");
+    const overflow = (locator: Locator): Promise<number> => locator.evaluate((element) => element.scrollHeight - element.clientHeight);
+    const bottom = (locator: Locator): Promise<number> => locator.evaluate((element) => element.getBoundingClientRect().bottom);
     expect(await list.evaluate((element) => [getComputedStyle(element).overflowY, element.scrollHeight > element.clientHeight])).toEqual(["auto", true]);
+    expect(await overflow(projectSettings)).toBe(0);
+    expect(await bottom(projectSettings.locator('[data-note="other-mods"]'))).toBeLessThanOrEqual(await bottom(projectSettings));
+    // The list has the room the panel does not need for anything else: more than the six rows of a list of a fixed height.
+    expect(await list.evaluate((element) => [...element.children].filter((row) => row.getBoundingClientRect().bottom <= element.getBoundingClientRect().bottom).length)).toBeGreaterThan(6);
+    // A title has the width of the row and a second line where it needs one: it is not cut on the first. What the mod adds is below it.
+    const longTitle = moduleRow(page, "crates-12").locator(".module-title");
+    await expect(longTitle).toHaveText(LONG_TITLE);
+    await expect(longTitle).toHaveAttribute("title", `${LONG_TITLE} (crates-12)`);
+    const shape = await longTitle.evaluate((element) => ({ lines: Math.round(element.clientHeight / parseFloat(getComputedStyle(element).lineHeight)), cut: element.scrollWidth > element.clientWidth || element.scrollHeight > element.clientHeight + 1 }));
+    expect(shape).toEqual({ lines: 2, cut: false });
+    expect(await moduleRow(page, "crates-12").locator(".module-count").evaluate((element) => element.getBoundingClientRect().top)).toBeGreaterThanOrEqual(await bottom(longTitle));
+    await expect(moduleRow(page, "crates-12").locator(".module-count")).toHaveText("1 signal, 1 entity");
     await page.screenshot({ path: resolve(SHOTS, "project-settings-many-mods.png") });
 
     // The filter finds a mod by its title or its name; Escape empties it and leaves the panel open.
@@ -612,7 +629,7 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     await filter.fill("bold");
     expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-03"]);
     await filter.fill("CRATES-1");
-    expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-10", "crates-11", "crates-12"]);
+    expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-12", "crates-10", "crates-11"]);
     await filter.fill("no such mod");
     await expect(rows).toHaveCount(0);
     await expect(projectSettings.locator('[data-note="no-match"]')).toHaveText("No signal group matches the filter.");
@@ -644,6 +661,10 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     await page.locator("[data-settings-toggle]").click();
     const unused = projectSettings.locator('[data-note="modules-off"]');
     await expect(unused.locator("p")).toHaveText("This project uses signals or entities of Crates 07, Crates 08, which are switched off. They are marked with a warning and are not offered.");
+    // The notice takes its room from the list, not from the panel: still one scrolling area, and the line below the list in view.
+    expect(await overflow(projectSettings)).toBe(0);
+    expect(await overflow(list)).toBeGreaterThan(0);
+    expect(await bottom(projectSettings.locator('[data-note="other-mods"]'))).toBeLessThanOrEqual(await bottom(projectSettings));
     await page.screenshot({ path: resolve(SHOTS, "project-settings-mods-in-use.png") });
     await unused.getByRole("button", { name: "Switch them on" }).click();
     await expect(unused).toHaveCount(0);
@@ -653,7 +674,7 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     await expect(paletteEntry(page, "crate-07")).toHaveCount(1);
 
     // A blueprint with a crate of one mod and a signal of another opens as a project that has those mods on, with what they
-    // require, and the report names them. The mods of the project before play no part.
+    // require, and the report names them in the order of the rows of the project settings. The mods of the project before play no part.
     const blueprint = encodeBlueprintString({
       blueprint: {
         item: "blueprint",
@@ -661,7 +682,7 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
         version: 562954249109504,
         entities: [
           { entity_number: 1, name: "crate-05", position: { x: 0.5, y: 0.5 } },
-          { entity_number: 2, name: "constant-combinator", position: { x: 2.5, y: 0.5 }, control_behavior: { sections: { sections: [{ index: 1, filters: [{ index: 1, name: "crate-09", count: 1 }] }] } } },
+          { entity_number: 2, name: "constant-combinator", position: { x: 2.5, y: 0.5 }, control_behavior: { sections: { sections: [{ index: 1, filters: [{ index: 1, name: "crate-12", count: 1 }] }] } } },
         ],
       },
     });
@@ -673,12 +694,12 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     const report = page.getByRole("dialog", { name: "Blueprint imported" });
     await expect(report.locator('[data-message="summary"]')).toHaveText('"Two crates": Imported 2 entities and 0 wires.');
     await expect(report.getByRole("region", { name: "Signal groups" }).getByRole("listitem")).toHaveText([
-      "Switched on: Crates 04, Crates 05, Crates 09. The blueprint has their signals or entities; a new project has only the modules of the game itself on.",
+      `Switched on: ${LONG_TITLE}, Crates 04, Crates 05. The blueprint has their signals or entities; a new project has only the modules of the game itself on.`,
     ]);
     await page.screenshot({ path: resolve(SHOTS, "import-report-mods.png") });
     await report.getByRole("button", { name: "OK" }).click();
     await expect(report).toHaveCount(0);
-    expect(await enabledModules(page)).toEqual(["base", "crates-04", "crates-05", "crates-09"]);
+    expect(await enabledModules(page)).toEqual(["base", "crates-04", "crates-05", "crates-12"]);
     expect(await entityNames(page)).toEqual(["crate1", "constant1"]);
     expect(await problems(page)).toEqual([]);
   } finally {

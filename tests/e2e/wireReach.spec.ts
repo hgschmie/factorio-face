@@ -132,7 +132,23 @@ test("the reach 0 means unlimited: nothing is flagged, and the inspector says so
   await expect(problems(page)).toHaveCount(1);
 
   await page.getByRole("button", { name: "Settings" }).click();
-  await expect(settings(page)).toContainText("0 means unlimited");
+  // One line under the field says the range, what 0 means and the reach of the game; how the distance is measured is a long
+  // text behind a button, closed whenever the panel opens.
+  await expect(reachField(page)).toHaveAccessibleDescription("From 0 to 64 tiles; 0 means unlimited. In the game the reach is 9. An electric pole has its own reach.");
+  const more = settings(page).getByRole("button", { name: "More about wire reach" });
+  const details = settings(page).locator('[data-note="wire-reach-details"]');
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(details).toBeHidden();
+  await more.click();
+  await expect(more).toHaveAttribute("aria-expanded", "true");
+  await expect(details).toBeVisible();
+  await expect(details).toContainText("the distance is measured between the nearest points of the two entities");
+  await expect(details).toContainText("a small one 7.5 tiles, a big one 32");
+  await expect(details).toContainText("A wire between two poles is measured from center to center.");
+  await settings(page).getByRole("button", { name: "Close project settings" }).click();
+  await page.getByRole("button", { name: "Settings" }).click();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await expect(details).toBeHidden();
   await reachField(page).fill("0");
   await expect(reachField(page)).toHaveAttribute("aria-invalid", "false");
   await reachField(page).press("Enter");

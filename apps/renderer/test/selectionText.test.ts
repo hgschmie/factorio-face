@@ -1,7 +1,7 @@
 import { wireKey, type Circuit, type Wire } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
-import { countLabel, entityNames, selectedItems, selectionStatus, wireEndsLabel } from "../src/workbench/selectionText.ts";
+import { countLabel, entityNames, inspectedSubject, selectedItems, selectionStatus, wireEndsLabel } from "../src/workbench/selectionText.ts";
 import { createSession } from "./session/helpers.ts";
 
 const circuit: Circuit = createSession(EXAMPLE_SOURCE).session.state.circuit;
@@ -34,6 +34,18 @@ describe("selection text", () => {
     expect(items.entities.map((entity) => entity.name)).toEqual(["source", "light"]);
     expect(items.wires).toEqual([red, loop]);
     expect(selectedItems(circuit, [], [])).toEqual({ entities: [], wires: [] });
+  });
+
+  it("tells one inspected entity or wire from another, and from none or several", () => {
+    const subject = (ids: readonly string[], wires: readonly Wire[], of: Circuit = circuit): string | undefined => inspectedSubject(selectedItems(of, ids, wires.map(wireKey)));
+    expect(subject([source], [])).toBe(`entity:${source}`);
+    expect(subject([gate], [])).not.toBe(subject([source], []));
+    expect(subject([], [red])).toBe(`wire:${wireKey(red)}`);
+    expect(subject([], [loop])).not.toBe(subject([], [red]));
+    expect([subject([], []), subject([source, gate], []), subject([source], [red]), subject([], [red, loop]), subject(["nope"], [])]).toEqual([undefined, undefined, undefined, undefined, undefined]);
+    // An edit of the entity makes a new circuit with the same entity in it: the subject stays.
+    const edited: Circuit = { ...circuit, entities: circuit.entities.map((entity) => (entity.id === source ? { ...entity, name: "renamed", description: "edited" } : entity)) };
+    expect(subject([source], [], edited)).toBe(subject([source], []));
   });
 
   it("describes the selection for the status bar", () => {

@@ -44,7 +44,8 @@ src/
   workbench/
     controller.ts      the WorkbenchController seam (state, commands, shared view types)
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
-    selectionText.ts   the selection in words: status bar text, counts, wire labels   (pure)
+    selectionText.ts   the selection in words: status bar text, counts, wire labels, what the inspector is about   (pure)
+    moduleOrder.ts     the order in which modules are shown and named: the game's own, then the mods by title   (pure)
     statusText.ts      what the status line says about the source and about the project file, a path in the two parts it is
                        shortened by   (pure)
     TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, undo, redo, fit, settings, save)
@@ -85,7 +86,7 @@ src/
     tokens.ts          token kind to class mapping, minimal text diff  (pure)
   inspector/
     Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; a selected wire;
-                       the summary of several selected things; undo and redo from its fields
+                       the summary of several selected things; undo and redo from its fields; back to its top for another entity or wire
     EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm / SpeakerForm
     GenericForm.tsx    the settings of a generic entity (kind `entity`): a control per setting of its prototype type, from the
                        settings table of the model
@@ -106,7 +107,7 @@ src/
   settings/
     ProjectSettings.tsx  project name, wire reach and the modules of the project as signal groups (the game's, and the mods of a game that was read)
     moduleList.ts        the module list in words: row notes, counts, filter, the notes around the list
-    wireReach.ts       the text of the wire reach field as a number in range   (pure)
+    wireReach.ts       the text of the wire reach field as a number in range, the line under the field   (pure)
     AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from, the game data (modal)
     appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
     useAppSettings.ts  the state as the main process reports it, and the two requests that change it
@@ -187,6 +188,10 @@ simulation (`run`, `pause`,
   values (`FieldTextEpochContext` invalidates the text they hold on their own; that update is rendered at once with `flushSync`, so
   that a key arriving right behind the command is typed into what the undo left). In a text field that is not part of the document
   (project name, signal search) undo and redo do nothing. The source editor keeps CodeMirror's handling.
+- **Scroll position.** The inspector scrolls as a whole. When it comes to show another entity or another wire
+  (`inspectedSubject` in `selectionText.ts`: the id of the one selected entity, the key of the one selected wire, nothing for
+  none or several) it goes back to its top, so that the title and the warning under it are in view; an edit of the entity on
+  show, which makes a new circuit with the same id in it, leaves it where it was scrolled to.
 - **Description.** Every entity has a multi-line Description box under its name (`DescriptionField` in `Inspector.tsx`): one line
   high while empty, as high as its text up to eight lines, then it scrolls. Return is a line break, so unlike the other fields the
   text is not written while it is typed: it is written when the box is left or on Cmd/Ctrl+Return, as one `updateEntity` without a
@@ -582,7 +587,10 @@ tiles for every entity the editor knows (`docs/factorio-audit.md` 5.4). Here it 
 means unlimited" under a text that is no number, a number out of range taken as the nearest end of it (`clampWireReach`, the
 same as for a project file), and the button "Reset to 9") through `commands.setWireReach(value)`, which ignores a
 value out of range. Like the name and the modules it is not part of
-the document: not undoable, and a change makes the project dirty.
+the document: not undoable, and a change makes the project dirty. Under the field one line says the range, what 0 means, the
+reach of the game and that a pole has its own (`WIRE_REACH_NOTE`, the description of the field for assistive technology); how
+the distance is measured is a paragraph behind the button "More about wire reach" (`.disclosure` with `aria-expanded`,
+`[data-note="wire-reach-details"]`), closed whenever the panel opens, because the module list below needs the room.
 
 - The measure is `wireDistance(a, b)` of `@face/model` (`wireReach.ts`): the distance between the nearest points of the two
   selection boxes (`selectionBox`, `boxDistance`), in tiles; the box is the tile footprint for most prototypes, so that such
@@ -958,7 +966,7 @@ session has five commands for it. `Workbench` holds which of the four dialogs is
   The modules of the project are those of a new one and every module that a signal or an entity of the circuit is of, with what
   those require and without what they only recommend (`importModules` of the session: the printed circuit is analyzed against the
   modules of a new project, and what turns out to be off is switched on). What that adds is in the report under "Signal groups":
-  "Switched on: Some Mod, ...", by title, twelve at most by name. A blueprint that arrives whole and needs nothing more has no report.
+  "Switched on: Some Mod, ...", by title in the order of the rows of the project settings (`listOrder`), twelve at most by name. A blueprint that arrives whole and needs nothing more has no report.
 - **The paste dialog** (`ImportBlueprint`, dialog "Paste blueprint string"): a text box that starts with the focus, read on every
   change (`useDeferredValue`, so typing does not wait for a long string). Below it, while the box is not blank: the error
   (`[data-message="error"]`, the box is `aria-invalid`), or what the blueprint is (`[data-message="blueprint"]`: `"Name": 4 entities.`
@@ -1033,18 +1041,28 @@ in a native dialog of its own before it starts the game.
   in its list and opens with the warnings and the button below, without a conversion. `ProjectView.gameData` says that the data
   was read from a game.
 - **The module list in the project settings** (`ProjectSettings.tsx`, in words by `settings/moduleList.ts`). One row per module
-  (`.module-list li[data-module]`, the game's own first, `data-game`, then the mods by title whatever its case, `listOrder`; the
-  catalog has them by name): the checkbox, the title (a mod's own text, rendered as text and cut by the row; on hover the title
-  in full with the name, `rowHint`), "N signals" with ", M entities" where it adds some to the selector (`.module-count`), and the note of what
-  switching it does ("Switching on also switches on ...", "Always enabled" for `base`). The signals counted are the selectable
-  ones that are there only with the module: those it created, and those of another creator that need it, so a record of two
-  modules counts in both rows (the sum of the rows can exceed the number of signals). From eleven rows on the list scrolls by
-  itself (`.module-list.scrolling`) and has a filter field above it ("Filter signal groups": title or name, any case; Escape
-  empties it; `[data-note="no-match"]`). Below the list: the mods that are not in it, counted (`[data-note="other-mods"]`, "14
-  other mods of your game add no signals or entities."); with the built-in data the line that the mods of the game appear here
-  after the game has been read in the application settings (`[data-note="mods-hint"]`); and the names the data does not know.
-  Above the list, when the project uses signals or entities of modules that are off (`[data-note="modules-off"]`): which, by
-  title and counted after four, and the button "Switch them on" (`enableUsedModules`).
+  (`.module-list li[data-module]`, the game's own first, `data-game`, then the mods by title whatever its case, `listOrder` of
+  `workbench/moduleOrder.ts`; the catalog has them by name): the checkbox and the title, which has the width of the row (a mod's
+  own text, rendered as text, on two lines where it needs them and cut after that; on hover the title in full with the name,
+  `rowHint`); below it what the module adds (`.module-count`, `moduleCounts`: "N signals, M entities", a count of none left out,
+  "Only hidden signals or entities" for a module that is listed for records none of which can be chosen); and below that the note
+  of what switching it does ("Switching on also switches on ...", "Always enabled" for `base`; `small`). The signals counted are
+  the selectable ones that are there only with the module: those it created, and those of another creator that need it, so a
+  record of two modules counts in both rows (the sum of the rows can exceed the number of signals). From eleven rows on the list
+  has a filter field above it ("Filter signal groups": title or name, any case; Escape empties it; `[data-note="no-match"]`).
+  Below the list: the mods that are not in it, counted (`[data-note="other-mods"]`, "14 other mods of your game add no signals
+  or entities."); with the built-in data the line that the mods of the game appear here after the game has been read in the
+  application settings (`[data-note="mods-hint"]`); and the names the data does not know. Above the list, when the project uses
+  signals or entities of modules that are off (`[data-note="modules-off"]`): which, by title and counted after four, and the
+  button "Switch them on" (`enableUsedModules`). Every sentence that lists modules (that notice, the notes of the rows,
+  `moduleTitles`; the "Switched on" line of an import report, `importModules`) has them in the order of the rows.
+- **The layout of the panel** (`styles/settings.css`). The panel is a column as high as its content, up to the height of the
+  window below the two bars (`max-height`). Every part keeps its height (`.project-settings > *` is `flex: none`) except the
+  list, which may shrink (`flex: 0 1 auto`, `min-height: 0`) and scrolls by itself: with five rows it is as high as they are, with
+  the mods of a game it takes what the name, the wire reach, the notice, the filter and the lines below it leave, and those stay
+  in view while it scrolls. A list of four rows or more is never squeezed below 148 pixels (three rows and the top of a
+  fourth); only where the window leaves less (the smallest window with the notice on show, or the text about the wire reach
+  open in a low window) does the panel scroll as a whole (`overflow: auto`).
 - **The record of the mods** (`gameData/projectMods.ts`). `toProjectData` gets `modsRecord(data)`: the game version and what the game
   had loaded, when the data was read from a game with at least one mod; it replaces the project's `gameMods`. Otherwise the record
   the project was loaded with is written back unchanged. When a project is loaded, `modsNotice` compares its record with the data in

@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Icon } from "../icons/Icon.tsx";
 import type { CatalogView, ProjectView } from "../workbench/controller.ts";
 import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote, rowHint } from "./moduleList.ts";
-import { parseWireReach, WIRE_REACH_ERROR } from "./wireReach.ts";
+import { parseWireReach, WIRE_REACH_DETAILS_LABEL, WIRE_REACH_ERROR, WIRE_REACH_NOTE } from "./wireReach.ts";
 
 export interface ProjectSettingsProps {
   readonly project: ProjectView;
@@ -54,11 +54,13 @@ function NameField({ name, onRename }: { readonly name: string; onRename(name: s
 
 /**
  * The wire reach in tiles. Like the name it is written when the field is left or with Enter; a text that is not a reach in
- * range says so while it is typed and is dropped when the field is left.
+ * range says so while it is typed and is dropped when the field is left. The rules of the measuring are a long text and the
+ * list below needs the room: they are behind a disclosure that starts closed with every opening of the panel.
  */
 function WireReachField({ wireReach, onChange }: { readonly wireReach: number; onChange(wireReach: number): void }) {
   const id = useId();
   const [draft, setDraft] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const parsed = draft === null ? wireReach : parseWireReach(draft);
   const commit = (): void => {
     if (draft !== null && parsed !== undefined) onChange(parsed);
@@ -110,6 +112,13 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
         </small>
       )}
       <p className="muted-note" id={`${id}-note`}>
+        {WIRE_REACH_NOTE}
+      </p>
+      <button type="button" className="disclosure" aria-expanded={detailsOpen} aria-controls={`${id}-details`} onClick={() => setDetailsOpen((open) => !open)}>
+        <Icon name="chevron" size={11} />
+        {WIRE_REACH_DETAILS_LABEL}
+      </button>
+      <p className="muted-note" id={`${id}-details`} data-note="wire-reach-details" hidden={!detailsOpen}>
         How far apart two entities may be in the blueprint for a circuit wire between them, from {WIRE_REACH_RANGE.min} to {WIRE_REACH_RANGE.max}. As in the game, the distance is measured between
         the nearest points of the two entities, by the box the game highlights around each, which for most is the tiles it stands on. A wire that spans more is flagged, on the board and in the
         problems list; nothing is refused. {UNLIMITED_WIRE_REACH} means unlimited. In the game the reach is {DEFAULT_WIRE_REACH} tiles. An electric pole has its own reach, as in the game,

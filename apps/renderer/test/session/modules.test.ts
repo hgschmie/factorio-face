@@ -204,7 +204,8 @@ describe("a blueprint import with the mods of a game", () => {
       wires: [],
       settings: [],
       remarks: [],
-      modules: [`Switched on: Ore Mod, ${MACHINES_TITLE}, Filler 3. The blueprint has their signals or entities; a new project has only the modules of the game itself on.`],
+      // In the order of the rows of the project settings, by title; the catalog has them by name: c-ore, e-machines, g-filler-3.
+      modules: [`Switched on: Filler 3, ${MACHINES_TITLE}, Ore Mod. The blueprint has their signals or entities; a new project has only the modules of the game itself on.`],
     });
     expect(await session.commands.openBlueprint(reading.blueprint)).toBe(true);
     expect(enabledOf(session)).toEqual([...GAME, ORE, MACHINES, FILLERS[2]]);

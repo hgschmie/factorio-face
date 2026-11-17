@@ -1,6 +1,6 @@
 // The text of the wire reach field of the project settings.
 import { describe, expect, it } from "vitest";
-import { parseWireReach, WIRE_REACH_ERROR } from "../src/settings/wireReach.ts";
+import { parseWireReach, WIRE_REACH_DETAILS_LABEL, WIRE_REACH_ERROR, WIRE_REACH_NOTE } from "../src/settings/wireReach.ts";
 
 describe("wire reach field", () => {
   it("reads whole numbers and fractions, with a point or a comma", () => {
@@ -23,5 +23,10 @@ describe("wire reach field", () => {
   it("refuses what is not a number", () => {
     for (const text of ["", " ", "-", "--1", "+9", "nine", "9 tiles", "1e2", "0x10", "9.", ".5", "1.2.3", "1,000.5", "Infinity"]) expect(parseWireReach(text), JSON.stringify(text)).toBeUndefined();
     expect(WIRE_REACH_ERROR).toBe("A number from 0 to 64; 0 means unlimited");
+  });
+
+  it("says the range, the reach of the game and that a pole has its own in one line, the rest behind a button", () => {
+    expect(WIRE_REACH_NOTE).toBe("From 0 to 64 tiles; 0 means unlimited. In the game the reach is 9. An electric pole has its own reach.");
+    expect(WIRE_REACH_DETAILS_LABEL).toBe("More about wire reach");
   });
 });

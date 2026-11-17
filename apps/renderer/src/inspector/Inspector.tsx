@@ -7,14 +7,14 @@ import {
   type Circuit, type Direction, type Entity, type EntityId, type WireSpan, type NetworkSelection, type PrototypeName, type Wire, type WireColor,
 } from "@face/model";
 import { printTerminal } from "@face/language";
-import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
+import { useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
 import { capitalized, entityDescription, entityNoun, entityTitle, KIND_INFO } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
 import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
-import { countLabel, entityNames, selectedItems, wireEndsLabel, wireReachNote, type EntityNames } from "../workbench/selectionText.ts";
+import { countLabel, entityNames, inspectedSubject, selectedItems, wireEndsLabel, wireReachNote, type EntityNames } from "../workbench/selectionText.ts";
 import { FieldTextEpochContext, InputWiresContext, useFieldText } from "./fields.tsx";
 import { SignalInfoContext, SignalPickerContext, type SignalDescriber, type SignalPickerRenderer } from "./SignalField.tsx";
 import { entityNameError } from "./validation.ts";
@@ -412,12 +412,18 @@ function EntityInspector(props: EntityInspectorProps) {
 
 export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
   const { circuit, selection, wireSelection, editable } = props;
-  const { entities: selected, wires: selectedWires } = selectedItems(circuit, selection, wireSelection);
+  const items = selectedItems(circuit, selection, wireSelection);
+  const { entities: selected, wires: selectedWires } = items;
   const count = selected.length + selectedWires.length;
   const single = count === 1 ? selected[0] : undefined;
   const singleWire = count === 1 ? selectedWires[0] : undefined;
   const names = selectedWires.length > 0 ? entityNames(circuit) : undefined;
   const rootRef = useRef<HTMLElement>(null);
+  const subject = inspectedSubject(items);
+  // The panel scrolls as a whole: without this another entity would be shown from where the last one was scrolled to, its title and its warning out of view.
+  useLayoutEffect(() => {
+    if (rootRef.current) rootRef.current.scrollTop = 0;
+  }, [subject]);
   const [textEpoch, setTextEpoch] = useState(0);
   // The document history is the only undo authority; a field has no undo of its own. What is not written is not in that history:
   // text the focused field could not parse or has not committed, and the pending draft of the entity, whichever field made it.

@@ -18,6 +18,15 @@ export function selectedItems(circuit: Circuit, selection: readonly EntityId[], 
   };
 }
 
+/**
+ * What the inspector is about: the one selected entity or the one selected wire; undefined for no selection and for several.
+ * An edit leaves it as it is, another entity or wire is another subject.
+ */
+export function inspectedSubject({ entities, wires }: SelectedItems): string | undefined {
+  if (entities.length + wires.length !== 1) return undefined;
+  return entities[0] ? `entity:${entities[0].id}` : `wire:${wireKey(wires[0]!)}`;
+}
+
 function counted(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`;
 }

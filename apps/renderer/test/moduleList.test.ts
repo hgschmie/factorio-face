@@ -1,6 +1,6 @@
 // The module list of the project settings in words: the note of a row, its counts, the filter, and the notes around the list.
 import { describe, expect, it } from "vitest";
-import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, otherModsNote, rowHint } from "../src/settings/moduleList.ts";
+import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, NOTHING_TO_CHOOSE, otherModsNote, rowHint } from "../src/settings/moduleList.ts";
 import type { ModuleView } from "../src/workbench/controller.ts";
 
 const view = (name: string, title: string, more: Partial<ModuleView> = {}): ModuleView => ({ name, title, version: "1.0.0", game: false, enabled: true, canDisable: true, enables: [], disables: [], missing: [], signalCount: 0, entityCount: 0, ...more });
@@ -27,10 +27,26 @@ describe("the note of a row", () => {
     expect(moduleTitles([], MODULES)).toBe("");
   });
 
-  it("counts the signals, and the entities where there are some", () => {
+  it("names them in the order of the rows, whatever order the names come in", () => {
+    // As the catalog has them: by name, capitals first, the game's modules among the mods.
+    const modules = [view("LogisticTrainNetwork", "LTN - Logistic Train Network"), view("base", "Base Mod", { game: true }), view("nixie-tubes", "Nixie Tubes"), view("cargo-ships", "Cargo Ships"), view("quality", "Quality", { game: true })];
+    expect(moduleTitles(["LogisticTrainNetwork", "nixie-tubes", "cargo-ships"], modules)).toBe("Cargo Ships, LTN - Logistic Train Network, Nixie Tubes");
+    expect(moduleTitles(["nixie-tubes", "gone", "quality", "LogisticTrainNetwork", "base"], modules)).toBe("Base Mod, Quality, LTN - Logistic Train Network, Nixie Tubes and 1 more");
+    expect(moduleTitles(["nixie-tubes", "quality"], modules, 1)).toBe("Quality and 1 more");
+    expect(consequence(view("a", "A", { enabled: false, enables: ["nixie-tubes", "cargo-ships", "base"] }), modules)).toBe("Switching on also switches on Base Mod, Cargo Ships, Nixie Tubes");
+    expect(modulesOffNotice(["LogisticTrainNetwork", "nixie-tubes"], modules)).toBe("This project uses signals or entities of LTN - Logistic Train Network, Nixie Tubes, which are switched off. They are marked with a warning and are not offered.");
+    expect(modulesOffNotice(["nixie-tubes", "cargo-ships"], modules)).toContain("of Cargo Ships, Nixie Tubes, which are");
+  });
+
+  it("counts the signals and the entities, and leaves out a count of none", () => {
     expect(moduleCounts(view("a", "A", { signalCount: 771, entityCount: 17 }))).toBe("771 signals, 17 entities");
     expect(moduleCounts(view("a", "A", { signalCount: 1, entityCount: 1 }))).toBe("1 signal, 1 entity");
-    expect(moduleCounts(view("a", "A", { signalCount: 0 }))).toBe("0 signals");
+    expect(moduleCounts(view("a", "A", { signalCount: 5 }))).toBe("5 signals");
+    expect(moduleCounts(view("a", "A", { entityCount: 67 }))).toBe("67 entities");
+    expect(moduleCounts(view("a", "A", { entityCount: 1 }))).toBe("1 entity");
+    // Listed for what it adds, all of which is hidden.
+    expect(moduleCounts(view("a", "A"))).toBe("Only hidden signals or entities");
+    expect(NOTHING_TO_CHOOSE).toBe("Only hidden signals or entities");
   });
 });
 
@@ -53,7 +69,7 @@ describe("the notes around the list", () => {
     expect(modulesOffNotice([], MODULES)).toBeNull();
     expect(modulesOffNotice(["bobs"], MODULES)).toBe("This project uses signals or entities of Bob's Logistics, which is switched off. They are marked with a warning and are not offered.");
     expect(modulesOffNotice(["space-age", "quality", "bobs", "ltn", "base"], MODULES)).toBe(
-      "This project uses signals or entities of Space Age, Quality, Bob's Logistics, LTN - Logistic Train Network and 1 more, which are switched off. They are marked with a warning and are not offered.",
+      "This project uses signals or entities of Base Mod, Space Age, Quality, Bob's Logistics and 1 more, which are switched off. They are marked with a warning and are not offered.",
     );
   });
 
@@ -76,6 +92,9 @@ describe("the order of the rows", () => {
     expect(listOrder([])).toEqual([]);
     // The list it is given stays as it is.
     expect(listed.map((module) => module.name).slice(3, 5)).toEqual(["LogisticTrainNetwork", "Warehousing"]);
+    // Anything with a name, a title and the mark of the game is ordered, and comes back as it went in.
+    const plain = [{ name: "b", title: "beta", game: false }, { name: "a", title: "Alpha", game: false }, { name: "base", title: "Base Mod", game: true }];
+    expect(listOrder(plain)).toEqual([plain[2], plain[1], plain[0]]);
   });
 
   it("says the title in full and the name on hover, the name alone where the mod has no other title", () => {

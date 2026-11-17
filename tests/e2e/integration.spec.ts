@@ -545,6 +545,12 @@ test("the signal picker selects a Space Age signal with its icon, and the module
   await expect(settings.locator('[data-note="mods-hint"]')).toHaveText("The mods of your game appear here after the game has been read in the application settings.");
   await expect(settings.getByLabel("Filter signal groups")).toHaveCount(0);
   await expect(settings.locator('[data-note="other-mods"], [data-note="modules-off"]')).toHaveCount(0);
+  // Five rows are all in view: neither the list nor the panel scrolls, and the list is as high as its rows.
+  expect(await settings.evaluate((panel) => [panel.scrollHeight - panel.clientHeight, panel.querySelector(".module-list")!.scrollHeight - panel.querySelector(".module-list")!.clientHeight])).toEqual([0, 0]);
+  expect(await settings.locator(".module-list").evaluate((list) => Math.round(list.getBoundingClientRect().bottom - list.lastElementChild!.getBoundingClientRect().bottom))).toBe(0);
+  // A count of none is left out, and what a module adds is a line of its own below the title.
+  await expect(settings.locator('[data-module="elevated-rails"] .module-count')).toHaveText("5 signals");
+  expect(await settings.locator('[data-module="space-age"]').evaluate((row) => row.querySelector(".module-count")!.getBoundingClientRect().top >= row.querySelector(".module-title")!.getBoundingClientRect().bottom)).toBe(true);
   await settings.getByRole("checkbox", { name: /Space Age/ }).uncheck();
   // Dependencies are spelled out: with Space Age off, Recycler is now only needed by Quality.
   await expect(settings.locator('[data-module="recycler"] small')).toHaveText("Switching off also switches off Quality");
