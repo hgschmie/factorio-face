@@ -110,7 +110,7 @@ describe("the standard prototypes with a kind of their own", () => {
     expect(missingEditorPrototypes(MODDED_ENTITY_TABLE)).toEqual([]);
     const withoutLamp = tableOf((all) => all.filter((record) => record.name !== "small-lamp" && record.name !== "decider-combinator"));
     expect(missingEditorPrototypes(withoutLamp)).toEqual(["decider-combinator", "small-lamp"]);
-    expect(() => setEntityTable(withoutLamp)).toThrow("The entity table of Factorio 2.1.24 has no decider-combinator");
+    expect(() => setEntityTable(withoutLamp)).toThrow("The entity table of Factorio 2.1.25 has no decider-combinator");
     // A standard name a mod made something else of is not the prototype the editor needs.
     const retyped = tableOf((all) => all.map((record) => (record.name === "small-lamp" ? { ...record, type: "container" } : record.name === "programmable-speaker" ? { ...record, type: "lamp" } : record)));
     expect(missingEditorPrototypes(retyped)).toEqual(["small-lamp", "programmable-speaker"]);

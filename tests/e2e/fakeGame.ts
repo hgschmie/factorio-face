@@ -44,7 +44,7 @@ export const SIGNAL_A_FILE = "base/graphics/icons/signal/signal_A.png";
 let gameCount = 0;
 
 /** Writes an installation into a new folder under .runtime/e2e-games. */
-export async function writeFakeGame({ version = "2.1.24", modules = ["space-age", "quality", "elevated-rails", "recycler"], icons = {}, bundle = false }: FakeGameOptions = {}): Promise<FakeGame> {
+export async function writeFakeGame({ version = "2.1.25", modules = ["space-age", "quality", "elevated-rails", "recycler"], icons = {}, bundle = false }: FakeGameOptions = {}): Promise<FakeGame> {
   const parent = resolve(GAMES_DIR, `game-${process.pid}-${++gameCount}`);
   const folder = bundle ? join(parent, "factorio.app") : join(parent, "factorio");
   const dataDirectory = bundle ? join(folder, "Contents", "data") : join(folder, "data");
@@ -84,7 +84,7 @@ export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, beha
   const executable = executablePath(game.dataDirectory, process.platform);
   if (executable === undefined) throw new Error(`The game has no program on ${process.platform}`);
   const parent = dirname(game.folder);
-  const control: FakeGameControl = { record: join(parent, "starts.jsonl"), dump: await writeCannedDump(join(parent, "dump"), { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3", ...Object.fromEntries(mods.map((mod) => [mod.name, mod.version])) }, ...dump }), ...behaviour };
+  const control: FakeGameControl = { record: join(parent, "starts.jsonl"), dump: await writeCannedDump(join(parent, "dump"), { editor: true, activeMods: { base: "2.1.25", "some-mod": "1.2.3", ...Object.fromEntries(mods.map((mod) => [mod.name, mod.version])) }, ...dump }), ...behaviour };
   await mkdir(dirname(executable), { recursive: true });
   await writeFakeProgram(executable, control);
   const modDirectory = join(parent, "user", "mods");

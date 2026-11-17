@@ -1,5 +1,6 @@
 // Blueprints of the game in the session: what a text is read as, the wording of the import report, the list of a book, the project
 // a blueprint opens as, and the export of the circuit with what is in the way of it.
+import { STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { decodeBlueprintString, DEFAULT_EDIT_GRID, DEFAULT_UNITS_PER_TILE, encodeBlueprintString, type ImportReport } from "@face/blueprints";
 import { analyze } from "@face/language";
 import { describe, expect, it } from "vitest";
@@ -160,7 +161,7 @@ describe("a blueprint book", () => {
 });
 
 describe("the import report", () => {
-  const CLEAN: ImportReport = { version: "2.1.24.0", entities: 3, dropped: [], wires: { imported: 2, copper: 0, toDropped: 0, invalid: 0 }, settings: [], ignored: [], warnings: [] };
+  const CLEAN: ImportReport = { version: "2.1.25.0", entities: 3, dropped: [], wires: { imported: 2, copper: 0, toDropped: 0, invalid: 0 }, settings: [], ignored: [], warnings: [] };
 
   it("is not made when the blueprint arrived whole; the icons every blueprint has do not count", () => {
     expect(importReport(CLEAN)).toBeNull();
@@ -344,15 +345,15 @@ describe("the export of a circuit", () => {
     const { session } = createSession(PLACED);
     const exported = session.commands.exportBlueprint();
     if (!exported.ok) throw new Error("not exported");
-    expect(exported.gameVersion).toBe("2.1.24");
+    expect(exported.gameVersion).toBe(STANDARD_CATALOG_VERSION);
     expect(exported.warnings).toEqual(["The game has a description on combinators only; the description of 'light' is not in the blueprint."]);
     expect(exported.string).toMatch(/^0[A-Za-z0-9+/]+={0,2}$/);
     const decoded = decodeBlueprintString(exported.string);
-    expect(decoded.ok && decoded.data).toMatchObject({ blueprint: { label: "Placed", version: 562954249961472, entities: [{ name: "constant-combinator" }, { name: "decider-combinator" }, { name: "small-lamp" }] } });
+    expect(decoded.ok && decoded.data).toMatchObject({ blueprint: { label: "Placed", version: 562954250027008, entities: [{ name: "constant-combinator" }, { name: "decider-combinator" }, { name: "small-lamp" }] } });
     // What an import makes of the string exports to the same string: the same circuit, entity for entity and wire for wire.
     const back = imported(exported.string);
     expect(back).toMatchObject({ name: "Placed", entities: 3, total: 3, report: null });
-    expect(exportCircuit(analyze(back.source).circuit!, [])).toEqual({ ok: true, string: exported.string, gameVersion: "2.1.24", warnings: [] });
+    expect(exportCircuit(analyze(back.source).circuit!, [])).toEqual({ ok: true, string: exported.string, gameVersion: STANDARD_CATALOG_VERSION, warnings: [] });
   });
 
   it("lists everything that is in the way, with the entities, and knows which of it the board solves", () => {

@@ -3,7 +3,7 @@
 // per line, defaults left out); what each field is derived from: docs/factorio-audit.md 13. This file reads such a table and
 // holds the one of the standard game. Which table the editor works with: `entityTable` in prototypes.ts.
 
-import standard from "../data/entities-2.1.24.json" with { type: "json" };
+import standard from "../data/entities-2.1.25.json" with { type: "json" };
 import { parseSignalKey, type SignalId } from "./signal.ts";
 
 /** The reach the game gives a circuit wire of every entity that does not say otherwise (`default_circuit_wire_max_distance`). */
@@ -121,5 +121,5 @@ export function parseEntityTable(data: unknown): EntityTable {
   return { game: { version: game.version, ...(typeof game.build === "number" && { build: game.build }) }, runtimeChecked: data.runtimeChecked === true, entities, byName };
 }
 
-/** The table of Factorio 2.1.24 with its five standard modules. Shared; treat it as immutable. */
+/** The table of Factorio 2.1.25 with its five standard modules. Shared; treat it as immutable. */
 export const STANDARD_ENTITY_TABLE: EntityTable = parseEntityTable(standard);

@@ -15,14 +15,14 @@ const ROOT = resolve(import.meta.dirname, "../../..");
 const scratch = mkdtempSync(join(process.env.TMPDIR ?? tmpdir(), "face-single-test-"));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-const GAME = { version: "2.1.24", build: 87808 };
+const GAME = { version: "2.1.25", build: 88022 };
 const HEAD = { game: GAME, generator: "test", generatedAt: "2026-11-14T00:00:00Z" };
 
 describe("single-set build of a made-up dump", () => {
   const dataDir = join(scratch, "data");
   for (const [name, more] of Object.entries({ base: {}, quality: { dependencies: ["base >= 2.1.0"], quality_required: true } })) {
     mkdirSync(join(dataDir, name, "locale", "en"), { recursive: true });
-    writeFileSync(join(dataDir, name, "info.json"), JSON.stringify({ name, version: "2.1.24", title: `The ${name}`, ...more }));
+    writeFileSync(join(dataDir, name, "info.json"), JSON.stringify({ name, version: "2.1.25", title: `The ${name}`, ...more }));
   }
   writeFileSync(join(dataDir, "base", "locale", "en", "base.cfg"), "[programmable-speaker-instrument]\nkit=Drumkit\n");
 
@@ -37,8 +37,8 @@ describe("single-set build of a made-up dump", () => {
     "utility-constants": { default: { default_item_weight: 100, default_rocket_lift_weight: 1000 } },
   };
   const runtime = {
-    game_version: "2.1.24",
-    active_mods: { "some-mod": "1.2.3", quality: "2.1.24", base: "2.1.24" },
+    game_version: "2.1.25",
+    active_mods: { "some-mod": "1.2.3", quality: "2.1.25", base: "2.1.25" },
     item: [["plate", "base"], ["gadget", "some-mod"], ["lamp", "core"]].map(([name, created]) => ({ ...signal(name!, "item", created!), stack_size: 50, weight: 100 })),
     fluid: [], virtual_signal: [], recipe: [], space_location: [], asteroid_chunk: [], quality: [],
     entity: [["lamp", "some-mod"], ["odd-lamp", "base"], ["ghost-lamp", null]].map(([name, created]) => ({ ...signal(name!, "lamp", created), items_to_place_this: name === "lamp" ? ["lamp"] : {} })),
@@ -56,11 +56,11 @@ describe("single-set build of a made-up dump", () => {
   const built = buildSingleSet({ raw, runtime, locale, modules, ...HEAD });
 
   it("lists what the game loaded: its modules first, each as its info.json has it", () => {
-    expect(mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "quality", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
+    expect(mods).toEqual([{ name: "base", version: "2.1.25" }, { name: "quality", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }]);
     // Of the mod's dependencies the hard ones among what the game loaded, each once: not itself, not the optional, hidden or refused ones, not what is not there.
     expect(modules).toEqual([
-      { name: "base", title: "The base", version: "2.1.24", requires: [], recommends: [], featureFlags: [] },
-      { name: "quality", title: "The quality", version: "2.1.24", requires: ["base"], recommends: [], featureFlags: ["quality"] },
+      { name: "base", title: "The base", version: "2.1.25", requires: [], recommends: [], featureFlags: [] },
+      { name: "quality", title: "The quality", version: "2.1.25", requires: ["base"], recommends: [], featureFlags: ["quality"] },
       { name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base", "quality"], recommends: [], featureFlags: ["quality"] },
     ]);
     expect(unread).toEqual([]);
@@ -68,7 +68,7 @@ describe("single-set build of a made-up dump", () => {
     expect(built.catalog.modules).toEqual(modules);
     expect(built.catalog.provenance).toMatchObject({ generator: "test", generatedAt: "2026-11-14T00:00:00Z", modSets: ["base+quality+some-mod"] });
     expect(built.catalog.provenance.commands[0]).toBe("factorio --config <run>/game/config/config.ini --mod-directory <run>/game/mods --no-log-rotation --dump-data");
-    expect(built.entities.mods).toEqual({ base: "2.1.24", quality: "2.1.24", "some-mod": "1.2.3" });
+    expect(built.entities.mods).toEqual({ base: "2.1.25", quality: "2.1.25", "some-mod": "1.2.3" });
     expect(built.entities).toMatchObject({ schema: 1, game: GAME, generator: "test", runtimeChecked: true });
   });
 
@@ -228,8 +228,8 @@ describe("single-set build of a made-up dump", () => {
 
 describe("game version", () => {
   it("is read from the answer to --version and from the first line of a log", () => {
-    expect(parseGameVersion("Version: 2.1.24 (build 87808, mac-arm64, full)\nBinary version: 64\n")).toEqual({ version: "2.1.24", build: 87808, variant: "mac-arm64, full" });
-    expect(parseGameVersion("   0.000 2026-11-11 14:26:41; Factorio 2.1.24 (build 87808, mac-arm64, full, space-age)\n   0.002 Operating system")).toEqual({ version: "2.1.24", build: 87808, variant: "mac-arm64, full, space-age" });
+    expect(parseGameVersion("Version: 2.1.25 (build 88022, mac-arm64, full)\nBinary version: 64\n")).toEqual({ version: "2.1.25", build: 88022, variant: "mac-arm64, full" });
+    expect(parseGameVersion("   0.000 2026-11-11 14:26:41; Factorio 2.1.25 (build 88022, mac-arm64, full, space-age)\n   0.002 Operating system")).toEqual({ version: "2.1.25", build: 88022, variant: "mac-arm64, full, space-age" });
     expect(parseGameVersion("Factorio 2.1 (build x)")).toBeUndefined();
     expect(parseGameVersion("")).toBeUndefined();
   });

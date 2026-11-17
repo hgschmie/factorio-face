@@ -1,13 +1,13 @@
 // The data a window works with: applied to the model and the catalog before anything else, and the built-in data when the
 // given one cannot be used after all. With it comes which icons the main process can draw.
-import { currentCatalog, findSignal, loadStandardCatalog } from "@face/catalog";
+import { currentCatalog, findSignal, loadStandardCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { entityTable, isPrototypeName, signal, STANDARD_ENTITY_TABLE } from "@face/model";
 import { afterEach, describe, expect, it } from "vitest";
 import type { FaceApi, GameDataInUse } from "../../../desktop/src/ipc.ts";
 import { applyData, builtInData, loadDataInUse, parseIconIds } from "../../src/gameData/dataInUse.ts";
 import { MOD_ENTITY, MOD_SIGNAL, MODDED_MODS, MODDED_SOURCE, moddedData, STANDARD_ICONS } from "../fixtures/moddedData.ts";
 
-const BUILT_IN: GameDataInUse = { source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: STANDARD_ICONS };
+const BUILT_IN: GameDataInUse = { source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: STANDARD_ICONS };
 const ICONS = new Set(STANDARD_ICONS);
 const api = (answer: () => ReturnType<FaceApi["getGameData"]>): FaceApi => ({ getGameData: answer }) as unknown as FaceApi;
 
@@ -15,7 +15,7 @@ afterEach(() => applyData(BUILT_IN));
 
 describe("the data in use", () => {
   it("is the built-in one without the desktop app and when the main process says so", async () => {
-    const standard = { source: { kind: "built-in", version: "2.1.24" }, mods: loadStandardCatalog().modules.map(({ name, version }) => ({ name, version })), problem: null, icons: null };
+    const standard = { source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, mods: loadStandardCatalog().modules.map(({ name, version }) => ({ name, version })), problem: null, icons: null };
     expect(builtInData()).toEqual(standard);
     expect(await loadDataInUse(undefined)).toEqual(standard);
     // The main process says which icons it draws, for the built-in data as well.
@@ -51,12 +51,12 @@ describe("the data in use", () => {
   it("falls back to the built-in data, with a message, when the tables cannot be used after all", () => {
     const lacking = applyData(moddedData(["substation"]));
     // The icons stay the ones of the data the main process handed over: it is what it draws them from.
-    expect(lacking).toEqual(builtInData("The data read from your game cannot be used: The entity table of Factorio 2.1.24 has no substation. The built-in data is in use.", ICONS));
+    expect(lacking).toEqual(builtInData(`The data read from your game cannot be used: The entity table of Factorio ${STANDARD_CATALOG_VERSION} has no substation. The built-in data is in use.`, ICONS));
     expect(entityTable()).toBe(STANDARD_ENTITY_TABLE);
     expect(currentCatalog()).toBe(loadStandardCatalog());
 
     const damaged = applyData({ ...moddedData(), entities: { schema: 2 } });
-    expect(damaged.source).toEqual({ kind: "built-in", version: "2.1.24" });
+    expect(damaged.source).toEqual({ kind: "built-in", version: STANDARD_CATALOG_VERSION });
     expect(damaged.problem).toBe("The data read from your game cannot be used: Entity table: not a table of schema 1. The built-in data is in use.");
     expect(applyData({ ...moddedData(), catalog: { schema: 7 } as never }).problem).toBe("The data read from your game cannot be used: Unsupported catalog schema 7. The built-in data is in use.");
     expect(currentCatalog()).toBe(loadStandardCatalog());

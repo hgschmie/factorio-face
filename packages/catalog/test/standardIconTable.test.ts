@@ -19,7 +19,7 @@ describe("standard icon table", () => {
   it("has exactly the icons the catalog's signals, groups and qualities refer to", () => {
     const entries = [...catalog.signals, ...catalog.groups, ...catalog.qualities];
     const referenced = new Set(entries.flatMap((entry) => [entry.icon, ...(entry.variants ?? []).flatMap((variant) => (typeof variant.icon === "string" ? [variant.icon] : []))]));
-    expect(referenced.size).toBe(1138);
+    expect(referenced.size).toBe(1139);
     expect([...referenced].filter((id) => !table.icons.has(id))).toEqual([]);
     expect(table.icons.size).toBe(referenced.size);
   });

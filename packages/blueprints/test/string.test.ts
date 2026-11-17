@@ -10,7 +10,7 @@ function codeOf(text: string, limits = {}): DecodeErrorCode | "ok" {
   return result.ok ? "ok" : result.code;
 }
 
-const sample = { blueprint: { item: "blueprint", label: "Grüße ≥ 𠀀", entities: [{ entity_number: 1, name: "small-lamp", position: { x: 0.5, y: -1.5 } }], version: 562954249961472 } };
+const sample = { blueprint: { item: "blueprint", label: "Grüße ≥ 𠀀", entities: [{ entity_number: 1, name: "small-lamp", position: { x: 0.5, y: -1.5 } }], version: 562954250027008 } };
 
 describe("blueprint string", () => {
   it("encodes as the game does: version character, base64, zlib at level 9", () => {
@@ -141,8 +141,8 @@ describe("blueprint string", () => {
 describe("version number", () => {
   it("packs four 16-bit numbers, as the strings shipped with the game show", () => {
     expect(packVersion(2, 0, 0)).toBe(562949953421312);
-    expect(packVersion(2, 1, 24)).toBe(562954249961472);
-    expect(EXPORT_VERSION).toBe(562954249961472);
+    expect(packVersion(2, 1, 25)).toBe(562954250027008);
+    expect(EXPORT_VERSION).toBe(562954250027008);
     expect(unpackVersion(562954249043969)).toEqual({ major: 2, minor: 1, patch: 10, build: 1 });
     expect(formatVersion(562954248388627)).toBe("2.1.0.19");
     expect(formatVersion(281483567300631)).toBe("1.2.10.23");

@@ -10,7 +10,7 @@ import { iconFileRenderer, iconTableText } from "./lib/iconFiles.ts";
 import { watchedLocations } from "./lib/isolation.mjs";
 import { DUMP_STAMP_FILE, buildFromDumps, completeDumps, moduleVersions } from "./lib/sets.mjs";
 
-const EXPECTED_VERSION = "2.1.24";
+const EXPECTED_VERSION = "2.1.25";
 const ICON_SIZE = 64;
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const DUMP_ROOT = path.join(ROOT, ".runtime", "factorio-dump");

@@ -1,3 +1,4 @@
+import { STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { mkdir, mkdtemp, readdir, readFile, rm, truncate, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -19,7 +20,7 @@ beforeAll(async () => {
 afterAll(() => rm(scratch, { recursive: true, force: true }));
 
 const project: ProjectData = {
-  manifest: { formatVersion: 1, name: "Stored", gameVersion: "2.1.24", modules: ["base"], customSignalGroups: [], circuits: ["main.face", "second.face"] },
+  manifest: { formatVersion: 1, name: "Stored", gameVersion: "2.1.25", modules: ["base"], customSignalGroups: [], circuits: ["main.face", "second.face"] },
   files: [
     { name: "main.face", source: 'circuit "Stored" {\n    // umlauts and symbols: äöü →\n}\n' },
     { name: "second.face", source: "" },
@@ -111,12 +112,12 @@ describe("project file", () => {
 
   it("keeps the record of the game's mods across write and read, and refuses a project file whose record is malformed", async () => {
     const path = await projectFile("game-mods");
-    const gameMods = { gameVersion: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }] };
+    const gameMods = { gameVersion: "2.1.25", mods: [{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }] };
     const modded: ProjectData = { ...project, manifest: { ...project.manifest, gameMods } };
     await writeProject(path, parseProjectData(modded));
     expect(JSON.parse(strFromU8(unzipSync(await readFile(path))["face.json"]!))).toEqual({ ...project.manifest, gameMods });
     expect(await readProject(path)).toEqual({ path, data: modded });
-    const bad = await projectFile("bad-game-mods", zipSync({ ...validEntries(), "face.json": manifestEntry({ gameMods: { gameVersion: "2.1.24", mods: [{ name: "x" }] } }) }));
+    const bad = await projectFile("bad-game-mods", zipSync({ ...validEntries(), "face.json": manifestEntry({ gameMods: { gameVersion: "2.1.25", mods: [{ name: "x" }] } }) }));
     await expect(readProject(bad)).rejects.toThrow("Mod version must be a version of three numbers");
   });
 
@@ -321,6 +322,7 @@ describe("project file", () => {
     expect(parseProjectData(empty)).toEqual(empty);
     expect(empty.files[0]!.source).toBe('circuit "Fresh" {\n}\n');
     expect(empty.manifest.modules).toEqual(["base", "space-age", "quality", "recycler", "elevated-rails"]);
+    expect(empty.manifest.gameVersion).toBe(STANDARD_CATALOG_VERSION);
   });
 });
 

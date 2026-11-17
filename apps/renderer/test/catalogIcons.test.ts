@@ -1,6 +1,6 @@
 // Which icons a view asks for: only those the main process can draw (`DataInUse.icons`). A game with mods has signals and
 // entities whose icon is an image of a mod; they have no URL, so every view shows what it shows without icons.
-import { loadStandardCatalog } from "@face/catalog";
+import { loadStandardCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { PROTOTYPE_NAMES, signal } from "@face/model";
 import { afterEach, describe, expect, it } from "vitest";
 import { layoutRow, STATUS_ROWS } from "../src/canvas/statusRows.ts";
@@ -17,7 +17,7 @@ const DRAWABLE = new Set(STANDARD_ICONS);
 const A = signal("virtual", "signal-A");
 const MOD = signal("virtual", MOD_SIGNAL);
 
-afterEach(() => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
+afterEach(() => applyData({ source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
 
 describe("the URL of a catalog icon", () => {
   it("is there for an icon the main process draws and for no other one", () => {

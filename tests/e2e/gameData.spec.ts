@@ -20,8 +20,8 @@ import { addFakeProgram, setFakeProgram, writeFakeGame, type FakeMod, type FakeP
 const SHOTS = resolve(SCREENSHOT_DIR, "game-data");
 const SETTINGS_MENU = process.platform === "darwin" ? [APP_TITLE, "Settings..."] : ["File", "Settings..."];
 const CONFIRMATION = "Run Factorio to read its entities and signals?";
-const READ_SOURCE = /^Read from your game on .+: 2\.1\.24 with 1 mod$/;
-const BUILT_IN_SOURCE = "Built in, Factorio 2.1.24";
+const READ_SOURCE = /^Read from your game on .+: 2\.1\.25 with 1 mod$/;
+const BUILT_IN_SOURCE = "Built in, Factorio 2.1.25";
 const ICON_WARNING = "3 icons of mods are not shown: the app reads icons from the game's own files only.";
 /** Where the page asks for the icons of the catalog. */
 const CATALOG_ICONS = "face-asset://catalog/icons/";
@@ -162,9 +162,9 @@ test("the settings say that the built-in data is in use, and whether the game ca
     await expect(section(page).locator("[data-message]")).toHaveCount(0);
     await expect(section(page).getByRole("alert")).toHaveCount(0);
     await expect(section(page)).toContainText("The app asks before it starts the game and never starts it by itself.");
-    expect(await status(page)).toEqual({ inUse: { kind: "built-in", version: "2.1.24" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
+    expect(await status(page)).toEqual({ inUse: { kind: "built-in", version: "2.1.25" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
     const builtIn = await dataInUse(page);
-    expect(builtIn).toEqual({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: expect.any(Array) as string[] });
+    expect(builtIn).toEqual({ source: { kind: "built-in", version: "2.1.25" }, problem: null, mods: [], catalog: null, entities: null, icons: expect.any(Array) as string[] });
     // The icons the app can draw are those of the icon table that comes with the build.
     expect(builtIn.icons.length).toBeGreaterThan(1000);
     expect(builtIn.icons).toContain("virtual/signal-A");
@@ -238,11 +238,11 @@ test("reads the game after the confirmation, shows the steps, loads the window a
     expect(confirmations[0]!.detail).toContain("Nothing is written to the game's folders");
 
     const current = await status(page);
-    expect(current).toMatchObject({ inUse: { kind: "game", version: "2.1.24", build: 87808, mods: 1 }, pending: null, stale: false, unavailable: null, problem: null, discardable: true, run: { state: "done" } });
+    expect(current).toMatchObject({ inUse: { kind: "game", version: "2.1.25", build: 88022, mods: 1 }, pending: null, stale: false, unavailable: null, problem: null, discardable: true, run: { state: "done" } });
     const read = await dataInUse(page);
-    expect(read.mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
+    expect(read.mods).toEqual([{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }]);
     // The mod is described by the info.json in its archive, and what it created names it; nothing of that is a warning.
-    expect(read.catalog!.modules).toEqual([{ name: "base", title: "base", version: "2.1.24", requires: [], recommends: [], featureFlags: [] }, { name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] }]);
+    expect(read.catalog!.modules).toEqual([{ name: "base", title: "base", version: "2.1.25", requires: [], recommends: [], featureFlags: [] }, { name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] }]);
     expect(read.catalog!.signals.virtual!.map((signal) => [signal.name, signal.modules])).toEqual([[MOD_SIGNAL, ["some-mod"]], ["signal-A", ["base"]]]);
     await expect(message(page, "warnings").locator("li", { hasText: "info.json" })).toHaveCount(0);
     // The window is told which icons the app can draw: those made of the game's own files, not the mod's.
@@ -385,7 +385,7 @@ test("a mod is switched on in the project settings; what it brings is then in th
     await clickMenu(app, "File", "Save");
     await expect(page.getByTestId("save-state")).toHaveText("All changes saved");
     const saved = JSON.parse((await readProjectEntries(projectPath))["face.json"]!) as Record<string, unknown>;
-    expect(saved.gameMods).toEqual({ gameVersion: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }] });
+    expect(saved.gameMods).toEqual({ gameVersion: "2.1.25", mods: [{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }] });
     expect(saved.modules).toEqual(["base", "some-mod"]);
     const savedSource = await sourceText(page);
 
@@ -414,7 +414,7 @@ test("a mod is switched on in the project settings; what it brings is then in th
       "warning: Unknown signal 'virtual:mod-signal'",
     ]);
     await page.locator("[data-settings-toggle]").click();
-    await expect(projectSettings.locator('[data-note="made-with"]')).toHaveText("Made with Factorio 2.1.24 with some-mod 1.2.3.");
+    await expect(projectSettings.locator('[data-note="made-with"]')).toHaveText("Made with Factorio 2.1.25 with some-mod 1.2.3.");
     await expect(projectSettings.locator('[data-note="mods-notice"]')).toContainText("The data in use lacks some-mod 1.2.3.");
     // The list is the project's with this data too: the five modules of the game, of which the project has only the base one
     // on, and the name of the mod, which this data does not have, is kept.
@@ -585,7 +585,7 @@ const USES_CRATES = `circuit "Crates" {
 test("a game with many mods: the list scrolls and filters, mods switch with what they need, a project says which it uses although they are off, and an import switches on what it needs", async () => {
   const { app, page } = await launchWithGame({ dump: MANY_CRATES, mods: MANY_MODS });
   try {
-    await readGame(app, page, /^Read from your game on .+: 2\.1\.24 with 15 mods$/);
+    await readGame(app, page, /^Read from your game on .+: 2\.1\.25 with 15 mods$/);
     await page.keyboard.press("Escape");
     await expect(settingsDialog(page)).toHaveCount(0);
     expect(await enabledModules(page)).toEqual(["base"]);
@@ -754,7 +754,7 @@ test("a game that fails shows the reason and the end of its log, and the built-i
     await expect(message(page, "read-failed")).toHaveAttribute("role", "alert");
     const log = section(page).getByLabel("The end of the game's log");
     await expect(log).toContainText("Failed to load mods: something is wrong");
-    await expect(log).toContainText("Factorio 2.1.24 (build 87808");
+    await expect(log).toContainText("Factorio 2.1.25 (build 88022");
     // The log is text in a box of its own that scrolls and can be reached with the keyboard.
     expect(await log.evaluate((box) => [box.tagName, getComputedStyle(box).overflowY, box.children.length, (box as HTMLElement).tabIndex])).toEqual(["PRE", "auto", 0, 0]);
     await expect(source(page)).toHaveText(BUILT_IN_SOURCE);
@@ -824,7 +824,7 @@ test("a damaged data file falls back to the built-in data with a message, and di
     expect(await page.evaluate(() => window.faceSession!.getState().catalog.modules.map((module) => module.name))).toEqual(["base", "elevated-rails", "recycler", "quality", "space-age"]);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
     await expect(paletteEntry(page, "constant-combinator")).toHaveCount(1);
-    expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.24" }, catalog: null, entities: null });
+    expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.25" }, catalog: null, entities: null });
 
     await hint.getByRole("button", { name: "Game data..." }).click();
     await expect(source(page)).toHaveText(BUILT_IN_SOURCE);
@@ -859,7 +859,7 @@ test("a data file of the earlier format falls back to the built-in data and asks
     await expect(hint).toContainText(outdated);
     expect(await page.evaluate(() => window.faceSession!.getState().project.gameData)).toBe(false);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
-    expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.24" }, catalog: null, entities: null });
+    expect(await dataInUse(page)).toMatchObject({ source: { kind: "built-in", version: "2.1.25" }, catalog: null, entities: null });
 
     await hint.getByRole("button", { name: "Game data..." }).click();
     await expect(source(page)).toHaveText(BUILT_IN_SOURCE);
@@ -907,11 +907,11 @@ test("data that was read is in use at the next start, and unsaved changes are as
     await openSettings(app, page);
     await expect(source(page)).toHaveText(READ_SOURCE);
     await builtInButton(page).click();
-    await expect(message(page, "pending")).toHaveText("Not in use yet: Built in, Factorio 2.1.24. It is used once the window has been loaded again.");
+    await expect(message(page, "pending")).toHaveText("Not in use yet: Built in, Factorio 2.1.25. It is used once the window has been loaded again.");
     expect((await messageBoxes(app)).unsaved).toBe(1);
     await expect(source(page)).toHaveText(READ_SOURCE);
     expect(await entityNames(page)).toEqual(["keep"]);
-    expect(await status(page)).toMatchObject({ inUse: { kind: "game" }, pending: { kind: "built-in", version: "2.1.24" }, discardable: false });
+    expect(await status(page)).toMatchObject({ inUse: { kind: "game" }, pending: { kind: "built-in", version: "2.1.25" }, discardable: false });
     await expect(builtInButton(page)).toBeDisabled();
 
     // Discarding the changes loads the window again, with the built-in data.

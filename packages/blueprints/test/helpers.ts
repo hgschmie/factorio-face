@@ -35,7 +35,7 @@ export function settingsOf(body: string): Record<string, unknown> {
 }
 
 export function blueprintOf(entities: readonly unknown[], wires: readonly unknown[] = [], extra: Record<string, unknown> = {}): { blueprint: Record<string, unknown> } {
-  return { blueprint: { item: "blueprint", entities, wires, version: 562954249961472, ...extra } };
+  return { blueprint: { item: "blueprint", entities, wires, version: 562954250027008, ...extra } };
 }
 
 export function imported(data: unknown, options: ImportOptions = { instruments: INSTRUMENTS }): { circuit: Circuit; report: ImportReport } {

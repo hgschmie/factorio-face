@@ -298,7 +298,7 @@ export interface ProjectFiles {
 /** Writes a project file the way the app would, and returns its path. */
 export async function writeProject({ name, source, manifest }: ProjectFiles): Promise<string> {
   const path = await newProjectPath(name);
-  const content = { formatVersion: 1, name, gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"], ...manifest };
+  const content = { formatVersion: 1, name, gameVersion: "2.1.25", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"], ...manifest };
   await writeProjectEntries(path, { "face.json": JSON.stringify(content, null, 2) + "\n", "main.face": source });
   return path;
 }

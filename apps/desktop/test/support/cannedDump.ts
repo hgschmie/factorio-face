@@ -2,7 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-export const FAKE_GAME_VERSION = { version: "2.1.24", build: 87808, variant: "mac-arm64, full, space-age" };
+export const FAKE_GAME_VERSION = { version: "2.1.25", build: 88022, variant: "mac-arm64, full, space-age" };
 
 export interface CannedDump {
   /** What the game says it loaded; `base` with the game's version unless given. */
@@ -75,7 +75,7 @@ export const MODDED_KINDS: readonly WiredEntity[] = [
  * enough for the tables to be built from it. Every prototype says which mod created it, as the game does: `some-mod` what is
  * the mod's when the game loaded it, `base` everything else, and `core` the item group.
  */
-export async function writeCannedDump(directory: string, { activeMods = { base: "2.1.24" }, gameVersion = "2.1.24", editor = false, without = [], entities = [] }: CannedDump = {}): Promise<string> {
+export async function writeCannedDump(directory: string, { activeMods = { base: "2.1.25" }, gameVersion = "2.1.25", editor = false, without = [], entities = [] }: CannedDump = {}): Promise<string> {
   const createdBy = (module?: string): string => (module !== undefined && module in activeMods ? module : "base");
   const signal = (name: string, type: string, module?: string): object => ({ name, type, created: createdBy(module), order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
   const wired = editor ? [...EDITOR_ENTITIES, ...entities].filter((entity) => !without.includes(entity.name)) : [];

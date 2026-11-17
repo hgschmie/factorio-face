@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "game": {"version":"2.1.24","build":87808},
+  "game": {"version":"2.1.25","build":88022},
   "icons": {
     "entity/1x2-remnants": ["__base__/graphics/icons/remnants.png"],
     "entity/ashland-lichen-tree": ["__space-age__/graphics/icons/ashland-lichen-tree.png"],
@@ -74,6 +74,7 @@
     "entity/dead-tree-desert": ["__base__/graphics/icons/dead-tree.png"],
     "entity/deconstructible-tile-proxy": ["__core__/graphics/cancel.png"],
     "entity/defender": ["__base__/graphics/icons/defender.png"],
+    "entity/depleted-mining-drill-proxy": ["__core__/graphics/icons/alerts/resources-depleted-icon.png"],
     "entity/destroyer": ["__base__/graphics/icons/destroyer.png"],
     "entity/distractor": ["__base__/graphics/icons/distractor.png"],
     "entity/dry-hairy-tree": ["__base__/graphics/icons/dry-hairy-tree.png"],

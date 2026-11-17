@@ -3,8 +3,8 @@
 // one tile, and two without a kind) and a catalog that has each of them in an item subgroup of the game.
 import type { CatalogData } from "@face/catalog";
 import type { GameDataInUse } from "../../../desktop/src/ipc.ts";
-import catalog from "../../../../packages/catalog/data/catalog-2.1.24.json" with { type: "json" };
-import entities from "../../../../packages/model/data/entities-2.1.24.json" with { type: "json" };
+import catalog from "../../../../packages/catalog/data/catalog-2.1.25.json" with { type: "json" };
+import entities from "../../../../packages/model/data/entities-2.1.25.json" with { type: "json" };
 import { MODDED_RECORDS, type ModdedName } from "../../../../tests/fixtures/game/moddedEntities.ts";
 import { MOD, MOD_MODULE, MODDED_MODS, MODDED_SOURCE, STANDARD_ICONS } from "./moddedData.ts";
 

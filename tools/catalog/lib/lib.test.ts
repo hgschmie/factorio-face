@@ -89,7 +89,7 @@ describe("icon files", () => {
 
 describe("icon table file", () => {
   const lamp = "__base__/graphics/icons/small-lamp.png";
-  const game = { version: "2.1.24", build: 87808 };
+  const game = { version: "2.1.25", build: 88022 };
   const icons = new Map<string, IconEntry>([
     ["item/b", { expected: 64, layers: [{ icon: lamp, size: 64 }] }],
     ["group/g", { expected: 128, layers: [{ icon: lamp, size: 128 }] }],
@@ -102,7 +102,7 @@ describe("icon table file", () => {
     expect(text.split("\n")).toEqual([
       "{",
       '  "schema": 1,',
-      '  "game": {"version":"2.1.24","build":87808},',
+      '  "game": {"version":"2.1.25","build":88022},',
       '  "icons": {',
       `    "group/g": {"expected":128,"layers":[{"icon":"${lamp}","size":128}]},`,
       `    "item/B": [{"icon":"${lamp}","size":64,"floating":true}],`,
@@ -148,7 +148,7 @@ describe("module sets", () => {
 
   it("describes a module by its info.json: title, hard and recommended dependencies, feature flags", () => {
     const info = { name: "ignored", version: "9.9.9", title: "Space Age", dependencies: ["base >= 2.1.0", "+ quality >= 2.1.0", "? some-mod", "! other", "~ recycler"], quality_required: true, space_travel_required: true, expansion_shaders_required: false, "Odd_required": true, factorio_version: "2.1" };
-    expect(moduleInfo("space-age", "2.1.24", info)).toEqual({ name: "space-age", title: "Space Age", version: "2.1.24", requires: ["base", "recycler"], recommends: ["quality"], featureFlags: ["quality", "space-travel"] });
+    expect(moduleInfo("space-age", "2.1.25", info)).toEqual({ name: "space-age", title: "Space Age", version: "2.1.25", requires: ["base", "recycler"], recommends: ["quality"], featureFlags: ["quality", "space-travel"] });
     expect(moduleInfo("bare", "1.0.0", {})).toEqual({ name: "bare", title: "bare", version: "1.0.0", requires: [], recommends: [], featureFlags: [] });
     expect(moduleInfo("bare", "1.0.0", { title: 7 }).title).toBe("bare");
     for (const dependencies of ["base", [7], ["base", ""], { base: true }]) expect(() => moduleInfo("bad", "1.0.0", { dependencies }), JSON.stringify(dependencies)).toThrow();
@@ -277,7 +277,7 @@ const local = (() => {
 describe.skipIf(!local)("committed icon table", () => {
   it("is the one the generator builds from the dumps", () => {
     const { catalog, icons } = sets.buildFromDumps(local!);
-    expect(icons.size).toBe(1138);
+    expect(icons.size).toBe(1139);
     expect(readFileSync(resolve(ROOT, `packages/catalog/data/icons-${STANDARD_CATALOG_VERSION}.json`), "utf8")).toBe(iconTableText(catalog.game, icons));
   });
 });

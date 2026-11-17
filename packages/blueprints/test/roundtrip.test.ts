@@ -96,7 +96,7 @@ function comparable(circuit: Circuit): unknown {
   return { name, wires, entities: (entities as Record<string, unknown>[]).map(({ position: _position, ...entity }) => entity) };
 }
 
-const QUIET: Omit<ImportReport, "entities" | "wires"> = { version: "2.1.24.0", dropped: [], settings: [], ignored: ["icons"], warnings: [] };
+const QUIET: Omit<ImportReport, "entities" | "wires"> = { version: "2.1.25.0", dropped: [], settings: [], ignored: ["icons"], warnings: [] };
 
 function roundTrip(circuit: Circuit, instruments: readonly SpeakerInstrument[]): void {
   const first = exportBlueprint(circuit, { instruments });
@@ -295,7 +295,7 @@ describe("round trip: blueprint to editor to blueprint", () => {
       wires: [[1, 1, 2, 1], [2, 4, 3, 2], [3, 1, 3, 3], [3, 3, 5, 1], [6, 1, 8, 1], [6, 2, 7, 2]],
       item: "blueprint",
       label: "Foreign",
-      version: 562954249961472,
+      version: 562954250027008,
     },
   };
 

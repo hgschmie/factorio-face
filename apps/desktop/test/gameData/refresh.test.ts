@@ -33,7 +33,7 @@ async function setup(name: string, dump: CannedDump = {}, behaviour: Partial<Fak
   await mkdir(join(root, "bin", "x64"), { recursive: true });
   const control: FakeGameControl = { record: scratch(name, "record.jsonl"), dump: await writeCannedDump(scratch(name, "dump"), dump), ...behaviour };
   await writeFakeGame(join(root, "bin", "x64", "factorio"), control);
-  const inspection = await inspectDataDirectory(dataDirectory, "2.1.24");
+  const inspection = await inspectDataDirectory(dataDirectory, "2.1.25");
   if (!inspection.ok) throw new Error(inspection.message);
   const host: Host = { platform: "linux", env: {}, home };
   const options: RefreshOptions = { installation: inspection.installation, host, confirmedExecutable: join(root, "bin", "x64", "factorio"), runsDirectory: scratch(name, "user-data", "game-data-runs"), scenarioSource: "-- scenario\n", generator: "face test", sandbox: "off", now: () => new Date("2026-11-14T12:00:00Z") };
@@ -57,10 +57,10 @@ describe("readGameData", () => {
     if (!result.ok) return;
     expect(result.warnings).toEqual(["1 icons of mods are not shown: the app reads icons from the game's own files only."]);
     const { data } = result;
-    expect(data.key).toEqual({ version: "2.1.24", build: 87808, mods: [{ name: "base", version: "2.1.24" }, { name: "quality", version: "2.1.24" }], modSettings: null });
-    expect(data).toMatchObject({ readAt: "2026-11-14T12:00:00.000Z", mods: [{ name: "base", version: "2.1.24" }], notes: [], skippedIcons: 1 });
-    expect(data.catalog).toMatchObject({ schema: 1, game: { version: "2.1.24", build: 87808 }, provenance: { generator: "face test", generatedAt: "2026-11-14T12:00:00.000Z", modSets: ["base"] } });
-    expect(data.catalog.modules).toEqual([{ name: "base", title: "base", version: "2.1.24", requires: [], recommends: [], featureFlags: [] }]);
+    expect(data.key).toEqual({ version: "2.1.25", build: 88022, mods: [{ name: "base", version: "2.1.25" }, { name: "quality", version: "2.1.25" }], modSettings: null });
+    expect(data).toMatchObject({ readAt: "2026-11-14T12:00:00.000Z", mods: [{ name: "base", version: "2.1.25" }], notes: [], skippedIcons: 1 });
+    expect(data.catalog).toMatchObject({ schema: 1, game: { version: "2.1.25", build: 88022 }, provenance: { generator: "face test", generatedAt: "2026-11-14T12:00:00.000Z", modSets: ["base"] } });
+    expect(data.catalog.modules).toEqual([{ name: "base", title: "base", version: "2.1.25", requires: [], recommends: [], featureFlags: [] }]);
     // Every record is of the module that created it: here the one the game has.
     expect(availableSignals(createCatalog(data.catalog), ["base"]).map((signal) => `${signal.key}=${signal.displayName}`).sort()).toEqual(["entity:lamp=Lamp", "item:gadget=Gadget", "item:lamp=Lamp", "item:plate=Plate"]);
     expect(availableSignals(createCatalog(data.catalog), [])).toEqual([]);
@@ -68,25 +68,25 @@ describe("readGameData", () => {
     expect([...result.iconTable.icons.keys()]).toEqual(["group/g", "item/lamp", "item/plate"]);
     expect(Object.keys(data.icons.icons)).toEqual(["group/g", "item/lamp", "item/plate"]);
     expect(parseEntityTable(data.entities).entities).toMatchObject([{ name: "lamp", displayName: "Lamp", wireReach: 9, modules: ["base"] }]);
-    expect(data.entities).toMatchObject({ generator: "face test", runtimeChecked: true, mods: { base: "2.1.24" } });
-    expect(gameDataSource(data)).toEqual({ kind: "game", version: "2.1.24", build: 87808, readAt: "2026-11-14T12:00:00.000Z", mods: 0 });
+    expect(data.entities).toMatchObject({ generator: "face test", runtimeChecked: true, mods: { base: "2.1.25" } });
+    expect(gameDataSource(data)).toEqual({ kind: "game", version: "2.1.25", build: 88022, readAt: "2026-11-14T12:00:00.000Z", mods: 0 });
     expect((await fakeGameStarts(control)).map((start) => start.command)).toEqual(["data", "locale", "runtime"]);
     expect(await readdir(options.runsDirectory)).toEqual([]);
   });
 
   it("includes the user's mods through a private mod directory and leaves the user's own untouched", async () => {
-    const { options, control, home, mods } = await setup("modded", { activeMods: { base: "2.1.24", "some-mod": "1.2.3" } });
+    const { options, control, home, mods } = await setup("modded", { activeMods: { base: "2.1.25", "some-mod": "1.2.3" } });
     await userMods(mods);
     const before = await treeSnapshot(home);
     const seen: string[][] = [];
     const result = await readGameData({ ...options, onProgress: ({ step, state }) => void (step === "collect" && state === "started" && seen.push(["collect"])) });
     expect(result).toMatchObject({ ok: true, warnings: ["1 icons of mods are not shown: the app reads icons from the game's own files only."] });
     if (!result.ok) return;
-    expect(result.data.key).toEqual({ version: "2.1.24", build: 87808, mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }], modSettings: SETTINGS_HASH });
-    expect(result.data.mods).toEqual([{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }]);
+    expect(result.data.key).toEqual({ version: "2.1.25", build: 88022, mods: [{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }], modSettings: SETTINGS_HASH });
+    expect(result.data.mods).toEqual([{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }]);
     // The mod as its own info.json describes it, read from the archive of the version the game loaded; of what it depends on, the hard ones that are loaded.
     expect(result.data.catalog.modules).toEqual([
-      { name: "base", title: "base", version: "2.1.24", requires: [], recommends: [], featureFlags: [] },
+      { name: "base", title: "base", version: "2.1.25", requires: [], recommends: [], featureFlags: [] },
       { name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] },
     ]);
     // What the mod created is the mod's, the rest the game's.
@@ -94,7 +94,7 @@ describe("readGameData", () => {
     expect(catalog.signalsByKey.get("item:gadget")!.modules).toEqual(["some-mod"]);
     expect(catalog.signalsByKey.get("item:plate")!.modules).toEqual(["base"]);
     expect(availableSignals(catalog, ["base"]).map((signal) => signal.key).sort()).toEqual(["entity:lamp", "item:lamp", "item:plate"]);
-    expect(describeGameDataSource(gameDataSource(result.data), () => "14 November 2026")).toBe("Read from your game on 14 November 2026: 2.1.24 with 1 mod");
+    expect(describeGameDataSource(gameDataSource(result.data), () => "14 November 2026")).toBe("Read from your game on 14 November 2026: 2.1.25 with 1 mod");
     const [start] = await fakeGameStarts(control);
     expect(start!.args[3]).toBe(join(start!.cwd, "mods"));
     expect(start!.args[3]).not.toContain(home);
@@ -104,7 +104,7 @@ describe("readGameData", () => {
     const current = await planGameRead(options.installation, options.host);
     expect(current).toMatchObject({ ok: true, plan: { executable: options.confirmedExecutable, steam: false, modDirectory: mods, problems: [] } });
     if (!current.ok) return;
-    expect(current.plan.key).toEqual({ version: "2.1.24", mods: result.data.key.mods, modSettings: SETTINGS_HASH });
+    expect(current.plan.key).toEqual({ version: "2.1.25", mods: result.data.key.mods, modSettings: SETTINGS_HASH });
     expect(sameGameState(result.data.key, current.plan.key)).toBe(true);
     await writeFile(join(mods, "some-mod_1.3.0.zip"), "newer");
     const changed = await planGameRead(options.installation, options.host);
@@ -112,7 +112,7 @@ describe("readGameData", () => {
   });
 
   it("lists a mod whose info.json cannot be read by its name and says so once", async () => {
-    const { options, mods } = await setup("unread", { activeMods: { base: "2.1.24", "some-mod": "1.2.3", "b-mod": "0.1.0", "c-mod": "1.0.0" } });
+    const { options, mods } = await setup("unread", { activeMods: { base: "2.1.25", "some-mod": "1.2.3", "b-mod": "0.1.0", "c-mod": "1.0.0" } });
     await userMods(mods);
     await writeFile(join(mods, "some-mod_1.2.3.zip"), "no archive");
     await writeFile(join(mods, "b-mod_0.1.0.zip"), modArchive({ name: "b-mod", version: "0.1.0", dependencies: "base" }));
@@ -130,12 +130,12 @@ describe("readGameData", () => {
       { name: "some-mod", title: "some-mod", version: "1.2.3", requires: [], recommends: [], featureFlags: [] },
     ]);
     // Without a mod directory at all (a game whose mods are elsewhere) every mod is listed that way.
-    const bare = await setup("unread-bare", { activeMods: { base: "2.1.24", "some-mod": "1.2.3" } });
+    const bare = await setup("unread-bare", { activeMods: { base: "2.1.25", "some-mod": "1.2.3" } });
     expect(await readGameData(bare.options)).toMatchObject({ ok: true, warnings: ["The info.json of 1 mod could not be read (some-mod): it is listed by name, without what it depends on.", "1 icons of mods are not shown: the app reads icons from the game's own files only."] });
   });
 
   it("keeps a record the game names no loaded creator for, with no module, and says how many there are", async () => {
-    const { options, control } = await setup("untagged", { activeMods: { base: "2.1.24" } });
+    const { options, control } = await setup("untagged", { activeMods: { base: "2.1.25" } });
     const file = join(control.dump, "face-runtime-dump.json");
     const runtime = JSON.parse(await readFile(file, "utf8")) as { item: { name: string; created?: string }[]; item_subgroup: { created?: string }[] };
     delete runtime.item.find((item) => item.name === "gadget")!.created;
@@ -150,7 +150,7 @@ describe("readGameData", () => {
   });
 
   it("has what a mod adds to the kinds of the editor in the entity table, a loader of one tile among it, and the editor gives each its kind", async () => {
-    const { options } = await setup("modded-kinds", { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3" }, entities: MODDED_KINDS });
+    const { options } = await setup("modded-kinds", { editor: true, activeMods: { base: "2.1.25", "some-mod": "1.2.3" }, entities: MODDED_KINDS });
     const result = await readGameData(options);
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) return;
@@ -216,11 +216,11 @@ describe("readGameData", () => {
     expect(blamed.ok ? "" : blamed.log).toContain("__some-mod__/control.lua:26: assertion failed!");
 
     const other = await setup("other-version", { gameVersion: "2.1.30" });
-    expect(await readGameData(other.options)).toMatchObject({ ok: false, failure: "invalid-dump", message: 'The runtime dump is from "2.1.30", the game is 2.1.24' });
+    expect(await readGameData(other.options)).toMatchObject({ ok: false, failure: "invalid-dump", message: 'The runtime dump is from "2.1.30", the game is 2.1.25' });
     const damaged = await setup("damaged");
     await writeFile(join(damaged.control.dump, "data-raw-dump.json"), "{ not json");
     expect(await readGameData(damaged.options)).toMatchObject({ ok: false, failure: "invalid-dump", message: "The game's data dump is not JSON" });
-    const hostile = await setup("hostile", { activeMods: { base: "2.1.24", "../evil": "1.0.0" } });
+    const hostile = await setup("hostile", { activeMods: { base: "2.1.25", "../evil": "1.0.0" } });
     expect(await readGameData(hostile.options)).toMatchObject({ ok: false, failure: "invalid-dump", message: 'The runtime dump lists a malformed mod: "../evil"' });
   });
 
@@ -236,12 +236,12 @@ describe("readGameData", () => {
 });
 
 describe("game data key and source", () => {
-  const key: GameDataKey = { version: "2.1.24", build: 87808, mods: [{ name: "base", version: "2.1.24" }, { name: "odd", version: null }], modSettings: SETTINGS_HASH };
+  const key: GameDataKey = { version: "2.1.25", build: 88022, mods: [{ name: "base", version: "2.1.25" }, { name: "odd", version: null }], modSettings: SETTINGS_HASH };
 
   it("is one id for one state of the game", () => {
     expect(gameDataKeyId(key)).toMatch(/^[0-9a-f]{64}$/);
-    expect(gameDataKeyId({ modSettings: SETTINGS_HASH, mods: [...key.mods].reverse(), build: 87808, version: "2.1.24" })).toBe(gameDataKeyId(key));
-    for (const other of [{ ...key, version: "2.1.25" }, { ...key, build: 87809 }, { ...key, modSettings: null }, { ...key, mods: [{ name: "base", version: "2.1.24" }] }, { ...key, mods: [key.mods[0]!, { name: "odd", version: "1.0.0" }] }]) {
+    expect(gameDataKeyId({ modSettings: SETTINGS_HASH, mods: [...key.mods].reverse(), build: 88022, version: "2.1.25" })).toBe(gameDataKeyId(key));
+    for (const other of [{ ...key, version: "2.1.26" }, { ...key, build: 87809 }, { ...key, modSettings: null }, { ...key, mods: [{ name: "base", version: "2.1.25" }] }, { ...key, mods: [key.mods[0]!, { name: "odd", version: "1.0.0" }] }]) {
       expect(gameDataKeyId(other)).not.toBe(gameDataKeyId(key));
       expect(sameGameState(key, other)).toBe(false);
     }
@@ -249,7 +249,7 @@ describe("game data key and source", () => {
     const { build: _build, ...fromFiles } = key;
     expect(gameDataKeyId(fromFiles)).not.toBe(gameDataKeyId(key));
     expect(sameGameState(key, fromFiles)).toBe(true);
-    expect(sameGameState(fromFiles, { ...fromFiles, version: "2.1.25" })).toBe(false);
+    expect(sameGameState(fromFiles, { ...fromFiles, version: "2.1.26" })).toBe(false);
   });
 
   it("reads a key back and refuses a malformed one", () => {
@@ -260,17 +260,17 @@ describe("game data key and source", () => {
   });
 
   it("says where the data comes from", () => {
-    expect(describeGameDataSource({ kind: "built-in", version: "2.1.24" })).toBe("Built in, Factorio 2.1.24");
-    const game = { kind: "game", version: "2.1.24", build: 87808, readAt: "2026-11-14T12:00:00.000Z" } as const;
-    expect(describeGameDataSource({ ...game, mods: 0 }, () => "<date>")).toBe("Read from your game on <date>: 2.1.24 without mods");
-    expect(describeGameDataSource({ ...game, mods: 12 }, () => "<date>")).toBe("Read from your game on <date>: 2.1.24 with 12 mods");
-    expect(describeGameDataSource({ ...game, mods: 1 })).toMatch(/^Read from your game on .*2026.*: 2\.1\.24 with 1 mod$/);
+    expect(describeGameDataSource({ kind: "built-in", version: "2.1.25" })).toBe("Built in, Factorio 2.1.25");
+    const game = { kind: "game", version: "2.1.25", build: 88022, readAt: "2026-11-14T12:00:00.000Z" } as const;
+    expect(describeGameDataSource({ ...game, mods: 0 }, () => "<date>")).toBe("Read from your game on <date>: 2.1.25 without mods");
+    expect(describeGameDataSource({ ...game, mods: 12 }, () => "<date>")).toBe("Read from your game on <date>: 2.1.25 with 12 mods");
+    expect(describeGameDataSource({ ...game, mods: 1 })).toMatch(/^Read from your game on .*2026.*: 2\.1\.25 with 1 mod$/);
   });
 });
 
 describe("game data cache", () => {
   async function read(name: string): Promise<GameData> {
-    const { options, mods } = await setup(name, { activeMods: { base: "2.1.24", "some-mod": "1.2.3" } });
+    const { options, mods } = await setup(name, { activeMods: { base: "2.1.25", "some-mod": "1.2.3" } });
     await userMods(mods);
     const result = await readGameData(options);
     if (!result.ok) throw new Error(result.message);
@@ -289,7 +289,7 @@ describe("game data cache", () => {
     if (loaded.status !== "ok") return;
     expect(loaded.data).toEqual(data);
     expect([...loaded.iconTable.icons.keys()]).toEqual(["group/g", "item/lamp", "item/plate"]);
-    expect(describeGameDataSource(gameDataSource(loaded.data), () => "<date>")).toBe("Read from your game on <date>: 2.1.24 with 1 mod");
+    expect(describeGameDataSource(gameDataSource(loaded.data), () => "<date>")).toBe("Read from your game on <date>: 2.1.25 with 1 mod");
     expect(await cache.discard()).toBe(true);
     expect(await cache.load()).toEqual({ status: "none" });
     expect(await readdir(scratch("cache", "user-data"))).toEqual([]);
@@ -311,7 +311,7 @@ describe("game data cache", () => {
       [JSON.stringify({ ...stored, version: "1" }), /another format/],
       [JSON.stringify({ ...stored, version: 0 }), /another format/],
       [JSON.stringify({ ...stored, keyId: "0".repeat(64) }), /does not belong to the game it names/],
-      [JSON.stringify({ ...stored, key: { ...stored.key, version: "2.1.25" } }), /the tables are of 2\.1\.24, 2\.1\.24, 2\.1\.24, the key is of 2\.1\.25/],
+      [JSON.stringify({ ...stored, key: { ...stored.key, version: "2.1.26" } }), /the tables are of 2\.1\.25, 2\.1\.25, 2\.1\.25, the key is of 2\.1\.26/],
       [JSON.stringify({ ...stored, catalog: { ...stored.catalog, signals: { item: [{ name: "plate" }] } } }), /Catalog data: item signal plate: modules is undefined/],
       [JSON.stringify({ ...stored, icons: { ...stored.icons, icons: { "item/plate": ["__some-mod__/../../secret.png"] } } }), /does not name an image file of the game/],
       [JSON.stringify({ ...stored, entities: { ...stored.entities, entities: [{ name: "lamp", type: "lamp", displayName: "Lamp", width: 0 }] } }), /Entity table: lamp: width is 0/],

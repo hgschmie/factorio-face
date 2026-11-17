@@ -4,8 +4,8 @@ import { describe, expect, it } from "vitest";
 import type { GameDataRun, GameDataStatus } from "../../../desktop/src/ipc.ts";
 import { CANCELLED_NOTICE, formatElapsed, gameDataView, hasEnded, INITIAL_GAME_DATA, reduceGameData, STALE_NOTICE, STEP_LABELS, type GameDataState } from "../../src/gameData/gameDataView.ts";
 
-const BUILT_IN: GameDataStatus = { inUse: { kind: "built-in", version: "2.1.24" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } };
-const GAME = { kind: "game", version: "2.1.24", build: 87808, readAt: "2026-11-14T12:00:00.000Z", mods: 3 } as const;
+const BUILT_IN: GameDataStatus = { inUse: { kind: "built-in", version: "2.1.25" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } };
+const GAME = { kind: "game", version: "2.1.25", build: 88022, readAt: "2026-11-14T12:00:00.000Z", mods: 3 } as const;
 const READ: GameDataStatus = { ...BUILT_IN, inUse: GAME, discardable: true };
 const date = (): string => "14 November 2026";
 const view = (status: GameDataStatus, requesting = false) => gameDataView(status, requesting, date);
@@ -14,7 +14,7 @@ const running = (step: "prepare" | "data" | "locale" | "runtime" | "collect", in
 describe("the section", () => {
   it("names the built-in data and offers to read the game", () => {
     expect(view(BUILT_IN)).toEqual({
-      kind: "built-in", source: "Built in, Factorio 2.1.24", detail: "The entities and signals of the standard game, as they come with this app", stale: null, problem: null, pending: null, phase: "idle", progress: null, failure: null, outcome: null, warnings: [],
+      kind: "built-in", source: "Built in, Factorio 2.1.25", detail: "The entities and signals of the standard game, as they come with this app", stale: null, problem: null, pending: null, phase: "idle", progress: null, failure: null, outcome: null, warnings: [],
       canRead: true, unavailable: null, canDiscard: false, canReload: false,
     });
   });
@@ -26,9 +26,9 @@ describe("the section", () => {
 
   it("names data read from the game, with its date and mods, and offers the built-in data", () => {
     expect(view(READ)).toMatchObject({
-      kind: "game", source: "Read from your game on 14 November 2026: 2.1.24 with 3 mods", detail: "The entities and signals of your installed game, with those of its mods", stale: null, canRead: true, canDiscard: true,
+      kind: "game", source: "Read from your game on 14 November 2026: 2.1.25 with 3 mods", detail: "The entities and signals of your installed game, with those of its mods", stale: null, canRead: true, canDiscard: true,
     });
-    expect(view({ ...READ, inUse: { ...GAME, mods: 0 } })).toMatchObject({ source: "Read from your game on 14 November 2026: 2.1.24 without mods", detail: "The entities and signals of your installed game" });
+    expect(view({ ...READ, inUse: { ...GAME, mods: 0 } })).toMatchObject({ source: "Read from your game on 14 November 2026: 2.1.25 without mods", detail: "The entities and signals of your installed game" });
   });
 
   it("says when the game or its mods have changed since", () => {
@@ -56,7 +56,7 @@ describe("the section", () => {
     const done = view({ ...BUILT_IN, pending: GAME, discardable: true, run: { state: "done", warnings, steps } });
     expect(done).toMatchObject({
       phase: "done", outcome: "The game was read in 20 seconds.", warnings, failure: null, canRead: true, canDiscard: true, canReload: true,
-      pending: "Read from your game on 14 November 2026: 2.1.24 with 3 mods. It is used once the window has been loaded again.",
+      pending: "Read from your game on 14 November 2026: 2.1.25 with 3 mods. It is used once the window has been loaded again.",
     });
     expect(view({ ...READ, run: { state: "done", warnings: [], steps: [{ step: "data", seconds: 0.4 }] } })).toMatchObject({ outcome: "The game was read in 1 second.", warnings: [], pending: null, canReload: false });
   });

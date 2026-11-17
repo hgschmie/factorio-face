@@ -1,7 +1,8 @@
 import { STANDARD_SIGNAL_KINDS, parseSignalKey, signal, signalKey, wildcardOf, wildcardSignal } from "@face/model";
 import { describe, expect, it } from "vitest";
-import data from "../data/catalog-2.1.24.json" with { type: "json" };
+import data from "../data/catalog-2.1.25.json" with { type: "json" };
 import {
+  STANDARD_CATALOG_VERSION,
   STANDARD_MODULES,
   availableQualities,
   availableSignals,
@@ -39,11 +40,11 @@ function pickerSignals(enabled: readonly string[], options?: Parameters<typeof p
   return pickerTree(catalog, enabled, options).flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals));
 }
 
-describe("standard catalog data (pinned to Factorio 2.1.24)", () => {
+describe(`standard catalog data (pinned to Factorio ${STANDARD_CATALOG_VERSION})`, () => {
   it("records the game and the five modules with their dependencies", () => {
-    expect(catalog.game.version).toBe("2.1.24");
+    expect(catalog.game.version).toBe(STANDARD_CATALOG_VERSION);
     expect(catalog.modules.map((m) => m.name)).toEqual(ALL);
-    expect(catalog.modules.every((m) => m.version === "2.1.24")).toBe(true);
+    expect(catalog.modules.every((m) => m.version === STANDARD_CATALOG_VERSION)).toBe(true);
     expect(Object.fromEntries(catalog.modules.map((m) => [m.name, m.requires]))).toEqual({
       base: [],
       "elevated-rails": ["base"],
@@ -78,26 +79,26 @@ describe("standard catalog data (pinned to Factorio 2.1.24)", () => {
   });
 
   it("has the pinned number of signals per kind", () => {
-    expect(catalog.signals).toHaveLength(2252);
-    expect(countBy(catalog.signals, (s) => s.kind)).toEqual({ item: 343, fluid: 33, virtual: 155, entity: 1028, recipe: 664, "space-location": 8, "asteroid-chunk": 15, quality: 6 });
+    expect(catalog.signals).toHaveLength(2253);
+    expect(countBy(catalog.signals, (s) => s.kind)).toEqual({ item: 343, fluid: 33, virtual: 155, entity: 1029, recipe: 664, "space-location": 8, "asteroid-chunk": 15, quality: 6 });
     expect(new Set(catalog.signals.map((s) => s.kind))).toEqual(new Set(STANDARD_SIGNAL_KINDS));
   });
 
   it("has the pinned number of signals per introducing module", () => {
-    expect(countBy(catalog.signals, (s) => s.modules.join("+"))).toEqual({ base: 1218, "elevated-rails": 18, recycler: 229, quality: 14, "space-age": 771, "elevated-rails+recycler": 2 });
+    expect(countBy(catalog.signals, (s) => s.modules.join("+"))).toEqual({ base: 1219, "elevated-rails": 18, recycler: 229, quality: 14, "space-age": 771, "elevated-rails+recycler": 2 });
     expect(catalog.signals.filter((s) => s.removedBy).map((s) => s.key)).toEqual(["item:satellite", "recipe:satellite", "recipe:satellite-recycling"]);
   });
 
   it("has the pinned number of signals per module set", () => {
     const total = (enabled: string[]) => availableSignals(catalog, enabled).length;
-    expect(total(["base"])).toBe(1218);
-    expect(total(["base", "elevated-rails"])).toBe(1236);
-    expect(total(["base", "recycler"])).toBe(1447);
-    expect(total(["base", "recycler", "quality"])).toBe(1461);
-    expect(total(["base", "elevated-rails", "recycler", "space-age"])).toBe(2235);
-    expect(total(ALL)).toBe(2249);
-    expect(countBy(availableSignals(catalog, ALL), (s) => s.kind)).toEqual({ item: 342, fluid: 33, virtual: 155, entity: 1028, recipe: 662, "space-location": 8, "asteroid-chunk": 15, quality: 6 });
-    expect(countBy(availableSignals(catalog, ["base"]), (s) => s.kind)).toEqual({ item: 252, fluid: 19, virtual: 154, entity: 571, recipe: 217, "space-location": 2, "asteroid-chunk": 1, quality: 2 });
+    expect(total(["base"])).toBe(1219);
+    expect(total(["base", "elevated-rails"])).toBe(1237);
+    expect(total(["base", "recycler"])).toBe(1448);
+    expect(total(["base", "recycler", "quality"])).toBe(1462);
+    expect(total(["base", "elevated-rails", "recycler", "space-age"])).toBe(2236);
+    expect(total(ALL)).toBe(2250);
+    expect(countBy(availableSignals(catalog, ALL), (s) => s.kind)).toEqual({ item: 342, fluid: 33, virtual: 155, entity: 1029, recipe: 662, "space-location": 8, "asteroid-chunk": 15, quality: 6 });
+    expect(countBy(availableSignals(catalog, ["base"]), (s) => s.kind)).toEqual({ item: 252, fluid: 19, virtual: 154, entity: 572, recipe: 217, "space-location": 2, "asteroid-chunk": 1, quality: 2 });
   });
 
   it("contains well-known signals of every module", () => {
@@ -137,7 +138,7 @@ describe("standard catalog data (pinned to Factorio 2.1.24)", () => {
 
     expect(catalog.signals.filter((s) => s.special).map((s) => s.name).sort()).toEqual(
       ["signal-anything", "signal-each", "signal-everything", "signal-fluid-parameter", "signal-fuel-parameter", "signal-item-parameter", "signal-signal-parameter", "signal-unknown"]);
-    expect(countBy(catalog.signals, (s) => s.visibility)).toEqual({ normal: 879, hidden: 1316, parameter: 54, wildcard: 3 });
+    expect(countBy(catalog.signals, (s) => s.visibility)).toEqual({ normal: 880, hidden: 1316, parameter: 54, wildcard: 3 });
     expect(countBy(catalog.signals.filter((s) => s.parameter), (s) => s.kind)).toEqual({ item: 10, fluid: 10, entity: 10, recipe: 10, "asteroid-chunk": 10 });
     expect(catalog.signals.filter((s) => s.parameter).every((s) => /^parameter-\d$/.test(s.name) && s.visibility === "parameter")).toBe(true);
     for (const key of ["item:item-unknown", "fluid:fluid-unknown", "virtual:signal-unknown", "entity:entity-unknown", "recipe:recipe-unknown", "space-location:space-location-unknown", "asteroid-chunk:asteroid-chunk-unknown", "quality:quality-unknown"]) {
@@ -279,14 +280,14 @@ describe("picker tree", () => {
   });
 
   it("contains exactly the selectable signals of the module set", () => {
-    expect(pickerSignals(ALL)).toHaveLength(882);
-    expect(pickerSignals(["base"])).toHaveLength(578);
+    expect(pickerSignals(ALL)).toHaveLength(883);
+    expect(pickerSignals(["base"])).toHaveLength(579);
     expect(pickerSignals(ALL).every((s) => s.visibility === "normal" || s.visibility === "wildcard")).toBe(true);
-    expect(pickerSignals(ALL, { wildcards: false })).toHaveLength(879);
-    expect(pickerSignals(ALL, { parameters: true })).toHaveLength(882 + 54);
-    expect(pickerSignals(ALL, { parameters: true, hidden: true })).toHaveLength(2249);
+    expect(pickerSignals(ALL, { wildcards: false })).toHaveLength(880);
+    expect(pickerSignals(ALL, { parameters: true })).toHaveLength(883 + 54);
+    expect(pickerSignals(ALL, { parameters: true, hidden: true })).toHaveLength(2250);
     expect(pickerSignals(ALL, { kinds: ["fluid"] }).map((s) => s.kind)).toEqual(Array(22).fill("fluid"));
-    expect(new Set(pickerSignals(ALL).map((s) => s.key)).size).toBe(882);
+    expect(new Set(pickerSignals(ALL).map((s) => s.key)).size).toBe(883);
   });
 
   it("sorts subgroups and signals by their order strings", () => {

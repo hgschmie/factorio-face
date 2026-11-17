@@ -136,7 +136,7 @@ test("runs the renderer sandboxed, isolated and without remote or dynamic code",
 test("rejects malformed IPC arguments in the main process", async ({ page }) => {
   const results = await page.evaluate(async () => {
     const face = window.face!;
-    const data = { manifest: { formatVersion: 1, name: "X", gameVersion: "2.1.24", modules: [], customSignalGroups: [], circuits: ["main.face"] }, files: [{ name: "main.face", source: "" }] };
+    const data = { manifest: { formatVersion: 1, name: "X", gameVersion: "2.1.25", modules: [], customSignalGroups: [], circuits: ["main.face"] }, files: [{ name: "main.face", source: "" }] };
     const evil = { manifest: { ...data.manifest, circuits: ["../escape.face"] }, files: [{ name: "../escape.face", source: "x" }] };
     return {
       relativeLoad: await face.loadProject("relative/path.faceproj"),
@@ -161,7 +161,7 @@ test("rejects malformed IPC arguments in the main process", async ({ page }) => 
 });
 
 test("the page can open the examples the main process listed and no other file through the example call", async () => {
-  const manifest = (name: string): string => JSON.stringify({ formatVersion: 1, name, gameVersion: "2.1.24", modules: ["base"], customSignalGroups: [], circuits: ["main.face"] });
+  const manifest = (name: string): string => JSON.stringify({ formatVersion: 1, name, gameVersion: "2.1.25", modules: ["base"], customSignalGroups: [], circuits: ["main.face"] });
   const project = (name: string): Record<string, string> => ({ "face.json": manifest(name), "main.face": `circuit ${JSON.stringify(name)} {\n}\n` });
   const base = resolve(PROJECTS_DIR, `examples-${process.pid}`);
   const examples = resolve(base, "examples");

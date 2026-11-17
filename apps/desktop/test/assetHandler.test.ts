@@ -27,7 +27,7 @@ const RENDERED = plain(encodePng(solid(64, 64, RED)));
 const PLACEHOLDER = plain(placeholderIcon());
 const table = parseIconTable({
   schema: 1,
-  game: { version: "2.1.24" },
+  game: { version: "2.1.25" },
   icons: {
     "item/red": ["__base__/graphics/icons/red.png"],
     "item/gone": ["__space-age__/graphics/icons/gone.png"],

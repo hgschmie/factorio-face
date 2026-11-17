@@ -486,7 +486,7 @@ const HIDDEN = {
     wires: [[1, 1, 2, 1], [2, 1, 3, 1], [3, 1, 4, 1]],
     item: "blueprint",
     label: "Hidden",
-    version: 562954249961472,
+    version: 562954250027008,
   },
 };
 

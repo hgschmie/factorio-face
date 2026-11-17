@@ -994,7 +994,7 @@ session has five commands for it. `Workbench` holds which of the four dialogs is
   of the export, or the problems (`BlueprintExport`); while the source has errors the one problem is that (`invalid-source`), because
   the circuit on show is not the circuit of the source. Show Blueprint opens `BlueprintString`: the string in a read-only box,
   in focus and selected, "Copy" (a copy of the selection through `document.execCommand("copy")`, the mechanism of the canvas menu:
-  the clipboard API is refused by the app's permission handlers), "Factorio 2.1.24" (`[data-fact="version"]`) and the warnings.
+  the clipboard API is refused by the app's permission handlers), "Factorio 2.1.25" (`[data-fact="version"]`) and the warnings.
   Export Blueprint > As File... calls `saveBlueprintFile(exported)`: the main process shows the save dialog (suggested name from the project
   name, `.txt`) and writes the string; the toast then says where it went and how many warnings there are.
 - **Problems.** Neither is produced while something is in the way: `ExportProblems` (dialog "No blueprint yet") lists the problems
@@ -1072,8 +1072,8 @@ in a native dialog of its own before it starts the game.
   is not changed; a declaration of an entity the data in use does not have is one error of the language (`unknown-prototype`; the wires to it add none), so the
   circuit of a project with an entity of a missing mod is not drawn until the game is read with that mod.
 - **The section** "Game data" of the application settings (`GameDataSection.tsx`, `gameDataView`, `useGameData`). It shows the
-  source in words (`.game-data-source`, `data-source="built-in|game"`: "Built in, Factorio 2.1.24" or "Read from your game on
-  <date>: 2.1.24 with N mods", from `describeGameDataSource` of the main process's pure module), a notice when the game or its mods
+  source in words (`.game-data-source`, `data-source="built-in|game"`: "Built in, Factorio 2.1.25" or "Read from your game on
+  <date>: 2.1.25 with N mods", from `describeGameDataSource` of the main process's pure module), a notice when the game or its mods
   have changed since (`[data-message="stale"]`; looked at whenever the section comes on show), the problem of a file that cannot be
   used (`"data-problem"`), data that waits for a reload (`"pending"`), and the request: `"confirming"` while the native dialog is
   open, `"progress"` while the game runs (a progress bar, "Step 2 of 5: the game loads its data and your mods", the time since the

@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "game": {"version":"2.1.24","build":87808},
+  "game": {"version":"2.1.25","build":88022},
   "provenance": {
     "generator": "tools/catalog/generate.mjs",
-    "generatedAt": "2026-11-13T06:11:52Z",
+    "generatedAt": "2026-11-17T21:12:01Z",
     "locale": "en",
     "commands": [
       "factorio --config <dump>/sets/<set>/config/config.ini --mod-directory <dump>/sets/<set>/mods --no-log-rotation --dump-data",
@@ -20,14 +20,14 @@
       "base+elevated-rails+recycler+space-age",
       "base+elevated-rails+recycler+quality+space-age"
     ],
-    "icons": "icons-2.1.24.json names the image files of the game that each icon is composited from; no image is part of either file"
+    "icons": "icons-2.1.25.json names the image files of the game that each icon is composited from; no image is part of either file"
   },
   "modules": [
-    {"name":"base","title":"Base Mod","version":"2.1.24","requires":[],"recommends":[],"featureFlags":[]},
-    {"name":"elevated-rails","title":"Elevated Rails","version":"2.1.24","requires":["base"],"recommends":[],"featureFlags":["expansion","rail-bridges"]},
-    {"name":"recycler","title":"Recycler","version":"2.1.24","requires":["base"],"recommends":[],"featureFlags":["expansion"]},
-    {"name":"quality","title":"Quality","version":"2.1.24","requires":["base","recycler"],"recommends":[],"featureFlags":["expansion","quality"]},
-    {"name":"space-age","title":"Space Age","version":"2.1.24","requires":["base","elevated-rails","recycler"],"recommends":["quality"],"featureFlags":["expansion","space-travel","spoiling","freezing","segmented-units","expansion-shaders"]}
+    {"name":"base","title":"Base Mod","version":"2.1.25","requires":[],"recommends":[],"featureFlags":[]},
+    {"name":"elevated-rails","title":"Elevated Rails","version":"2.1.25","requires":["base"],"recommends":[],"featureFlags":["expansion","rail-bridges"]},
+    {"name":"recycler","title":"Recycler","version":"2.1.25","requires":["base"],"recommends":[],"featureFlags":["expansion"]},
+    {"name":"quality","title":"Quality","version":"2.1.25","requires":["base","recycler"],"recommends":[],"featureFlags":["expansion","quality"]},
+    {"name":"space-age","title":"Space Age","version":"2.1.25","requires":["base","elevated-rails","recycler"],"recommends":["quality"],"featureFlags":["expansion","space-travel","spoiling","freezing","segmented-units","expansion-shaders"]}
   ],
   "constants": {"defaultItemWeight":100,"rocketLiftWeight":1000000,"rocketSilos":[{"name":"rocket-silo","liftWeight":281474976710656,"rocketPartsRequired":100,"modules":["base"],"variants":[{"when":["space-age"],"liftWeight":1000000,"rocketPartsRequired":50}]}]},
   "groups": [
@@ -1075,6 +1075,7 @@
       {"name":"defender-robot-explosion","displayName":"Defender (dying explosion)","order":"c-a-a","subgroup":"capsule-explosions","prototype":"explosion","hidden":true,"visibility":"hidden","icon":"entity/defender","modules":["base"]},
       {"name":"demolisher-ash-cloud-visual-dummy","displayName":"Demolisher ash cloud (visual dummy)","order":"s-k","subgroup":"other","prototype":"smoke-with-trigger","hidden":true,"visibility":"hidden","icon":"item/item-unknown","modules":["space-age"]},
       {"name":"demolisher-ash-sticker","displayName":"demolisher-ash-sticker","order":"s-k","subgroup":"other","prototype":"sticker","hidden":true,"visibility":"hidden","icon":"item/item-unknown","modules":["space-age"]},
+      {"name":"depleted-mining-drill-proxy","displayName":"Entity with no minable resources","order":"e","subgroup":"other","prototype":"entity-ghost","modules":["base"]},
       {"name":"destroyer","displayName":"Destroyer","order":"f[destroyer]-a[robot]","subgroup":"capsule","prototype":"combat-robot","modules":["base"]},
       {"name":"destroyer-capsule","displayName":"destroyer-capsule","order":"","subgroup":"other","prototype":"projectile","hidden":true,"visibility":"hidden","icon":"item/item-unknown","modules":["base"]},
       {"name":"destroyer-remnants","displayName":"Destroyer (remnant)","order":"d[remnants]-a[generic]-a[small]","subgroup":"remnants","prototype":"corpse","icon":"entity/destroyer","modules":["base"]},
@@ -1115,7 +1116,7 @@
       {"name":"elevated-rail-remnants","displayName":"Elevated rail remnants","order":"a[rail]-a[rail]","subgroup":"train-transport-remnants","prototype":"corpse","modules":["elevated-rails"]},
       {"name":"elevated-straight-rail","displayName":"Elevated straight rail","order":"b[elevated-rail]-a[elevated-straight-rail]","subgroup":"train-transport","prototype":"elevated-straight-rail","visibility":"hidden","placedBy":["rail"],"icon":"entity/elevated-rail-remnants","modules":["elevated-rails"]},
       {"name":"enemy-damaged-explosion","displayName":"Enemy damaged explosion","order":"a-a-a","subgroup":"hit-effects","prototype":"explosion","hidden":true,"visibility":"hidden","modules":["base"]},
-      {"name":"entity-ghost","displayName":"Entity ghost","order":"","subgroup":"other","prototype":"entity-ghost","modules":["base"]},
+      {"name":"entity-ghost","displayName":"Entity ghost","order":"a","subgroup":"other","prototype":"entity-ghost","modules":["base"]},
       {"name":"entity-unknown","displayName":"Unknown entity","order":"","subgroup":"other","prototype":"entity-ghost","hidden":true,"visibility":"hidden","icon":"item/item-unknown","modules":["base"]},
       {"name":"explosion","displayName":"Explosion","order":"a-c-a","subgroup":"explosions","prototype":"explosion","hidden":true,"visibility":"hidden","modules":["base"]},
       {"name":"explosion-gunshot","displayName":"explosion-gunshot","order":"","subgroup":"explosions","prototype":"explosion","hidden":true,"visibility":"hidden","modules":["base"]},
@@ -1247,8 +1248,8 @@
       {"name":"iron-chest-remnants","displayName":"Iron chest (remnant)","order":"a-b-a","subgroup":"storage-remnants","prototype":"corpse","icon":"item/iron-chest","modules":["base"]},
       {"name":"iron-ore","displayName":"Iron ore","order":"a-b-b","subgroup":"raw-resource","prototype":"resource","icon":"item/iron-ore","modules":["base"]},
       {"name":"iron-stromatolite","displayName":"Iron stromatolite","order":"b[decorative]-l[rock]-c[gleba]-b[iron-stromatolite]","subgroup":"grass","prototype":"simple-entity","modules":["space-age"]},
-      {"name":"item-on-ground","displayName":"Item on ground","order":"","subgroup":"other","prototype":"item-entity","modules":["base"]},
-      {"name":"item-request-proxy","displayName":"Item request slot","order":"","subgroup":"other","prototype":"item-request-proxy","modules":["base"]},
+      {"name":"item-on-ground","displayName":"Item on ground","order":"b","subgroup":"other","prototype":"item-entity","modules":["base"]},
+      {"name":"item-request-proxy","displayName":"Item request slot","order":"c","subgroup":"other","prototype":"item-request-proxy","modules":["base"]},
       {"name":"jellynut-speed-sticker","displayName":"jellynut-speed-sticker","order":"","subgroup":"other","prototype":"sticker","hidden":true,"visibility":"hidden","icon":"item/item-unknown","modules":["space-age"]},
       {"name":"jellynut-speed-sticker-behind","displayName":"jellynut-speed-sticker-behind","order":"","subgroup":"other","prototype":"sticker","hidden":true,"visibility":"hidden","icon":"item/item-unknown","modules":["space-age"]},
       {"name":"jellystem","displayName":"Jellystem","order":"a[tree]-c[gleba]-a[seedable]-b[jellystem]","subgroup":"trees","prototype":"plant","visibility":"hidden","placedBy":["jellynut-seed"],"modules":["space-age"]},
@@ -1697,7 +1698,7 @@
       {"name":"thruster","displayName":"Thruster","order":"z-f[thruster]","subgroup":"space-platform","prototype":"thruster","visibility":"hidden","placedBy":["thruster"],"icon":"item/thruster","modules":["space-age"]},
       {"name":"thruster-explosion","displayName":"thruster-explosion","order":"b","subgroup":"space-platform-explosions","prototype":"explosion","hidden":true,"visibility":"hidden","icon":"item/thruster","modules":["space-age"]},
       {"name":"thruster-remnants","displayName":"Thruster (remnant)","order":"d","subgroup":"space-platform-remnants","prototype":"corpse","icon":"item/thruster","modules":["space-age"]},
-      {"name":"tile-ghost","displayName":"Tile ghost","order":"","subgroup":"other","prototype":"tile-ghost","modules":["base"]},
+      {"name":"tile-ghost","displayName":"Tile ghost","order":"d","subgroup":"other","prototype":"tile-ghost","modules":["base"]},
       {"name":"tile-proxy","displayName":"Tiles","order":"","subgroup":"other","prototype":"entity-ghost","hidden":true,"visibility":"hidden","icon":"item/landfill","modules":["base"]},
       {"name":"top-up-valve","displayName":"Top-up valve","order":"z-b[items]-o[top-up-valve]","subgroup":"other","prototype":"valve","hidden":true,"visibility":"hidden","placedBy":["top-up-valve"],"icon":"item/top-up-valve","modules":["base"]},
       {"name":"train-stop","displayName":"Train stop","order":"z-b[train-automation]-a[train-stop]","subgroup":"train-transport","prototype":"train-stop","visibility":"hidden","placedBy":["train-stop"],"icon":"item/train-stop","modules":["base"]},

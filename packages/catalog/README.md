@@ -1,12 +1,12 @@
 # @face/catalog
 
-Signal catalog of Factorio 2.1.24 for the five standard modules `base`, `elevated-rails`, `recycler`, `quality` and `space-age`:
+Signal catalog of Factorio 2.1.25 for the five standard modules `base`, `elevated-rails`, `recycler`, `quality` and `space-age`:
 every prototype that can be a circuit signal, with English name, order, group/subgroup, flags, icon reference and module provenance.
 
-- `data/catalog-2.1.24.json` - generated, committed. No image data.
-- `data/icons-2.1.24.json` - generated, committed: the icon table, which says for every icon id which image files of the game it is
+- `data/catalog-2.1.25.json` - generated, committed. No image data.
+- `data/icons-2.1.25.json` - generated, committed: the icon table, which says for every icon id which image files of the game it is
   composited from. Paths and numbers only, no image data.
-- `../model/data/entities-2.1.24.json` - generated, committed: the entity table, every prototype a circuit wire connects to with its
+- `../model/data/entities-2.1.25.json` - generated, committed: the entity table, every prototype a circuit wire connects to with its
   tile size, directions and wire reach (see "Entity table"). It lives in `@face/model`, which reads it and cannot depend on this
   package; the generator, its dumps and its `--check` are the same.
 - `generated/icons/**.png`, `generated/manifest.json` - generated, git-ignored (Wube artwork; local builds only). The app does not need
@@ -38,7 +38,7 @@ single byte.
 (an agent session, CI): it reads the dumps and the game's data files (`info.json`, the locale files for the speaker) and nothing else.
 With `--no-icons` it leaves `generated/icons` as it is.
 
-The generator is pinned to 2.1.24. It reads the `info.json` of all five modules and the binary's `--version`; any other version stops it
+The generator is pinned to 2.1.25. It reads the `info.json` of all five modules and the binary's `--version`; any other version stops it
 with a clear message unless `--accept-version` is given, in which case it writes `data/catalog-<version>.json` and
 `data/icons-<version>.json` and `entities-<version>.json` (then update the imports in `src/standard.ts`, `src/standardIconTable.ts` and
 `packages/model/src/entityTable.ts` and the pinned numbers in the tests). The run is idempotent: the catalog is rewritten only when its
@@ -80,8 +80,8 @@ means Space Age runs without Quality, so there are eight valid sets, not seven; 
 
 Icons are composited from the game's source PNGs according to the `IconData` rules (first mip level, layers in order, premultiplied tint,
 scale and shift relative to an `expected_icon_size / 2` slot). Output is 64 px straight-alpha RGBA, also for item groups (128 px sources).
-Identical layer stacks share one icon id: a recipe or entity that uses the icon of its item refers to `item/<name>`; 2252 signals and 12
-groups need 1138 icons (about 10 MB as files).
+Identical layer stacks share one icon id: a recipe or entity that uses the icon of its item refers to `item/<name>`; 2253 signals and 12
+groups need 1139 icons (about 10 MB as files).
 
 There is one implementation of this, shared by the generator and the app, in three places:
 
@@ -127,7 +127,8 @@ Requirement: running the game must not write anything outside this repository. M
 
 Result on 2026-11-11 (macOS, standalone 2.1.24 build 87808): all headless runs (`--version`, `--dump-data`, `--dump-prototype-locale`,
 `--test-scenario`; 25 per generator run, 102 in total during development) left every watched location unchanged. The game logs
-"Running in headless mode" for them and opens no window.
+"Running in headless mode" for them and opens no window. The run of 2026-11-17 against 2.1.25 (build 88022) was the same: 25 runs, no
+watched location changed.
 
 One exception, from the pilot phase: a single `--dump-icon-sprites` run (base set). That command starts the graphics stack, and macOS
 updated the modification time of the empty file `$(getconf DARWIN_USER_CACHE_DIR)/com.factorio/com.apple.metalfe/modules.timestamp`
@@ -169,13 +170,15 @@ signal selection treats them. The engine does not export that decision for whole
 | `hidden = true` (includes all `*-unknown` placeholders) | `hidden` | 936 |
 | recipe or asteroid chunk with `hide_from_signal_gui` (engine-computed: a recipe is hidden when an item, fluid or virtual signal has the same icon) | `hidden` | 256 |
 | entity with `items_to_place_this` (the item signal represents it) | `hidden` | 124 |
-| everything else | `normal` | 879 |
+| everything else | `normal` | 880 |
 
 The raw facts (`hidden`, `parameter`, `special`, `wildcard`, `hideFromSignalGui`, `placedBy`, `itemAlias`) are stored next to the
 conclusion. The first five rules rest on engine-provided flags. The entity rule is an inference: it yields enemies, trees,
 remnants, resource patches, `entity-ghost` and `item-on-ground` but no buildable entities, which is consistent with the 2.1.20 changelog
 entry "Fixed that several environmental entities did not show in the signals list"; it could not be read from the engine and was not
-checked against the running GUI. The docs say that
+checked against the running GUI. 2.1.25 added one more of this kind, `depleted-mining-drill-proxy` ("Entity with no minable
+resources", the deconstruction planner's filter for depleted mining drills): an `entity-ghost` prototype without an item, so the rule
+makes it `normal` like `entity-ghost`. The docs say that
 `hide_from_signal_gui` is true for hidden recipes; the engine reports false for them, hence `hidden` is checked first.
 
 Picker order: groups by `order`, subgroups by `order`, signals by `order`, each compared bytewise with the name as tie-breaker (signals: kind
@@ -184,7 +187,7 @@ with a signal that exists is in the tree whatever its own `modules` say (see "Si
 
 ## Entity table
 
-`packages/model/data/entities-2.1.24.json` (15 kB) has the 98 prototypes of the game that a circuit wire connects to, whether or not
+`packages/model/data/entities-2.1.25.json` (15 kB) has the 98 prototypes of the game that a circuit wire connects to, whether or not
 the editor can do anything with them yet. `@face/model` reads it (`STANDARD_ENTITY_TABLE`, `parseEntityTable`); the ten prototypes the
 editor has take their size, rotation and wire reach from it. Built by `tools/catalog/lib/entities.mjs`; the facts behind the rules are in
 `docs/factorio-audit.md` 13.
@@ -192,7 +195,7 @@ editor has take their size, rotation and wire reach from it. Built by `tools/cat
 ```
 {
   "schema": 1,
-  "game": {"version":"2.1.24","build":87808},
+  "game": {"version":"2.1.25","build":88022},
   "generator": "tools/catalog/generate.mjs",
   "runtimeChecked": true,
   "defaults": {"width":1,"height":1,"directions":1,"wireReach":9,"modules":["base"]},
@@ -222,7 +225,7 @@ Selection is by rule, there is no list of names: a prototype is in the table whe
 with `base` alone, 80 with the recycler and 98 with Space Age, in 48 prototype types.
 
 The table has no variants. Every module set that has a prototype must give the same record for it, field by field; the build fails
-naming the prototype, the fields and the two sets otherwise. In 2.1.24 all eight agree.
+naming the prototype, the fields and the two sets otherwise. In 2.1.25 all eight agree.
 
 ### What the run against the game checks
 
@@ -253,7 +256,7 @@ prints a note), and cross-checks it otherwise.
 Any difference stops the generator after the dumps and before it writes the catalog or a table, with one line per point ("gun-turret:
 the entity as built has no direction at run time, the rotation table says true for type ammo-turret"). The fix is then in
 `entities.mjs`: correct the entry, or the rule that derived the value; `--reuse-dumps` builds again without another run of the game.
-The run of 2026-11-14 against 2.1.24 ended without a difference, and the file says `"runtimeChecked": true`. The scenario also
+The runs of 2026-11-14 against 2.1.24 and of 2026-11-17 against 2.1.25 ended without a difference, and the file says `"runtimeChecked": true`. The scenario also
 records both wire distances for every quality; the generator prints how many prototypes reach further at higher quality, the table keeps
 the reach at normal quality (the editor has no entity quality).
 
@@ -334,7 +337,7 @@ profile, `info.json` reading, the version line) is in `tools/catalog/lib/command
 
 ## Data format
 
-`data/icons-2.1.24.json` (147 kB, 1138 icons): `{ "schema": 1, "game": { "version", "build" }, "icons": { "<icon id>": ... } }`, one icon
+`data/icons-2.1.25.json` (147 kB, 1139 icons): `{ "schema": 1, "game": { "version", "build" }, "icons": { "<icon id>": ... } }`, one icon
 per line and sorted by id, so a changed icon is a changed line. An icon is its list of layers, bottom first, or
 `{ "expected": 128, "layers": [...] }` when the prototype expects another icon size than 64 (the item groups). A layer is its path
 (`"__base__/graphics/icons/small-lamp.png"`) when its first mip level is 64 px and nothing modifies it, otherwise
@@ -342,7 +345,7 @@ per line and sorted by id, so a changed icon is a changed line. An icon is its l
 field and is the only reader; `iconTableFile` writes this form. `test/standardIconTable.test.ts` checks the committed table against the
 catalog, and `tools/catalog/lib/lib.test.ts` against what the generator builds from the dumps, where they exist.
 
-`data/catalog-2.1.24.json` (480 kB): `schema`, `game`, `provenance` (generator, date, command templates, module sets), `modules`
+`data/catalog-2.1.25.json` (485 kB): `schema`, `game`, `provenance` (generator, date, command templates, module sets), `modules`
 (dependencies, feature flags), `constants` (default item weight, rocket lift weight, rocket silos), `groups`, `subgroups`, `qualities`
 `speakers` and `signals` per kind, one record per line, sorted by name. Defaults are omitted: false flags, `visibility: "normal"`, the prototype
 type when it equals the kind, and `icon` when it equals `<kind>/<name>` (`group/<name>` for groups). `createCatalog` restores them.
@@ -357,7 +360,7 @@ name. The order is data: a blueprint names a sound by position (`instrument_id`,
 note at position value - 1. Instruments and notes come from `data.raw["programmable-speaker"]` of the dump. Their display names are not
 prototype names, so `--dump-prototype-locale` does not have them: the generator reads the sections `programmable-speaker-instrument` and
 `programmable-speaker-note` from the modules' own `locale/en/*.cfg` (`tools/catalog/lib/locale.mjs`), core first and then the enabled
-modules in order. Like every record a speaker carries `modules` and, where a module set differs, `variants`; in 2.1.24 it is the same in
+modules in order. Like every record a speaker carries `modules` and, where a module set differs, `variants`; in 2.1.25 it is the same in
 all eight sets.
 
 ## API
@@ -389,7 +392,7 @@ The icon table is not part of the main entry:
 
 ```ts
 import { parseIconTable, iconTableFile, iconFileLocation, type IconTable, type IconEntry, type IconLayer } from "@face/catalog/icons";
-import { loadStandardIconTable } from "@face/catalog/icons/standard";   // imports data/icons-2.1.24.json
+import { loadStandardIconTable } from "@face/catalog/icons/standard";   // imports data/icons-2.1.25.json
 
 const table = loadStandardIconTable();                       // { game: { version, build }, icons: ReadonlyMap<id, { expected, layers }> }
 table.icons.get(signal.icon);                                // the layers of a catalog icon; undefined for anything else
@@ -413,7 +416,7 @@ at start it installs the catalog and the entity table the main process hands it 
 any) before a circuit is read, and everything that needs "the" catalog asks `currentCatalog()`. What was made from the catalog
 before a `setCatalog` does not follow, so it is called once, before the session exists.
 
-## Counts (Factorio 2.1.24)
+## Counts (Factorio 2.1.25)
 
 Signals by kind and introducing module:
 
@@ -422,25 +425,25 @@ Signals by kind and introducing module:
 | item | 252 | 2 | 1 | 3 | 85 | 0 | 343 |
 | fluid | 19 | 0 | 0 | 0 | 14 | 0 | 33 |
 | virtual | 154 | 0 | 0 | 1 | 0 | 0 | 155 |
-| entity | 571 | 14 | 3 | 0 | 440 | 0 | 1028 |
+| entity | 572 | 14 | 3 | 0 | 440 | 0 | 1029 |
 | recipe | 217 | 2 | 225 | 6 | 212 | 2 | 664 |
 | space-location | 2 | 0 | 0 | 0 | 6 | 0 | 8 |
 | asteroid-chunk | 1 | 0 | 0 | 0 | 14 | 0 | 15 |
 | quality | 2 | 0 | 0 | 4 | 0 | 0 | 6 |
-| Total | 1218 | 18 | 229 | 14 | 771 | 2 | 2252 |
+| Total | 1219 | 18 | 229 | 14 | 771 | 2 | 2253 |
 
 Signals per module set (all / offered by the default picker, i.e. `normal` and `wildcard`):
 
 | Module set | All | Picker |
 | --- | ---: | ---: |
-| base | 1218 | 578 |
-| base + elevated-rails | 1236 | 583 |
-| base + recycler | 1447 | 580 |
-| base + elevated-rails + recycler | 1467 | 585 |
-| base + recycler + quality | 1461 | 589 |
-| base + elevated-rails + recycler + quality | 1481 | 594 |
-| base + elevated-rails + recycler + space-age | 2235 | 873 |
-| all five | 2249 | 882 |
+| base | 1219 | 579 |
+| base + elevated-rails | 1237 | 584 |
+| base + recycler | 1448 | 581 |
+| base + elevated-rails + recycler | 1468 | 586 |
+| base + recycler + quality | 1462 | 590 |
+| base + elevated-rails + recycler + quality | 1482 | 595 |
+| base + elevated-rails + recycler + space-age | 2236 | 874 |
+| all five | 2250 | 883 |
 
 12 item groups, 136 subgroups, 6 quality prototypes (levels 0, 1, 2, 3, 5 and the hidden `quality-unknown`).
 
@@ -458,5 +461,5 @@ Signals per module set (all / offered by the default picker, i.e. `normal` and `
 - Ties in the picker order (same subgroup and order string, different kind) are broken by kind, then name; the engine's tie-break is unknown.
 - Item weights are the engine's float values (`raw-fish` is 3333.3333282470703).
 - The generator's defaults and the sandbox are macOS-specific; other platforms need `FACTORIO_BIN`, `FACTORIO_DATA` and `--no-sandbox`.
-- The catalog is tied to one game version; `src/standard.ts` imports `catalog-2.1.24.json` statically, `src/standardIconTable.ts`
-  `icons-2.1.24.json`.
+- The catalog is tied to one game version; `src/standard.ts` imports `catalog-2.1.25.json` statically, `src/standardIconTable.ts`
+  `icons-2.1.25.json`.

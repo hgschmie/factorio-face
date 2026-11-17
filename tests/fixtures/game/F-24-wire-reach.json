@@ -5,7 +5,7 @@
   "title": "Wire reach: every placement of an entity B around an entity A, and whether a red circuit wire from A connects to it",
   "provenance": "game",
   "source": "Recorded from the game by tools/game-probe/wire-reach.mjs: LuaWireConnector.can_wire_reach and connect_to with the reach check, which agree for every placement.",
-  "gameVersion": "2.1.24",
+  "gameVersion": "2.1.25",
   "layout": "A's top-left tile is (0, 0). rows[r][c] is '1' when the wire connects with B's top-left tile on (c - range, r - range), range being the case's own where it has one. width and height are the tile footprint as placed, facing is the direction the entity has in the game (north where there is none) and asked the one the probe asked for where the game did not give it. selectionBox is [left, top, right, bottom] of the prototype's selection box around the center of the entity when it faces north. reach is the smaller of the two entities' reaches.",
   "range": 14,
   "cases": [

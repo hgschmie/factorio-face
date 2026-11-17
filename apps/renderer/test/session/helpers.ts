@@ -1,5 +1,6 @@
+import { STANDARD_CATALOG_VERSION } from "@face/catalog";
 import type { Entity, EntityId } from "@face/model";
-import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
+import { createEmptyProject, DEFAULT_GAME_VERSION } from "../../../desktop/src/emptyProject.ts";
 import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, GameDataStatus, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
 import { ProjectSession, type SessionOptions } from "../../src/session/projectSession.ts";
@@ -21,7 +22,7 @@ export class ManualScheduler implements Scheduler {
   }
 }
 
-export const MANIFEST: ProjectManifest = { formatVersion: 1, name: "Test project", gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], circuits: [DEFAULT_FILE_NAME] };
+export const MANIFEST: ProjectManifest = { formatVersion: 1, name: "Test project", gameVersion: DEFAULT_GAME_VERSION, modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], circuits: [DEFAULT_FILE_NAME] };
 
 export function project(source: string, manifest: Partial<ProjectManifest> = {}, path: string | null = null): LoadedProject {
   return { path, data: { manifest: { ...MANIFEST, ...manifest }, files: [{ name: DEFAULT_FILE_NAME, source }] } };
@@ -100,9 +101,9 @@ export interface FakeDesktop {
   reloads: number;
 }
 
-const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: "2.1.24", versionMatch: null, modules: [], problem: null, iconRevision: 0 };
+const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: STANDARD_CATALOG_VERSION, versionMatch: null, modules: [], problem: null, iconRevision: 0 };
 
-const BUILT_IN_DATA: GameDataStatus = { inUse: { kind: "built-in", version: "2.1.24" }, pending: null, stale: false, unavailable: "No Factorio installation is in use.", problem: null, discardable: false, run: { state: "idle" } };
+const BUILT_IN_DATA: GameDataStatus = { inUse: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, pending: null, stale: false, unavailable: "No Factorio installation is in use.", problem: null, discardable: false, run: { state: "idle" } };
 
 /** An in-memory stand-in for the desktop bridge. Data is cloned on the way in and out, like over IPC. */
 export function fakeDesktop(): FakeDesktop {
@@ -165,7 +166,7 @@ export function fakeDesktop(): FakeDesktop {
       chooseGameFolder: () => ok(null),
       resetGameFolder: () => ok(NO_GAME),
       onAppSettingsChanged: () => () => undefined,
-      getGameData: () => ok({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] }),
+      getGameData: () => ok({ source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: [] }),
       getGameDataStatus: () => ok(BUILT_IN_DATA),
       readGameData: () => ok(BUILT_IN_DATA),
       cancelGameDataRead: () => ok(BUILT_IN_DATA),

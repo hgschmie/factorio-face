@@ -106,7 +106,7 @@ describe("runGameDump with a fake game", () => {
     const { options, runs, starts } = await fixture("failure", { mode: "fail", at: "locale" });
     const result = await runGameDump(options);
     expect(result).toMatchObject({ ok: false, failure: "exit", step: "locale", message: "The game ended with exit code 3" });
-    expect(result.ok ? "" : result.log).toMatch(/Factorio 2\.1\.24 \(build 87808.*\n.*\n.*Failed to load mods: something is wrong\n$/);
+    expect(result.ok ? "" : result.log).toMatch(/Factorio 2\.1\.25 \(build 88022.*\n.*\n.*Failed to load mods: something is wrong\n$/);
     expect((await starts()).map((start) => start.command)).toEqual(["data", "locale"]);
     expect(result.steps.map(({ step }) => step)).toEqual(["prepare", "data"]);
     expect(await readdir(runs)).toEqual([]);

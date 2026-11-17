@@ -5,6 +5,7 @@ Added 2026-11-12: electric poles (3.9, 6.9, 9.9) and the programmable speaker (3
 Added 2026-11-14: section 12, the blueprint format as `packages/blueprints` reads and writes it, with what that work added to or corrected in sections 3 to 5 and 9.
 Added 2026-11-14: section 13, all 98 prototypes a circuit wire connects to: how they are selected, their footprints, reaches and directions, and which of that is the game's own word. The editor still has the ten prototypes of 3.1.
 Added 2026-11-15: section 15, which mod created a prototype, as the game says it at run time.
+Moved 2026-11-17 to Factorio 2.1.25 (build 88022, released 16. 11. 2026): the catalog, icon and entity tables were generated again and the fixtures F-01, F-24 and F-29 recorded again. The 2.1.25 changelog has no entry on circuit networks, combinators, wires, signals or the blueprint format. Re-verified with 2.1.25 [game]: F-24 and F-29 are the recordings of 2.1.24 but for the version they name; F-01 is too but for the `version` of every blueprint the game writes, now 2.1.25.10 (562954250027018, it was 2.1.24.1), and the game takes the exporter's 2.1.25.0 as it took 2.1.24.0; the 98 wired entities of section 13 are the same records. New in the data [data: dump]: one entity prototype, `depleted-mining-drill-proxy` (type `entity-ghost`, "Entity with no minable resources", the deconstruction planner's new filter), which is a signal like `entity-ghost`; and `entity-ghost`, `item-on-ground`, `item-request-proxy` and `tile-ghost` have the `order` strings a, b, c, d where they had none. No other signal, group, subgroup, quality, speaker instrument or note, icon or constant differs. Statements below that name 2.1.24 were checked with that release and were not checked again unless they name one of the three fixtures or the tables.
 This document drives the model types, the DSL, the blueprint importer/exporter and the simulator of "face".
 
 ## 0. How to read this document
@@ -812,7 +813,7 @@ The value exceeds 2^32 but stays below 2^53, so a JavaScript number holds it exa
 The exporter must emit positions that respect tile alignment, otherwise the game re-snaps or rejects; `set_blueprint_entities` has a `fix_positions` option at runtime [api].
 Wire reach is 9 tiles for the four combinators, the lamp and the speaker [data: core/lualib/circuit-connector-sprites.lua: `default_circuit_wire_max_distance = 9` and every `*_circuit_wire_max_distance` there is 9]; an electric pole has its own (3.9),
 and so have two entities the editor does not have yet, the power switch (10) and the agricultural tower (30) (13.3); a layout generator must keep wired entities within reach (the game drops or refuses over-long wires [unverified]).
-How the game measures [game: fixture F-24, 2.1.24, `LuaWireConnector.can_wire_reach` and `connect_to` with the reach check, which agree; recorded 2026-11-14: 68 cases, 79,628 placements, no mismatch]:
+How the game measures [game: fixture F-24, 2.1.25, `LuaWireConnector.can_wire_reach` and `connect_to` with the reach check, which agree; recorded 2026-11-14 with 2.1.24 and again 2026-11-17 with 2.1.25, the same placement for placement: 68 cases, 79,628 placements, no mismatch]:
 
 - Between two electric poles the distance of a wire is the straight line between their centers (their positions).
 - For every other pair, a pole and another entity included, it is the straight line between the nearest points of the two entities' selection boxes: per axis the gap between the boxes in tiles, 0 where they overlap on that axis, then the hypotenuse
@@ -1037,7 +1038,7 @@ reading results through `LuaCombinatorControlBehavior.signals_last_tick`, `LuaEn
 
 | Id | Fixture | Resolves |
 | --- | --- | --- |
-| F-01 | Export one of each entity type with non-default settings via `export_stack()`; record the exact JSON. Probe: `tools/game-probe/blueprints.mjs` (`make probe-blueprints`) builds every sample circuit of `packages/blueprints/test/samples.ts` through the runtime API and exports it, and exports every supported entity as placed; it records `tests/fixtures/game/F-01-blueprints.json`, which `packages/blueprints/test/game.test.ts` checks. Recorded from Factorio 2.1.24 on 2026-11-14 (12.5): 23 cases, every prototype as placed (the hub on a space platform the probe makes), and per prototype the defaults of its control behaviour and what becomes of each of the sixteen directions | selector `control_behavior` shape (flat), default omission, key order, `first_signal_networks` shape, `color_mode` numbers, build number in `version` (0 is taken); all in 12.2 and 12.3 |
+| F-01 | Export one of each entity type with non-default settings via `export_stack()`; record the exact JSON. Probe: `tools/game-probe/blueprints.mjs` (`make probe-blueprints`) builds every sample circuit of `packages/blueprints/test/samples.ts` through the runtime API and exports it, and exports every supported entity as placed; it records `tests/fixtures/game/F-01-blueprints.json`, which `packages/blueprints/test/game.test.ts` checks. Recorded from Factorio 2.1.24 on 2026-11-14 (12.5) and again from 2.1.25 on 2026-11-17, the same but for the version numbers: 23 cases, every prototype as placed (the hub on a space platform the probe makes), and per prototype the defaults of its control behaviour and what becomes of each of the sixteen directions | selector `control_behavior` shape (flat), default omission, key order, `first_signal_networks` shape, `color_mode` numbers, build number in `version` (0 is taken); all in 12.2 and 12.3 |
 | F-02 | `print` every `defines.wire_connector_id`, `defines.wire_type`, `defines.direction`, `defines.control_behavior.lamp.color_mode` value. Part of the recording of F-01 (`defines`), recorded with it, with the seven defines of the modes of the generic entities (14.2) | 4.2, 3.8 numeric values: as assumed (connectors 1 to 6, directions 0 to 15 in sixteen steps, color modes 0, 1, 2). `wire_type` is copper 1, red 2, green 3. Of the modes only the radar's differs from a count from 0: surface 1, universe 2 |
 | F-03 | Chain constant -> arithmetic -> arithmetic -> decider; log outputs per tick from tick 0 | latency per stage, constant timing, simultaneous update |
 | F-04 | Toggle a constant combinator at a known tick; log the network | constant combinator edit timing |
@@ -1237,7 +1238,7 @@ entity quality, tags, the blueprint's description, icons, snapping and tiles). W
 | Root `blueprint` | supported | |
 | Root `blueprint_book` | unsupported-with-diagnostic (offer to pick one contained blueprint) | A book is a container; the editor works on one circuit |
 | Root `upgrade_planner`, `deconstruction_planner` | unsupported-with-diagnostic | Not circuits |
-| `version` major 2 (2.0.x, 2.1.x) | supported; exporter writes 2.1.24.0 (pending F-01) | |
+| `version` major 2 (2.0.x, 2.1.x) | supported; exporter writes 2.1.25.0 (pending F-01) | |
 | `version` major 1 (1.1 and 1.2.x pre-release) | unsupported-with-diagnostic | Different wire and control-behavior format; converter deferred |
 | `version` newer than 2.1.24 | supported with a warning | Unknown fields may appear |
 | `label`, `description` | supported | |
@@ -1434,7 +1435,7 @@ It was written without the game; on the same day the probe of 12.5 ran against F
 | Section | Was | Is |
 | --- | --- | --- |
 | 4.3, 9.1 | "Major 1 is rejected", with 1.2.x left open | 1.1 and older are refused; 1.2.x is imported with a warning. The only real circuit string at hand is 1.2.10.23 and has the 2.x layout [data] |
-| 5.3 | "exporting with build 0 is expected to be accepted" | unchanged and still [unverified]; the exporter writes 2.1.24.0 (562954249961472) |
+| 5.3 | "exporting with build 0 is expected to be accepted" | unchanged and still [unverified]; the exporter writes 2.1.25.0 (562954250027008) |
 | 3.2 | "Unknown fields must be preserved verbatim (proposal)" | not done: unknown fields are dropped and reported (decision of 2026-11-14, section 9) |
 | 9 | "preserved-on-roundtrip-only" for entities out of scope, copper wires, entity quality, tags and the blueprint's own extras | dropped and reported (same decision) |
 | 3.7 | "The importer should accept both forms; the exporter should follow the fixture result" | the importer accepts both; 2.1.24 writes the flat form of the API, and so does the exporter [game] |
@@ -1478,7 +1479,7 @@ All [game: F-01]: the exporter writes every entity of the samples as the game do
 | `color` of a lamp | `{ r, g, b, a: 1 }` with 0 to 1 per channel |
 | Wires | `[lower entity number, connector, higher, connector]`, a wire of an entity to itself with the lower connector first, the list in the order of 12.2 |
 | `icons` | up to four item signals, the most frequent prototypes first; the game takes them |
-| `version` | 2.1.24 with build number 0; the game takes it and writes its own, 2.1.24.1 (562954249961473) |
+| `version` | 2.1.25 with build number 0; the game takes it and writes its own, 2.1.25.10 (562954250027018); 2.1.24 wrote 2.1.24.1 (562954249961473) |
 
 ### 12.4 What import drops
 
@@ -1488,7 +1489,7 @@ Each is counted or named in the import report (`packages/blueprints/README.md`).
 
 ### 12.5 Fixture F-01: recorded on 2026-11-14
 
-`make probe-blueprints` runs `tools/game-probe/blueprints.mjs` against the installed game, headless and sandboxed, in about three seconds; `tests/fixtures/game/F-01-blueprints.json` is its recording of Factorio 2.1.24 with the five standard modules. It holds
+`make probe-blueprints` runs `tools/game-probe/blueprints.mjs` against the installed game, headless and sandboxed, in about three seconds; `tests/fixtures/game/F-01-blueprints.json` is its recording of Factorio 2.1.25 with the five standard modules. It holds
 
 - `defines`: the numbers of directions, connectors, wire types, the lamp's color modes and the seven modes of the generic entities;
 - `fresh`: every prototype as the game places it, untouched and with its control behaviour created, each as one blueprint, and the hub of a space platform on a platform the probe makes (`create_space_platform`, `apply_starter_pack`);
@@ -1512,7 +1513,7 @@ Not settled, with the reason:
 
 ## 13. The wired entities: every prototype a circuit wire connects to (2026-11-14)
 
-The editor is to get every entity that can be on a circuit network. This section is the inventory: what the game's dumps say about all of them. The data is in `packages/model/data/entities-2.1.24.json`, written by the catalog generator
+The editor is to get every entity that can be on a circuit network. This section is the inventory: what the game's dumps say about all of them. The data is in `packages/model/data/entities-2.1.25.json`, written by the catalog generator
 (`tools/catalog/lib/entities.mjs`; format in `packages/catalog/README.md`, "Entity table") and read by `@face/model` (`STANDARD_ENTITY_TABLE`). The 88 prototypes beyond 3.1 are one generic kind of the editor, `entity`, since section 14 was written: their control behaviours and what the editor makes of them are there; selector, drawing and inspector for them do not exist yet.
 "[data: dump]" here means `data-raw-dump.json` (`--dump-data`) of all eight module sets; "[runtime dump]" the scenario's `face-runtime-dump.json`. The game was not run when this section was written; it was on 2026-11-14 (`make catalog`, `make probe-wire-reach`),
 and what that confirmed or corrected is said where it applies: the selection boxes (13.2), the reaches (13.3), the directions (13.4).

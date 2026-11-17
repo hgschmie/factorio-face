@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ICON_TABLE_LIMITS, iconFileLocation, iconTableFile, IconTableError, parseIconTable } from "../src/iconTable.ts";
 
 const lamp = "__base__/graphics/icons/small-lamp.png";
-const game = { version: "2.1.24", build: 87808 };
+const game = { version: "2.1.25", build: 88022 };
 const table = (icons: unknown, more: object = {}): unknown => ({ schema: 1, game, icons, ...more });
 
 describe("icon file locations", () => {
@@ -65,7 +65,7 @@ describe("icon table", () => {
     expect(parsed.icons.size).toBe(4);
     for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty", "item/unknown"]) expect(parsed.icons.get(id)).toBeUndefined();
     expect(parseIconTable(table({})).icons.size).toBe(0);
-    expect(parseIconTable(table({}, { game: { version: "2.1.24" } })).game).toEqual({ version: "2.1.24" });
+    expect(parseIconTable(table({}, { game: { version: "2.1.25" } })).game).toEqual({ version: "2.1.25" });
   });
 
   it("writes the compact form and reads it back unchanged", () => {
@@ -92,7 +92,7 @@ describe("icon table", () => {
     ["no schema", { game, icons: {} }],
     ["no game", { schema: 1, icons: {} }],
     ["a game version that is none", table({}, { game: { version: "2.1" } })],
-    ["a fractional build", table({}, { game: { version: "2.1.24", build: 1.5 } })],
+    ["a fractional build", table({}, { game: { version: "2.1.25", build: 1.5 } })],
     ["no icons", { schema: 1, game }],
     ["icons as a list", table([])],
     ["an id without a kind", table({ lamp: [lamp] })],

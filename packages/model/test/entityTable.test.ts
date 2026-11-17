@@ -1,7 +1,7 @@
-// The entity table of the game (data/entities-2.1.24.json, written by tools/catalog/generate.mjs) and what the editor takes from
-// it. The numbers are those of Factorio 2.1.24 with its five standard modules; docs/factorio-audit.md 13 says where each is from.
+// The entity table of the game (data/entities-2.1.25.json, written by tools/catalog/generate.mjs) and what the editor takes from
+// it. The numbers are those of Factorio 2.1.25 with its five standard modules; docs/factorio-audit.md 13 says where each is from.
 import { afterEach, describe, expect, it } from "vitest";
-import data from "../data/entities-2.1.24.json" with { type: "json" };
+import data from "../data/entities-2.1.25.json" with { type: "json" };
 import {
   DEFAULT_WIRE_REACH, entityTable, hasOwnWireReach, missingEditorPrototypes, parseEntityTable, PROTOTYPE_NAMES, PROTOTYPES, prototypeData, setEntityTable, STANDARD_ENTITY_TABLE, STANDARD_WIRE_REACH, tileSize, wireReachBetween,
   type EntityPrototype,
@@ -18,7 +18,7 @@ afterEach(() => setEntityTable(STANDARD_ENTITY_TABLE));
 
 describe("standard entity table", () => {
   it("has every prototype a circuit wire connects to: 98, of which 80 without Space Age and 79 with base alone", () => {
-    expect(table.game).toEqual({ version: "2.1.24", build: 87808 });
+    expect(table.game).toEqual({ version: "2.1.25", build: 88022 });
     expect(table.entities).toHaveLength(98);
     expect(names(table.entities)).toEqual([...names(table.entities)].sort());
     expect(table.byName.size).toBe(98);
@@ -152,7 +152,7 @@ describe("another entity table", () => {
     expect(missingEditorPrototypes(without)).toEqual(["substation"]);
     expect(missingEditorPrototypes(STANDARD_ENTITY_TABLE)).toEqual([]);
     expect(missingEditorPrototypes(parseEntityTable(tableWith(() => [])))).toHaveLength(10);
-    expect(() => setEntityTable(without)).toThrow("The entity table of Factorio 2.1.24 has no substation");
+    expect(() => setEntityTable(without)).toThrow("The entity table of Factorio 2.1.25 has no substation");
     expect(entityTable()).toBe(STANDARD_ENTITY_TABLE);
     expect(PROTOTYPES["small-lamp"]!.width).toBe(1);
   });

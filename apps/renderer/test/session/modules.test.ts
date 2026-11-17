@@ -2,7 +2,7 @@
 // dependencies, what a signal or an entity of a module that is off does, that no set of modules breaks the picker, the
 // selector or the simulation, and the blueprint import, which switches on what it needs.
 import { encodeBlueprintString } from "@face/blueprints";
-import { loadStandardCatalog } from "@face/catalog";
+import { loadStandardCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
 import { signal } from "@face/model";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -38,7 +38,7 @@ let data: DataInUse;
 beforeAll(() => {
   data = applyData(manyModsData());
 });
-afterAll(() => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
+afterAll(() => applyData({ source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
 
 const sessionWith = (modules: readonly string[], source = EMPTY_SOURCE, api?: ReturnType<typeof fakeDesktop>["api"]): ProjectSession => createSession(source, { data, api, project: project(source, { modules: [...modules] }) }).session;
 const enabledOf = (session: ProjectSession): string[] => session.state.catalog.modules.filter((module) => module.enabled).map((module) => module.name);

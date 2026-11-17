@@ -41,7 +41,7 @@ test("renders icons from the installation it finds, and answers nothing else", a
   const game = await writeFakeGame({ icons: BASE_ICONS });
   const { app, page, userData } = await launch({ gameFolder: game.folder });
   try {
-    const found = { chosenFolder: null, dataDirectory: game.dataDirectory, source: "detected", gameVersion: "2.1.24", versionMatch: "equal", problem: null, iconRevision: 0 };
+    const found = { chosenFolder: null, dataDirectory: game.dataDirectory, source: "detected", gameVersion: "2.1.25", versionMatch: "equal", problem: null, iconRevision: 0 };
     expect(await settingsState(page)).toMatchObject(found);
 
     const signal = await fetchAsset(app, `${ICONS}virtual/signal-A.png`);
@@ -87,7 +87,7 @@ test("shows the installation in the settings dialog, which opens from the menu a
     await expect(dialog.locator(".game-folder-path .path")).toHaveText(game.dataDirectory);
     await expect(dialog.locator(".game-folder-path small")).toHaveText("Found automatically");
     await expect(dialog.locator('[data-fact="version"]')).toHaveAttribute("data-level", "ok");
-    await expect(dialog.locator('[data-fact="version"] dd')).toHaveText("Factorio 2.1.24");
+    await expect(dialog.locator('[data-fact="version"] dd')).toHaveText("Factorio 2.1.25");
     await expect(dialog.locator('[data-fact="modules"] dd')).toContainText("base, core, quality, elevated-rails");
     await expect(dialog.locator('[data-fact="modules"] [data-missing]')).toHaveText("Not installed: space-age, recycler. Their icons are shown as placeholders.");
     await expect(dialog).toContainText("The app reads icon images from this folder and writes nothing there. It starts the game only when you ask it to read the game data below.");
@@ -210,7 +210,7 @@ test("refuses a folder without the game with its reason, and takes no folder fro
       other.folder,
     );
     expect(results.slice(0, 2)).toEqual([{ ok: true, value: null }, { ok: true, value: null }]);
-    for (const result of results.slice(2)) expect(result).toMatchObject({ ok: true, value: { chosenFolder: null, dataDirectory: game.dataDirectory, gameVersion: "2.1.24" } });
+    for (const result of results.slice(2)) expect(result).toMatchObject({ ok: true, value: { chosenFolder: null, dataDirectory: game.dataDirectory, gameVersion: "2.1.25" } });
     // The chooser was shown for each of the two requests (and once for the cancelled one above), with what the app decides to offer.
     expect((await dialogCalls(app)).open).toBe(3);
     expect(await storedSettings(userData)).toEqual({ version: 1, gameDirectory: null });
@@ -262,18 +262,18 @@ test("uses an installation of another version and says so", async () => {
     const version = dialog.locator('[data-fact="version"]');
     await expect(version).toHaveAttribute("data-level", "warning");
     await expect(version.locator("dd")).toContainText("Factorio 2.0.72");
-    await expect(version.locator("small.warning")).toContainText("The signal catalog of this app is from 2.1.24. This installation is used all the same");
+    await expect(version.locator("small.warning")).toContainText("The signal catalog of this app is from 2.1.25. This installation is used all the same");
     await page.screenshot({ path: resolve(SCREENSHOT_DIR, "app-settings-other-version.png") });
     // It is used: its icons are served.
     expect(pngFacts((await fetchAsset(app, `${ICONS}item/constant-combinator.png`)).bytes).center).toEqual(BLUE);
-    expect(await settingsState(page)).toMatchObject({ gameVersion: "2.0.72", catalogVersion: "2.1.24", versionMatch: "different", dataDirectory: older.dataDirectory });
+    expect(await settingsState(page)).toMatchObject({ gameVersion: "2.0.72", catalogVersion: "2.1.25", versionMatch: "different", dataDirectory: older.dataDirectory });
 
     // Another patch release of the same line is a plain note.
     await stubDialogs(app, { openPath: patch.dataDirectory });
     await dialog.getByRole("button", { name: "Choose..." }).click();
     await expect(version).toHaveAttribute("data-level", "note");
     await expect(version.locator("dd")).toContainText("Factorio 2.1.30");
-    await expect(version.locator("small")).toContainText("The signal catalog of this app is from 2.1.24.");
+    await expect(version.locator("small")).toContainText("The signal catalog of this app is from 2.1.25.");
     await expect(version.locator("small.warning")).toHaveCount(0);
     // The data directory itself was chosen, so it is not named a second time.
     await expect(dialog.locator(".game-folder-path .path")).toHaveText(patch.dataDirectory);
@@ -322,7 +322,7 @@ test("hints at the settings when there is neither a game nor bundled icons, once
   expect(existsSync(NO_GAME_DIR)).toBe(false);
   const { app, page } = await launch();
   try {
-    const none = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: "2.1.24", versionMatch: null, modules: [], problem: null, iconRevision: 0 };
+    const none = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: "2.1.25", versionMatch: null, modules: [], problem: null, iconRevision: 0 };
     expect(await settingsState(page)).toEqual(none);
     expect((await fetchAsset(app, `${ICONS}virtual/signal-A.png`)).status).toBe(404);
     const hint = page.locator(".icon-hint");

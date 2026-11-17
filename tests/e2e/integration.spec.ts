@@ -602,7 +602,7 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     savedSource = await sourceText(page);
     const saved = await readProjectEntries(projectPath);
     expect(saved["main.face"]).toBe(savedSource);
-    const expectedManifest = { formatVersion: 1, name: "Round trip", gameVersion: "2.1.24", modules: ["base", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"] };
+    const expectedManifest = { formatVersion: 1, name: "Round trip", gameVersion: "2.1.25", modules: ["base", "elevated-rails"], customSignalGroups: [], circuits: ["main.face"] };
     expect(JSON.parse(saved["face.json"]!)).toEqual(expectedManifest);
 
     // A settings change alone makes the project dirty again, and saving writes it.
@@ -654,7 +654,7 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     expect(JSON.parse(resaved["face.json"]!)).toEqual({
       formatVersion: 1,
       name: "Round trip",
-      gameVersion: "2.1.24",
+      gameVersion: "2.1.25",
       modules: ["base", "elevated-rails", "recycler", "quality"],
       customSignalGroups: [{ id: "g1", name: "Mine", enabled: true, signals: [{ name: "alpha", icon: "alpha.png" }] }],
       circuits: ["main.face"],

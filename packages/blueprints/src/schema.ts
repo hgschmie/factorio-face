@@ -25,8 +25,8 @@ export function formatVersion(version: number): string {
   return `${major}.${minor}.${patch}.${build}`;
 }
 
-/** The version an exported blueprint says it is from: Factorio 2.1.24, the version of the audit and the catalog. */
-export const EXPORT_VERSION = packVersion(2, 1, 24);
+/** The version an exported blueprint says it is from: Factorio 2.1.25, the version of the audit and the catalog. */
+export const EXPORT_VERSION = packVersion(2, 1, 25);
 
 /** `defines.direction` of the four directions an entity of the editor can face. North is the default and is not written. */
 export const DIRECTION_NUMBERS: Readonly<Record<Direction, number>> = { north: 0, east: 4, south: 8, west: 12 };

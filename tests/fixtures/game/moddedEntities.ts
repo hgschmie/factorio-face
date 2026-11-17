@@ -1,7 +1,7 @@
 // The entity table of a game with mods, for tests: the standard one, and for every prototype type that has a kind of its own a
 // modded prototype in another size than the standard one, a loader of one tile (which only mods wire), and what stays without
 // a kind. As a table read from the user's game has them (`parseEntityTable`); no real mod is involved.
-import standard from "../../../packages/model/data/entities-2.1.24.json" with { type: "json" };
+import standard from "../../../packages/model/data/entities-2.1.25.json" with { type: "json" };
 import { parseEntityTable, setEntityTable, STANDARD_ENTITY_TABLE, type EntityTable } from "../../../packages/model/src/index.ts";
 
 /** The records a mod adds, as the generator writes them: what is left out is the default (one tile, no direction, reach 9, module base). */

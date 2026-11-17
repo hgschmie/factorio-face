@@ -18,8 +18,8 @@ import { writeGameData } from "../support/fakeGame.ts";
 import { useScratch } from "../support/scratch.ts";
 
 const scratch = useScratch("game-service");
-const BUILT_IN = { kind: "built-in", version: "2.1.24" } as const;
-const MODDED = { kind: "game", version: "2.1.24", build: 87808, mods: 1 } as const;
+const BUILT_IN = { kind: "built-in", version: "2.1.25" } as const;
+const MODDED = { kind: "game", version: "2.1.25", build: 88022, mods: 1 } as const;
 /** What a window is told it can ask icons for with the built-in data: the ids of the icon table that comes with the build. */
 const BUILT_IN_ICONS = [...loadStandardIconTable().icons.keys()];
 
@@ -48,13 +48,13 @@ async function setup(name: string, dump: CannedDump = {}, behaviour: Partial<Fak
   const root = scratch(name, "factorio"), home = scratch(name, "home");
   const dataDirectory = await writeGameData(join(root, "data"), { modules: [] });
   await mkdir(join(root, "bin", "x64"), { recursive: true });
-  const control: FakeGameControl = { record: scratch(name, "record.jsonl"), dump: await writeCannedDump(scratch(name, "dump"), { editor: true, activeMods: { base: "2.1.24", "some-mod": "1.2.3" }, ...dump }), ...behaviour };
+  const control: FakeGameControl = { record: scratch(name, "record.jsonl"), dump: await writeCannedDump(scratch(name, "dump"), { editor: true, activeMods: { base: "2.1.25", "some-mod": "1.2.3" }, ...dump }), ...behaviour };
   await writeFakeGame(join(root, "bin", "x64", "factorio"), control);
   const mods = join(home, ".factorio", "mods");
   await mkdir(mods, { recursive: true });
   await writeFile(join(mods, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "some-mod", enabled: true }] }));
   await writeFile(join(mods, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
-  const inspection = await inspectDataDirectory(dataDirectory, "2.1.24");
+  const inspection = await inspectDataDirectory(dataDirectory, "2.1.25");
   if (!inspection.ok) throw new Error(inspection.message);
   const host: Host = { platform: "linux", env: {}, home };
   const cacheFile = scratch(name, "user-data", GAME_DATA_FILE_NAME);
@@ -93,7 +93,7 @@ describe("the confirmation", () => {
     executable: "/Applications/factorio.app/Contents/MacOS/factorio",
     steam: false,
     modDirectory: "/Users/someone/Library/Application Support/factorio/mods",
-    key: { version: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "space-age", version: "2.1.24" }, { name: "a-mod", version: "1.0.0" }, { name: "b-mod", version: null }], modSettings: null },
+    key: { version: "2.1.25", mods: [{ name: "base", version: "2.1.25" }, { name: "space-age", version: "2.1.25" }, { name: "a-mod", version: "1.0.0" }, { name: "b-mod", version: null }], modSettings: null },
     problems: [],
   };
 
@@ -146,7 +146,7 @@ describe("the mod directory of a test", () => {
     await mkdir(other, { recursive: true });
     await writeFile(join(other, "other-mod_0.3.0.zip"), "another mod");
     const planned = await planGameRead(installation, { ...host, env: { FACE_GAME_MODS_DIR: other } });
-    expect(planned).toMatchObject({ ok: true, plan: { modDirectory: other, key: { mods: [{ name: "base", version: "2.1.24" }, { name: "other-mod", version: "0.3.0" }] } } });
+    expect(planned).toMatchObject({ ok: true, plan: { modDirectory: other, key: { mods: [{ name: "base", version: "2.1.25" }, { name: "other-mod", version: "0.3.0" }] } } });
     expect(await planGameRead(installation, host)).toMatchObject({ ok: true, plan: { modDirectory: mods } });
     expect(modDirectoryFromEnv({})).toBeUndefined();
     expect(modDirectoryFromEnv({ FACE_GAME_MODS_DIR: "" })).toBeUndefined();
@@ -193,10 +193,10 @@ describe("reading the game", () => {
     expect(service.current().catalog).toBeNull();
     expect(activations).toEqual([]);
     expect(service.activate()).toBe(true);
-    expect(activations).toEqual(["2.1.24"]);
+    expect(activations).toEqual(["2.1.25"]);
     expect(service.activate()).toBe(false);
     const current = service.current();
-    expect(current).toMatchObject({ source: MODDED, problem: null, mods: [{ name: "base", version: "2.1.24" }, { name: "some-mod", version: "1.2.3" }] });
+    expect(current).toMatchObject({ source: MODDED, problem: null, mods: [{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }] });
     // The window gets the mod as its info.json describes it, and every record with the mod that created it.
     expect(current.catalog!.modules[1]).toEqual({ name: "some-mod", title: "Some Mod", version: "1.2.3", requires: ["base"], recommends: [], featureFlags: [] });
     expect(current.catalog!.signals.virtual!.map((signal) => [signal.name, signal.modules])).toEqual([["mod-signal", ["some-mod"]], ["signal-A", ["base"]]]);
@@ -324,7 +324,7 @@ describe("reading the game", () => {
     expect(states(runs).at(-1)).toBe("idle");
     expect(existsSync(cacheFile)).toBe(false);
     expect(service.activate()).toBe(true);
-    expect(activations).toEqual(["2.1.24", "built-in"]);
+    expect(activations).toEqual(["2.1.25", "built-in"]);
     expect(service.current()).toEqual({ source: BUILT_IN, problem: null, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
     expect(service.iconTable).toBeUndefined();
     expect((await restart()).current().source).toEqual(BUILT_IN);

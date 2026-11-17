@@ -1,6 +1,6 @@
 // Prototypes a mod adds to the kinds of the editor, in the renderer: the selector, the choice of the prototype in the inspector,
 // the names, the footprints and pins on the board, placing and changing an entity in a session, and completion.
-import { createCatalog } from "@face/catalog";
+import { createCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
 import { PROTOTYPE_NAMES, prototypeData, type Entity } from "@face/model";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -58,7 +58,7 @@ const SOURCE = `circuit "Modded kinds" {
 }
 `;
 
-const reset = (): unknown => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] });
+const reset = (): unknown => applyData({ source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: [] });
 /** A session on the modded data, which is applied as a window does at start, with a project that has the mod switched on. */
 const modded = (source = EMPTY_SOURCE): TestSession => createSession(source, { data: applyData(moddedKindsData()), project: project(source, { modules: MODDED_MODULES }) });
 

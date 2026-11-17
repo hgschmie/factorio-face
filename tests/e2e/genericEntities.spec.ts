@@ -46,7 +46,7 @@ const FACTORY = {
     ],
     item: "blueprint",
     label: "Factory",
-    version: 562954249961472,
+    version: 562954250027008,
   },
 };
 

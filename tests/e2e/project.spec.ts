@@ -57,7 +57,7 @@ test("saves a project file atomically and reopens it in a new session", async ()
     let entries = await readProjectEntries(projectPath);
     expect(Object.keys(entries).sort()).toEqual(["face.json", "main.face"]);
     const manifest = JSON.parse(entries["face.json"]!);
-    expect(manifest).toEqual({ formatVersion: 1, gameVersion: "2.1.24", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], name: "Feedback example", circuits: ["main.face"] });
+    expect(manifest).toEqual({ formatVersion: 1, gameVersion: "2.1.25", modules: ["base", "space-age", "quality", "recycler", "elevated-rails"], customSignalGroups: [], name: "Feedback example", circuits: ["main.face"] });
     savedSource = entries["main.face"]!;
     expect(savedSource).toContain("decider-combinator gate at (300, 80) {");
     expect(savedSource).not.toContain("lamp light");
@@ -155,7 +155,7 @@ test("opens a project through File > Open and refuses directories and files that
   // are reported, and the open project stays.
   const oldProject = await newProjectPath("Old format");
   await mkdir(oldProject);
-  await writeFile(resolve(oldProject, "face.json"), JSON.stringify({ formatVersion: 1, name: "Old format", gameVersion: "2.1.24", modules: ["base"], circuits: ["main.face"] }));
+  await writeFile(resolve(oldProject, "face.json"), JSON.stringify({ formatVersion: 1, name: "Old format", gameVersion: "2.1.25", modules: ["base"], circuits: ["main.face"] }));
   await writeFile(resolve(oldProject, "main.face"), 'circuit "Old format" {\n}\n');
   const notZip = await newProjectPath("Not a zip");
   await writeFile(notZip, "this is not a zip archive\n");

@@ -1,6 +1,6 @@
 // Circuits that between them have every setting of every entity kind and every kind of wire, in the circuit language. The unit
 // tests export and import them; the game probe (tools/game-probe/blueprints.mjs) sends their blueprint strings through the game.
-// Every signal, quality, instrument and note is one of Factorio 2.1.24 with all standard modules, so that the game takes them.
+// Every signal, quality, instrument and note is one of Factorio 2.1.25 with all standard modules, so that the game takes them.
 
 import { loadStandardCatalog, speakerInstrumentNames } from "@face/catalog";
 import { analyze, printFragment } from "@face/language";

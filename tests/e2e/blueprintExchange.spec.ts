@@ -132,7 +132,7 @@ test("shows the blueprint string of the example and takes it back through the pa
   // Read-only, in focus and selected as a whole: ready for the copy key.
   await expect(box).toBeFocused();
   expect(await box.evaluate((area: HTMLTextAreaElement) => [area.readOnly, area.selectionStart, area.selectionEnd === area.value.length])).toEqual([true, 0, true]);
-  await expect(shown.locator('[data-fact="version"]')).toHaveText("Factorio 2.1.24");
+  await expect(shown.locator('[data-fact="version"]')).toHaveText("Factorio 2.1.25");
   await expect(shown.getByRole("region", { name: "Warnings" })).toHaveCount(0);
   await shown.getByRole("button", { name: "Copy" }).click();
   await expect(shown.getByRole("button", { name: "Copied" })).toBeVisible();

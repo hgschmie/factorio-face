@@ -150,7 +150,7 @@ describe("signal status and module settings", () => {
     for (const modules of [["space-age"], ["quality"], ["space-age", "base"], []]) {
       expect(new CatalogService(catalog, modules).picker().length).toBeGreaterThan(5);
       expect(createCatalogEnvironment(catalog, modules).stackSize(signal("item", "no-such-thing"))).toBeUndefined();
-      expect(createSession(SPACE, { project: { path: null, data: { manifest: { formatVersion: 1, name: "Odd", gameVersion: "2.1.24", modules, customSignalGroups: [], circuits: ["main.face"] }, files: [{ name: "main.face", source: SPACE }] } } }).session.state.editable).toBe(true);
+      expect(createSession(SPACE, { project: { path: null, data: { manifest: { formatVersion: 1, name: "Odd", gameVersion: "2.1.25", modules, customSignalGroups: [], circuits: ["main.face"] }, files: [{ name: "main.face", source: SPACE }] } } }).session.state.editable).toBe(true);
     }
   });
 

@@ -8,7 +8,7 @@ import { writeGameData } from "./support/fakeGame.ts";
 import { useScratch } from "./support/scratch.ts";
 
 const scratch = useScratch("app-settings");
-const CATALOG = "2.1.24";
+const CATALOG = "2.1.25";
 
 describe("settings file", () => {
   it("reads as the defaults when the file is missing", async () => {
@@ -96,7 +96,7 @@ describe("the installation in use", () => {
     const data = await writeGameData(scratch("chosen/factorio/data"));
     const elsewhere = await writeGameData(scratch("chosen/elsewhere/data"), { version: "2.1.30" });
     const location = await locateGame({ gameDirectory: scratch("chosen/factorio") }, host(scratch("chosen/home"), { FACE_GAME_DIR: elsewhere }), CATALOG);
-    expect(location).toMatchObject({ status: "chosen", folder: scratch("chosen/factorio"), installation: { dataDirectory: data, version: "2.1.24", versionMatch: "equal" } });
+    expect(location).toMatchObject({ status: "chosen", folder: scratch("chosen/factorio"), installation: { dataDirectory: data, version: "2.1.25", versionMatch: "equal" } });
   });
 
   it("reports a chosen folder that has vanished and does not switch to another installation", async () => {

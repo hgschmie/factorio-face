@@ -22,7 +22,7 @@ import { writeGameData } from "./support/fakeGame.ts";
 import { useScratch } from "./support/scratch.ts";
 
 const scratch = useScratch("game-installation");
-const CATALOG = "2.1.24";
+const CATALOG = "2.1.25";
 const mac: Host = { platform: "darwin", env: {}, home: "/Users/someone" };
 const linux: Host = { platform: "linux", env: {}, home: "/home/someone" };
 const windows: Host = { platform: "win32", env: { ProgramFiles: "D:\\Programs", "ProgramFiles(x86)": "D:\\Programs (x86)" }, home: "C:\\Users\\someone" };
@@ -111,13 +111,13 @@ describe("steam libraries", () => {
 
 describe("version comparison", () => {
   it("tells equal, same minor and different versions apart", () => {
-    expect(compareGameVersion("2.1.24", "2.1.24")).toBe("equal");
-    expect(compareGameVersion("2.1.30", "2.1.24")).toBe("same-minor");
-    expect(compareGameVersion("2.1.3", "2.1.24")).toBe("same-minor");
-    expect(compareGameVersion("2.0.24", "2.1.24")).toBe("different");
-    expect(compareGameVersion("2.2.0", "2.1.24")).toBe("different");
-    expect(compareGameVersion("3.1.24", "2.1.24")).toBe("different");
-    expect(compareGameVersion("2.10.24", "2.1.24")).toBe("different");
+    expect(compareGameVersion("2.1.25", "2.1.25")).toBe("equal");
+    expect(compareGameVersion("2.1.30", "2.1.25")).toBe("same-minor");
+    expect(compareGameVersion("2.1.3", "2.1.25")).toBe("same-minor");
+    expect(compareGameVersion("2.0.24", "2.1.25")).toBe("different");
+    expect(compareGameVersion("2.2.0", "2.1.25")).toBe("different");
+    expect(compareGameVersion("3.1.24", "2.1.25")).toBe("different");
+    expect(compareGameVersion("2.10.24", "2.1.25")).toBe("different");
   });
 });
 
@@ -128,9 +128,9 @@ describe("data directory inspection", () => {
       ok: true,
       installation: {
         dataDirectory: data,
-        version: "2.1.24",
+        version: "2.1.25",
         versionMatch: "equal",
-        modules: [{ name: "base", version: "2.1.24" }, { name: "core" }, ...["space-age", "quality", "elevated-rails", "recycler"].map((name) => ({ name, version: "2.1.24" }))],
+        modules: [{ name: "base", version: "2.1.25" }, { name: "core" }, ...["space-age", "quality", "elevated-rails", "recycler"].map((name) => ({ name, version: "2.1.25" }))],
       },
     });
   });
@@ -168,7 +168,7 @@ describe("data directory inspection", () => {
   it.each<[string, (data: string) => Promise<unknown>]>([
     ["base is missing", (data) => rm(join(data, "base/info.json"))],
     ["core is missing", (data) => rm(join(data, "core/info.json"))],
-    ["base has another name", (data) => writeFile(join(data, "base/info.json"), JSON.stringify({ name: "base-mod", version: "2.1.24" }))],
+    ["base has another name", (data) => writeFile(join(data, "base/info.json"), JSON.stringify({ name: "base-mod", version: "2.1.25" }))],
     ["core has another name", (data) => writeFile(join(data, "core/info.json"), JSON.stringify({ name: "base" }))],
     ["base has no version", (data) => writeFile(join(data, "base/info.json"), JSON.stringify({ name: "base" }))],
     ["the version has two parts", (data) => writeFile(join(data, "base/info.json"), JSON.stringify({ name: "base", version: "2.1" }))],
@@ -176,7 +176,7 @@ describe("data directory inspection", () => {
     ["info.json is not JSON", (data) => writeFile(join(data, "base/info.json"), "{ name: base")],
     ["info.json is a list", (data) => writeFile(join(data, "base/info.json"), "[]")],
     ["info.json is null", (data) => writeFile(join(data, "base/info.json"), "null")],
-    ["info.json is huge", (data) => writeFile(join(data, "base/info.json"), JSON.stringify({ name: "base", version: "2.1.24", padding: "x".repeat(100_000) }))],
+    ["info.json is huge", (data) => writeFile(join(data, "base/info.json"), JSON.stringify({ name: "base", version: "2.1.25", padding: "x".repeat(100_000) }))],
     ["info.json is a folder", async (data) => {
       await rm(join(data, "base/info.json"));
       await mkdir(join(data, "base/info.json"));
@@ -197,7 +197,7 @@ describe("game folders", () => {
   it("accepts the data directory, the bundle's Contents, the bundle and the folder around it", async () => {
     const data = await writeGameData(scratch("mac/Factorio/factorio.app/Contents/data"));
     for (const folder of [data, scratch("mac/Factorio/factorio.app/Contents"), scratch("mac/Factorio/factorio.app"), scratch("mac/Factorio")]) {
-      expect(await inspectGameFolder(folder, CATALOG, "darwin"), folder).toMatchObject({ ok: true, installation: { dataDirectory: data, version: "2.1.24" } });
+      expect(await inspectGameFolder(folder, CATALOG, "darwin"), folder).toMatchObject({ ok: true, installation: { dataDirectory: data, version: "2.1.25" } });
     }
     expect(await inspectGameFolder(scratch("mac"), CATALOG, "darwin")).toMatchObject({ ok: false, problem: "not-game-data" });
   });

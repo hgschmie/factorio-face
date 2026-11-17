@@ -10,8 +10,8 @@
 //   f-unread     its info could not be read: the title is the name, no dependencies; adds one hidden signal
 //   g-filler-N   six mods with a virtual signal each, so that the list is long
 import type { CatalogData, ModuleInfo } from "../../../packages/catalog/src/index.ts";
-import catalog from "../../../packages/catalog/data/catalog-2.1.24.json" with { type: "json" };
-import entities from "../../../packages/model/data/entities-2.1.24.json" with { type: "json" };
+import catalog from "../../../packages/catalog/data/catalog-2.1.25.json" with { type: "json" };
+import entities from "../../../packages/model/data/entities-2.1.25.json" with { type: "json" };
 
 const mod = (name: string, title: string, requires: readonly string[], recommends: readonly string[] = []): ModuleInfo => ({ name, title, version: "1.0.0", requires, recommends, featureFlags: [] });
 

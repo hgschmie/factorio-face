@@ -36,7 +36,7 @@ const save = () => {
     }
   }
 };
-const VERSION_LINE = "   0.000 2026-11-14 10:00:00; Factorio 2.1.24 (build 87808, mac-arm64, full, space-age)\n";
+const VERSION_LINE = "   0.000 2026-11-14 10:00:00; Factorio 2.1.25 (build 88022, mac-arm64, full, space-age)\n";
 
 if (mode === "escape") {
   try {

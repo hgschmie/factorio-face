@@ -10,7 +10,7 @@ export interface FakeGame {
 }
 
 /** Writes what the app looks at in a `data` directory of the game: the info files and one signal icon. */
-export async function writeGameData(dataDirectory: string, { version = "2.1.24", modules = ["space-age", "quality", "elevated-rails", "recycler"], images = true }: FakeGame = {}): Promise<string> {
+export async function writeGameData(dataDirectory: string, { version = "2.1.25", modules = ["space-age", "quality", "elevated-rails", "recycler"], images = true }: FakeGame = {}): Promise<string> {
   const write = async (file: string, content: string | Uint8Array): Promise<void> => {
     await mkdir(dirname(join(dataDirectory, file)), { recursive: true });
     await writeFile(join(dataDirectory, file), content);

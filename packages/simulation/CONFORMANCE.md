@@ -1,6 +1,7 @@
 # @face/simulation: conformance status
 
-The engine implements the reference model of `docs/factorio-audit.md` section 6 for Factorio 2.1.24.
+The engine implements the reference model of `docs/factorio-audit.md` section 6 for Factorio 2.1.24. Fixture F-29, behind the rules with status `game`, was
+recorded again with Factorio 2.1.25 on 2026-11-17 and is the same recording.
 **Nothing in this package has been validated against the running game, except the rules whose status is `game`.** No conformance fixture has provenance `game` yet.
 
 Status values used below:

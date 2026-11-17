@@ -13,7 +13,7 @@ describe.skipIf(!existsSync(ICON_ROOT))("generated icon files", () => {
   const ids = new Set(entries.flatMap((entry) => [entry.icon, ...(entry.variants ?? []).flatMap((variant) => (typeof variant.icon === "string" ? [variant.icon] : []))]));
 
   it("has a 64px PNG for every icon referenced by a signal, group or quality", () => {
-    expect(ids.size).toBe(1138);
+    expect(ids.size).toBe(1139);
     for (const id of ids) {
       const file = iconPath(id, ICON_ROOT);
       expect(existsSync(file), id).toBe(true);

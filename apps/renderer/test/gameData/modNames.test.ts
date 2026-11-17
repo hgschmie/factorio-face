@@ -4,7 +4,7 @@
 import { analyze, executeCommand, printSignal, type TextChange } from "@face/language";
 import { parseEntityTable, setEntityTable, signal, STANDARD_ENTITY_TABLE, type Entity } from "@face/model";
 import { afterAll, describe, expect, it } from "vitest";
-import data from "../../../../packages/model/data/entities-2.1.24.json" with { type: "json" };
+import data from "../../../../packages/model/data/entities-2.1.25.json" with { type: "json" };
 
 const NAMES = ["bob-inserter-2", "Krastorio2-crate", "5d-chest", "chest.v2", "my chest", "chest_ü", 'a"b', "a\\b", "prototype", "entity", "true", "wire", "-leading", "kr:crate", "a/b", "a+b", "se-space@1", "tab\there", "lamp", "x".repeat(200)];
 const EMPTY = 'circuit "t" {\n}\n';

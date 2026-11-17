@@ -18,12 +18,12 @@ const pole: Probed = { name: "small-electric-pole", type: "electric-pole", width
 const gate: Probed = { selectionBox: [-0.5, -1, 0.5, 1], connector: "in", reach: 9, facing: "north", height: 2, width: 1, type: "decider-combinator", name: "decider-combinator" };
 // The game gave it another direction than the scenario asked for.
 const furnace: Probed = { name: "stone-furnace", type: "furnace", width: 2, height: 2, facing: "north", asked: "east", reach: 9, selectionBox: [-0.796875, -1, 0.796875, 1] };
-const recording = (cases: Recording["cases"]): Recording => ({ game_version: "2.1.24", range: 1, cases });
+const recording = (cases: Recording["cases"]): Recording => ({ game_version: "2.1.25", range: 1, cases });
 
 describe("wire reach fixture", () => {
   it("takes the smaller reach of the two entities and keeps the fields in one order", () => {
     const fixture = buildFixture(recording([{ label: "constant - small pole", a: constant, b: pole, rows: ["111", "111", "110"] }, { label: "gate - constant", a: gate, b: constant, rows: ["000", "010", "000"] }]), "test");
-    expect(fixture).toMatchObject({ id: "F-24-wire-reach", source: "test", gameVersion: "2.1.24", range: 1 });
+    expect(fixture).toMatchObject({ id: "F-24-wire-reach", source: "test", gameVersion: "2.1.25", range: 1 });
     expect(fixture.cases.map((probed) => probed.reach)).toEqual([7.5, 9]);
     expect(Object.keys(fixture.cases[1]!.a)).toEqual(["name", "type", "width", "height", "facing", "connector", "reach", "selectionBox"]);
     expect(Object.keys(fixture.cases[0]!.a)).toEqual(["name", "type", "width", "height", "reach", "selectionBox"]);

@@ -2,7 +2,7 @@
 // new project; what a mod brings can be placed and picked once the mod is on, and stays in the source with a warning while it is
 // off; a save records the game's mods in the project file, and a project made with other mods says so when it is opened. With
 // the built-in data the record of a project is kept as it is.
-import { createCatalog } from "@face/catalog";
+import { createCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { signal } from "@face/model";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ProjectMods } from "../../../desktop/src/ipc.ts";
@@ -12,7 +12,7 @@ import { ProjectSession } from "../../src/session/projectSession.ts";
 import { MOD, MOD_ENTITY, MOD_SIGNAL, MODDED_MODS, MODDED_MODULES, moddedData } from "../fixtures/moddedData.ts";
 import { createSession, EMPTY_SOURCE, errorsOf, fakeDesktop, ManualScheduler, MANIFEST, project, type TestSession } from "./helpers.ts";
 
-const RECORD: ProjectMods = { gameVersion: "2.1.24", mods: MODDED_MODS };
+const RECORD: ProjectMods = { gameVersion: "2.1.25", mods: MODDED_MODS };
 const OTHER_RECORD: ProjectMods = { gameVersion: "2.1.20", mods: [{ name: "base", version: "2.1.20" }, { name: MOD, version: "1.0.0" }, { name: "gone-mod", version: "0.2.0" }] };
 const MODDED_CIRCUIT = `circuit "Modded" {
     ${MOD_ENTITY} crate at (40, 80) {
@@ -26,7 +26,7 @@ const MODDED_CIRCUIT = `circuit "Modded" {
 `;
 const GAME_MODULES = ["base", "elevated-rails", "recycler", "quality", "space-age"];
 
-afterEach(() => applyData({ source: { kind: "built-in", version: "2.1.24" }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
+afterEach(() => applyData({ source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: [] }));
 
 /** A session on the modded data, which is applied as a window does at start. Without a project: the empty one, as the window starts. */
 function modded(source?: string, options: ConstructorParameters<typeof ProjectSession>[0] = {}): TestSession & { readonly data: DataInUse } {
@@ -159,11 +159,11 @@ describe("with data read from the game", () => {
     expect(await session.commands.saveAs()).toBe(true);
     const saved = desktop.disk.get("/projects/saved")!;
     expect(saved.manifest).toEqual({ ...MANIFEST, modules: MODDED_MODULES, extras: { later: true }, gameMods: RECORD });
-    expect(session.state.project).toMatchObject({ dirty: false, madeWith: `Factorio 2.1.24 with ${MOD} 1.2.3`, modsNotice: null });
+    expect(session.state.project).toMatchObject({ dirty: false, madeWith: `Factorio 2.1.25 with ${MOD} 1.2.3`, modsNotice: null });
 
     const reopened = new ProjectSession({ api: desktop.api, data, editorExtensions: [], project: { path: "/projects/saved", data: saved } });
     expect(reopened.state).toMatchObject({ error: null, diagnostics: [] });
-    expect(reopened.state.project).toMatchObject({ madeWith: `Factorio 2.1.24 with ${MOD} 1.2.3`, modsNotice: null });
+    expect(reopened.state.project).toMatchObject({ madeWith: `Factorio 2.1.25 with ${MOD} 1.2.3`, modsNotice: null });
   });
 
   it("replaces the record of a project that was made with another game, after saying what differs", async () => {
@@ -171,7 +171,7 @@ describe("with data read from the game", () => {
     desktop.disk.set("/projects/older.faceproj", project(EMPTY_SOURCE, { gameMods: OTHER_RECORD }).data);
     const { session } = modded(EMPTY_SOURCE, { api: desktop.api });
     await session.commands.loadProject("/projects/older.faceproj");
-    const notice = `This project was made with other game data. It was made with Factorio 2.1.20; the data in use is of 2.1.24. The data in use lacks gone-mod 0.2.0. It has ${MOD} 1.2.3 instead of 1.0.0.`;
+    const notice = `This project was made with other game data. It was made with Factorio 2.1.20; the data in use is of 2.1.25. The data in use lacks gone-mod 0.2.0. It has ${MOD} 1.2.3 instead of 1.0.0.`;
     expect(session.state.error).toContain(notice);
     expect(session.state.project).toMatchObject({ path: "/projects/older.faceproj", dirty: false, madeWith: `Factorio 2.1.20 with ${MOD} 1.0.0, gone-mod 0.2.0` });
     expect(session.state.project.modsNotice).toBe(session.state.error);
@@ -181,7 +181,7 @@ describe("with data read from the game", () => {
     session.commands.setProjectName("Brought along");
     expect(await session.commands.save()).toBe(true);
     expect(desktop.disk.get("/projects/older.faceproj")!.manifest.gameMods).toEqual(RECORD);
-    expect(session.state.project).toMatchObject({ dirty: false, modsNotice: null, madeWith: `Factorio 2.1.24 with ${MOD} 1.2.3` });
+    expect(session.state.project).toMatchObject({ dirty: false, modsNotice: null, madeWith: `Factorio 2.1.25 with ${MOD} 1.2.3` });
   });
 });
 
@@ -205,7 +205,7 @@ describe("with the built-in data", () => {
     const { session } = createSession(EMPTY_SOURCE, { api: desktop.api });
     await session.commands.loadProject("/projects/modded.faceproj");
     expect(session.state.error).toContain(`This project was made with other game data. The data in use lacks ${MOD} 1.2.3.`);
-    expect(session.state.project).toMatchObject({ path: "/projects/modded.faceproj", dirty: false, madeWith: `Factorio 2.1.24 with ${MOD} 1.2.3` });
+    expect(session.state.project).toMatchObject({ path: "/projects/modded.faceproj", dirty: false, madeWith: `Factorio 2.1.25 with ${MOD} 1.2.3` });
     // The source is as it was; the mod's entity is an error in it and the mod's signal a warning.
     expect(session.state.source).toBe(MODDED_CIRCUIT);
     expect(codes(session)).toEqual(["error unknown-prototype", "warning unknown-signal"]);
@@ -220,12 +220,12 @@ describe("with the built-in data", () => {
 
   it("says nothing for a project whose game the built-in data covers", async () => {
     const desktop = fakeDesktop();
-    const standard: ProjectMods = { gameVersion: "2.1.24", mods: [{ name: "base", version: "2.1.24" }, { name: "space-age", version: "2.1.24" }] };
+    const standard: ProjectMods = { gameVersion: "2.1.25", mods: [{ name: "base", version: "2.1.25" }, { name: "space-age", version: "2.1.25" }] };
     desktop.disk.set("/projects/plain.faceproj", project(EMPTY_SOURCE, { gameMods: standard }).data);
     const { session } = createSession(EMPTY_SOURCE, { api: desktop.api });
     await session.commands.loadProject("/projects/plain.faceproj");
     expect(session.state.error).toBeNull();
-    expect(session.state.project).toMatchObject({ madeWith: "Factorio 2.1.24", modsNotice: null });
+    expect(session.state.project).toMatchObject({ madeWith: "Factorio 2.1.25", modsNotice: null });
   });
 });
 

@@ -52,7 +52,7 @@ describe("import: the blueprint", () => {
 }
 `);
     expect(circuit.entities.map((entity) => entity.id)).toEqual(["e1", "e2", "e3", "e4"]);
-    expect(report).toEqual({ version: "2.1.24.0", entities: 4, dropped: [], wires: { imported: 3, copper: 0, toDropped: 0, invalid: 0 }, settings: [], ignored: [], warnings: [] });
+    expect(report).toEqual({ version: "2.1.25.0", entities: 4, dropped: [], wires: { imported: 3, copper: 0, toDropped: 0, invalid: 0 }, settings: [], ignored: [], warnings: [] });
   });
 
   it("gives a blueprint without a label no name, and takes one without entities as an empty circuit", () => {
@@ -83,7 +83,7 @@ describe("import: versions", () => {
   const versioned = (version: unknown) => blueprintOf([lamp(1)], [], { version });
 
   it("takes 2.0 and 2.1, and anything without a usable version", () => {
-    for (const version of [packVersion(2, 0, 7), packVersion(2, 1, 24, 3), undefined, "2.1", -1]) expect(codeOf(versioned(version))).toBe("ok");
+    for (const version of [packVersion(2, 0, 7), packVersion(2, 1, 25, 3), undefined, "2.1", -1]) expect(codeOf(versioned(version))).toBe("ok");
     expect(imported(versioned(packVersion(2, 0, 76))).report).toMatchObject({ version: "2.0.76.0", warnings: [] });
     expect(imported(versioned(undefined)).report.version).toBeUndefined();
   });
@@ -104,14 +104,14 @@ describe("import: versions", () => {
 });
 
 describe("import: books and other items", () => {
-  const blueprint = (label: string, entities: readonly unknown[]) => ({ blueprint: { item: "blueprint", label, entities, version: packVersion(2, 1, 24) } });
+  const blueprint = (label: string, entities: readonly unknown[]) => ({ blueprint: { item: "blueprint", label, entities, version: packVersion(2, 1, 25) } });
   const gate = { entity_number: 9, name: "gate", ...at(9.5, 0.5) };
   const book = {
     blueprint_book: {
       item: "blueprint-book",
       label: "Circuits",
       active_index: 0,
-      version: packVersion(2, 1, 24),
+      version: packVersion(2, 1, 25),
       blueprints: [
         { index: 0, ...blueprint("Lamps", [lamp(1), lamp(2), gate]) },
         { index: 1, deconstruction_planner: { item: "deconstruction-planner", label: "Trees" } },
@@ -167,7 +167,7 @@ describe("import: books and other items", () => {
   });
 
   it("describes a single blueprint", () => {
-    expect(inspectBlueprint(blueprint("One", [lamp(1), gate]))).toEqual({ kind: "blueprint", label: "One", entities: 2, known: 1, version: "2.1.24.0" });
+    expect(inspectBlueprint(blueprint("One", [lamp(1), gate]))).toEqual({ kind: "blueprint", label: "One", entities: 2, known: 1, version: "2.1.25.0" });
     expect(inspectBlueprint({ blueprint: {} })).toEqual({ kind: "blueprint", label: "", entities: 0, known: 0 });
   });
 });

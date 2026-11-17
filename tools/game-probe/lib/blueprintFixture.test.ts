@@ -28,14 +28,14 @@ const { composeScenario, loadRequest } = (await import(/* @vite-ignore */ new UR
   loadRequest(workDir: string): Promise<ProbeRequest>;
 };
 
-const lamp = { blueprint: { entities: [{ entity_number: 1, name: "small-lamp", position: { x: 0.5, y: 0.5 } }], item: "blueprint", version: 562954249961472 } };
-const pole = { blueprint: { entities: [{ entity_number: 1, name: "substation", position: { x: 1, y: 1 } }], item: "blueprint", version: 562954249961472 } };
+const lamp = { blueprint: { entities: [{ entity_number: 1, name: "small-lamp", position: { x: 0.5, y: 0.5 } }], item: "blueprint", version: 562954250027008 } };
+const pole = { blueprint: { entities: [{ entity_number: 1, name: "substation", position: { x: 1, y: 1 } }], item: "blueprint", version: 562954250027008 } };
 const [lampString, poleString] = [encodeBlueprintString(lamp), encodeBlueprintString(pole)];
 
 /** What blueprints.lua writes, as the game's JSON has it: an empty list is an object. */
 const recording = {
-  game_version: "2.1.24",
-  active_mods: { "space-age": "2.1.24", base: "2.1.24" },
+  game_version: "2.1.25",
+  active_mods: { "space-age": "2.1.25", base: "2.1.25" },
   defines: { wire_connector_id: { circuit_green: 2, pole_copper: 5, circuit_red: 1, combinator_input_red: 1 }, direction: { south: 8, north: 0 } },
   fresh: { placed: { string: lampString }, with_control_behavior: { error: "cannot place small-lamp" }, placed_on_platform: { string: poleString } },
   states: { constant_without_sections: { string: lampString } },
@@ -56,7 +56,7 @@ describe("blueprint probe: the fixture", () => {
 
   it("holds every blueprint as its string and its JSON, and keeps what the game could not do", () => {
     const fixture = buildFixture(recording, "test");
-    expect(fixture).toMatchObject({ id: "F-01-blueprints", covers: ["F-01", "F-02", "F-23"], gameVersion: "2.1.24", activeMods: ["base", "space-age"], source: "test" });
+    expect(fixture).toMatchObject({ id: "F-01-blueprints", covers: ["F-01", "F-02", "F-23"], gameVersion: "2.1.25", activeMods: ["base", "space-age"], source: "test" });
     expect(fixture.fresh).toEqual({
       placed: { string: lampString, blueprint: lamp }, withControlBehavior: { error: "cannot place small-lamp" }, placedOnPlatform: { string: poleString, blueprint: pole }, withControlBehaviorOnPlatform: { error: "not recorded" },
     });

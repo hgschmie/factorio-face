@@ -9,9 +9,9 @@ import { appSettingsView, gameFolderHint, INITIAL_APP_SETTINGS, needsGameFolderH
 const BASE = "face-asset://catalog/";
 const MODULES = ["base", "core", "space-age", "quality", "elevated-rails", "recycler"];
 const NO_GAME = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, versionMatch: null, modules: [], problem: null } as const;
-const NONE: AppSettingsState = { ...NO_GAME, catalogVersion: "2.1.24", iconRevision: 0 };
+const NONE: AppSettingsState = { ...NO_GAME, catalogVersion: "2.1.25", iconRevision: 0 };
 const DATA = "/Applications/factorio.app/Contents/data";
-const DETECTED: AppSettingsState = { ...NONE, dataDirectory: DATA, source: "detected", gameVersion: "2.1.24", versionMatch: "equal", modules: MODULES.map((name) => ({ name, present: true })) };
+const DETECTED: AppSettingsState = { ...NONE, dataDirectory: DATA, source: "detected", gameVersion: "2.1.25", versionMatch: "equal", modules: MODULES.map((name) => ({ name, present: true })) };
 const CHOSEN: AppSettingsState = { ...DETECTED, chosenFolder: "/Applications/factorio.app", source: "chosen" };
 const UNUSABLE: AppSettingsState = { ...NONE, chosenFolder: "/Volumes/Games/factorio", source: "chosen", problem: "This folder does not exist or cannot be read: /Volumes/Games/factorio" };
 
@@ -40,7 +40,7 @@ describe("what the dialog says", () => {
   });
 
   it("for an installation the app found", () => {
-    const version = { text: "Factorio 2.1.24", note: null, level: "ok" };
+    const version = { text: "Factorio 2.1.25", note: null, level: "ok" };
     const nothingElse = { dataDirectory: null, modulesMissing: [], problem: null, canReset: false };
     expect(appSettingsView(DETECTED)).toEqual({ folder: DATA, found: true, origin: "Found automatically", version, modulesFound: MODULES, ...nothingElse });
   });
@@ -60,11 +60,11 @@ describe("what the dialog says", () => {
   it("with a note for another patch release and a warning for another release line", () => {
     const patch = appSettingsView({ ...DETECTED, gameVersion: "2.1.30", versionMatch: "same-minor" }).version!;
     expect([patch.text, patch.level]).toEqual(["Factorio 2.1.30", "note"]);
-    expect(patch.note).toContain("2.1.24");
+    expect(patch.note).toContain("2.1.25");
     expect(patch.note).toContain("Within 2.1 ");
     const other = appSettingsView({ ...DETECTED, gameVersion: "2.0.72", versionMatch: "different" }).version!;
     expect([other.text, other.level]).toEqual(["Factorio 2.0.72", "warning"]);
-    expect(other.note).toContain("2.1.24");
+    expect(other.note).toContain("2.1.25");
     expect(other.note).toContain("used all the same");
   });
 

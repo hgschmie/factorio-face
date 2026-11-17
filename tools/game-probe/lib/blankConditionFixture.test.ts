@@ -29,13 +29,13 @@ const recorded = (state: string, built: string, fulfilled: boolean, disabled: bo
 });
 const both = (state: string, fulfilled: boolean, disabled: boolean, condition?: Json): Recorded[] => [recorded(state, "blueprint", fulfilled, disabled, condition), recorded(state, "api", fulfilled, disabled, condition)];
 const belt = (readings: Recorded[]): Recording["cases"][number] => ({ name: "transport-belt", type: "transport-belt", kind: "onoff", flag: "circuit_enabled", readings });
-const recording = (cases: Recording["cases"], deciders: Recording["deciders"] = {}): Recording => ({ game_version: "2.1.24", ticks: 60, signal: "signal-A", cases, deciders });
+const recording = (cases: Recording["cases"], deciders: Recording["deciders"] = {}): Recording => ({ game_version: "2.1.25", ticks: 60, signal: "signal-A", cases, deciders });
 const controls = [...both("true", true, false, { first_signal: A, constant: 0, comparator: ">" }), ...both("false", false, true, { first_signal: A, constant: 0, comparator: "<" })];
 
 describe("blank condition fixture", () => {
   it("folds the two ways of building into one reading where they say the same, in one order of fields and keys", () => {
     const fixture = buildFixture(recording([belt([...both("blank", false, true), ...controls])]), "test");
-    expect(fixture).toMatchObject({ id: "F-29-blank-condition", source: "test", gameVersion: "2.1.24", ticks: 60, signal: "signal-A" });
+    expect(fixture).toMatchObject({ id: "F-29-blank-condition", source: "test", gameVersion: "2.1.25", ticks: 60, signal: "signal-A" });
     const [blank, yes] = fixture.cases[0]!.readings;
     expect(fixture.cases[0]!.readings.map((one) => [one.state, one.built])).toEqual([["blank", ["blueprint", "api"]], ["true", ["blueprint", "api"]], ["false", ["blueprint", "api"]]]);
     expect(Object.keys(blank!)).toEqual(["state", "built", "wires", "signal", "controlBehavior", "flag", "condition", "fulfilled", "disabled", "status", "exported"]);

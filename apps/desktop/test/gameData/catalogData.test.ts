@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import standard from "../../../../packages/catalog/data/catalog-2.1.24.json" with { type: "json" };
+import standard from "../../../../packages/catalog/data/catalog-2.1.25.json" with { type: "json" };
 import { parseCatalogData } from "../../src/gameData/catalogData.ts";
 import { ValidationError } from "../../src/validation.ts";
 
@@ -7,9 +7,9 @@ type Json = Record<string, unknown>;
 const signal = (name: string, more: Json = {}): Json => ({ name, displayName: name, order: "a", subgroup: "s", modules: [], ...more });
 const minimal = (more: Json = {}): Json => ({
   schema: 1,
-  game: { version: "2.1.24", build: 87808 },
+  game: { version: "2.1.25", build: 88022 },
   provenance: { generator: "test", generatedAt: "2026-11-14T00:00:00Z", locale: "en", commands: [], modSets: ["base"], icons: "" },
-  modules: [{ name: "base", title: "Base", version: "2.1.24", requires: [], recommends: [], featureFlags: [] }],
+  modules: [{ name: "base", title: "Base", version: "2.1.25", requires: [], recommends: [], featureFlags: [] }],
   constants: { defaultItemWeight: 100, rocketLiftWeight: 1000, rocketSilos: [] },
   groups: [{ name: "g", displayName: "Group", order: "a", modules: [] }],
   subgroups: [{ name: "s", group: "g", order: "a", modules: [] }],
@@ -31,7 +31,7 @@ describe("parseCatalogData", () => {
     ["no record", [], /not of schema 1/],
     ["another schema", minimal({ schema: 2 }), /not of schema 1/],
     ["no game version", minimal({ game: { version: "2.1", build: 1 } }), /game version is "2.1"/],
-    ["a build that is no number", minimal({ game: { version: "2.1.24", build: "x" } }), /game build is "x"/],
+    ["a build that is no number", minimal({ game: { version: "2.1.25", build: "x" } }), /game build is "x"/],
     ["no provenance", minimal({ provenance: undefined }), /provenance undefined is not a record/],
     ["a module without dependencies", minimal({ modules: [{ name: "base", title: "Base", version: "1" }] }), /module base: requires is undefined/],
     ["constants of another shape", minimal({ constants: { defaultItemWeight: "heavy", rocketLiftWeight: 1, rocketSilos: [] } }), /constants are/],

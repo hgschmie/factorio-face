@@ -26,7 +26,7 @@ function rebuiltByAGame(data: BlueprintFile): RecordedBlueprint {
   const poles = moved.filter((entity) => PROTOTYPES[entity.name]?.kind === "pole").map((entity) => entity.entity_number);
   const copper = poles.slice(1).map((pole, index) => [poles[index]!, CONNECTOR.poleCopper, pole, CONNECTOR.poleCopper]);
   const rewired = wires.map(([from, fromConnector, to, toConnector]) => (number(from) <= number(to) ? [number(from), fromConnector, number(to), toConnector] : [number(to), toConnector, number(from), fromConnector]));
-  return recorded({ blueprint: { ...rest, entities: moved, wires: [...copper, ...rewired.reverse()], version: packVersion(2, 1, 24, 3) } });
+  return recorded({ blueprint: { ...rest, entities: moved, wires: [...copper, ...rewired.reverse()], version: packVersion(2, 1, 25, 3) } });
 }
 
 describe("comparing with what the game built", () => {

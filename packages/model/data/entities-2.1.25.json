@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "game": {"version":"2.1.24","build":87808},
+  "game": {"version":"2.1.25","build":88022},
   "generator": "tools/catalog/generate.mjs",
   "runtimeChecked": true,
   "defaults": {"width":1,"height":1,"directions":1,"wireReach":9,"modules":["base"]},

@@ -16,7 +16,7 @@ async function write(file: string, content: string | Uint8Array): Promise<string
   return file;
 }
 
-const GAME_MODULES: GameModule[] = [{ name: "core" }, { name: "base", version: "2.1.24" }, { name: "quality", version: "2.1.24" }, { name: "space-age", version: "2.1.24" }];
+const GAME_MODULES: GameModule[] = [{ name: "core" }, { name: "base", version: "2.1.25" }, { name: "quality", version: "2.1.25" }, { name: "space-age", version: "2.1.25" }];
 const modList = (mods: object[]): string => JSON.stringify({ mods }, null, 2);
 
 /** A mod directory as a player has it: archives in several versions, a mod under development as a link, a disabled mod, the two files the game rewrites. */
@@ -119,15 +119,15 @@ describe("readUserMods", () => {
   it("says what the game will load: enabled and new mods, the pinned version or the highest", async () => {
     const mods = await readUserMods(await playerMods(scratch("enabled")));
     expect(enabledMods(mods, GAME_MODULES)).toEqual([
-      { name: "alpha", version: "1.10.0" }, { name: "base", version: "2.1.24" }, { name: "dev-mod", version: "0.5.0" }, { name: "folder-mod", version: "3.0.0" },
-      { name: "new-mod", version: "0.0.1" }, { name: "pinned", version: "1.0.0" }, { name: "space-age", version: "2.1.24" },
+      { name: "alpha", version: "1.10.0" }, { name: "base", version: "2.1.25" }, { name: "dev-mod", version: "0.5.0" }, { name: "folder-mod", version: "3.0.0" },
+      { name: "new-mod", version: "0.0.1" }, { name: "pinned", version: "1.0.0" }, { name: "space-age", version: "2.1.25" },
     ]);
   });
 
   it("is a game without mods when there is no mod directory, with the game's modules all enabled", async () => {
     const mods = await readUserMods(scratch("absent", "mods"));
     expect(mods).toEqual({ directory: scratch("absent", "mods"), exists: false, list: undefined, files: [], settingsHash: null, problems: [] });
-    expect(enabledMods(mods, GAME_MODULES)).toEqual([{ name: "base", version: "2.1.24" }, { name: "quality", version: "2.1.24" }, { name: "space-age", version: "2.1.24" }]);
+    expect(enabledMods(mods, GAME_MODULES)).toEqual([{ name: "base", version: "2.1.25" }, { name: "quality", version: "2.1.25" }, { name: "space-age", version: "2.1.25" }]);
   });
 
   it("reports a list it cannot read and treats every mod as enabled", async () => {
@@ -137,7 +137,7 @@ describe("readUserMods", () => {
     const mods = await readUserMods(directory);
     expect(mods.list).toBeUndefined();
     expect(mods.problems).toEqual(["mod-list.json cannot be read; the game decides which mods it enables"]);
-    expect(enabledMods(mods, [{ name: "base", version: "2.1.24" }])).toEqual([{ name: "base", version: "2.1.24" }, { name: "beta", version: "0.1.0" }]);
+    expect(enabledMods(mods, [{ name: "base", version: "2.1.25" }])).toEqual([{ name: "base", version: "2.1.25" }, { name: "beta", version: "0.1.0" }]);
   });
 });
 

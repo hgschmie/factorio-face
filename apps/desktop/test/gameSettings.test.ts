@@ -12,7 +12,7 @@ import { writeGameData } from "./support/fakeGame.ts";
 import { useScratch } from "./support/scratch.ts";
 
 const scratch = useScratch("game-settings");
-const CATALOG = "2.1.24";
+const CATALOG = "2.1.25";
 const ALL_MODULES = ["base", "core", "space-age", "quality", "elevated-rails", "recycler"];
 const present = (...missing: string[]) => ALL_MODULES.map((name) => ({ name, present: !missing.includes(name) }));
 const NO_GAME = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, versionMatch: null, modules: [], problem: null } as const;
@@ -94,7 +94,7 @@ describe("at start", () => {
     await settings.ready();
     expect(resets).toEqual([data]);
     const modules = present("space-age", "elevated-rails", "recycler");
-    expect(await settings.state()).toEqual({ ...NONE, dataDirectory: data, source: "detected", gameVersion: "2.1.24", versionMatch: "equal", modules });
+    expect(await settings.state()).toEqual({ ...NONE, dataDirectory: data, source: "detected", gameVersion: "2.1.25", versionMatch: "equal", modules });
     expect(changes).toEqual([]);
     // Looking for the game writes nothing.
     await expect(readFile(file)).rejects.toThrow();
@@ -122,7 +122,7 @@ describe("the installation and the catalog in use", () => {
   it("hands out the installation once it is known, and none without a game", async () => {
     const data = await writeGameData(scratch("installation/game/data"), { modules: ["quality"] });
     const { settings } = setup("installation", scratch("installation/game"));
-    expect(await settings.installation()).toMatchObject({ dataDirectory: data, version: "2.1.24", versionMatch: "equal" });
+    expect(await settings.installation()).toMatchObject({ dataDirectory: data, version: "2.1.25", versionMatch: "equal" });
     expect(await setup("installation-none").settings.installation()).toBeUndefined();
   });
 
@@ -131,11 +131,11 @@ describe("the installation and the catalog in use", () => {
     const { settings, changes, resets } = setup("other-catalog", scratch("other-catalog/game"));
     await settings.ready();
     const state = await settings.setCatalogVersion("2.1.30");
-    expect(state).toMatchObject({ catalogVersion: "2.1.30", gameVersion: "2.1.24", versionMatch: "same-minor", iconRevision: 1, dataDirectory: data });
+    expect(state).toMatchObject({ catalogVersion: "2.1.30", gameVersion: "2.1.25", versionMatch: "same-minor", iconRevision: 1, dataDirectory: data });
     expect(changes).toEqual([state]);
     expect(resets).toEqual([data, data]);
     expect((await settings.installation())?.versionMatch).toBe("same-minor");
-    expect(await settings.setCatalogVersion("2.1.24")).toMatchObject({ catalogVersion: "2.1.24", versionMatch: "equal", iconRevision: 2 });
+    expect(await settings.setCatalogVersion("2.1.25")).toMatchObject({ catalogVersion: "2.1.25", versionMatch: "equal", iconRevision: 2 });
   });
 });
 
@@ -256,7 +256,7 @@ describe("resetting to auto-detection", () => {
     const { settings, resets, changes, file } = setup("reset", scratch("reset/found"));
     await settings.choose(scratch("reset/chosen"));
     const state = await settings.reset();
-    expect(state).toEqual({ ...NONE, dataDirectory: found, source: "detected", gameVersion: "2.1.24", versionMatch: "equal", modules: present(), iconRevision: 2 });
+    expect(state).toEqual({ ...NONE, dataDirectory: found, source: "detected", gameVersion: "2.1.25", versionMatch: "equal", modules: present(), iconRevision: 2 });
     expect(resets).toEqual([found, chosen, found]);
     expect(changes.map((change) => [change.source, change.iconRevision])).toEqual([["chosen", 1], ["detected", 2]]);
     expect(await stored(file)).toEqual({ version: 1, gameDirectory: null });

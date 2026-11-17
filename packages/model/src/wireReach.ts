@@ -6,7 +6,7 @@
 // wire may span the smaller reach of its two ends. The project's reach may be set to "unlimited"; an end that is unlimited does
 // not limit, so a wire between two such ends is never too long and one to a pole has the pole's reach.
 //
-// The measure is the game's rule, verified against Factorio 2.1.24 by fixture F-24 (tests/fixtures/game/F-24-wire-reach.json,
+// The measure is the game's rule, verified against Factorio 2.1.25 by fixture F-24 (tests/fixtures/game/F-24-wire-reach.json,
 // recorded by tools/game-probe/wire-reach.mjs). Between two electric poles it is the straight line from center to center.
 // For every other pair, a pole and something else included, it is the straight line between the nearest points of the two
 // selection boxes (`selectionBox`: the tiles an entity covers for most prototypes, a little less or more for some), that is per

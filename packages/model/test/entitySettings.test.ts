@@ -8,7 +8,7 @@ import {
   signal, STANDARD_ENTITY_TABLE, TERMINALS, tileCenter, tileHalves, tileSize, UNSET_CONDITION, wireReachBetween, wireSpan,
   type Condition, type ConditionSetting, type Direction, type EntityShape, type SettingSpec, type SettingValue,
 } from "../src/index.ts";
-import standard from "../data/entities-2.1.24.json" with { type: "json" };
+import standard from "../data/entities-2.1.25.json" with { type: "json" };
 import { extractControlBehaviors, type BehaviorField, type ControlBehaviors } from "./controlBehaviors.ts";
 
 const API_REFERENCE = "/Users/henning/factorio/factorio-data/runtime-api.json";
@@ -122,7 +122,7 @@ describe("the settings table", () => {
 
   it("has the defaults the reference states, but for the ones the game itself has otherwise", () => {
     // The table has what the game says (fixture F-01, held against it by packages/blueprints/test/game.test.ts). Where the
-    // reference at hand (2.1.23) states another default, the game (2.1.24) wins; these are the differences.
+    // reference at hand (2.1.23) states another default, the game (2.1.25) wins; these are the differences.
     const differing: string[] = [];
     for (const type of genericTypes) {
       const row = ENTITY_SETTINGS[type]!;

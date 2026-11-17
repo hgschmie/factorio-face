@@ -24,7 +24,7 @@ const many = Array.from({ length: 40 }, (_, index) => `many-${index}`);
 
 const table = parseIconTable({
   schema: 1,
-  game: { version: "2.1.24" },
+  game: { version: "2.1.25" },
   icons: {
     "item/red": [path("red")],
     "recipe/red-recycling": [path("red"), overlay],

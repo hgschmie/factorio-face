@@ -2,9 +2,9 @@
 
 Blueprints of the game: the blueprint string, import of a blueprint as a circuit of the editor, export of a circuit as a blueprint. Pure TypeScript without Node APIs; it runs in the renderer, in a worker and in vitest. It depends on `@face/model`, on `@face/language` (the importer checks with `checkEntity` that the circuit it returns can be written in the circuit language exactly) and on `fflate`. It does not depend on `@face/catalog`: the one thing it needs from the game data, the instruments of the speaker, is passed in.
 
-The editor is a circuit editor, not a blueprint editor. An import keeps the entities the editor knows with their circuit wires, drops everything else and says what it dropped. The editor knows every entity of the game that a circuit wire connects to (`PROTOTYPES` of `@face/model`, 98 prototypes of Factorio 2.1.24): the four combinators, the lamp, the four electric poles and the programmable speaker with a kind of their own, and the other 88 (chests, inserters, belts, machines, turrets, train stops, ...) as generic entities (kind `entity`), whose circuit settings it models and whose other fields it keeps for the blueprint unread. What it drops is what no circuit wire connects to: gates, rails, rolling stock, and entities the game data in use does not have. With data read from a game with mods (`setEntityTable`) a modded prototype of one of the six types with a kind of its own is an entity of that kind that holds its `prototype`, and its name is what the export writes; a modded speaker stays unknown.
+The editor is a circuit editor, not a blueprint editor. An import keeps the entities the editor knows with their circuit wires, drops everything else and says what it dropped. The editor knows every entity of the game that a circuit wire connects to (`PROTOTYPES` of `@face/model`, 98 prototypes of Factorio 2.1.25): the four combinators, the lamp, the four electric poles and the programmable speaker with a kind of their own, and the other 88 (chests, inserters, belts, machines, turrets, train stops, ...) as generic entities (kind `entity`), whose circuit settings it models and whose other fields it keeps for the blueprint unread. What it drops is what no circuit wire connects to: gates, rails, rolling stock, and entities the game data in use does not have. With data read from a game with mods (`setEntityTable`) a modded prototype of one of the six types with a kind of its own is an entity of that kind that holds its `prototype`, and its name is what the export writes; a modded speaker stays unknown.
 
-Game facts are in `docs/factorio-audit.md` (sections 3 to 5 and 12; the control behaviours of the generic entities in section 14). The format is held against the game itself: fixture F-01 is a recording of Factorio 2.1.24 that every shape, number, default and direction of this package is tested against ("Verified against the game" below, with what is still open).
+Game facts are in `docs/factorio-audit.md` (sections 3 to 5 and 12; the control behaviours of the generic entities in section 14). The format is held against the game itself: fixture F-01 is a recording of Factorio 2.1.25 that every shape, number, default and direction of this package is tested against ("Verified against the game" below, with what is still open).
 
 ## API
 
@@ -89,7 +89,7 @@ type ImportErrorCode = DecodeErrorCode | "not-a-blueprint" | "book" | "unsupport
 
 ```ts
 interface ImportReport {
-  version?: string;                              // "2.1.24.0"
+  version?: string;                              // "2.1.25.0"
   entities: number;                              // in the circuit
   dropped: readonly { name: string; count: number; reason: "unknown" | "invalid" }[];   // most frequent first
   wires: { imported: number; copper: number; toDropped: number; invalid: number };
@@ -143,7 +143,7 @@ Passed over without a note, because they mean nothing where they stand: what a l
 ```ts
 exportBlueprint(circuit: Circuit, options?: ExportOptions): ExportResult
 
-interface ExportOptions { instruments?: readonly SpeakerInstrument[]; version?: number }   // version: default EXPORT_VERSION, 2.1.24.0
+interface ExportOptions { instruments?: readonly SpeakerInstrument[]; version?: number }   // version: default EXPORT_VERSION, 2.1.25.0
 type ExportResult =
   | { ok: true; data: BlueprintFile; string: string; warnings: readonly ExportWarning[] }
   | { ok: false; problems: readonly ExportProblem[] };
@@ -192,7 +192,7 @@ Every row is what the game itself writes (fixture F-01), also the order of the f
 | Speaker | `control_behavior` first, then `parameters` and `alert_parameters`, both always in full. The control behaviour is `circuit_condition` (only when there is one) and `circuit_parameters` in full; none at all for a speaker the circuit does not concern (no condition, no pitch signal, the first instrument and note, nothing to stop). Volume percent / 100. The pitch signal is the left side of the condition with `signal_value_is_pitch` |
 | Instruments | `instrument_id` and `note_id` are positions from 0 in the lists passed as `instruments`; the editor has the names. Id 0 is imported as "not said" (the first instrument, the first note of the instrument), which is what the model means by absent |
 | Floats | the game stores multipliers, volumes and colors in 32 bits and writes them out in full (0.800000011920928955078125 for a volume of 80). Read: the shortest decimal that names the float (0.8); volume in percent to seven digits |
-| Version | `EXPORT_VERSION`: 2.1.24.0; the game takes the build number 0 |
+| Version | `EXPORT_VERSION`: 2.1.25.0; the game takes the build number 0 (it writes 2.1.25.10 itself; 2.1.24 wrote 2.1.24.1) |
 | Icons | up to four, the items that build the most frequent prototypes (`placedBy` of the entity table); a prototype no item builds (four chests of the game's editor) is shown as an entity signal |
 | Space platform | a circuit with the hub of a platform has the hub at (0, 0) (see "Export") |
 
@@ -249,7 +249,7 @@ A blueprint that this package exported comes back identical, and so does every f
 
 ## Verified against the game
 
-`tests/fixtures/game/F-01-blueprints.json` is a recording of Factorio 2.1.24 with its five standard modules, made by `make probe-blueprints` (below). `test/game.test.ts` holds the package against it (`test/recording.ts`), and it is where every row of "Mapping decisions" and of the settings table is from. The recording has:
+`tests/fixtures/game/F-01-blueprints.json` is a recording of Factorio 2.1.25 with its five standard modules (recorded again on 2026-11-17; but for the version numbers it is what 2.1.24 gave on 2026-11-14), made by `make probe-blueprints` (below). `test/game.test.ts` holds the package against it (`test/recording.ts`), and it is where every row of "Mapping decisions" and of the settings table is from. The recording has:
 
 - the numbers of the defines: directions, connectors, the lamp's color modes, and the modes of the generic entities;
 - every prototype as the game places it, untouched and with its control behaviour created, as blueprints (the hub of a space platform on a platform);
@@ -277,7 +277,7 @@ What the game corrected in this package is listed in `docs/factorio-audit.md` 12
 | What the game does with a wire longer than its reach when it reads a blueprint | No sample has one: it would be missing from what the game built and the comparison would say so for the wrong reason. The reach itself is fixture F-24 |
 | A control behaviour of a generic entity without a circuit wire, through a build | Every generic sample is wired. Lamps and speakers without a wire kept theirs |
 | `read_fuel` of a lab; the networks of a heat exchanger, an electric turret, an infinity chest | The game has no value for them on these prototypes; a field written for them is not kept |
-| Blueprints of other versions (2.0, the 1.2 pre-release, 1.1) and of mods | The probe runs the installed game, 2.1.24 with the standard modules. Older strings are tested with the ones the game data ships (`test/shipped.test.ts`) |
+| Blueprints of other versions (2.0, the 1.2 pre-release, 1.1) and of mods | The probe runs the installed game, 2.1.25 with the standard modules. Older strings are tested with the ones the game data ships (`test/shipped.test.ts`) |
 
 ### The probe
 
