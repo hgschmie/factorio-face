@@ -131,7 +131,7 @@ test("the reach 0 means unlimited: nothing is flagged, and the inspector says so
   await expect(flagged(page)).toHaveCount(1);
   await expect(problems(page)).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   // One line under the field says the range, what 0 means and the reach of the game; how the distance is measured is a long
   // text behind a button, closed whenever the panel opens.
   await expect(reachField(page)).toHaveAccessibleDescription("From 0 to 64 tiles; 0 means unlimited. In the game the reach is 9. An electric pole has its own reach.");
@@ -146,7 +146,7 @@ test("the reach 0 means unlimited: nothing is flagged, and the inspector says so
   await expect(details).toContainText("a small one 7.5 tiles, a big one 32");
   await expect(details).toContainText("A wire between two poles is measured from center to center.");
   await settings(page).getByRole("button", { name: "Close project settings" }).click();
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   await expect(more).toHaveAttribute("aria-expanded", "false");
   await expect(details).toBeHidden();
   await reachField(page).fill("0");
@@ -187,7 +187,7 @@ test("the reach is set in the project settings, decides what is flagged, and is 
     await expect(flagged(page)).toHaveCount(1);
     const red = await wireKeyOf(page, "red", "source.out", "light.in");
 
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     const reset = settings(page).getByRole("button", { name: "Reset to 9" });
     await expect(reachField(page)).toHaveValue("9");
     await expect(reset).toBeDisabled();
@@ -254,7 +254,7 @@ test("the reach is set in the project settings, decides what is flagged, and is 
     await expect(page.locator("g.wire")).toHaveCount(2);
     await expect(flagged(page)).toHaveCount(0);
     await expect(page.locator(".statusbar")).not.toContainText("warning");
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     await expect(reachField(page)).toHaveValue("12");
 
     // The default is written as no field.
@@ -275,7 +275,7 @@ for (const [wireReach, taken] of [[64.5, "64"], [-1, "0"]] as const) {
     const projectPath = await writeProject({ name: "Far reach", source: FAR, manifest: { wireReach } });
     await page.evaluate((path) => window.faceSession!.commands.loadProject(path), projectPath);
     await expect(page.getByTestId("project-name")).toHaveText("Far reach");
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     await expect(reachField(page)).toHaveValue(taken);
   });
 }

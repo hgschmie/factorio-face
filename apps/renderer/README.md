@@ -19,11 +19,14 @@ src/
   gameData/
     dataInUse.ts       the data this window works with: asked for once, installed in the model and the catalog, built-in on failure
     projectMods.ts     the record of the game a project was made with: when a save writes it, what it says against the data in use   (pure)
-    gameDataView.ts    what the "Game data" section says in every state of a request to read the game; the state's reducer   (pure)
+    gameDataView.ts    what the "Game data" section says in every state of a request to read the game, the entities a read
+                       left out by reason and as a list to copy; the state's reducer   (pure)
     useGameData.ts     the status as the main process reports it, the requests, and the reload that applies other data
     GameDataSection.tsx  the section of the application settings
     reopen.ts          the settings dialog comes back after that reload (session storage, one reload)
   platform.ts          the platform, and where keyboard input belongs (text controls, controls that use the arrow keys)
+  textSelection.ts     text of the page that is selected and copied: whose a cut, copy or paste is (pure), the selection a press
+                       elsewhere drops, a copy the page starts itself
   session/
     projectSession.ts  ProjectSession: implements WorkbenchController, wires the parts below, batches change notifications
     document.ts        SourceDocument: the CodeMirror EditorState (text, history, selection) with or without a mounted view
@@ -48,7 +51,7 @@ src/
     moduleOrder.ts     the order in which modules are shown and named: the game's own, then the mods by title   (pure)
     statusText.ts      what the status line says about the source and about the project file, a path in the two parts it is
                        shortened by   (pure)
-    TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, undo, redo, fit, settings, save)
+    TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, undo, redo, fit, "Project Settings", save)
     CanvasStrip.tsx    the strip above the canvas: title and counts, the tools (select, red wire, green wire), the Edit | Blueprint
                        switch, "Place all"
     Palette.tsx        the entity selector (square tiles with a popup: the combinators as the first row, "Entities in use", and
@@ -688,6 +691,33 @@ and the name is set in 15px. The title bar keeps 62 units (66 in a window at lea
   `splitPath` gives the folders (`.path-head`, which shrinks and ends in an ellipsis) and the last separator with the file
   name (`.path-tail`, which stays). The element so always holds the whole path as its text, and the tooltip has it too.
 
+## Selecting and copying text
+
+The shell is an application, not a page: `body` has `user-select: none`, so the canvas, tiles, headings and controls are
+pressed and dragged without text being selected. Text that informs is the exception, and one rule in `styles/base.css` says
+which that is: paragraphs, `pre`, `small`, definition lists and tables, whatever has the role `status`, `alert` or `note`,
+everything in a dialog (`[role="dialog"]`: the modal dialogs, the project settings, the signal picker), the status line and the
+tick of the simulation. A second rule takes the controls out again wherever they are, with all they contain: `button`, `label`,
+`summary`, `[role="tab"]`, `[role="menu"]`. Both are written with `:where()`, without specificity, so a component decides
+where it has to: text fields and the source editor (`user-select: text`), the canvas (`none`), and the message of a row of the
+problems list, which is a button (`.diagnostic-message`; the click that ends a selection there does not jump to the source,
+`hasSelectionInside`). New text that informs needs no rule when it is a paragraph or sits in a dialog.
+
+- Copy: Cmd/Ctrl+C and Edit > Copy end in the `copy` event; with text of the page selected the browser copies it, also while
+  entities are selected (`clipboardIsForEntities`, see cut, copy and paste below). So that such a selection does not stay
+  behind and take the next copy, a press on anything that cannot be selected (a control, the canvas; any button of the
+  pointer) drops it (`dropTextSelectionOnPress`, on `pointerdown` of the document, by the computed `user-select` of the
+  target and its ancestors). A selection in the source editor is the editor's and is left alone.
+- Gestures: a selection starts only where the press lands on selectable text. The canvas prevents the default of its presses
+  and captures the pointer; the project settings, the signal picker and the canvas menu close on a press outside
+  (`pointerdown`), not on a release, and a modal dialog on a press on its backdrop, so a drag that selects text and ends
+  outside closes nothing.
+- Context menu: the page has one of its own on the canvas, which prevents the event. Everywhere else the main process shows a
+  native one (`apps/desktop/src/contextMenu.ts`): Copy for selected text, and Cut, Copy, Paste and Select All in a text field
+  or the source editor. They are role items and raise the same clipboard events as the Edit menu.
+- `copyText(text)` puts text on the clipboard from a click ("Copy list" in the game data section): it starts a copy with
+  `document.execCommand` and hands the text over in the `copy` event, ahead of the listener of the workbench.
+
 ## Canvas behaviour worth knowing
 
 - Card layout (card units, `EntityCard.tsx`): margin 13 on both sides. Header band down to the divider at 26.5: kind accent
@@ -828,8 +858,9 @@ and the name is set in 15px. The title bar keeps 62 units (66 in a window at lea
 - Cut, copy and paste: Edit > Cut / Copy / Paste and Cmd/Ctrl+X / C / V both end in the browser's `cut`, `copy` and `paste` events,
   which `Workbench` handles on the document. The events carry the clipboard (`clipboardData`), so the page needs no clipboard
   permission and no IPC for them. They act on the entities when the canvas is shown and the focus is not in a text control, the
-  source editor or a dialog (`focusIsOnText`); there, and for a copy while text of the page is selected (a message in the toast),
-  they stay the browser's own. Cut and copy take the selected entities only (the wires between them are part of the text
+  source editor or a dialog (`focusIsOnText`); there, and for a cut or a copy while text of the page is selected (a message, the
+  status line), they stay the browser's own: selected text wins over selected entities for a copy, and cannot be cut. The rule is
+  `clipboardIsForEntities` of `textSelection.ts` (pure); see "Selecting and copying text" below. Cut and copy take the selected entities only (the wires between them are part of the text
   anyway): with wires alone selected both do nothing, and a cut leaves a selected wire that still exists selected. A paste puts the top-left corner of the group on the grid point under
   the pointer while that is over the canvas (`CanvasHandle.pasteCorner`); otherwise, and always on the blueprint board, see `pasteShift` above. While the source has
   errors copy works, cut and paste do nothing. The context menu of a card has Cut, Copy and Paste with their shortcuts (Cut and
@@ -1078,8 +1109,17 @@ in a native dialog of its own before it starts the game.
   used (`"data-problem"`), data that waits for a reload (`"pending"`), and the request: `"confirming"` while the native dialog is
   open, `"progress"` while the game runs (a progress bar, "Step 2 of 5: the game loads its data and your mods", the time since the
   start, and Cancel in place of the read button), `"read-failed"` with the end of the game's log in a scrollable, focusable `<pre>`
-  (`.game-log`), `"outcome"` (read in so many seconds, or cancelled) and `"warnings"` (icons of mods that are not shown, entities
-  left out, files of the user that changed during the run, a run without the sandbox). "Read from the game..." is disabled with the
+  (`.game-log`), `"outcome"` (read in so many seconds, or cancelled) and `"warnings"` (icons of mods that are not shown, files
+  of the user that changed during the run, a run without the sandbox). The wired entities a read left out are no warning of
+  the run: they belong to the data and are there after a restart (`GameDataStatus.leftOut`, of the data the cache holds, else of
+  the data in use; `[data-message="left-out"]`). One line says how many there are and what that means ("31 entities of your game
+  were left out: they cannot be placed or imported, because the game's data about them does not fit together. Such entities are
+  mostly internal helper entities of mods."); under it a disclosure button "Left-out entities" (`aria-expanded`, closed at first)
+  opens the list: one group per reason (`leftOutView`, `LEFT_OUT_REASON_TEXT`: the reason in plain words and the count, what the
+  build found once for the group where all share it, else per name), the names sorted, in a box that scrolls (220px at most,
+  focusable), as text that can be selected. "Copy list" puts the same list on the clipboard as plain text (`copyText` of
+  `textSelection.ts`, the copy event a page may start on a click). Names and findings are the game's and its mods': bounded by
+  the main process and rendered as text. "Read from the game..." is disabled with the
   reason below it (`"unavailable"`) without an installation that has its program; "Use built-in data" discards what was read (or a
   file that cannot be used). The run's state arrives as an event; the rest of the status is asked for again when a request ends and
   when the installation changes.

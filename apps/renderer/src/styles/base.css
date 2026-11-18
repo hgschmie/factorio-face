@@ -24,6 +24,22 @@ body {
   user-select: none;
 }
 
+/*
+ * What the pointer can select, and a copy then takes. Text that informs can be selected: paragraphs, notes, definition lists
+ * and tables, whatever has the role of a message, everything in a dialog, the status line and the simulation's tick. Controls
+ * cannot, wherever they are, with all they contain: a press on them acts. Neither can the rest of the shell (the body above):
+ * the canvas, tiles and headings are pressed and dragged. Both rules are without specificity, so the rule of a component
+ * decides where it has to: a text field, the source editor, the message of a row that is a button.
+ */
+:where(p, pre, small, dl, table, [role="status"], [role="alert"], [role="note"], [role="dialog"], .statusbar, .tick-display) {
+  user-select: text;
+}
+
+:where(button, label, summary, [role="tab"], [role="menu"]),
+:where(button, label, summary, [role="tab"], [role="menu"]) * {
+  user-select: none;
+}
+
 h1,
 h2,
 h3,

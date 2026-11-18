@@ -40,6 +40,8 @@ export interface WiredEntity {
   /** An electric pole's one distance for all its wires. */
   readonly poleReach?: number;
   readonly module?: string;
+  /** What is wrong with it, as with a mod's helper entities: the game's data gives it no collision box, or the running game no size. A read leaves it out. */
+  readonly flaw?: "no-collision-box" | "no-size";
 }
 
 const EDITOR_ENTITIES: readonly WiredEntity[] = [
@@ -69,6 +71,13 @@ export const MODDED_KINDS: readonly WiredEntity[] = [
   { name: "mod-speaker", type: "programmable-speaker", label: "Loud speaker", size: [1, 1], module: "some-mod" },
 ];
 
+/** Helper entities as mods have them, which a read leaves out for two reasons: two without a collision box, one without a size in the running game. */
+export const FLAWED_ENTITIES: readonly WiredEntity[] = [
+  { name: "mod-helper-b", type: "constant-combinator", label: "Helper B", size: [1, 1], turns: true, module: "some-mod", flaw: "no-collision-box" },
+  { name: "mod-helper-a", type: "constant-combinator", label: "Helper A", size: [1, 1], turns: true, module: "some-mod", flaw: "no-collision-box" },
+  { name: "mod-hidden-lamp", type: "lamp", label: "Hidden lamp", size: [1, 1], module: "some-mod", flaw: "no-size" },
+];
+
 /**
  * Writes the files the three dump commands leave below `script-output`, for a game with two items (one with a mod's icon),
  * a lamp a wire connects to and one item group; with `editor` also what the editor needs of a game. Small, and complete
@@ -85,7 +94,8 @@ export async function writeCannedDump(directory: string, { activeMods = { base: 
   for (const entity of wired) {
     const reach = entity.poleReach === undefined ? { circuit_wire_max_distance: 9 } : { maximum_wire_distance: entity.poleReach };
     const sounds = entity.type === "programmable-speaker" ? { maximum_polyphony: 10, instruments: [{ name: "alarms", notes: [{ name: "alarm-1" }, { name: "alarm-2" }] }] } : {};
-    (byType[entity.type] ??= {})[entity.name] = { name: entity.name, icon: iconOf(entity), collision_box: boxOf(entity.size, 0.15), selection_box: boxOf(entity.size, 0), ...reach, ...sounds };
+    const collision = entity.flaw === "no-collision-box" ? {} : { collision_box: boxOf(entity.size, 0.15) };
+    (byType[entity.type] ??= {})[entity.name] = { name: entity.name, icon: iconOf(entity), ...collision, selection_box: boxOf(entity.size, 0), ...reach, ...sounds };
   }
   const virtual = editor ? { "signal-A": { icon: "__base__/graphics/icons/signal/signal_A.png" }, [MOD_SIGNAL]: { icon: "__some-mod__/graphics/icons/mod-signal.png" } } : {};
   const raw = {
@@ -110,7 +120,7 @@ export async function writeCannedDump(directory: string, { activeMods = { base: 
     item_subgroup: [{ name: "s", group: "g", order: "a", created: "base" }],
     utility_constants: { default_item_weight: 100 },
     rocket_silos: {},
-    circuit_entities: [fact("lamp", "lamp", [1, 1], false), ...wired.map((entity) => fact(entity.name, entity.type, entity.size, entity.turns === true, entity.poleReach))],
+    circuit_entities: [fact("lamp", "lamp", [1, 1], false), ...wired.map((entity) => fact(entity.name, entity.type, entity.flaw === "no-size" ? [0, 0] : entity.size, entity.turns === true, entity.poleReach))],
   };
   const labels = Object.fromEntries(wired.map((entity) => [entity.name, entity.label]));
   await mkdir(directory, { recursive: true });

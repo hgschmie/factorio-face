@@ -221,6 +221,22 @@ export type GameDataRun =
   | { readonly state: "failed"; readonly message: string; /** The end of what the game printed, as plain text. */ readonly log: string; readonly warnings: readonly string[] }
   | { readonly state: "cancelled" };
 
+/**
+ * Why a wired entity of the game is not in the data read from it, as far as the app has words of its own for it; `other` for
+ * anything else.
+ */
+export const LEFT_OUT_REASONS = ["no-collision-box", "no-selection-box", "size", "connection", "mismatch", "unknown-type", "other"] as const;
+export type LeftOutReason = (typeof LEFT_OUT_REASONS)[number];
+
+/** A wired entity of the game that the data read from it does not have: it cannot be placed, and a blueprint is imported without it. */
+export interface LeftOutEntity {
+  /** The prototype's name as the game or a mod wrote it: one line of text, bounded. */
+  readonly name: string;
+  readonly reason: LeftOutReason;
+  /** What was found about it, in the words of the build; several findings are joined. One line, bounded, empty when there is none. */
+  readonly detail: string;
+}
+
 export interface GameDataStatus {
   /** The data this window was given when it loaded. */
   readonly inUse: GameDataSource;
@@ -234,6 +250,11 @@ export interface GameDataStatus {
   readonly problem: string | null;
   /** There is something to discard: data read from a game, in use or waiting, or a file that cannot be used. */
   readonly discardable: boolean;
+  /**
+   * The wired entities that data read from a game lacks, by name: those of the data the cache holds (what is in use, or what
+   * waits after a read), else of the data in use. Empty for the built-in data.
+   */
+  readonly leftOut: readonly LeftOutEntity[];
   readonly run: GameDataRun;
 }
 

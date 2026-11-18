@@ -1,8 +1,10 @@
 // The "Game data" section of the application settings: where the entity and signal data comes from, and the action that reads
 // it from the user's installed game. Presentational: the game is run by the main process, which asks the user itself first.
 // Everything the game or a mod wrote (its log, a failure, names) is rendered as text.
-import { useEffect, useRef, useState } from "react";
-import { CONFIRMING_NOTICE, formatElapsed, gameDataView } from "./gameDataView.ts";
+import { useEffect, useId, useRef, useState } from "react";
+import { Icon } from "../icons/Icon.tsx";
+import { copyText } from "../textSelection.ts";
+import { CONFIRMING_NOTICE, formatElapsed, gameDataView, LEFT_OUT_COPY, LEFT_OUT_TOGGLE, type LeftOutView } from "./gameDataView.ts";
 import type { GameDataController } from "./useGameData.ts";
 
 export interface GameDataSectionProps {
@@ -17,6 +19,51 @@ function Elapsed({ startedAt }: { readonly startedAt: number }) {
     return () => clearInterval(timer);
   }, []);
   return <span className="elapsed">{formatElapsed(now - startedAt)}</span>;
+}
+
+/** The entities the data read from the game lacks: how many and why, and behind a disclosure which, as text to select or copy. */
+function LeftOut({ view }: { readonly view: LeftOutView }) {
+  const [open, setOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const listId = useId();
+  // Another list has not been copied.
+  useEffect(() => setCopied(false), [view.copyText]);
+  return (
+    <div className="left-out" data-message="left-out">
+      <p className="settings-message">{view.summary}</p>
+      <button type="button" className="disclosure" aria-expanded={open} aria-controls={open ? listId : undefined} onClick={() => setOpen(!open)}>
+        <Icon name="chevron" size={11} />
+        {LEFT_OUT_TOGGLE}
+      </button>
+      {open && (
+        <div id={listId} className="left-out-list">
+          <div className="left-out-groups" tabIndex={0} role="group" aria-label="Entities that were left out, by reason">
+            {view.groups.map((group) => (
+              <section key={group.reason} data-reason={group.reason}>
+                <h4>
+                  {group.text} <span className="left-out-count">({group.entities.length})</span>
+                </h4>
+                {group.found !== null && <p className="left-out-found">Found: {group.found}</p>}
+                <ul>
+                  {group.entities.map((entity) => (
+                    <li key={entity.name}>
+                      <span className="name">{entity.name}</span>
+                      {entity.found !== null && <small>{entity.found}</small>}
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+          <div className="settings-actions">
+            <button type="button" className="settings-button" onClick={() => setCopied(copyText(view.copyText))}>
+              {copied ? "Copied" : LEFT_OUT_COPY}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function GameDataSection({ gameData }: GameDataSectionProps) {
@@ -101,6 +148,7 @@ export function GameDataSection({ gameData }: GameDataSectionProps) {
               ))}
             </ul>
           )}
+          {view.leftOut !== null && <LeftOut view={view.leftOut} />}
         </>
       ) : (
         <p className="muted-note">Looking at the game data...</p>

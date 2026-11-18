@@ -447,7 +447,6 @@
   background: var(--notice-surface);
   box-shadow: var(--shadow-popover);
   transform: translateX(-50%);
-  user-select: text;
 }
 
 .toast button {

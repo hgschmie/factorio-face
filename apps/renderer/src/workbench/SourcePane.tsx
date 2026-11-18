@@ -2,6 +2,7 @@
 import type { Ref } from "react";
 import { SourceEditor, type SourceEditorHandle } from "../editor/SourceEditor.tsx";
 import { Icon } from "../icons/Icon.tsx";
+import { hasSelectionInside } from "../textSelection.ts";
 import type { Diagnostic, EditorBinding } from "./controller.ts";
 
 export interface SourcePaneProps {
@@ -45,7 +46,8 @@ export function SourcePane({ editorRef, fileName, binding, diagnostics, hidden, 
           <ul>
             {listed.map((diagnostic, index) => (
               <li key={`${index}:${diagnostic.from}:${diagnostic.code}`} className={`severity-${diagnostic.severity}`} data-code={diagnostic.code}>
-                <button type="button" title="Show in source" onClick={() => onReveal(diagnostic)}>
+                {/* The message can be selected with the pointer (styles/source.css); the click that ends such a selection does not jump. */}
+                <button type="button" title="Show in source" onClick={(event) => (event.detail > 0 && hasSelectionInside(event.currentTarget) ? undefined : onReveal(diagnostic))}>
                   <span className="diagnostic-dot" />
                   <span className="diagnostic-line">Ln {diagnostic.line}</span>
                   <span className="diagnostic-message">{diagnostic.message}</span>

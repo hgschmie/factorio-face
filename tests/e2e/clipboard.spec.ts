@@ -2,8 +2,8 @@
 // `clipboard` module in the main process; the actions are real key presses, the web contents' own cut / copy / paste (what the
 // Edit menu items do: on macOS those are native and cannot be clicked from here) and real clicks in the context menu, whose Paste
 // goes through the main process like Edit > Paste.
-import type { ElectronApplication, Page } from "@playwright/test";
-import { canvas, card, cardGrabPoint, CARET, clickCenter, clientPointOf, committedPositions, entityNames, expect, openExample, selectEntity, sourceText, test, wires } from "./app.ts";
+import type { ElectronApplication, Locator, Page } from "@playwright/test";
+import { canvas, card, cardGrabPoint, CARET, clickCenter, clickMenu, clientPointOf, committedPositions, entityNames, expect, openExample, selectEntity, sourceText, test, wires } from "./app.ts";
 import { FIVE_KINDS as ALL, FIVE_KINDS_SOURCE, openFiveKinds } from "./fixtures.ts";
 
 const SOURCE_AND_GATE = `constant-combinator source at (40, 80) {
@@ -278,6 +278,63 @@ test("the context menu pastes at the point it was opened at, as one undo step", 
   await undo(page).click();
   await expect.poll(() => sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(undo(page)).toBeDisabled();
+});
+
+/** Selects the text of an element as a user does: a drag with the pointer from its left end to its right end. Resolves with what is selected then. */
+async function dragSelect(page: Page, target: Locator, release?: { x: number; y: number }): Promise<string> {
+  const box = (await target.boundingBox())!;
+  await page.mouse.move(box.x + 1, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 4 });
+  await page.mouse.move(box.x + box.width - 1, box.y + box.height / 2, { steps: 4 });
+  if (release) await page.mouse.move(release.x, release.y, { steps: 4 });
+  await page.mouse.up();
+  return page.evaluate(() => document.getSelection()!.toString());
+}
+
+test("text that informs is selected with the pointer and copied in place of the entities; a press on the canvas gives the copy back to them", async ({ page, app }) => {
+  const userSelect = (selector: string): Promise<string> => page.locator(selector).first().evaluate((element) => getComputedStyle(element).userSelect);
+  // The rule of the stylesheet: text that informs can be selected, a control and the canvas cannot.
+  expect(await userSelect(".statusbar")).toBe("text");
+  expect(await userSelect(".save-button")).toBe("none");
+  expect(await userSelect(".canvas-svg")).toBe("none");
+
+  // The status line names the selected entity. Its text is selected by a drag, and the copy takes that text, not the entity.
+  await selectEntity(page, "light");
+  const selected = await dragSelect(page, page.locator(".statusbar .status-selection"));
+  expect(selected.trim()).toBe("light");
+  await expect(page.locator("g.card.selected")).toHaveCount(1);
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect.poll(() => readClipboard(app)).toBe(selected);
+  // So does Edit > Copy, which is the same event.
+  await writeClipboard(app, "");
+  await editRole(app, "copy");
+  await expect.poll(() => readClipboard(app)).toBe(selected);
+  // Such text cannot be cut, and the entity is not cut in its place.
+  await page.keyboard.press("ControlOrMeta+x");
+  expect(await entityNames(page)).toEqual(ALL);
+
+  // A press on a control cannot select: it drops the selected text, and the copy is the canvas's again.
+  await selectEntity(page, "light");
+  expect(await page.evaluate(() => document.getSelection()!.isCollapsed)).toBe(true);
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect.poll(() => readClipboard(app)).toBe(LIGHT);
+  // A drag over a heading of the shell selects nothing.
+  expect(await dragSelect(page, page.getByTestId("project-name"))).toBe("");
+  await expect(undo(page)).toBeDisabled();
+
+  // In a dialog every text can be selected; a drag that ends outside the dialog selects and does not close it.
+  await clickMenu(app, "Help", "Keyboard Shortcuts");
+  const overview = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  const note = overview.locator(".muted-note");
+  const noteText = await dragSelect(page, note, { x: 4, y: 300 });
+  await expect(overview).toBeVisible();
+  expect(noteText.trim().length).toBeGreaterThan(10);
+  expect((await note.textContent())!.replace(/\s+/g, " ")).toContain(noteText.trim().replace(/\s+/g, " "));
+  await page.keyboard.press("ControlOrMeta+c");
+  await expect.poll(() => readClipboard(app)).toBe(noteText);
+  await page.keyboard.press("Escape");
+  await expect(overview).toHaveCount(0);
 });
 
 test("pastes into another project with names that are free there, and ignores other text with a notice", async ({ page, app }) => {

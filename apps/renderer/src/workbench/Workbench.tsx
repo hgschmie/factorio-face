@@ -16,6 +16,7 @@ import { Inspector, type HistoryDirection, type InspectorHandle } from "../inspe
 import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
+import { clipboardIsForEntities, dropTextSelectionOnPress, pageTextIsSelected } from "../textSelection.ts";
 import type { BlueprintExport, BlueprintProblem, ImportedBlueprint, ImportReportView } from "../session/blueprints.ts";
 import type { GameDataController } from "../gameData/useGameData.ts";
 import { takeSettingsOpen } from "../gameData/reopen.ts";
@@ -63,6 +64,8 @@ type BlueprintDialog =
   | { readonly type: "string"; readonly exported: BlueprintExport & { readonly ok: true } }
   | { readonly type: "problems"; readonly problems: readonly BlueprintProblem[] };
 
+const clipboardEvents = ["cut", "copy", "paste"] as const;
+
 /**
  * Text a field writes only when it is left (a name, a description) would be missing from a save made while the focus is still
  * in it. The field is left and entered again, which writes the text; the caret stays where it is.
@@ -83,14 +86,6 @@ function focusIsOnText(): boolean {
 /** True when a key pressed there is no shortcut of the circuit: it is text, or it belongs to a dialog or to an open menu. */
 function keyIsTaken(target: EventTarget | null): boolean {
   return isTextEntryTarget(target) || (target instanceof Element && target.closest('[role="dialog"], [role="menu"]') !== null);
-}
-
-/** True when text of the page itself, such as a message, is selected. A selection left behind in the source editor does not count. */
-function pageTextIsSelected(): boolean {
-  const selection = document.getSelection();
-  if (!selection || selection.isCollapsed) return false;
-  const anchor = selection.anchorNode instanceof Element ? selection.anchorNode : selection.anchorNode?.parentElement;
-  return anchor != null && anchor.closest(".cm-editor") === null;
 }
 
 export function Workbench({ controller, api, appSettings, gameData, dataProblem = null, iconsMissing = false, resolveEntityIcon, resolveWireIcon, resolveCatalogIcon, renderSignalPicker, describeSignal }: WorkbenchProps) {
@@ -162,7 +157,7 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
 
   // Cut, copy and paste of entities. The Edit menu items and the keys both end in the browser's clipboard events, which carry
   // the clipboard for the length of the event; that needs no access to the clipboard and nothing from the main process. The
-  // events are left alone wherever they mean text, and while the canvas is not shown.
+  // events are left alone wherever they mean text (`clipboardIsForEntities` has the rule), and while the canvas is not shown.
   useEffect(() => {
     const onClipboard = (event: ClipboardEvent): void => {
       // The corner of a context-menu paste is good for one paste event, whatever becomes of that event.
@@ -170,28 +165,33 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
       if (event.type === "paste") menuCornerRef.current = undefined;
       const canvas = canvasRef.current;
       const data = event.clipboardData;
-      if (!canvas || !data || focusIsOnText()) return;
-      // Cut and copy take the selected entities (with the wires between them); selected wires are left alone.
+      if (!canvas || !data) return;
       const { selection, editable, displayMode } = stateRef.current;
-      if (event.type === "paste") {
-        if (!editable || !DISPLAY_CAPABILITIES[displayMode].paste) return;
+      const type = event.type as (typeof clipboardEvents)[number];
+      if (!clipboardIsForEntities(type, { focusOnText: focusIsOnText(), textSelected: pageTextIsSelected(), editable, canPaste: DISPLAY_CAPABILITIES[displayMode].paste })) return;
+      if (type === "paste") {
         event.preventDefault();
         commands.pasteEntities(data.getData("text/plain"), menuCorner ?? canvas.pasteCorner());
         return;
       }
-      if (pageTextIsSelected() || (event.type === "cut" && !editable)) return;
+      // Cut and copy take the selected entities (with the wires between them); selected wires are left alone.
       const text = commands.copyEntities(selection);
       if (text === "") return;
       event.preventDefault();
       data.setData("text/plain", text);
       if (event.type === "cut") commands.deleteEntities(selection);
     };
-    const clipboardEvents = ["cut", "copy", "paste"] as const;
     for (const type of clipboardEvents) document.addEventListener(type, onClipboard);
     return () => {
       for (const type of clipboardEvents) document.removeEventListener(type, onClipboard);
     };
   }, [commands]);
+
+  // Selected text of a message would stay selected while the user goes on to work on the canvas, and the next copy would take it.
+  useEffect(() => {
+    document.addEventListener("pointerdown", dropTextSelectionOnPress, true);
+    return () => document.removeEventListener("pointerdown", dropTextSelectionOnPress, true);
+  }, []);
 
   // The keys of the shortcut table that do not need the focus in the canvas: tools, the display mode, rotation and flipping as in
   // the game (R, Shift+R, H, V: the selection, or with a place tool what it is about to place), moving with the arrows, duplicating, the overview.

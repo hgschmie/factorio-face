@@ -103,7 +103,7 @@ export interface FakeDesktop {
 
 const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: STANDARD_CATALOG_VERSION, versionMatch: null, modules: [], problem: null, iconRevision: 0 };
 
-const BUILT_IN_DATA: GameDataStatus = { inUse: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, pending: null, stale: false, unavailable: "No Factorio installation is in use.", problem: null, discardable: false, run: { state: "idle" } };
+const BUILT_IN_DATA: GameDataStatus = { inUse: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, pending: null, stale: false, unavailable: "No Factorio installation is in use.", problem: null, discardable: false, leftOut: [], run: { state: "idle" } };
 
 /** An in-memory stand-in for the desktop bridge. Data is cloned on the way in and out, like over IPC. */
 export function fakeDesktop(): FakeDesktop {

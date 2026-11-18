@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { APP_SETTINGS_FILE_NAME, AppSettingsStore, gameDirectoryFromEnv } from "./appSettings.ts";
 import { registerAppSettingsIpc } from "./appSettingsIpc.ts";
 import { registerBlueprintIpc } from "./blueprintIpc.ts";
+import { buildTextContextMenu } from "./contextMenu.ts";
 import { Examples } from "./examples.ts";
 import { GAME_DATA_FILE_NAME, GameDataCache } from "./gameData/cache.ts";
 import { modDirectoryFromEnv } from "./gameData/refresh.ts";
@@ -231,6 +232,12 @@ async function start(): Promise<void> {
     if (closeApproved || !dirty) return;
     event.preventDefault();
     void confirmClose();
+  });
+
+  // Copy for selected text, the editing items in a text field. Where the page shows a menu of its own it prevents the event.
+  window.webContents.on("context-menu", (_event, params) => {
+    const template = buildTextContextMenu(params);
+    if (template.length > 0 && !window.isDestroyed()) Menu.buildFromTemplate(template).popup({ window });
   });
 
   window.webContents.on("render-process-gone", (_event, details) => console.error("[face] renderer exited:", details.reason));

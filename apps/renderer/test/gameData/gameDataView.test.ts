@@ -1,10 +1,10 @@
 // The "Game data" section of the application settings as data: what it says in every state of a request to read the game,
 // and which report from the main process counts.
 import { describe, expect, it } from "vitest";
-import type { GameDataRun, GameDataStatus } from "../../../desktop/src/ipc.ts";
-import { CANCELLED_NOTICE, formatElapsed, gameDataView, hasEnded, INITIAL_GAME_DATA, reduceGameData, STALE_NOTICE, STEP_LABELS, type GameDataState } from "../../src/gameData/gameDataView.ts";
+import { LEFT_OUT_REASONS, type GameDataRun, type GameDataStatus, type LeftOutEntity } from "../../../desktop/src/ipc.ts";
+import { CANCELLED_NOTICE, formatElapsed, gameDataView, hasEnded, INITIAL_GAME_DATA, LEFT_OUT_REASON_TEXT, leftOutView, reduceGameData, STALE_NOTICE, STEP_LABELS, type GameDataState } from "../../src/gameData/gameDataView.ts";
 
-const BUILT_IN: GameDataStatus = { inUse: { kind: "built-in", version: "2.1.25" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } };
+const BUILT_IN: GameDataStatus = { inUse: { kind: "built-in", version: "2.1.25" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, leftOut: [], run: { state: "idle" } };
 const GAME = { kind: "game", version: "2.1.25", build: 88022, readAt: "2026-11-14T12:00:00.000Z", mods: 3 } as const;
 const READ: GameDataStatus = { ...BUILT_IN, inUse: GAME, discardable: true };
 const date = (): string => "14 November 2026";
@@ -14,7 +14,7 @@ const running = (step: "prepare" | "data" | "locale" | "runtime" | "collect", in
 describe("the section", () => {
   it("names the built-in data and offers to read the game", () => {
     expect(view(BUILT_IN)).toEqual({
-      kind: "built-in", source: "Built in, Factorio 2.1.25", detail: "The entities and signals of the standard game, as they come with this app", stale: null, problem: null, pending: null, phase: "idle", progress: null, failure: null, outcome: null, warnings: [],
+      kind: "built-in", source: "Built in, Factorio 2.1.25", detail: "The entities and signals of the standard game, as they come with this app", stale: null, problem: null, pending: null, phase: "idle", progress: null, failure: null, outcome: null, warnings: [], leftOut: null,
       canRead: true, unavailable: null, canDiscard: false, canReload: false,
     });
   });
@@ -51,7 +51,7 @@ describe("the section", () => {
   });
 
   it("shows how long it took and the warnings when it worked, and that other data waits for the window", () => {
-    const warnings = ["12 icons of mods are not shown: the app reads icons from the game's own files only.", "2 wired entities were left out because the game's data about them is not consistent."];
+    const warnings = ["12 icons of mods are not shown: the app reads icons from the game's own files only.", "The game ran without the system's sandbox, which could not be entered here."];
     const steps = [{ step: "prepare", seconds: 0.2 }, { step: "data", seconds: 6.4 }, { step: "locale", seconds: 5.1 }, { step: "runtime", seconds: 7.9 }, { step: "collect", seconds: 0.3 }] as const;
     const done = view({ ...BUILT_IN, pending: GAME, discardable: true, run: { state: "done", warnings, steps } });
     expect(done).toMatchObject({
@@ -82,6 +82,79 @@ describe("the section", () => {
 
   it("formats the time a run has taken", () => {
     expect([0, 999, 7000, 59_999, 60_000, 83_500, 600_000, -5].map(formatElapsed)).toEqual(["0:00", "0:00", "0:07", "0:59", "1:00", "1:23", "10:00", "0:00"]);
+  });
+});
+
+describe("the entities that were left out", () => {
+  const SIZE = "tile size is 0 x 0 at run time, 1 x 1 as derived from data.raw";
+  const LEFT_OUT: LeftOutEntity[] = [
+    { name: "compaktcircuit-pole", reason: "size", detail: SIZE },
+    { name: "hps__fc-filter-combinator-dc", reason: "no-collision-box", detail: "no collision box" },
+    { name: "compaktcircuit-ac", reason: "size", detail: SIZE },
+    { name: "hps__fc-filter-combinator-ac", reason: "no-collision-box", detail: "no collision box" },
+    { name: "odd-pole", reason: "mismatch", detail: "wire reach is 12 at run time, 9 as derived from data.raw" },
+    { name: "odd-lamp", reason: "mismatch", detail: "hidden is true at run time, false in data.raw" },
+    { name: "record 0 has no name", reason: "other", detail: "" },
+  ];
+
+  it("are not mentioned when there are none, whatever the data and the last request", () => {
+    expect(leftOutView([])).toBeNull();
+    expect(view(READ).leftOut).toBeNull();
+  });
+
+  it("are counted in a line that says what being left out means, in the singular too", () => {
+    expect(leftOutView(LEFT_OUT)!.summary).toBe(
+      "7 entities of your game were left out: they cannot be placed or imported, because the game's data about them does not fit together. Such entities are mostly internal helper entities of mods.",
+    );
+    expect(leftOutView(LEFT_OUT.slice(0, 1))!.summary).toBe("1 entity of your game was left out: it cannot be placed or imported, because the game's data about it does not fit together. Such entities are mostly internal helper entities of mods.");
+  });
+
+  it("are grouped by reason in plain words, by name, with what was found once for the group where all share it", () => {
+    expect(leftOutView(LEFT_OUT)!.groups).toEqual([
+      { reason: "no-collision-box", text: "The game's data gives them no collision box, so they have no size.", found: "no collision box", entities: [{ name: "hps__fc-filter-combinator-ac", found: null }, { name: "hps__fc-filter-combinator-dc", found: null }] },
+      { reason: "size", text: "The running game gives them another size in tiles than the game's data files do.", found: SIZE, entities: [{ name: "compaktcircuit-ac", found: null }, { name: "compaktcircuit-pole", found: null }] },
+      {
+        reason: "mismatch", text: "The running game says something else about them than the game's data files do.", found: null,
+        entities: [{ name: "odd-lamp", found: "hidden is true at run time, false in data.raw" }, { name: "odd-pole", found: "wire reach is 12 at run time, 9 as derived from data.raw" }],
+      },
+      { reason: "other", text: "The game's data about them does not fit together in another way.", found: null, entities: [{ name: "record 0 has no name", found: null }] },
+    ]);
+    // Every reason the main process can give has its words, in the order of the groups.
+    expect(Object.keys(LEFT_OUT_REASON_TEXT)).toEqual([...LEFT_OUT_REASONS]);
+  });
+
+  it("are copied as a plain list: the count, then each group with its reason and one name per line", () => {
+    expect(leftOutView(LEFT_OUT)!.copyText).toBe(
+      [
+        "Entities of the game that were left out: 7",
+        "",
+        "The game's data gives them no collision box, so they have no size. (2)",
+        "Found: no collision box",
+        "hps__fc-filter-combinator-ac",
+        "hps__fc-filter-combinator-dc",
+        "",
+        "The running game gives them another size in tiles than the game's data files do. (2)",
+        `Found: ${SIZE}`,
+        "compaktcircuit-ac",
+        "compaktcircuit-pole",
+        "",
+        "The running game says something else about them than the game's data files do. (2)",
+        "odd-lamp: hidden is true at run time, false in data.raw",
+        "odd-pole: wire reach is 12 at run time, 9 as derived from data.raw",
+        "",
+        "The game's data about them does not fit together in another way. (1)",
+        "record 0 has no name",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("belong to the data and not to the request: they are shown while the game is read again, after a failure and with data that waits", () => {
+    const status = { ...READ, leftOut: LEFT_OUT };
+    for (const run of [{ state: "idle" }, running("data", 2), { state: "failed", message: "The game ended with exit code 1", log: "", warnings: [] }, { state: "cancelled" }] as GameDataRun[]) {
+      expect(view({ ...status, run }).leftOut).toEqual(leftOutView(LEFT_OUT));
+    }
+    expect(view({ ...BUILT_IN, pending: GAME, leftOut: LEFT_OUT }).leftOut?.groups).toHaveLength(4);
   });
 });
 

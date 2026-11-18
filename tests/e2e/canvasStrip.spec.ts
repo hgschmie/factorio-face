@@ -203,12 +203,12 @@ test("the project bar is as high as the strip above the canvas, with its name an
     expect(layout, where).toMatchObject({ bar: 51, strip: 51, title: titleHeight, cutOff: 0 });
     expect(layout.room, where).toBeGreaterThanOrEqual(8);
     expect(layout.tallest, where).toBeLessThanOrEqual(32);
-    for (const name of ["Undo", "Redo", "Fit", "Settings", "Save"]) await expect(page.locator(".project-actions").getByRole("button", { name, exact: true }), where).toBeInViewport({ ratio: 1 });
+    for (const name of ["Undo", "Redo", "Fit", "Project Settings", "Save"]) await expect(page.locator(".project-actions").getByRole("button", { name, exact: true }), where).toBeInViewport({ ratio: 1 });
     await expect(page.getByTestId("project-name"), where).toBeInViewport({ ratio: 1 });
   };
   await check("default", 66);
   // The settings open below the lower bar, inside the window.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   const [settings, bar] = [(await page.getByRole("dialog", { name: "Project settings" }).boundingBox())!, (await page.locator(".projectbar").boundingBox())!];
   expect(settings.y).toBeGreaterThanOrEqual(bar.y + bar.height - 8);
   expect(settings.y).toBeLessThanOrEqual(bar.y + bar.height + 8);

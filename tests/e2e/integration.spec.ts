@@ -536,7 +536,7 @@ test("the signal picker selects a Space Age signal with its icon, and the module
 
   // Switching the Space Age group off keeps the text and marks the signal with a warning.
   const withSignal = await sourceText(page);
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Project settings" });
   await expect(settings.locator(".module-list li")).toHaveCount(5);
   await expect(settings.getByRole("checkbox", { name: /Base Mod/ })).toBeDisabled();
@@ -569,7 +569,7 @@ test("the signal picker selects a Space Age signal with its icon, and the module
   await expect(page.getByRole("button", { name: "Step" })).toBeEnabled();
 
   // Switching Quality off as well flags the quality; Space Age brings both back and clears the warnings.
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   await settings.getByRole("checkbox", { name: /Quality/ }).uncheck();
   await expect(problems.locator("li")).toHaveCount(1);
   await settings.getByRole("checkbox", { name: /Space Age/ }).check();
@@ -588,7 +588,7 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     const { app, page } = first;
     await stubDialogs(app, { savePath: projectPath });
     await dragCard(page, "light", 40, 160);
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Project settings" });
     await settings.getByLabel("Project name").fill("Round trip");
     await settings.getByLabel("Project name").press("Enter");
@@ -606,7 +606,7 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     expect(JSON.parse(saved["face.json"]!)).toEqual(expectedManifest);
 
     // A settings change alone makes the project dirty again, and saving writes it.
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     await settings.getByRole("checkbox", { name: /Recycler/ }).check();
     await expect(page.getByTestId("save-state")).toHaveText("Unsaved changes");
     await clickMenu(app, "File", "Save");
@@ -639,7 +639,7 @@ test("save, quit, relaunch and reopen restores source, layout and module setting
     await expect(card(page, "light")).toHaveAttribute("data-x", "600");
     await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
     // Module settings.
-    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Project Settings", exact: true }).click();
     const settings = page.getByRole("dialog", { name: "Project settings" });
     for (const [title, enabled] of [["Base Mod", true], ["Elevated Rails", true], ["Recycler", true], ["Quality", false], ["Space Age", false]] as const) {
       const checkbox = settings.getByRole("checkbox", { name: new RegExp(title) });

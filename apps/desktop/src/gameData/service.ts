@@ -9,6 +9,7 @@ import { ValidationError } from "../validation.ts";
 import type { CachedGameData, GameDataCache } from "./cache.ts";
 import { readConfirmation, type ReadConfirmation } from "./confirmation.ts";
 import { gameDataSource, sameGameState, type GameData } from "./gameData.ts";
+import { leftOutEntities } from "./leftOut.ts";
 import { planGameRead, readGameData, type RefreshOptions, type RefreshResult } from "./refresh.ts";
 
 export const GAME_DATA_RUNS_DIRECTORY = "game-data-runs";
@@ -114,6 +115,7 @@ export class GameDataService {
       unavailable: planned === undefined ? NO_INSTALLATION : planned.ok ? null : planned.message,
       problem: this.problem,
       discardable: stored !== undefined || this.problem !== null,
+      leftOut: leftOutEntities((stored ?? inUse)?.data.notes ?? []),
       run: this.run,
     };
   }

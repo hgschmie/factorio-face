@@ -556,7 +556,7 @@ test("text fields outside the inspector have no undo of their own and leave the 
   await page.keyboard.press("Escape");
 
   // The project name in the settings dialog is not part of the circuit source either; Escape restores it.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   const projectName = page.getByRole("dialog", { name: "Project settings" }).getByLabel("Project name");
   await projectName.click();
   await page.keyboard.press(CARET.end);

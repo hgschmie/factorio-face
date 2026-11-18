@@ -70,7 +70,8 @@
   margin-top: 0;
 }
 
-.project-settings .disclosure {
+.project-settings .disclosure,
+.game-data .disclosure {
   gap: 3px;
   align-self: flex-start;
   margin-left: -3px;
@@ -79,11 +80,13 @@
   color: var(--text-soft);
 }
 
-.project-settings .disclosure > svg {
+.project-settings .disclosure > svg,
+.game-data .disclosure > svg {
   transition: transform 80ms ease-out;
 }
 
-.project-settings .disclosure[aria-expanded="true"] > svg {
+.project-settings .disclosure[aria-expanded="true"] > svg,
+.game-data .disclosure[aria-expanded="true"] > svg {
   transform: rotate(90deg);
 }
 
@@ -229,7 +232,6 @@
   font-family: var(--font-mono);
   font-size: var(--text-md);
   overflow-wrap: anywhere;
-  user-select: text;
 }
 
 .game-folder-path {
@@ -409,7 +411,6 @@
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  user-select: text;
   color: var(--text-soft);
   background: var(--surface-inset);
 }
@@ -419,6 +420,60 @@
   flex-direction: column;
   gap: 4px;
   padding-left: 26px;
+}
+
+/* The entities a read left out: the count, and behind a disclosure the names by reason, in a box of its own that scrolls. */
+.left-out,
+.left-out-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.left-out-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 220px;
+  padding: 9px 11px;
+  overflow: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  font-size: var(--text-md);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--text-soft);
+  background: var(--surface-inset);
+}
+
+.left-out-groups h4 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.left-out-groups .left-out-count {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.left-out-groups .left-out-found,
+.left-out-groups li small {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.left-out-groups ul {
+  margin: 3px 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-mono);
+}
+
+.left-out-groups li small {
+  margin-left: 8px;
+  font-family: var(--font-ui);
 }
 
 .project-settings .muted-note.warning {

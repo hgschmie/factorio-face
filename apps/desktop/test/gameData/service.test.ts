@@ -13,7 +13,7 @@ import { modDirectoryFromEnv, planGameRead, type GameReadPlan } from "../../src/
 import { GameDataService, NO_INSTALLATION, usableGameData, type GameDataServiceOptions } from "../../src/gameData/service.ts";
 import type { GameDataRun } from "../../src/ipc.ts";
 import { ValidationError } from "../../src/validation.ts";
-import { MOD_ENTITY, SOME_MOD_INFO, fakeGameStarts, modArchive, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
+import { FLAWED_ENTITIES, MOD_ENTITY, SOME_MOD_INFO, fakeGameStarts, modArchive, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
 import { writeGameData } from "../support/fakeGame.ts";
 import { useScratch } from "../support/scratch.ts";
 
@@ -157,7 +157,7 @@ describe("the mod directory of a test", () => {
 describe("reading the game", () => {
   it("is idle with the built-in data until it is asked", async () => {
     const { service, runs, control } = await setup("idle");
-    expect(await service.status()).toEqual({ inUse: BUILT_IN, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
+    expect(await service.status()).toEqual({ inUse: BUILT_IN, pending: null, stale: false, unavailable: null, problem: null, discardable: false, leftOut: [], run: { state: "idle" } });
     expect(service.current()).toEqual({ source: BUILT_IN, problem: null, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
     expect(BUILT_IN_ICONS.length).toBeGreaterThan(1000);
     expect(BUILT_IN_ICONS).toContain("virtual/signal-A");
@@ -315,12 +315,36 @@ describe("reading the game", () => {
     expect(await service.status()).toMatchObject({ inUse: MODDED, stale: true, unavailable: null });
   });
 
+  it("says which wired entities the read left out and why, as data of what was read: after the read, in use, after a restart, until it is discarded", async () => {
+    const { service, restart } = await setup("left-out", { entities: FLAWED_ENTITIES });
+    const leftOut = [
+      { name: "mod-helper-b", reason: "no-collision-box", detail: "no collision box" },
+      { name: "mod-helper-a", reason: "no-collision-box", detail: "no collision box" },
+      { name: "mod-hidden-lamp", reason: "size", detail: "tile size is 0 x 0 at run time, 1 x 1 as derived from data.raw" },
+    ];
+    const status = await service.read();
+    // The data waits for the window; the list is of what the cache holds. It is no warning of the run.
+    expect(status).toMatchObject({ inUse: BUILT_IN, pending: MODDED, leftOut });
+    expect(status.run).toMatchObject({ state: "done", warnings: ["6 icons of mods are not shown: the app reads icons from the game's own files only."] });
+    service.activate();
+    expect((await service.status()).leftOut).toEqual(leftOut);
+    const entities = parseEntityTable(service.current().entities).byName;
+    expect(FLAWED_ENTITIES.filter((entity) => entities.has(entity.name))).toEqual([]);
+
+    const next = await restart();
+    expect(await next.status()).toMatchObject({ inUse: MODDED, pending: null, leftOut, run: { state: "idle" } });
+    // Discarded, the window still works with the data until it is loaded again, and the list is that data's.
+    expect(await next.discard()).toMatchObject({ pending: BUILT_IN, leftOut });
+    next.activate();
+    expect((await next.status()).leftOut).toEqual([]);
+  });
+
   it("goes back to the built-in data when what was read is discarded", async () => {
     const { service, activations, runs, cacheFile, restart } = await setup("discard");
     await service.read();
     service.activate();
     const status = await service.discard();
-    expect(status).toEqual({ inUse: { ...MODDED, readAt: expect.any(String) as string }, pending: BUILT_IN, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
+    expect(status).toEqual({ inUse: { ...MODDED, readAt: expect.any(String) as string }, pending: BUILT_IN, stale: false, unavailable: null, problem: null, discardable: false, leftOut: [], run: { state: "idle" } });
     expect(states(runs).at(-1)).toBe("idle");
     expect(existsSync(cacheFile)).toBe(false);
     expect(service.activate()).toBe(true);

@@ -7,7 +7,7 @@ import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump } from "../../apps/desktop/test/support/cannedDump.ts";
+import { FLAWED_ENTITIES, MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump } from "../../apps/desktop/test/support/cannedDump.ts";
 import type { GameDataInUse, GameDataStatus } from "../../apps/desktop/src/ipc.ts";
 import { decodeBlueprintString, encodeBlueprintString } from "../../packages/blueprints/src/string.ts";
 import {
@@ -162,7 +162,7 @@ test("the settings say that the built-in data is in use, and whether the game ca
     await expect(section(page).locator("[data-message]")).toHaveCount(0);
     await expect(section(page).getByRole("alert")).toHaveCount(0);
     await expect(section(page)).toContainText("The app asks before it starts the game and never starts it by itself.");
-    expect(await status(page)).toEqual({ inUse: { kind: "built-in", version: "2.1.25" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, run: { state: "idle" } });
+    expect(await status(page)).toEqual({ inUse: { kind: "built-in", version: "2.1.25" }, pending: null, stale: false, unavailable: null, problem: null, discardable: false, leftOut: [], run: { state: "idle" } });
     const builtIn = await dataInUse(page);
     expect(builtIn).toEqual({ source: { kind: "built-in", version: "2.1.25" }, problem: null, mods: [], catalog: null, entities: null, icons: expect.any(Array) as string[] });
     // The icons the app can draw are those of the icon table that comes with the build.
@@ -258,6 +258,95 @@ test("reads the game after the confirmation, shows the steps, loads the window a
     await writeFile(join(program.modDirectory, "another-mod_0.1.0.zip"), "a new mod");
     await openSettings(app, page);
     await expect(message(page, "stale")).toHaveText("Your game or its mods have changed since this data was read. Read the game again to work with what it has now.");
+  } finally {
+    await closeApp(app);
+  }
+});
+
+test("a read says how many entities it left out, lists them by reason behind a disclosure, copies the list, and has it after a restart", async () => {
+  const SUMMARY = "3 entities of your game were left out: they cannot be placed or imported, because the game's data about them does not fit together. Such entities are mostly internal helper entities of mods.";
+  const SIZE_FOUND = "tile size is 0 x 0 at run time, 1 x 1 as derived from data.raw";
+  const LIST = [
+    "Entities of the game that were left out: 3",
+    "",
+    "The game's data gives them no collision box, so they have no size. (2)",
+    "Found: no collision box",
+    "mod-helper-a",
+    "mod-helper-b",
+    "",
+    "The running game gives them another size in tiles than the game's data files do. (1)",
+    `Found: ${SIZE_FOUND}`,
+    "mod-hidden-lamp",
+    "",
+  ].join("\n");
+  const leftOut = (page: Page): Locator => message(page, "left-out");
+  const toggle = (page: Page): Locator => leftOut(page).getByRole("button", { name: "Left-out entities" });
+  const list = (page: Page): Locator => leftOut(page).getByRole("group", { name: "Entities that were left out, by reason" });
+
+  const first = await launchWithGame({ dump: { entities: FLAWED_ENTITIES } });
+  try {
+    const { app, page } = first;
+    await readGame(app, page);
+    // One line says how many and what that means; the run's warnings do not say it a second time. The list is closed.
+    await expect(leftOut(page).locator("p.settings-message")).toHaveText(SUMMARY);
+    await expect(message(page, "warnings").locator("li", { hasText: "6 icons of mods are not shown: the app reads icons from the game's own files only." })).toHaveCount(1);
+    await expect(message(page, "warnings")).not.toContainText("left out");
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+    await expect(list(page)).toHaveCount(0);
+    expect((await status(page)).leftOut).toEqual([
+      { name: "mod-helper-b", reason: "no-collision-box", detail: "no collision box" },
+      { name: "mod-helper-a", reason: "no-collision-box", detail: "no collision box" },
+      { name: "mod-hidden-lamp", reason: "size", detail: SIZE_FOUND },
+    ]);
+    // What was left out is not among the entities of the data in use.
+    const names = ((await dataInUse(page)).entities as { entities: { name: string }[] }).entities.map((entity) => entity.name);
+    expect(FLAWED_ENTITIES.filter((entity) => names.includes(entity.name))).toEqual([]);
+
+    // Opened by pointer or key: the entities by reason, each reason in plain words, in a box that scrolls.
+    await toggle(page).focus();
+    await page.keyboard.press("Enter");
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "true");
+    await expect(list(page).locator("section")).toHaveCount(2);
+    const group = (reason: string): Locator => list(page).locator(`section[data-reason="${reason}"]`);
+    await expect(group("no-collision-box").locator("h4")).toHaveText("The game's data gives them no collision box, so they have no size. (2)");
+    await expect(group("no-collision-box").locator("li")).toHaveText(["mod-helper-a", "mod-helper-b"]);
+    await expect(group("size").locator("h4")).toHaveText("The running game gives them another size in tiles than the game's data files do. (1)");
+    await expect(group("size").locator(".left-out-found")).toHaveText(`Found: ${SIZE_FOUND}`);
+    await expect(group("size").locator("li")).toHaveText(["mod-hidden-lamp"]);
+    expect(await list(page).evaluate((element) => [getComputedStyle(element).maxHeight, getComputedStyle(element).overflowY])).toEqual(["220px", "auto"]);
+    await page.screenshot({ path: resolve(SHOTS, "left-out.png") });
+
+    // A name is text: a triple click selects it, and the copy key takes it.
+    await group("size").locator("li").click({ clickCount: 3 });
+    expect(await page.evaluate(() => document.getSelection()!.toString().trim())).toBe("mod-hidden-lamp");
+    await page.keyboard.press("ControlOrMeta+c");
+    await expect.poll(async () => (await app.evaluate(({ clipboard }) => clipboard.readText())).trim()).toBe("mod-hidden-lamp");
+
+    // The button copies the whole list as plain text.
+    await leftOut(page).getByRole("button", { name: "Copy list" }).click();
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe(LIST);
+    await expect(leftOut(page).getByRole("button", { name: "Copied" })).toBeVisible();
+    await toggle(page).click();
+    await expect(list(page)).toHaveCount(0);
+  } finally {
+    await closeApp(first.app);
+  }
+
+  // At the next start there is no run to report, and the list is there all the same: it belongs to the data.
+  const { app, page } = await launchWithGame({ userData: first.userData, program: first.program, folder: resolve(first.dataDirectory, process.platform === "darwin" ? "../.." : "..") });
+  try {
+    await gameDataInUse(page);
+    await openSettings(app, page);
+    await expect(message(page, "warnings")).toHaveCount(0);
+    await expect(leftOut(page).locator("p.settings-message")).toHaveText(SUMMARY);
+    await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
+    await toggle(page).click();
+    await expect(list(page).locator("li")).toHaveText(["mod-helper-a", "mod-helper-b", "mod-hidden-lamp"]);
+    // Back to the built-in data, which leaves nothing out.
+    await answerMessageBoxes(app, { run: true, unsaved: 1 });
+    await builtInButton(page).click();
+    await expect(source(page)).toHaveText(BUILT_IN_SOURCE, { timeout: 20_000 });
+    await expect(leftOut(page)).toHaveCount(0);
   } finally {
     await closeApp(app);
   }

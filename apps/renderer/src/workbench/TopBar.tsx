@@ -76,7 +76,7 @@ export function TopBar({ project, mode, canUndo, canRedo, canFit, settingsOpen, 
           </button>
           <button type="button" className="labelled-button" data-settings-toggle title="Project name and signal groups" aria-expanded={settingsOpen} onClick={onToggleSettings}>
             <Icon name="settings" size={16} />
-            Settings
+            Project Settings
           </button>
           <span className="action-divider" />
           <button type="button" className={`save-button${project.dirty ? " unsaved" : ""}`} title={withShortcut("Save", "file.save")} onClick={onSave}>

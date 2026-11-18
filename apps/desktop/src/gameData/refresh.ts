@@ -147,6 +147,6 @@ export async function readGameData(options: RefreshOptions): Promise<RefreshResu
   }
   if (!result.sandboxed && host.platform === "darwin" && options.sandbox !== "off") warnings.push("The game ran without the system's sandbox, which could not be entered here.");
   if (data.skippedIcons > 0) warnings.push(`${data.skippedIcons} icons of mods are not shown: the app reads icons from the game's own files only.`);
-  if (data.notes.length > 0) warnings.push(`${data.notes.length} wired entities were left out because the game's data about them is not consistent.`);
+  // The wired entities that were left out (`data.notes`) are no warning of this run: they belong to the data and are listed with it (leftOut.ts).
   return { ok: true, data, iconTable, warnings, sandboxed: result.sandboxed, changed: result.changed, steps: result.steps };
 }

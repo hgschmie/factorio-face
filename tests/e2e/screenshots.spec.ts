@@ -64,7 +64,7 @@ test("captures the integrated session: running simulation, diagnostics, signal p
   await expect(picker).toHaveCount(0);
 
   // Module settings; switching Space Age off turns the signal just chosen into a warning.
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Project settings" });
   await settings.getByRole("checkbox", { name: /Space Age/ }).uncheck();
   await page.screenshot({ path: resolve(SCREENSHOT_DIR, "integration-module-settings.png") });

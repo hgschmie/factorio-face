@@ -146,7 +146,7 @@ test("Escape returns to the select tool from outside the canvas, after it has dr
   // Escape that closes a dialog is the dialog's: the tool behind it stays.
   await page.keyboard.press("4");
   await expect(block(page, "selector")).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Project settings" });
   await settings.getByLabel("Project name").focus();
   await page.keyboard.press("Escape");
