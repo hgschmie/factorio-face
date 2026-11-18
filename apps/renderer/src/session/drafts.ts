@@ -4,14 +4,23 @@
 //   set to the value the language implies, so that the edit can be written;
 // - configurations that are incomplete (a comparison without a signal, an expression without an output) are kept as a draft
 //   with a hint, and written as soon as they become complete. A condition of a lamp or a generic entity that is in use without
-//   a signal and says nothing else is complete: the unset condition, which the language writes.
+//   a signal and says nothing else is complete: the unset condition, which the language writes. So is a condition of a decider
+//   combinator without a signal: the game reads the empty slot as 0, and the language writes it as `0 < S`.
 import { checkEntity, type EditFailureCode } from "@face/language";
-import { BOTH_NETWORKS, UNSET_CONDITION, type DeciderOutput, type Entity } from "@face/model";
+import { BOTH_NETWORKS, UNSET_CONDITION, type DeciderCondition, type DeciderOutput, type Entity } from "@face/model";
 import { incompleteCondition } from "../entities/genericSettings.ts";
 
 function normalizeOutput(output: DeciderOutput): DeciderOutput {
   if (output.copyCountFromInput) return output.constant === 1 ? output : { ...output, constant: 1 };
   return output.networks.red && output.networks.green ? output : { ...output, networks: BOTH_NETWORKS };
+}
+
+/** The join of the first condition is ignored by the game; the language reads it as "or". An empty signal slot reads no network; the language has both for it. */
+function normalizeCondition(condition: DeciderCondition, index: number): DeciderCondition {
+  const join = index === 0 ? "or" : condition.join;
+  const both = condition.firstNetworks.red && condition.firstNetworks.green;
+  const firstNetworks = condition.first || both ? condition.firstNetworks : BOTH_NETWORKS;
+  return join === condition.join && firstNetworks === condition.firstNetworks ? condition : { ...condition, join, firstNetworks };
 }
 
 function mapUnchanged<T>(list: readonly T[], map: (item: T, index: number) => T): readonly T[] {
@@ -23,8 +32,7 @@ function mapUnchanged<T>(list: readonly T[], map: (item: T, index: number) => T)
 export function normalizeEntity(entity: Entity): Entity {
   switch (entity.kind) {
     case "decider": {
-      // The join of the first condition is ignored by the game; the language reads it as "or".
-      const conditions = mapUnchanged(entity.conditions, (condition, index) => (index === 0 && condition.join !== "or" ? { ...condition, join: "or" as const } : condition));
+      const conditions = mapUnchanged(entity.conditions, normalizeCondition);
       const outputs = mapUnchanged(entity.outputs, normalizeOutput);
       const elseOutputs = mapUnchanged(entity.elseOutputs, normalizeOutput);
       return conditions === entity.conditions && outputs === entity.outputs && elseOutputs === entity.elseOutputs ? entity : { ...entity, conditions, outputs, elseOutputs };
@@ -44,23 +52,12 @@ export function normalizeEntity(entity: Entity): Entity {
 
 export type DraftCheck = { readonly ok: true } | { readonly ok: false; readonly code: EditFailureCode; readonly message: string };
 
-const ORDINALS = ["first", "second", "third", "fourth", "fifth"];
-
-function ordinal(index: number): string {
-  return ORDINALS[index] ?? `${index + 1}th`;
-}
-
 /** What is missing, in the inspector's words. Falls back to the language's own message. */
 function hint(entity: Entity, fallback: string): string {
   switch (entity.kind) {
     case "arithmetic":
       if (!entity.output) return "Choose an output signal to complete the expression.";
       break;
-    case "decider": {
-      const blank = entity.conditions.findIndex((condition) => !condition.first);
-      if (blank >= 0) return entity.conditions.length === 1 ? "The condition needs a signal." : `The ${ordinal(blank)} condition needs a signal.`;
-      break;
-    }
     case "lamp":
       if (entity.condition && entity.condition !== UNSET_CONDITION && !entity.condition.first) return "The light condition needs a signal.";
       break;

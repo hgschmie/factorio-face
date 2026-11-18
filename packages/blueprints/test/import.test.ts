@@ -443,6 +443,7 @@ describe("import: arithmetic combinator", () => {
 describe("import: decider combinator", () => {
   const read = (parameters: unknown) => importedEntity("decider-combinator", { control_behavior: { decider_conditions: parameters } });
   const EACH = { type: "virtual", name: "signal-each" };
+  const constant = (value: number) => ({ type: "constant", value });
 
   it("is empty without settings", () => {
     expect(importedEntity("decider-combinator")).toEqual({ entity: newEntity("decider-combinator"), notes: [] });
@@ -465,7 +466,6 @@ describe("import: decider combinator", () => {
       ],
     });
     expect(notes).toEqual([]);
-    const constant = (value: number) => ({ type: "constant", value });
     expect(entity.conditions).toEqual([
       { join: "or", first: SA, firstNetworks: BOTH_NETWORKS, comparator: ">", second: constant(10) },
       { join: "and", first: SIRON, firstNetworks: RED, comparator: "<=", second: { type: "signal", signal: SB, networks: GREEN } },
@@ -495,15 +495,36 @@ describe("import: decider combinator", () => {
     expect(entity.elseOutputs).toEqual([{ signal: sig("signal-everything"), copyCountFromInput: true, constant: 1, networks: { red: false, green: false } }]);
   });
 
-  it("drops a condition without a left side and says that this can change the result", () => {
-    const { entity, notes } = read({ conditions: [{ comparator: ">", constant: 1 }, { first_signal: A, comparator: ">", constant: 2, compare_type: "and" }, { compare_type: "and" }] });
-    expect(entity.conditions).toEqual([{ join: "or", first: SA, firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 2 } }]);
-    expect(notes).toEqual(["changed control_behavior.decider_conditions.conditions[].first_signal"]);
+  it("keeps a condition without a left side, which the game reads as 0, with both networks for the empty slot", () => {
+    const { entity, notes } = read({
+      conditions: [
+        { comparator: ">", constant: 1, compare_type: "and", first_signal_networks: { red: true, green: false } },
+        { first_signal: A, comparator: ">", constant: 2, compare_type: "and" },
+        { compare_type: "and" },
+        { second_signal: B, second_signal_networks: { red: false, green: true }, comparator: "≤" },
+      ],
+    });
+    expect(entity.conditions).toEqual([
+      { join: "or", firstNetworks: BOTH_NETWORKS, comparator: ">", second: constant(1) },
+      { join: "and", first: SA, firstNetworks: BOTH_NETWORKS, comparator: ">", second: constant(2) },
+      { join: "and", firstNetworks: BOTH_NETWORKS, comparator: "<", second: constant(0) },
+      { join: "or", firstNetworks: BOTH_NETWORKS, comparator: "<=", second: { type: "signal", signal: SB, networks: GREEN } },
+    ]);
+    expect(notes).toEqual([]);
   });
 
-  it("takes the blank rows of a combinator that is not configured for what they are", () => {
-    expect(read({ conditions: [{ comparator: "<", constant: 0 }], outputs: [{ copy_count_from_input: true }], else_outputs: [] })).toEqual({ entity: newEntity("decider-combinator"), notes: [] });
-    expect(read({ conditions: [{ comparator: "<", constant: 0 }], outputs: [{ signal: A }] }).notes).toEqual(["changed control_behavior.decider_conditions.conditions[].first_signal"]);
+  it("takes the empty rows of a combinator that is not configured for what they are, and keeps them next to an output or a condition that says something", () => {
+    const fresh = { entity: newEntity("decider-combinator"), notes: [] };
+    expect(read({ conditions: [{}], outputs: [{}], else_outputs: [] })).toEqual(fresh);
+    expect(read({ conditions: [{ comparator: "<", constant: 0 }, { compare_type: "and" }], outputs: [{ copy_count_from_input: true }], else_outputs: [] })).toEqual(fresh);
+    const empty = { join: "or", firstNetworks: BOTH_NETWORKS, comparator: "<", second: constant(0) };
+    const withOutput = read({ conditions: [{ comparator: "<", constant: 0 }], outputs: [{ signal: A }] });
+    expect([withOutput.entity.conditions, withOutput.notes]).toEqual([[empty], []]);
+    const withElse = read({ conditions: [{}], outputs: [{}], else_outputs: [{ signal: A }] });
+    expect([withElse.entity.conditions, withElse.notes]).toEqual([[empty], []]);
+    // A row without a signal that says something else than the empty one is a condition: 0 = 0 holds.
+    const said = read({ conditions: [{}, { comparator: "=" }], outputs: [{}] });
+    expect([said.entity.conditions, said.notes]).toEqual([[empty, { ...empty, comparator: "=" }], []]);
   });
 
   it("reports the single condition of a 1.1 blueprint and values of the wrong type", () => {

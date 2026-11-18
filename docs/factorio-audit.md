@@ -927,7 +927,7 @@ Condition expression:
 | There is no explicit grouping; the flat list with `compare_type` is the whole expression. Equivalent form: a disjunction of AND-groups, a new group starting at every condition whose `compare_type` is `or` (the default) | [api] + [web: same]; equivalence is a direct consequence |
 | Each operand has its own red/green selection; "If both red and green are checked, the input values are summed." | [web: same] [api] |
 | Empty condition list: the conditions do not hold, the else outputs are sent | [game: fixture F-29] |
-| A condition with blank `first_signal`: the blank signal reads as 0. The default `< 0` does not hold; `= 0`, `> -1` and `< signal` with that signal at 1 hold | [game: fixture F-29]. Unlike the condition of an entity (6.7), which is never fulfilled without a first signal |
+| A condition with blank `first_signal`: the blank signal reads as 0. The default `< 0` does not hold; `= 0`, `> -1` and `< signal` with that signal at 1 hold | [game: fixture F-29]. Unlike the condition of an entity (6.7), which is never fulfilled without a first signal. The simulation does the same (rule D-BLANK of `packages/simulation/CONFORMANCE.md`) |
 
 Wildcards in conditions (no each present):
 
@@ -1303,6 +1303,7 @@ entity quality, tags, the blueprint's description, icons, snapping and tiles). W
 | `conditions[]` with `first_signal`, `second_signal`, `constant`, `comparator` (all six, both spellings) | supported | |
 | `compare_type` and / or with AND precedence | supported, pending F-10 | |
 | Per-operand `first_signal_networks`, `second_signal_networks` | supported | |
+| A condition with blank `first_signal` | supported: the simulation reads the left side as 0 (rule D-BLANK, held against F-29), the language writes `when 0 < S`, a blueprint keeps it both ways | |
 | everything / anything as first signal | supported, pending F-11 | |
 | each in conditions | supported, pending F-12 | |
 | Special signals as second signal | unsupported-with-diagnostic until F-11 / F-12 define the legal set | Game rejects some combinations (2.1.7 fix) |

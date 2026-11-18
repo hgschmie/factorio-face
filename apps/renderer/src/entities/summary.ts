@@ -40,7 +40,8 @@ function deciderSummary(entity: DeciderCombinator): string {
   const condition = entity.conditions[0];
   const output = entity.outputs[0];
   if (!condition) return "no condition";
-  const test = `${signalOrBlank(condition.first)} ${symbol(condition.comparator)} ${operandText(condition.second)}${more(entity.conditions.length - 1)}`;
+  // An empty signal slot reads as 0 in a decider combinator.
+  const test = `${condition.first ? shortSignal(condition.first) : "0"} ${symbol(condition.comparator)} ${operandText(condition.second)}${more(entity.conditions.length - 1)}`;
   return `${test} → ${output ? shortSignal(output.signal) : "?"}${more(entity.outputs.length - 1)}`;
 }
 

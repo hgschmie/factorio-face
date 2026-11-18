@@ -197,10 +197,12 @@ export class Generator {
         return { ...base, kind, first, operation: this.pick(ARITHMETIC_OPERATIONS), second, output: hasEach && this.chance() ? wildcardSignal("each") : this.signal() };
       }
       case "decider": {
+        // One condition in seven has the empty signal slot on its left side, which reads no network.
         const conditions: DeciderCondition[] = Array.from({ length: this.int(0, 4) }, (_, i) => ({
           join: i === 0 ? "or" : this.pick(["and", "or"] as const),
-          first: this.pick([this.signal(), this.signal(), wildcardSignal("each"), wildcardSignal("anything"), wildcardSignal("everything")]),
-          firstNetworks: this.networks(),
+          ...(this.chance(1 / 7)
+            ? { firstNetworks: BOTH_NETWORKS }
+            : { first: this.pick([this.signal(), this.signal(), wildcardSignal("each"), wildcardSignal("anything"), wildcardSignal("everything")]), firstNetworks: this.networks() }),
           comparator: this.pick(COMPARATORS),
           second: this.operand(),
         }));

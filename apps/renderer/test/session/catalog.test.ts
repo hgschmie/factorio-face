@@ -195,6 +195,10 @@ describe("picker data and completion", () => {
     expect(completionCandidates(completionContext(analyze(lamp), lamp.indexOf("when ") + 5), new CatalogService(catalog, ALL))[0]).toEqual({ label: "unset", type: "keyword", detail: "in use without a signal: never holds" });
     expect(labels('circuit "c" {\n  express-transport-belt b at (0, 0) {\n    logistic when \n  }\n}\n', "when ")[0]).toBe("unset");
     expect(labels('circuit "c" {\n  decider-combinator d at (0, 0) {\n    when \n  }\n}\n', "when ")).not.toContain("unset");
+    // A decider combinator has 0 there, for the empty signal slot, and only there.
+    const gate = 'circuit "c" {\n  decider-combinator d at (0, 0) {\n    when \n  }\n}\n';
+    expect(completionCandidates(completionContext(analyze(gate), gate.indexOf("when ") + 5), new CatalogService(catalog, ALL))[0]).toEqual({ label: "0", type: "keyword", detail: "the empty signal slot: reads as 0" });
+    expect(labels(lamp, "when ")).not.toContain("0");
     expect(labels('circuit "c" {\n  constant-combinator a at (0, 0) { }\n  small-lamp b at (0, 0) { }\n  wire red \n}\n', "wire red ")).toEqual(["a.out", "b.in"]);
     expect(labels('circuit "c" {\n  small-lamp b at (0, 0) { }\n  \n}\n', "{ }\n  ")).toEqual(expect.arrayContaining(["wire", "constant-combinator", "small-lamp", "big-electric-pole", "steel-chest"]));
     expect(labels('circuit "c" {\n  selector-combinator s at (0, 0) {\n    operation = quality-filter\n    quality = \n  }\n}\n', "quality = ")).toEqual(expect.arrayContaining(["uncommon", "legendary"]));

@@ -1,7 +1,7 @@
 // The blueprint JSON as this package writes it (docs/factorio-audit.md 3 to 5). The importer reads more than this: every field is
 // optional there, older spellings are accepted, and what it does not know it reports.
 
-import type { ArithmeticOperation, Comparator, Direction, SelectorOperation, SpeakerPlaybackMode, StandardSignalKind } from "@face/model";
+import type { ArithmeticOperation, Comparator, DeciderCombinator, DeciderCondition, Direction, SelectorOperation, SpeakerPlaybackMode, StandardSignalKind } from "@face/model";
 
 /** `major << 48 | minor << 32 | patch << 16 | build`; too large for bit operators. */
 export function packVersion(major: number, minor: number, patch: number, build = 0): number {
@@ -130,6 +130,16 @@ export interface DeciderControlBehavior {
     readonly outputs: readonly (BlueprintDeciderOutput | Record<string, never>)[];
     readonly else_outputs: readonly BlueprintDeciderOutput[];
   };
+}
+
+/**
+ * Whether a decider combinator is not configured, as the game places it: no output, and no condition but blank rows (no signal on
+ * either side, `<`, 0). The editor has such a combinator without conditions; it is written as `[{}]`, `[{}]`, `[]`. Next to an
+ * output, or to a condition that says something, a blank row is a condition: the game reads its empty signal slot as 0.
+ */
+export function isBlankDecider({ conditions, outputs, elseOutputs }: Pick<DeciderCombinator, "conditions" | "outputs" | "elseOutputs">): boolean {
+  const blankRow = ({ first, comparator, second }: DeciderCondition): boolean => !first && comparator === "<" && second.type === "constant" && second.value === 0;
+  return outputs.length + elseOutputs.length === 0 && conditions.every(blankRow);
 }
 
 /** The parameters stand in `control_behavior` itself, without the wrapper the arithmetic and the decider combinator have. Always written. */

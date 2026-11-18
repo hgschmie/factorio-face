@@ -1,5 +1,5 @@
 import { STANDARD_CATALOG_VERSION } from "@face/catalog";
-import type { Entity, EntityId } from "@face/model";
+import { wildcardSignal, type DeciderCombinator, type Entity, type EntityId } from "@face/model";
 import { createEmptyProject, DEFAULT_GAME_VERSION } from "../../../desktop/src/emptyProject.ts";
 import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, GameDataStatus, HiddenModuleItems, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
@@ -56,6 +56,11 @@ export function entityNamed(session: ProjectSession, name: string): Entity {
   const entity = session.state.circuit.entities.find((candidate) => candidate.name === name);
   if (!entity) throw new Error(`No entity named ${name}`);
   return entity;
+}
+
+/** An edit of a decider combinator that the language cannot write, so that it stays a draft: an each output without each in a condition. */
+export function unwritable(gate: DeciderCombinator): DeciderCombinator {
+  return { ...gate, outputs: [{ signal: wildcardSignal("each"), copyCountFromInput: true, constant: 1, networks: { red: true, green: true } }] };
 }
 
 export function idOf(session: ProjectSession, name: string): EntityId {

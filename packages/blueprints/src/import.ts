@@ -10,7 +10,7 @@ import {
 } from "@face/model";
 import { readGeneric } from "./generic.ts";
 import { circuitCondition, Fields, float32, isObject, type Json, type NoteKind, type NoteSink } from "./reader.ts";
-import { CONNECTOR, formatVersion, unpackVersion } from "./schema.ts";
+import { CONNECTOR, formatVersion, isBlankDecider, unpackVersion } from "./schema.ts";
 import { decodeBlueprintString, DEFAULT_LIMITS, type BlueprintLimits, type DecodeErrorCode } from "./string.ts";
 
 /** Canvas units of the edit layout per tile: half the width of an entity card, the scale at which the editor derives a tile from an edit position. */
@@ -257,9 +257,9 @@ function readArithmetic(entity: Fields): Settings<"arithmetic"> {
 function readDecider(entity: Fields): Settings<"decider"> {
   const parameters = entity.fields("control_behavior")?.fields("decider_conditions");
   if (!parameters) return DEFAULT_ENTITY.decider;
-  const conditions: DeciderCondition[] = [];
-  const blank: Fields[] = [];
-  for (const condition of parameters.list("conditions")) {
+  // A condition without a first signal is kept: the game reads its left side as 0 (fixture F-29). Its network selection selects nothing.
+  // The first condition has nothing before it to combine with.
+  const conditions = parameters.list("conditions").map((condition, index): DeciderCondition => {
     const first = condition.signal("first_signal");
     const firstNetworks = condition.networks("first_signal_networks");
     const comparator = condition.comparator("comparator", "<");
@@ -267,10 +267,9 @@ function readDecider(entity: Fields): Settings<"decider"> {
     const secondNetworks = condition.networks("second_signal_networks");
     const constant = condition.int32("constant", 0);
     const join = condition.oneOf("compare_type", ["and", "or"] as const, "or");
-    // The first condition has nothing before it to combine with.
-    if (first) conditions.push({ join: conditions.length === 0 ? "or" : join, first, firstNetworks, comparator, second: signalSecond ? { type: "signal", signal: signalSecond, networks: secondNetworks } : { type: "constant", value: constant } });
-    else blank.push(condition);
-  }
+    const second: Operand = signalSecond ? { type: "signal", signal: signalSecond, networks: secondNetworks } : { type: "constant", value: constant };
+    return { join: index === 0 ? "or" : join, ...(first && { first }), firstNetworks: first ? firstNetworks : BOTH_NETWORKS, comparator, second };
+  });
   const outputs = (key: string): DeciderOutput[] =>
     parameters.list(key).flatMap((output): DeciderOutput[] => {
       const id = output.signal("signal");
@@ -282,11 +281,8 @@ function readDecider(entity: Fields): Settings<"decider"> {
       return [copy ? { signal: id, copyCountFromInput: true, constant: 1, networks } : { signal: id, copyCountFromInput: false, constant, networks: BOTH_NETWORKS }];
     });
   const decider: Settings<"decider"> = { kind: "decider", conditions, outputs: outputs("outputs"), elseOutputs: outputs("else_outputs") };
-  // The empty rows of a combinator that is not configured are nothing to report; a blank condition among others is.
-  if (conditions.length + decider.outputs.length + decider.elseOutputs.length > 0) {
-    for (const condition of blank) condition.changed("first_signal", "is blank; the editor has no condition without a left side and drops it, which can change what the combinator decides");
-  }
-  return decider;
+  // The blank rows of a combinator that is not configured are no conditions in the editor.
+  return isBlankDecider(decider) ? { ...decider, conditions: [] } : decider;
 }
 
 function readSelector(entity: Fields): Settings<"selector"> {

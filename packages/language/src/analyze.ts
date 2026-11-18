@@ -17,7 +17,7 @@ import type { Fragment } from "./fragment.ts";
 import { parse, parseFragment } from "./parser.ts";
 import { printTerminal } from "./printer.ts";
 import {
-  BLUEPRINT_DATA_PROPERTY, conditionRoles, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, UNSET_WORD,
+  BLUEPRINT_DATA_PROPERTY, conditionRoles, EMPTY_SIGNAL_WORD, KIND_LABEL, lookupProperty, NO_NETWORK, propertyNames, SIGNAL_SLOTS, STATEMENT_FORMS, takesUnset, UNSET_WORD,
   type PropertySpec, type PropertyVariant, type SignalSlot, type StatementForm,
 } from "./schema.ts";
 import { decodeSignal, decodeString, type Range, type Token } from "./tokens.ts";
@@ -572,12 +572,17 @@ class Analyzer {
     const conditions: DeciderCondition[] = [];
     let hasEach = false;
     for (const condition of when?.conditions ?? []) {
-      if (condition.unset) this.report(condition, "invalid-statement", `A decider combinator has no switch for a condition, so none of its conditions is '${UNSET_WORD}'; name a signal`);
-      const first = this.slot(condition.first?.signal, "decider.condition");
+      if (condition.unset) {
+        const instead = `name a signal, or write ${EMPTY_SIGNAL_WORD} for the empty signal slot`;
+        this.report(condition, "invalid-statement", `A decider combinator has no switch for a condition, so none of its conditions is '${UNSET_WORD}'; ${instead}`);
+      }
+      const left = this.left(condition, "decider");
       const second = this.operand(condition.second, "decider.operand");
-      if ((first && wildcardOf(first) === "each") || (second?.type === "signal" && wildcardOf(second.signal) === "each")) hasEach = true;
-      if (!first || !second || !condition.comparator) continue;
-      conditions.push({ join: condition.join?.text === "and" ? "and" : "or", first, firstNetworks: this.networks(condition.first?.networks), comparator: condition.comparator.text as Comparator, second });
+      if ((left?.signal && wildcardOf(left.signal) === "each") || (second?.type === "signal" && wildcardOf(second.signal) === "each")) hasEach = true;
+      if (!left || !second || !condition.comparator) continue;
+      // The empty signal slot reads no network; the model has both for it.
+      const first = left.signal ? { first: left.signal, firstNetworks: this.networks(condition.first?.networks) } : { firstNetworks: BOTH_NETWORKS };
+      conditions.push({ join: condition.join?.text === "and" ? "and" : "or", ...first, comparator: condition.comparator.text as Comparator, second });
     }
     const outputs: DeciderOutput[] = [];
     const elseOutputs: DeciderOutput[] = [];
@@ -629,6 +634,26 @@ class Analyzer {
     }
   }
 
+  /**
+   * The left side of a condition: a signal, or in a decider combinator the number 0, the empty signal slot that the game reads
+   * as 0 there (no `signal` then). Undefined when there is none or it is not legal, which a number is anywhere else.
+   */
+  private left(condition: CstCondition, kind: "decider" | "lamp" | "speaker" | "entity"): { readonly signal?: SignalId } | undefined {
+    const ref = condition.first;
+    if (ref?.signal.kind !== "int") {
+      const signal = this.slot(ref?.signal, `${kind}.condition`);
+      return signal && { signal };
+    }
+    const signalOnly = "The left side of a condition is a signal";
+    if (kind !== "decider") {
+      const without = takesUnset(kind) ? `A condition without a signal is written 'when ${UNSET_WORD}' and never holds` : "Without a 'when' statement a speaker has no condition and never plays";
+      this.report(ref.signal, "invalid-value", `${signalOnly}, not a number. ${without}; only a decider combinator reads an empty signal slot as 0`);
+    } else if (parseNumber(ref.signal.text) !== 0) this.report(ref.signal, "invalid-value", `${signalOnly}; only ${EMPTY_SIGNAL_WORD} is legal, for the empty signal slot of the game`);
+    else if (ref.networks) this.report(ref.networks, "syntax-error", "The empty signal slot takes no network selection");
+    else return {};
+    return undefined;
+  }
+
   /** A condition that has a switch (of a lamp, of a generic entity): a comparison, or `unset`, which stands alone. */
   private switchedCondition(when: CstWhen, kind: "lamp" | "entity"): ConditionValue | undefined {
     const [condition, next] = when.conditions;
@@ -649,8 +674,8 @@ class Analyzer {
     }
     for (const other of extra) this.report(other, "syntax-error", `${capitalize(withArticle(kind))} condition is a single comparison`);
     if (!condition) return undefined;
-    const first = this.slot(condition.first?.signal, `${kind}.condition`);
-    this.noNetworks(condition.first, kind === "lamp" ? "A lamp condition signal (use the lamp's 'networks' property)" : kind === "speaker" ? "A speaker condition signal" : "An entity condition signal (use the 'networks' property)");
+    const first = this.left(condition, kind)?.signal;
+    if (condition.first?.signal.kind !== "int") this.noNetworks(condition.first, kind === "lamp" ? "A lamp condition signal (use the lamp's 'networks' property)" : kind === "speaker" ? "A speaker condition signal" : "An entity condition signal (use the 'networks' property)");
     let second: Condition["second"] | undefined;
     if (condition.second?.type === "int") {
       const value = this.int(condition.second.token);

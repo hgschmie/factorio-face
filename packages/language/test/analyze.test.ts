@@ -1,6 +1,6 @@
 import { BOTH_NETWORKS, DEFAULT_ENTITY, SELECTOR_OPERATIONS, wildcardSignal, wireKey, type Entity, type SelectorCombinator, type SignalId } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, type AnalyzeOptions, type DiagnosticCode, type PrototypeResolver, type SignalResolver } from "../src/index.ts";
+import { analyze, analyzeFragment, DIAGNOSTIC_SEVERITY, printCircuit, type AnalyzeOptions, type DiagnosticCode, type PrototypeResolver, type SignalResolver } from "../src/index.ts";
 import { withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { circuit, codes, fixture, idOf, valid } from "./helpers.ts";
 
@@ -149,6 +149,59 @@ describe("decider combinator", () => {
     expect(d.elseOutputs).toEqual([{ signal: B, copyCountFromInput: true, constant: 1, networks: NONE }]);
   });
 
+  it("reads 0 on the left side of a condition as the empty signal slot: no first signal, both networks", () => {
+    const blank = { join: "or", firstNetworks: BOTH_NETWORKS };
+    const d = entity("decider-combinator gate { when 0 < virtual:signal-A and virtual:signal-B > 5 or 0 = 0 and 0 >= virtual:signal-B[green] output virtual:signal-A = 1 }", "decider");
+    expect(d.conditions).toEqual([
+      { ...blank, comparator: "<", second: { type: "signal", signal: A, networks: BOTH_NETWORKS } },
+      { join: "and", first: B, firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 5 } },
+      { ...blank, comparator: "=", second: { type: "constant", value: 0 } },
+      { ...blank, join: "and", comparator: ">=", second: { type: "signal", signal: B, networks: GREEN } },
+    ]);
+    // Whatever the lexer reads as the integer 0 is the empty slot, and it is written back as 0.
+    for (const zero of ["0", "-0", "00", "0x0", "0X00"]) {
+      const result = valid(circuit(`decider-combinator d { when ${zero} > -1 output virtual:signal-A = 1 }`));
+      expect((result.circuit.entities[0] as Entity & { kind: "decider" }).conditions, zero).toEqual([{ ...blank, comparator: ">", second: { type: "constant", value: -1 } }]);
+      expect(printCircuit(result.circuit), zero).toContain("when 0 > -1\n");
+    }
+  });
+
+  it("takes each on the right side of a condition with the empty slot for the each a wildcard output needs", () => {
+    expect(codes(circuit("decider-combinator d { when 0 < each output each = input }"))).toEqual([]);
+    expect(codes(circuit("decider-combinator d { when virtual:signal-A > 1 and 0 < each else output each = 1 }"))).toEqual([]);
+    expect(report(circuit("decider-combinator d { when 0 < 1 output each = input }"))).toEqual([["illegal-wildcard", "each"]]);
+    expect(report(circuit("decider-combinator d { when 0 < virtual:signal-A else output each = input }"))).toEqual([["illegal-wildcard", "each"]]);
+  });
+
+  it("takes no other number on the left side, and no network selection behind the 0", () => {
+    const messages = (source: string) => analyze(source).diagnostics.map((d) => [d.code, source.slice(d.from, d.to), d.message]);
+    const onlyZero = "The left side of a condition is a signal; only 0 is legal, for the empty signal slot of the game";
+    for (const number of ["5", "-1", "1", "0x10", "99999999999"]) {
+      expect(messages(circuit(`decider-combinator d { when ${number} < virtual:signal-A output virtual:signal-A = 1 }`)), number).toEqual([["invalid-value", number, onlyZero]]);
+    }
+    expect(messages(circuit("decider-combinator d { when virtual:signal-A > 1 and 5 < virtual:signal-A output virtual:signal-A = 1 }"))).toEqual([["invalid-value", "5", onlyZero]]);
+    for (const selection of ["[red]", "[green]", "[none]"]) {
+      expect(messages(circuit(`decider-combinator d { when 0${selection} < virtual:signal-A output virtual:signal-A = 1 }`)), selection).toEqual([["syntax-error", selection, "The empty signal slot takes no network selection"]]);
+    }
+    // A decimal number is no integer, and a sign that is no part of the number is an operator.
+    expect(codes(circuit("decider-combinator d { when 0.0 < virtual:signal-A output virtual:signal-A = 1 }"))).toContain("syntax-error");
+    expect(codes(circuit("decider-combinator d { when +0 < virtual:signal-A output virtual:signal-A = 1 }"))).toContain("syntax-error");
+    // The condition in error is left out, as any other is; the rest of the combinator is read.
+    expect(analyze(circuit("decider-combinator d { when 5 < virtual:signal-A output virtual:signal-A = 1 }")).circuit).toBeUndefined();
+  });
+
+  it("has a number on the left side of the condition of no other entity: those have 'unset', or no condition", () => {
+    const messages = (source: string) => analyze(source).diagnostics.map((d) => [d.code, source.slice(d.from, d.to), d.message]);
+    const unset = "The left side of a condition is a signal, not a number. A condition without a signal is written 'when unset' and never holds; only a decider combinator reads an empty signal slot as 0";
+    const speaker = "The left side of a condition is a signal, not a number. Without a 'when' statement a speaker has no condition and never plays; only a decider combinator reads an empty signal slot as 0";
+    expect(messages(circuit("small-lamp l { when 0 < virtual:signal-A }"))).toEqual([["invalid-value", "0", unset]]);
+    expect(messages(circuit("small-lamp l { when 5 = 5 }"))).toEqual([["invalid-value", "5", unset]]);
+    expect(messages(circuit("small-lamp l { when 0[red] < virtual:signal-A }"))).toEqual([["invalid-value", "0", unset]]);
+    expect(messages(circuit("transport-belt b { when 0 < virtual:signal-A }"))).toEqual([["invalid-value", "0", unset]]);
+    expect(messages(circuit("transport-belt b { logistic when 0 = 0 }"))).toEqual([["invalid-value", "0", unset]]);
+    expect(messages(circuit("programmable-speaker s { when 0 < virtual:signal-A }"))).toEqual([["invalid-value", "0", speaker]]);
+  });
+
   it.each(["<", ">", "=", "!=", "<=", ">="] as const)("parses comparator %s", (comparator) => {
     expect(entity(`decider-combinator d { when virtual:signal-A ${comparator} 1 output virtual:signal-A = 1 }`, "decider").conditions[0]!.comparator).toBe(comparator);
   });
@@ -287,6 +340,7 @@ describe("diagnostics", () => {
     expectCodes(circuit("small-lamp a { when virtual:signal-A[red] > 1 }"), ["syntax-error"]);
     expectCodes(circuit("small-lamp a { when virtual:signal-A[none] > 1 }"), ["syntax-error"]);
     expectCodes(circuit("decider-combinator a { when each[both] > 1 output each = 1 }"), ["syntax-error"]);
+    expectCodes(circuit("decider-combinator a { when 0[red] > 1 output virtual:signal-A = 1 }"), ["syntax-error"]);
     expectCodes(circuit("decider-combinator a { when each > 1 output each = 1[none] }"), ["syntax-error"]);
     expectCodes(circuit("small-lamp a { when virtual:signal-A > 1 and virtual:signal-B > 2 }"), ["syntax-error"]);
     expectCodes(circuit("arithmetic-combinator a { virtual:signal-A[red] = 1 + 1 }"), ["syntax-error"]);
@@ -399,6 +453,8 @@ describe("diagnostics", () => {
     expectCodes(circuit("selector-combinator s { index-comparator = max }"), ["invalid-value"]);
     expectCodes(circuit('selector-combinator s { operation = quality-filter quality = "" }'), ["invalid-value"]);
     expectCodes(circuit("constant-combinator c { section { multiplier = true } }"), ["invalid-value"]);
+    expectCodes(circuit("decider-combinator d { when 5 < virtual:signal-A output virtual:signal-A = 1 }"), ["invalid-value"]);
+    expectCodes(circuit("small-lamp l { when 0 < virtual:signal-A }"), ["invalid-value"]);
   });
 
   it("invalid-signal", () => {

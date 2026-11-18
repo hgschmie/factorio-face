@@ -1,7 +1,7 @@
 // Graphical commands are small source patches in one transaction, and the editor history is the only undo stack.
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
-import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, type } from "./helpers.ts";
+import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, type, unwritable } from "./helpers.ts";
 
 describe("graphical commands as source patches", () => {
   it("starts with the example circuit, valid and without history", () => {
@@ -309,7 +309,7 @@ describe("graphical commands as source patches", () => {
     if (gate.kind !== "decider") throw new Error("gate is a decider");
     const source = session.state.source;
     session.commands.select([gate.id]);
-    session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, first: undefined }] });
+    session.commands.updateEntity(unwritable(gate));
     session.commands.updateEntity({ ...session.state.draft!.entity, description: "pending" });
     expect(session.state.source).toBe(source);
     expect(session.state.draft?.entity.description).toBe("pending");

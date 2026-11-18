@@ -1,14 +1,14 @@
 // Fixture F-29: what the game itself does with a condition that has no first signal (tests/fixtures/game/F-29-blank-condition.json,
 // recorded by tools/game-probe/blank-condition.mjs). The rules of the engine that rest on it are held against the recording:
 // L-BLANK, SP-BLANK and the conditions of the generic entities (false while wired), L-UNWIRED (no effect without a wire),
-// D-EMPTY, and D-BLANK, which the game bears out only for a comparison that 0 does not pass. The second part runs the engine on
-// the circuit of every reading, with the unset condition (`when unset`) where the game has the blank one, and holds the result
-// against what the game did.
+// D-EMPTY, and D-BLANK (in a decider combinator the blank signal reads as 0). The second part runs the engine on the circuit of
+// every reading, with the unset condition (`when unset`) where the game has the blank one, and on the decider combinators with
+// the conditions the game gave back, and holds the result against what the game did.
 import { readFileSync } from "node:fs";
-import { isPrototypeName, PROTOTYPES, UNSET_CONDITION, type ConditionValue } from "@face/model";
+import { COMPARATORS, isPrototypeName, PROTOTYPES, signal, UNSET_CONDITION, type Comparator, type ConditionValue, type DeciderCondition } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { compile, RULES } from "../src/index.ts";
-import { circuit, constant, entity, lamp, simulate, speaker, when, wire } from "./helpers.ts";
+import { circuit, constant, decider, entity, lamp, out, outputOf, simulate, speaker, when, wire } from "./helpers.ts";
 
 type Json = Record<string, unknown>;
 interface Reading {
@@ -28,7 +28,20 @@ interface Reading {
   readonly exported?: Json | null;
 }
 interface Case { readonly name: string; readonly type: string; readonly kind: "onoff" | "wall" | "signal" | "speaker"; readonly flag?: string; readonly readings: readonly Reading[] }
-interface Decider { readonly state: string; readonly error?: string; readonly output: Readonly<Record<string, number>> }
+interface GameSignal { readonly name: string; readonly type?: string }
+interface GameNetworks { readonly red: boolean; readonly green: boolean }
+/** A condition of a decider combinator as the runtime API gives it back. */
+interface GameCondition {
+  readonly comparator: string;
+  readonly compare_type: string;
+  readonly constant?: number;
+  readonly first_signal?: GameSignal;
+  readonly second_signal?: GameSignal;
+  readonly first_signal_networks: GameNetworks;
+  readonly second_signal_networks: GameNetworks;
+}
+/** `signal`: the value of the fixture's signal on the red input of the combinator. */
+interface Decider { readonly state: string; readonly error?: string; readonly signal: number; readonly conditions: readonly GameCondition[]; readonly output: Readonly<Record<string, number>> }
 interface Fixture { readonly gameVersion: string; readonly provenance: string; readonly signal: string; readonly cases: readonly Case[]; readonly deciders: readonly Decider[] }
 
 const fixture = JSON.parse(readFileSync(new URL("../../../tests/fixtures/game/F-29-blank-condition.json", import.meta.url), "utf8")) as Fixture;
@@ -71,12 +84,11 @@ describe("F-29: a blank condition in the game", () => {
   });
 
   it("L-BLANK, SP-BLANK, generic entities: a wired entity whose condition is in use and blank is switched as by a condition that does not hold", () => {
-    expect(RULES.blankFirstSignalResult).toBe(false);
     for (const state of ["blank", "blank-equals-zero"]) {
       const readings = every(state);
       expect(readings.length).toBeGreaterThanOrEqual(fixture.cases.length);
       for (const [name, one] of readings) {
-        expect([name, one.wires, one.fulfilled], `${name} ${state}`).toEqual([name, 1, RULES.blankFirstSignalResult]);
+        expect([name, one.wires, one.fulfilled], `${name} ${state}`).toEqual([name, 1, false]);
         expect(one.condition?.first_signal, `${name} ${state}`).toBeUndefined();
         if (one.flag !== undefined) expect(one.flag, `${name} ${state}`).toBe(true);
       }
@@ -132,16 +144,19 @@ describe("F-29: a blank condition in the game", () => {
 
   it("D-EMPTY and D-BLANK: a decider combinator without a condition, and with a blank one that compares below 0, sends its else output", () => {
     expect(fixture.deciders.filter((one) => one.error !== undefined)).toEqual([]);
+    expect(fixture.deciders.map((one) => one.state)).toEqual(["blank", "blank-unwired", "true", "false", "empty", "blank-equals-zero", "blank-above-minus-one", "blank-below-signal"]);
     expect([holds("true"), holds("false")]).toEqual([true, false]);
     expect(holds("empty")).toBe(RULES.emptyConditionListResult);
-    expect([holds("blank"), holds("blank-unwired")]).toEqual([RULES.blankFirstSignalResult, RULES.blankFirstSignalResult]);
+    expect([holds("blank"), holds("blank-unwired")]).toEqual([false, false]);
     for (const one of fixture.deciders) expect(Object.keys(one.output), one.state).toEqual([holds(one.state) ? "signal-B" : "signal-C"]);
   });
 
-  it("in a decider combinator a blank first signal reads as 0, unlike in the condition of an entity", () => {
-    // The engine has D-BLANK false for every comparator (`decider.ts`); the game compares. Open until the engine follows.
+  it("D-BLANK: in a decider combinator a blank first signal reads as 0, unlike in the condition of an entity", () => {
     expect([holds("blank-equals-zero"), holds("blank-above-minus-one"), holds("blank-below-signal")]).toEqual([true, true, true]);
     expect(every("blank-equals-zero").every(([, one]) => one.fulfilled === false)).toBe(true);
+    // The game keeps the condition without `first_signal` and with both networks for the empty slot.
+    const blank = fixture.deciders.filter((one) => one.state.startsWith("blank"));
+    expect(blank.map((one) => one.conditions.map((condition) => [condition.first_signal, condition.first_signal_networks]))).toEqual(blank.map(() => [[undefined, { red: true, green: true }]]));
   });
 });
 
@@ -245,6 +260,37 @@ describe("F-29: the engine on the circuits of the recording", () => {
   it("the switch off: no condition, and nothing is disabled with a wire either", () => {
     for (const probed of onOff) {
       for (const reading of read(probed, "off")) expect([simulated(probed, undefined, true).disabled, reading.flag], probed.name).toEqual([reading.disabled, false]);
+    }
+  });
+
+  it("D-EMPTY, D-BLANK: the decider combinators send what the game's did, with the conditions the game gave back", () => {
+    const id = (one: GameSignal) => signal("virtual", one.name);
+    const condition = (one: GameCondition): DeciderCondition => {
+      const kinds = [one.first_signal?.type ?? "virtual", one.second_signal?.type ?? "virtual"];
+      expect([COMPARATORS.includes(one.comparator as Comparator), ...kinds], JSON.stringify(one)).toEqual([true, "virtual", "virtual"]);
+      return {
+        join: one.compare_type === "and" ? "and" : "or",
+        ...(one.first_signal && { first: id(one.first_signal) }),
+        firstNetworks: one.first_signal_networks,
+        comparator: one.comparator as Comparator,
+        second: one.second_signal ? { type: "signal", signal: id(one.second_signal), networks: one.second_signal_networks } : { type: "constant", value: one.constant ?? 0 },
+      };
+    };
+    expect(fixture.deciders.length).toBe(8);
+    for (const one of fixture.deciders) {
+      // Wired exactly when the game read the constant combinator's signal on the input.
+      const wired = one.signal === 1;
+      expect([one.state, wired]).toEqual([one.state, one.state !== "blank-unwired"]);
+      const gate = decider("d", one.conditions.map(condition), [out("B", 1)], [out("C", 1)]);
+      const built = circuit([constant("c", { [SIGNAL]: 1 }), gate], wired ? [wire("red", "c.out", "d.in")] : []);
+      expect(compile(built).notes.filter((note) => note.severity !== "info"), one.state).toEqual([]);
+      expect(outputOf(simulate(built, 2), "d"), one.state).toEqual(Object.fromEntries(Object.entries(one.output).map(([name, value]) => [`virtual:${name}`, value])));
+    }
+    // The same blank conditions on a lamp never hold: the engine tells the two kinds of condition apart as the game does.
+    for (const one of fixture.deciders.filter((candidate) => holds(candidate.state) && candidate.conditions.some((entry) => !entry.first_signal))) {
+      const { comparator, second } = condition(one.conditions[0]!);
+      const blank = { comparator, second: second.type === "signal" ? { type: "signal" as const, signal: second.signal } : second };
+      expect(simulated(named("small-lamp"), blank, true), one.state).toEqual({ fulfilled: false, disabled: true, notes: [] });
     }
   });
 

@@ -56,6 +56,17 @@ export function takesUnset(kind: EntityKind): boolean {
   return kind === "lamp" || kind === "entity";
 }
 
+/**
+ * Written in the place of the first signal of a condition of a decider combinator (`when 0 < S`): the empty signal slot, which
+ * the game reads as 0 there. The condition of any other entity never holds without a signal and is not written this way.
+ */
+export const EMPTY_SIGNAL_WORD = "0";
+
+/** Whether the conditions of a kind compare when their first signal is empty. */
+export function takesEmptySignal(kind: EntityKind): boolean {
+  return kind === "decider";
+}
+
 const DESCRIPTION: PropertySpec = { name: "description", values: [{ type: "string" }], detail: "In-game entity description" };
 
 /** The property of a generic entity that holds what a blueprint says about it and the editor does not model, as JSON text. */

@@ -28,9 +28,10 @@ function ConditionEditor({ condition, index, onChange, onRemove }: { readonly co
         wide
         wildcards={SIGNAL_SLOTS["decider.condition"]}
         value={condition.first}
-        trailing={<NetworkToggle label="Signal networks" value={condition.firstNetworks} onChange={(firstNetworks) => onChange({ ...condition, firstNetworks })} />}
+        trailing={condition.first && <NetworkToggle label="Signal networks" value={condition.firstNetworks} onChange={(firstNetworks) => onChange({ ...condition, firstNetworks })} />}
         onChange={(first) => onChange(setOptional(condition, "first", first))}
       />
+      {!condition.first && <p className="muted-note" data-note="empty-signal">An empty signal reads as 0.</p>}
       <SelectField label="Comparator" wide value={condition.comparator} options={COMPARATOR_OPTIONS} onChange={(comparator) => onChange({ ...condition, comparator })} />
       <OperandField label="Compare to" wildcards={SIGNAL_SLOTS["decider.operand"]} value={condition.second} onChange={(second) => onChange({ ...condition, second })} />
     </ListItem>

@@ -1,12 +1,12 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, UNSET_CONDITION, type Circuit, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, UNSET_CONDITION, type Circuit, type DeciderCombinator, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { MODDED_RECORDS, withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
-import { decodeBlueprintString, exportBlueprint, importBlueprint, type ImportReport } from "../src/index.ts";
-import { A, B, exported, IRON, imported } from "./helpers.ts";
+import { decodeBlueprintString, exportBlueprint, importBlueprint, isBlankDecider, type ImportReport } from "../src/index.ts";
+import { A, B, circuitOf, exported, IRON, imported } from "./helpers.ts";
 import { INSTRUMENTS, sampleCircuit, SAMPLES } from "./samples.ts";
 
 /** The instruments and notes the generator of the language tests uses, behind a first instrument and a first note that it never names. */
@@ -44,6 +44,7 @@ function blueprintable(circuit: Circuit): Circuit {
  * - a section group without a name is no group, and one section without anything in it is no section, as in a combinator the game places;
  * - the first instrument and the first note of an instrument go without saying;
  * - the source signal of a quality transfer has no quality of its own;
+ * - a decider combinator without outputs whose conditions all are `0 < 0` is one that is not configured: without conditions;
  * - a side of a splitter that has one of its two conditions has the game's own for the other (a condition that is unset is one it has).
  */
 function afterRoundTrip(circuit: Circuit, instruments: readonly SpeakerInstrument[]): Circuit {
@@ -81,6 +82,7 @@ function afterRoundTrip(circuit: Circuit, instruments: readonly SpeakerInstrumen
       const index = instrument === undefined ? 0 : instruments.findIndex((candidate) => candidate.name === instrument);
       return { ...speaker, ...(index > 0 && { instrument }), ...(note !== undefined && instruments[index]!.notes.indexOf(note) > 0 && { note }) };
     }
+    if (base.kind === "decider" && isBlankDecider(base)) return { ...base, conditions: [] };
     if (base.kind === "selector" && base.mode.operation === "quality-transfer" && base.mode.source.type === "signal" && base.mode.source.signal) {
       const { kind, name } = base.mode.source.signal;
       return { ...base, mode: { ...base.mode, source: { type: "signal", signal: { kind, name } } } };
@@ -122,6 +124,26 @@ describe("round trip: editor to blueprint to editor", () => {
     for (const sample of SAMPLES) roundTrip(sampleCircuit(sample), INSTRUMENTS);
   });
 
+  it("keeps decider conditions without a first signal, and has a combinator of nothing but blank rows as one that is not configured", () => {
+    const kept = [
+      "decider-combinator d { when 0 < virtual:signal-A[red] and virtual:signal-B > 5 or 0 = 0 output virtual:signal-A = 1 }",
+      "decider-combinator d { when 0 < 0 else output virtual:signal-A = 1 }",
+      "decider-combinator d { when 0 < 0 or virtual:signal-A > 1 }",
+      "decider-combinator d { when 0 = 0 }",
+      "decider-combinator d { when 0 < each output each = input }",
+    ];
+    for (const body of kept) {
+      const circuit = circuitOf(body);
+      roundTrip(circuit, INSTRUMENTS);
+      expect(imported(exported(circuit)).circuit.entities[0], body).toMatchObject({ conditions: (circuit.entities[0] as DeciderCombinator).conditions });
+    }
+    for (const body of ["decider-combinator d { when 0 < 0 }", "decider-combinator d { when 0 < 0 and 0 < 0 or 0 < 0 }", "decider-combinator d { }"]) {
+      const circuit = circuitOf(body);
+      roundTrip(circuit, INSTRUMENTS);
+      expect(imported(exported(circuit)).circuit.entities[0], body).toMatchObject({ conditions: [], outputs: [], elseOutputs: [] });
+    }
+  });
+
   it("keeps generated circuits of every kind of entity and wire", () => {
     const kinds = new Set<string>();
     /** The conditions in use without a signal among them: `lamp` for the one of a lamp, the key of the setting for one of a generic entity. */
@@ -143,7 +165,7 @@ describe("round trip: editor to blueprint to editor", () => {
   it("keeps generated circuits with the entity table of a modded game: every prototype of a kind, and a loader of one tile", () => {
     const prototypes = new Set<string>();
     withModdedTable(() => {
-      for (let seed = 1; seed <= 300; seed++) {
+      for (let seed = 1; seed <= 400; seed++) {
         const circuit = blueprintable(new Generator(seed).circuit(1 + (seed % 12)));
         for (const entity of circuit.entities) prototypes.add(entity.prototype);
         roundTrip(circuit, GENERATED_INSTRUMENTS);

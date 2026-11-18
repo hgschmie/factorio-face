@@ -2,7 +2,7 @@
 import { facingOf } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
-import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, replaceText } from "./helpers.ts";
+import { createSession, entityNamed, errorsOf, idOf, IRREGULAR, replaceText, unwritable } from "./helpers.ts";
 
 describe("rotating entities", () => {
   it("turns an entity clockwise through south, west and north back to east, writing the clause every time", () => {
@@ -168,8 +168,7 @@ describe("rotating entities", () => {
     const gate = entityNamed(session, "gate");
     if (gate.kind !== "decider") throw new Error("gate is a decider");
     session.commands.select([gate.id]);
-    const { first: _first, ...withoutSignal } = gate.conditions[0]!;
-    session.commands.updateEntity({ ...gate, conditions: [withoutSignal] });
+    session.commands.updateEntity(unwritable(gate));
     expect(session.state.draft).not.toBeNull();
     session.commands.rotateEntities([gate.id], "clockwise");
     expect(facingOf(entityNamed(session, "gate"))).toBe("south");

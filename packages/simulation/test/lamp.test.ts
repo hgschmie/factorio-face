@@ -32,9 +32,11 @@ describe("lamp lighting", () => {
     expect(lampState(lamp("l", { condition: when("A", ">", 0), alwaysOn: true }))).toEqual(ON);
   });
 
-  it("F-21 assumption: the default condition (no first signal) is false", () => {
+  it("L-BLANK (F-29): a condition without a first signal is false whatever its comparator: the blank signal does not read as 0 here", () => {
     expect(lampState(lamp("l", { condition: when(undefined, "<", 0) }), { red: { A: 5 } })).toEqual(OFF);
-    expect(lampState(lamp("l", { condition: when(undefined, "=", 0), alwaysOn: true }), { red: { A: 5 } })).toEqual(OFF);
+    for (const condition of [when(undefined, "=", 0), when(undefined, ">", -1), when(undefined, "<", "A"), when(undefined, "!=", 5)]) {
+      expect(lampState(lamp("l", { condition, alwaysOn: true }), { red: { A: 5 } }), JSON.stringify(condition)).toEqual(OFF);
+    }
   });
 
   it("L-BLANK, L-UNWIRED (F-29): the unset condition never holds: a wired lamp is dark whatever it reads, one without a wire follows always-on", () => {

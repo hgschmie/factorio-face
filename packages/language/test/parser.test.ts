@@ -201,9 +201,14 @@ describe("error recovery", () => {
     expect(messages(circuit("arithmetic-combinator a { virtual:signal-A = }"))).toEqual(["Expected a signal or an integer but found '}'"]);
     expect(messages(circuit("arithmetic-combinator a { virtual:signal-A = 1 }"))).toEqual(["Expected an arithmetic operator but found '}'"]);
     expect(messages(circuit("arithmetic-combinator a { virtual:signal-A = 1 + }"))).toEqual(["Expected a signal or an integer but found '}'"]);
-    expect(messages(circuit("decider-combinator a { when }"))).toEqual(["Expected a signal but found '}'"]);
+    expect(messages(circuit("decider-combinator a { when }"))).toEqual(["Expected a signal or 0 but found '}'"]);
     expect(messages(circuit("decider-combinator a { when each }"))).toEqual(["Expected a comparator (<, >, =, !=, <=, >=) but found '}'"]);
-    expect(messages(circuit("decider-combinator a { when each > 1 and }"))).toEqual(["Expected a signal but found '}'"]);
+    expect(messages(circuit("decider-combinator a { when each > 1 and }"))).toEqual(["Expected a signal or 0 but found '}'"]);
+    expect(messages(circuit("decider-combinator a { when 0 }"))).toEqual(["Expected a comparator (<, >, =, !=, <=, >=) but found '}'"]);
+    expect(messages(circuit("decider-combinator a { when 0 < }"))).toEqual(["Expected a signal or an integer but found '}'"]);
+    expect(messages(circuit("decider-combinator a { when +0 < 1 }"))[0]).toBe("Expected a signal or 0 but found '+'");
+    expect(messages(circuit("decider-combinator a { when 0.0 < 1 }"))[0]).toBe("Expected a signal or 0 but found '0.0'");
+    expect(messages(circuit("programmable-speaker a { when }"))).toEqual(["Expected a signal but found '}'"]);
     expect(messages(circuit("decider-combinator a { output }"))).toEqual(["Expected a signal but found '}'"]);
     expect(messages(circuit("decider-combinator a { output each = foo }"))).toEqual(["Expected an integer or 'input' but found 'foo'"]);
     expect(messages(circuit("decider-combinator a { else when each > 1 }"))).toEqual(["Expected 'output' after 'else' but found 'when'"]);

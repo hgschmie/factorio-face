@@ -8,7 +8,7 @@ import type {
 } from "./cst.ts";
 import { diagnostic, type Diagnostic, type DiagnosticCode } from "./diagnostics.ts";
 import { declaredPrototype } from "./names.ts";
-import { ARITHMETIC_OPERATORS, NO_NETWORK, SIGNAL_SLOTS, takesUnset, UNSET_WORD } from "./schema.ts";
+import { ARITHMETIC_OPERATORS, EMPTY_SIGNAL_WORD, NO_NETWORK, SIGNAL_SLOTS, takesEmptySignal, takesUnset, UNSET_WORD } from "./schema.ts";
 import { decodeString, encodeString, isTrivia, lex, type Range, type Token } from "./tokens.ts";
 
 /** What the grammar accepts at the end of a source prefix; the raw material for completion. */
@@ -488,10 +488,12 @@ class Parser {
     const unsettable = takesUnset(kind) && !join;
     this.note({ type: "signal", wildcards: slot(kind, "condition") });
     if (unsettable) this.keywords(UNSET_WORD);
+    if (takesEmptySignal(kind)) this.keywords(EMPTY_SIGNAL_WORD);
     // `unset` is a plain word that only has this meaning here. It is read wherever a condition stands, so that the analysis can say where it does not belong.
     const unset = this.tok.kind === "ident" && this.tok.text === UNSET_WORD && !this.startsEntity() ? this.next() : undefined;
-    if (!unset && !isSignalToken(this.tok)) {
-      this.expected(unsettable ? `a signal or '${UNSET_WORD}'` : "a signal");
+    // So is a number on the left side: the analysis knows where 0 stands for the empty signal slot.
+    if (!unset && !isSignalToken(this.tok) && this.tok.kind !== "int") {
+      this.expected(unsettable ? `a signal or '${UNSET_WORD}'` : takesEmptySignal(kind) ? `a signal or ${EMPTY_SIGNAL_WORD}` : "a signal");
       return { from: join?.from ?? this.lastEnd, to: this.lastEnd, join };
     }
     const first = unset ? undefined : this.sigref();

@@ -91,6 +91,32 @@ describe("canonical printer", () => {
     for (const entity of [decider, arithmetic, lamp]) expect(checkEntity(entity)).toEqual({ ok: true });
   });
 
+  it("writes a decider condition without a first signal with 0 on its left side, and reads it back", () => {
+    const a: SignalId = { kind: "item", name: "a" };
+    const blank = { join: "or" as const, firstNetworks: BOTH_NETWORKS, comparator: "<" as const, second: { type: "signal" as const, signal: a, networks: { red: true, green: false } } };
+    const decider: Entity = {
+      ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", id: "d", name: "d", position: { x: 0, y: 0 },
+      conditions: [
+        blank,
+        { join: "and", first: a, firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 5 } },
+        { ...blank, comparator: "=", second: { type: "constant", value: 0 } },
+        { ...blank, join: "and", comparator: ">=", second: { type: "signal", signal: wildcardSignal("each"), networks: BOTH_NETWORKS } },
+      ],
+      outputs: [{ signal: wildcardSignal("each"), copyCountFromInput: true, constant: 1, networks: BOTH_NETWORKS }],
+    };
+    expect(printEntity(decider)).toBe("decider-combinator d at (0, 0) {\n    when 0 < item:a[red] and item:a > 5 or 0 = 0 and 0 >= each\n    output each = input\n}");
+    expectRoundTrip({ name: "blank", entities: [decider], wires: [] });
+    expect(checkEntity(decider)).toEqual({ ok: true });
+    // A single condition that is the game's empty row is written like any other, and is not the combinator without conditions.
+    const row: Entity = { ...decider, conditions: [{ join: "or", firstNetworks: BOTH_NETWORKS, comparator: "<", second: { type: "constant", value: 0 } }], outputs: [] };
+    expect(printEntity(row)).toBe("decider-combinator d at (0, 0) {\n    when 0 < 0\n}");
+    expectRoundTrip({ name: "row", entities: [row], wires: [] });
+    // The generated circuits have such conditions, so the round trips of this file cover them.
+    const conditions = Array.from({ length: 60 }, (_, index) => new Generator(index + 1).circuit(6)).flatMap((circuit) => circuit.entities).flatMap((entity) => (entity.kind === "decider" ? entity.conditions : []));
+    expect(conditions.filter((condition) => !condition.first).length).toBeGreaterThan(5);
+    expect(conditions.filter((condition) => condition.first).length).toBeGreaterThan(50);
+  });
+
   it("writes a condition in use without a signal as 'when unset', for a lamp as for an entity", () => {
     const lamp: Entity = { ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", id: "l", name: "l", position: { x: 0, y: 0 }, condition: UNSET_CONDITION, alwaysOn: true };
     const belt: Entity = { kind: "entity", prototype: "express-transport-belt", id: "b", name: "belt1", position: { x: 0, y: 0 }, settings: { when: UNSET_CONDITION, "logistic-when": UNSET_CONDITION } };
@@ -149,7 +175,8 @@ describe("checkEntity", () => {
       { ...base, ...DEFAULT_ENTITY.arithmetic, prototype: "arithmetic-combinator", first: { type: "constant", value: 5 } },
       { ...base, ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", useColors: false, colorMode: "components" },
       { ...base, ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", condition: { comparator: ">", second: { type: "constant", value: 1 } } },
-      { ...base, ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", conditions: [{ join: "or", firstNetworks: BOTH_NETWORKS, comparator: ">", second: { type: "constant", value: 1 } }] },
+      // The empty signal slot of a decider condition reads no network: the language has no selection for it.
+      { ...base, ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", conditions: [{ join: "or", firstNetworks: { red: true, green: false }, comparator: ">", second: { type: "constant", value: 1 } }] },
       { ...base, ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", outputs: [{ signal: { kind: "item", name: "a" }, copyCountFromInput: true, constant: 5, networks: BOTH_NETWORKS }] },
       { ...base, ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", outputs: [{ signal: { kind: "item", name: "a" }, copyCountFromInput: false, constant: 5, networks: { red: true, green: false } }] },
       { ...base, ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", outputs: [{ signal: { kind: "item", name: "a" }, copyCountFromInput: false, constant: 5, networks: NONE }] },

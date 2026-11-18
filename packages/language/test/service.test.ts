@@ -131,7 +131,7 @@ describe("completionContext", () => {
   });
 
   it("expects signals with the wildcards legal at that position", () => {
-    expect(at(circuit("decider-combinator d { when | }")).expected).toEqual([{ type: "signal", wildcards: ["everything", "anything", "each"] }]);
+    expect(at(circuit("decider-combinator d { when | }")).expected).toEqual([{ type: "keyword", values: ["0"] }, { type: "signal", wildcards: ["everything", "anything", "each"] }]);
     expect(at(circuit("small-lamp l { when | }")).expected).toEqual([{ type: "keyword", values: ["unset"] }, { type: "signal", wildcards: ["anything", "everything"] }]);
     expect(at(circuit("small-lamp l { when virtual:sig| }"))).toMatchObject({ prefix: "virtual:sig", expected: [{ type: "keyword", values: ["unset"] }, { type: "signal", wildcards: ["anything", "everything"] }] });
     expect(at(circuit("programmable-speaker s { when | }")).expected).toEqual([{ type: "signal", wildcards: ["anything", "everything"] }]);
@@ -151,7 +151,13 @@ describe("completionContext", () => {
     for (const source of ["small-lamp l { when | }", "transport-belt b { when | }", "transport-belt b { logistic when | }", "stone-wall w { open-gate when un| }"]) {
       expect(at(circuit(source)).get("keyword")?.values, source).toEqual(["unset"]);
     }
-    for (const source of ["decider-combinator d { when | }", "decider-combinator d { when item:a > 1 and | }", "programmable-speaker s { when | }"]) expect(at(circuit(source)).get("keyword"), source).toBeUndefined();
+    expect(at(circuit("programmable-speaker s { when | }")).get("keyword")).toBeUndefined();
+    // A decider combinator has 0 there, for the empty signal slot, in every one of its conditions, and a comparator behind it.
+    for (const source of ["decider-combinator d { when | }", "decider-combinator d { when item:a > 1 and | }", "decider-combinator d { when 0 < 1 or | }"]) expect(at(circuit(source)).get("keyword")?.values, source).toEqual(["0"]);
+    expect(at(circuit("decider-combinator d { when 0| }"))).toMatchObject({ prefix: "0", expected: [{ type: "keyword", values: ["0"] }, { type: "signal" }] });
+    expect(at(circuit("decider-combinator d { when 0 | }")).get("keyword")!.values).toEqual(["<", ">", "=", "!=", "<=", ">="]);
+    expect(at(circuit("decider-combinator d { when 0 < | }")).expected).toEqual([{ type: "signal", wildcards: ["everything", "anything", "each"] }, { type: "literal", kind: "integer" }]);
+    for (const source of ["small-lamp l { when | }", "transport-belt b { when | }", "decider-combinator d { output | }"]) expect(at(circuit(source)).get("keyword")?.values ?? [], source).not.toContain("0");
     // Behind it stands the next statement, not a comparator.
     const after = at(circuit("transport-belt b { when unset | }"));
     expect(after.get("keyword")!.values).toEqual(["when", "logistic"]);

@@ -6,7 +6,7 @@ import {
   type Circuit, type Condition, type DeciderCondition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type Point, type SelectorMode, type SignalId, type SpeakerInstrument, type TerminalRef, type WireColor,
 } from "@face/model";
 import {
-  COMPARATOR_SIGNS, CONNECTOR, DIRECTION_NUMBERS, EXPORT_VERSION, LAMP_COLOR_MODE_NUMBERS,
+  COMPARATOR_SIGNS, CONNECTOR, DIRECTION_NUMBERS, EXPORT_VERSION, isBlankDecider, LAMP_COLOR_MODE_NUMBERS,
   type Blueprint, type BlueprintCondition, type BlueprintDeciderCondition, type BlueprintDeciderOutput, type BlueprintEntity, type BlueprintFile, type BlueprintNetworks, type BlueprintSection, type BlueprintSignal, type BlueprintWire,
   type SelectorControlBehavior,
 } from "./schema.ts";
@@ -202,9 +202,8 @@ class Exporter {
       case "decider": {
         const outputs = (list: readonly DeciderOutput[]) => list.map((output) => this.output(output));
         // The combinator the game places has one blank condition and one blank output; the lists are written also when they are empty.
-        const blank = entity.conditions.length + entity.outputs.length + entity.elseOutputs.length === 0;
         const conditions = entity.conditions.map((condition, index) => this.deciderCondition(condition, index));
-        const lists = blank ? { conditions: [{}], outputs: [{}], else_outputs: [] } : { conditions, outputs: outputs(entity.outputs), else_outputs: outputs(entity.elseOutputs) };
+        const lists = isBlankDecider(entity) ? { conditions: [{}], outputs: [{}], else_outputs: [] } : { conditions, outputs: outputs(entity.outputs), else_outputs: outputs(entity.elseOutputs) };
         return { control_behavior: { decider_conditions: lists } };
       }
       case "selector":

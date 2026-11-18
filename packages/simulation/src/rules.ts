@@ -8,8 +8,6 @@ export interface Rules {
   readonly wildcardExcludesRightHandSignal: boolean;
   /** D-EMPTY (F-15): result of an empty condition list. */
   readonly emptyConditionListResult: boolean;
-  /** D-BLANK (F-15, F-21): result of a condition without a first signal. */
-  readonly blankFirstSignalResult: boolean;
   /** S-INDEX-SORTED (F-16): does the selector's index signal take part in the sort like any other input? */
   readonly selectIndexSignalIsSorted: boolean;
   /** S-SINGLE (F-16): a single input signal passes `select` with comparator `=` regardless of the index. */
@@ -24,7 +22,6 @@ export const RULES: Rules = {
   eachExcludesSpecificOperand: false,
   wildcardExcludesRightHandSignal: true,
   emptyConditionListResult: false,
-  blankFirstSignalResult: false,
   selectIndexSignalIsSorted: true,
   selectSingleInputPassesThrough: true,
   lampConditionNeedsWire: true,

@@ -241,35 +241,66 @@ test("editing in the middle of an inspector field keeps the caret where the user
 
 test("an incomplete inspector edit stays a draft with a hint and is written once it is complete", async ({ page }) => {
   const inspector = page.getByRole("complementary", { name: "Inspector" });
-  const point = await cardGrabPoint(page, "gate");
+  const point = await cardGrabPoint(page, "twice");
   await page.mouse.click(point.x, point.y);
-  const signal = inspector.getByLabel("Condition 1 signal", { exact: true });
+  const signal = inspector.getByLabel("Output signal", { exact: true });
   const hint = inspector.locator(".draft-hint");
   await expect(hint).toHaveCount(0);
 
-  // Clearing the signal leaves a condition the language cannot write: nothing reaches the source.
+  // Clearing the output signal leaves an expression the language cannot write: nothing reaches the source.
   await signal.fill("");
   await expect(hint).toContainText("Not written to the source yet.");
-  await expect(hint).toContainText("The condition needs a signal.");
+  await expect(hint).toContainText("Choose an output signal to complete the expression.");
   expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
   await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
-  await expect(card(page, "gate").locator(".card-summary")).toHaveText("A < 10 → A");
+  await expect(card(page, "twice").locator(".card-summary")).toHaveText("A × 2 → B");
   // The form keeps working on the draft.
-  await inspector.getByLabel("Comparator", { exact: true }).selectOption(">");
+  await inspector.getByLabel("Operation", { exact: true }).selectOption("+");
   await expect(hint).toBeVisible();
   await expect(signal).toHaveValue("");
 
-  await signal.fill("virtual:signal-B");
+  await signal.fill("virtual:signal-C");
   await expect(hint).toHaveCount(0);
-  await expect(card(page, "gate").locator(".card-summary")).toHaveText("B > 10 → A");
-  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("when virtual:signal-A < 10", "when virtual:signal-B > 10"));
+  await expect(card(page, "twice").locator(".card-summary")).toHaveText("A + 2 → C");
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("virtual:signal-B = virtual:signal-A[red] * 2", "virtual:signal-C = virtual:signal-A[red] + 2"));
 
   // Discard drops a draft and shows the entity as the source has it.
   await signal.fill("");
   await expect(hint).toBeVisible();
   await hint.getByRole("button", { name: "Discard" }).click();
   await expect(hint).toHaveCount(0);
-  await expect(signal).toHaveValue("virtual:signal-B");
+  await expect(signal).toHaveValue("virtual:signal-C");
+});
+
+test("a decider condition whose signal is emptied stays, written with 0 on its left side", async ({ page }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await selectEntity(page, "gate");
+  const signal = inspector.getByLabel("Condition 1 signal", { exact: true });
+  const note = inspector.locator('[data-note="empty-signal"]');
+  const networks = inspector.getByRole("button", { name: "Signal networks: red network", exact: true });
+  await expect(note).toHaveCount(0);
+  await expect(networks).toBeVisible();
+
+  // The game reads the empty slot as 0 and compares: the condition is complete, and the source says it.
+  await signal.fill("");
+  const emptied = FIVE_KINDS_SOURCE.replace("when virtual:signal-A < 10", "when 0 < 10");
+  await expect.poll(() => sourceText(page)).toBe(emptied);
+  await expect(inspector.locator(".draft-hint")).toHaveCount(0);
+  await expect(note).toHaveText("An empty signal reads as 0.");
+  await expect(signal).toHaveValue("");
+  await expect(inspector.getByText("Condition 1", { exact: true })).toBeVisible();
+  // The empty slot reads no network.
+  await expect(networks).toHaveCount(0);
+  await expect(card(page, "gate").locator(".card-summary")).toHaveText("0 < 10 → A");
+  await expect(page.locator(".toast")).toHaveCount(0);
+
+  // It is edited like any other condition, and a signal takes the place of the 0 again.
+  await inspector.getByLabel("Comparator", { exact: true }).selectOption("=");
+  await expect.poll(() => sourceText(page)).toBe(emptied.replace("when 0 < 10", "when 0 = 10"));
+  await signal.fill("virtual:signal-B");
+  await expect.poll(() => sourceText(page)).toBe(emptied.replace("when 0 < 10", "when virtual:signal-B = 10"));
+  await expect(note).toHaveCount(0);
+  await expect(networks).toBeVisible();
 });
 
 test("network toggles are grayed without a wire of their color on the input, and both can be off", async ({ page }) => {
@@ -475,10 +506,11 @@ test("undo from an inspector field first takes back text that is not written, an
   expect(await sourceText(page)).toBe(edited);
   expect(await entityNames(page)).toContain("gate");
 
-  // An edit the language cannot write yet is pending in the inspector; undo discards it and leaves the document alone.
-  const signal = inspector.getByLabel("Condition 1 signal", { exact: true });
+  // An edit the language cannot write is pending in the inspector (an each output without each in a condition); undo discards
+  // it and leaves the document alone.
+  const signal = inspector.getByLabel("Output 1 signal", { exact: true });
   const hint = inspector.locator(".draft-hint");
-  await signal.fill("");
+  await signal.fill("each");
   await expect(hint).toBeVisible();
   await clickMenu(app, "Edit", "Undo");
   await expect(hint).toHaveCount(0);

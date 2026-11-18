@@ -36,7 +36,7 @@ function checkDecider(entity: DeciderCombinator, report: Report): void {
   for (const condition of entity.conditions) {
     const second = condition.second.type === "signal" ? condition.second.signal : undefined;
     if (isGroupWildcard(second)) report("error", "invalid-wildcard", "Everything and anything are not supported on the right-hand side of a condition.", second);
-    if (!condition.first) report("info", "unconfigured", "A condition without a first signal is false (assumed).");
+    // D-BLANK: a condition without a first signal is one like any other, with 0 on its left side.
     each ||= isEach(condition.first) || isEach(second);
   }
   if (entity.conditions.length === 0) report("info", "unconfigured", "No conditions; the expression is false (assumed).");

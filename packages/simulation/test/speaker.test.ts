@@ -35,8 +35,9 @@ describe("speaker condition", () => {
     expect(speakerState(speaker("s", { condition: when("A", "=", 0) }), { green: { B: 1 } })).toMatchObject({ playing: true });
   });
 
-  it("F-25 assumption: the condition of a new speaker (no first signal) and a speaker without one never play", () => {
-    expect(speakerState(speaker("s", { condition: when(undefined, "<", 1) }), { red: { A: 5 } })).toEqual(SILENT);
+  it("SP-BLANK (F-29): the condition of a new speaker (no first signal) and a speaker without one never play", () => {
+    // 0 < 1 and 0 = 0 would hold in a decider combinator (D-BLANK); the condition of a speaker without a signal does not.
+    for (const condition of [when(undefined, "<", 1), when(undefined, "=", 0), when(undefined, "<", "A")]) expect(speakerState(speaker("s", { condition }), { red: { A: 5 } })).toEqual(SILENT);
     expect(speakerState(speaker("s"), { red: { A: 5 } })).toEqual(SILENT);
   });
 

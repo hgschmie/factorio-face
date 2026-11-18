@@ -269,7 +269,7 @@ describe("diagnostics", () => {
     expect(codes(belt("when item:a > unset"))).toEqual(["syntax-error"]);
     expect(codes(circuit("steel-chest c { empty-slots-signal = unset }"))).toEqual(["invalid-value"]);
     // A decider combinator has no switch per condition, and a speaker none at all: without 'when' its condition is the blank one.
-    const decider = "A decider combinator has no switch for a condition, so none of its conditions is 'unset'; name a signal";
+    const decider = "A decider combinator has no switch for a condition, so none of its conditions is 'unset'; name a signal, or write 0 for the empty signal slot";
     expect(diagnostics(circuit("decider-combinator d { when unset output item:a = 1 }"))).toEqual([["invalid-statement", decider]]);
     expect(diagnostics(circuit("decider-combinator d { when item:a > 1 and unset output item:a = 1 }"))).toEqual([["invalid-statement", decider]]);
     expect(diagnostics(circuit("decider-combinator d { when unset > 5 or item:a > 1 output item:a = 1 }"))).toEqual([["invalid-statement", decider]]);

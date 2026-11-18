@@ -86,9 +86,39 @@ describe("decider conditions", () => {
     expect(evaluate(truth(), { red: { A: 1 } })).toEqual(NO);
   });
 
-  it("F-15 assumption: a condition without a first signal is false", () => {
-    expect(evaluate(truth(cond(undefined, "=", 0)), { red: { A: 1 } })).toEqual(NO);
-    expect(evaluate(truth(cond(undefined, "<", 0), cond("A", ">", 0)), { red: { A: 1 } })).toEqual(YES);
+  it("D-BLANK (F-29): a condition without a first signal compares 0 with its right side", () => {
+    const feed = { red: { A: 1 }, green: { A: -3 } };
+    const results: Record<Comparator, [boolean, boolean, boolean]> = {
+      "<": [false, false, true],
+      ">": [true, false, false],
+      "=": [false, true, false],
+      "!=": [true, false, true],
+      "<=": [false, true, true],
+      ">=": [true, true, false],
+    };
+    for (const [comparator, expected] of Object.entries(results) as [Comparator, boolean[]][]) {
+      [-1, 0, 1].forEach((right, i) => expect(evaluate(truth(cond(undefined, comparator, right)), feed), `0 ${comparator} ${right}`).toEqual(expected[i] ? YES : NO));
+    }
+    // The right side is a signal like any other, with its network selection: A is 1 on red, -3 on green, -2 on both.
+    expect(evaluate(truth(cond(undefined, "<", "A", { secondNetworks: RED })), feed)).toEqual(YES);
+    expect(evaluate(truth(cond(undefined, "<", "A", { secondNetworks: GREEN })), feed)).toEqual(NO);
+    expect(evaluate(truth(cond(undefined, ">", "A")), feed)).toEqual(YES);
+    expect(evaluate(truth(cond(undefined, "=", "B")), feed)).toEqual(YES);
+    // The networks of the empty slot read nothing.
+    expect(evaluate(truth(cond(undefined, "=", 0, { firstNetworks: NEITHER })), feed)).toEqual(YES);
+    // It joins like any condition.
+    expect(evaluate(truth(cond(undefined, "<", 0), cond("A", "<", 0)), feed)).toEqual(YES);
+    expect(evaluate(truth(cond(undefined, "=", 0), and("A", ">", 0)), feed)).toEqual(NO);
+  });
+
+  it("D-BLANK: a blank first signal next to each compares 0 with the signal each is bound to", () => {
+    const feed = { red: { A: 2, B: -1, C: 5 } };
+    // each is on the right side only: the condition alone makes the combinator iterate.
+    expect(evaluate(decider("d", [cond(undefined, "<", EACH)], [out(EACH, "input")]), feed)).toEqual(v({ A: 2, C: 5 }));
+    expect(evaluate(decider("d", [cond(undefined, "<", EACH)], [out(EACH, 1)], [out("N", "input")]), feed)).toEqual(v({ A: 1, C: 1, N: -1 }));
+    // A blank condition with a constant is the same for every signal of the iteration.
+    expect(evaluate(decider("d", [cond(EACH, ">", 1), and(undefined, "=", 0)], [out(EACH, "input")]), feed)).toEqual(v({ A: 2, C: 5 }));
+    expect(evaluate(decider("d", [cond(EACH, ">", 1), and(undefined, "<", 0)], [out(EACH, "input")]), feed)).toEqual({});
   });
 });
 

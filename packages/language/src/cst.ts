@@ -118,6 +118,10 @@ export interface CstCondition extends Range {
   readonly join?: Token;
   /** The word `unset` in the place of the comparison. What follows it is read as a comparator and an operand so that it is one error. */
   readonly unset?: Token;
+  /**
+   * The left side. Its `signal` is also an `int` token here: the number 0 stands for the empty signal slot of a decider
+   * combinator. Any number, and a network selection behind it, is read so that the analysis can say what is wrong with it.
+   */
   readonly first?: CstSigRef;
   readonly comparator?: Token;
   readonly second?: CstOperand;

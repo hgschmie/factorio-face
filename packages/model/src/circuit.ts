@@ -129,6 +129,7 @@ export interface ArithmeticCombinator extends EntityBase {
 export interface DeciderCondition {
   /** How this condition combines with the preceding ones. Ignored for the first condition. "and" binds tighter than "or". */
   readonly join: "and" | "or";
+  /** Absent: the empty signal slot, which the game reads as 0 in a decider combinator (written `0 < S`). */
   readonly first?: SignalId;
   readonly firstNetworks: NetworkSelection;
   readonly comparator: Comparator;

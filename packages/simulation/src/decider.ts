@@ -63,11 +63,13 @@ export function planCondition(condition: Omit<DeciderCondition, "join">, signals
 }
 
 /**
- * The condition of an entity with one connector, both sides read from `networks`. The unset condition is one without a first
- * signal (L-BLANK, G-CONDITION): what stands behind the blank signal does not count.
+ * The condition of an entity with one connector, both sides read from `networks`. Without a first signal it never holds, whatever
+ * stands behind the blank signal (L-BLANK, G-CONDITION, F-29), unlike in a decider combinator (D-BLANK). That goes for the unset
+ * condition and for a comparison whose first signal is missing alike: both are planned as the blank signal below 0, and 0 < 0
+ * is false.
  */
 export function planCircuitCondition(condition: ConditionValue, networks: NetworkSelection, signals: SignalTable): ConditionPlan {
-  if (condition === UNSET_CONDITION) return planCondition({ firstNetworks: networks, comparator: "<", second: { type: "constant", value: 0 } }, signals);
+  if (condition === UNSET_CONDITION || !condition.first) return planCondition({ firstNetworks: networks, comparator: "<", second: { type: "constant", value: 0 } }, signals);
   const { first, comparator, second } = condition;
   return planCondition({ first, firstNetworks: networks, comparator, second: second.type === "signal" ? { ...second, networks } : second }, signals);
 }
@@ -75,11 +77,12 @@ export function planCircuitCondition(condition: ConditionValue, networks: Networ
 /**
  * Truth of one condition. `each` and `anything` are the signals bound to the wildcards (UNBOUND, or AGGREGATE for anything).
  * D-BOUND-ZERO (F-12): a bound signal that is absent on the condition's networks reads as 0 and is compared normally.
+ * D-BLANK (F-29): so does a condition without a first signal: its left side is 0, the right side is read as in any condition.
  */
 export function conditionHolds(c: ConditionPlan, input: InputView, each: number, anything: number): boolean {
-  if (c.first === BLANK) return RULES.blankFirstSignalResult;
   const rightSignal = c.second === EACH ? each : c.secondSignal;
   const right = c.second === CONSTANT ? c.secondConstant : rightSignal < 0 ? 0 : (input.select(c.secondSelection).get(rightSignal) ?? 0);
+  if (c.first === BLANK) return c.compare(0, right);
   const left = input.select(c.firstSelection);
   switch (c.first) {
     case SIGNAL:

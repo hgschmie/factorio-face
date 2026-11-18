@@ -1,5 +1,5 @@
 // Inspector edits: configurations the language cannot write yet stay a draft, and typing in a field is one undo step.
-import { BOTH_NETWORKS, signal, wildcardSignal, type ArithmeticCombinator, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator } from "@face/model";
+import { BOTH_NETWORKS, signal, wildcardSignal, type ArithmeticCombinator, type Condition, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { checkDraft, normalizeEntity } from "../../src/session/drafts.ts";
 import { createSession, entityNamed, idOf, IRREGULAR, type } from "./helpers.ts";
@@ -12,33 +12,33 @@ function decider(session: ReturnType<typeof createSession>["session"]): DeciderC
 }
 
 describe("inspector drafts", () => {
-  it("keeps a condition without a signal as a draft and writes it once it is complete", () => {
+  it("writes a decider condition whose signal is emptied with 0 on its left side: the empty slot is no draft", () => {
     const { session } = createSession(IRREGULAR);
     const gate = decider(session);
     session.commands.select([gate.id]);
 
-    // The user clears the signal field of the condition.
-    const { first: _first, ...blank } = gate.conditions[0]!;
-    session.commands.updateEntity({ ...gate, conditions: [blank] });
-    expect(session.state.source).toBe(IRREGULAR);
-    expect(session.state.canUndo).toBe(false);
-    expect(session.state.draft).toMatchObject({ message: "The condition needs a signal.", entity: { id: gate.id, name: "gate", conditions: [{ comparator: "<" }] } });
-    expect(session.state.draft!.entity).not.toHaveProperty("conditions.0.first");
-    // The circuit, and with it the canvas and the simulation, still show what the source says.
-    expect(decider(session)).toBe(gate);
-
-    // Further edits build on the draft and stay local while it is incomplete.
-    const draft = session.state.draft!.entity as DeciderCombinator;
-    session.commands.updateEntity({ ...draft, conditions: [{ ...draft.conditions[0]!, comparator: ">=" }] });
-    expect(session.state.source).toBe(IRREGULAR);
-    expect((session.state.draft!.entity as DeciderCombinator).conditions[0]!.comparator).toBe(">=");
-
-    // Choosing a signal completes it: everything accumulated in the draft is written as one step.
-    const completed = session.state.draft!.entity as DeciderCombinator;
-    session.commands.updateEntity({ ...completed, conditions: [{ ...completed.conditions[0]!, first: B }] });
+    // The user clears the signal field of the condition, which read the red network only.
+    session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, firstNetworks: { red: true, green: false } }] });
+    const { first: _first, ...blank } = decider(session).conditions[0]!;
+    session.commands.updateEntity({ ...decider(session), conditions: [blank] });
     expect(session.state.draft).toBeNull();
-    expect(session.state.source).toBe(IRREGULAR.replace("when virtual:signal-A < 10   // limit", "when virtual:signal-B >= 10   // limit"));
-    session.commands.undo();
+    expect(session.state.error).toBeNull();
+    const written = IRREGULAR.replace("when virtual:signal-A < 10   // limit", "when 0 < 10   // limit");
+    expect(session.state.source).toBe(written);
+    // The condition stays in the circuit, without a signal, and the empty slot has both networks.
+    expect(decider(session).conditions).toEqual([{ join: "or", firstNetworks: BOTH_NETWORKS, comparator: "<", second: { type: "constant", value: 10 } }]);
+    expect(session.state.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+
+    // It is edited like any other, next to others and with a signal on its right side.
+    const second = { join: "and" as const, firstNetworks: BOTH_NETWORKS, comparator: "=" as const, second: { type: "signal" as const, signal: B, networks: BOTH_NETWORKS } };
+    session.commands.updateEntity({ ...decider(session), conditions: [{ ...decider(session).conditions[0]!, comparator: ">=" }, second] });
+    expect(session.state.source).toBe(written.replace("when 0 < 10", "when 0 >= 10 and 0 = virtual:signal-B"));
+    expect(decider(session).conditions.map((condition) => condition.first)).toEqual([undefined, undefined]);
+
+    // Choosing a signal again puts it in the place of the 0.
+    session.commands.updateEntity({ ...decider(session), conditions: [{ ...decider(session).conditions[0]!, first: B }, second] });
+    expect(session.state.source).toBe(written.replace("when 0 < 10", "when virtual:signal-B >= 10 and 0 = virtual:signal-B"));
+    for (let step = 0; step < 4; step++) session.commands.undo();
     expect(session.state.source).toBe(IRREGULAR);
     expect(session.state.draft).toBeNull();
   });
@@ -76,17 +76,17 @@ describe("inspector drafts", () => {
 
   it("drops the draft when the selection moves on, when it is discarded, or when the entity changes underneath it", () => {
     const { session } = createSession(IRREGULAR);
+    // A lamp condition that loses its signal while something else of it changes is a draft (a decider condition is written with 0).
     const makeDraft = (): void => {
-      const gate = decider(session);
-      session.commands.select([gate.id]);
-      const { first: _first, ...blank } = gate.conditions[0]!;
-      session.commands.updateEntity({ ...gate, conditions: [blank] });
+      const light = entityNamed(session, "light") as Lamp;
+      session.commands.select([light.id]);
+      session.commands.updateEntity({ ...light, condition: { comparator: ">=", second: { type: "constant", value: 3 } } });
       expect(session.state.draft).not.toBeNull();
     };
     makeDraft();
-    session.commands.select([idOf(session, "light")]);
-    expect(session.state.draft).toBeNull();
     session.commands.select([idOf(session, "gate")]);
+    expect(session.state.draft).toBeNull();
+    session.commands.select([idOf(session, "light")]);
     expect(session.state.draft).toBeNull();
 
     makeDraft();
@@ -95,11 +95,11 @@ describe("inspector drafts", () => {
 
     // Another entity changing does not disturb it; its own entity changing in the source does.
     makeDraft();
-    session.commands.moveEntities([{ id: idOf(session, "light"), position: { x: 600, y: 100 } }]);
+    session.commands.moveEntities([{ id: idOf(session, "gate"), position: { x: 600, y: 100 } }]);
     expect(session.state.draft).not.toBeNull();
-    type(session, session.state.source.indexOf("< 10") + 4, "0");
+    type(session, session.state.source.indexOf("> 3") + 3, "0");
     expect(session.state.draft).toBeNull();
-    expect(session.state.source).toContain("< 100");
+    expect(session.state.source).toContain("> 30");
   });
 
   it("a draft never overrides a later move or rename of its entity", () => {
@@ -134,6 +134,15 @@ describe("inspector drafts", () => {
     expect(checkDraft(l).ok).toBe(false);
     expect(checkDraft(normalizeEntity(l))).toEqual({ ok: true });
     expect(checkDraft({ ...l, condition: { comparator: ">", second: { type: "constant", value: 0 } } })).toMatchObject({ ok: false, message: "The light condition needs a signal." });
+
+    // A decider condition without a signal is complete; the network selection of its empty slot says nothing and is set to both.
+    const blank: DeciderCombinator = { ...normal, conditions: [{ join: "or", firstNetworks: red, comparator: "=", second: { type: "constant", value: 0 } }, { ...normal.conditions[0]!, join: "and", firstNetworks: red }] };
+    expect(checkDraft(blank)).toMatchObject({ ok: false, code: "unrepresentable" });
+    const written = normalizeEntity(blank) as DeciderCombinator;
+    expect(written.conditions).toEqual([{ join: "or", firstNetworks: BOTH_NETWORKS, comparator: "=", second: { type: "constant", value: 0 } }, { ...normal.conditions[0]!, join: "and", firstNetworks: red }]);
+    expect(written.conditions[1]).toBe(blank.conditions[1]);
+    expect(checkDraft(written)).toEqual({ ok: true });
+    expect(normalizeEntity(written)).toBe(written);
   });
 
   it("writes a selection of neither input network as none instead of holding it back", () => {
@@ -228,15 +237,30 @@ describe("coherent undo steps for field edits", () => {
 
   it("a draft in the middle of typing does not break the step", () => {
     const { session } = createSession(IRREGULAR);
+    const light = entityNamed(session, "light") as Lamp;
+    const condition = light.condition as Condition;
+    session.commands.select([light.id]);
+    // The signal text is retyped: valid, cleared with another comparator (a draft), valid again, all within one focus.
+    session.commands.updateEntity({ ...light, condition: { ...condition, first: B } }, { coalesce: "light:9" });
+    session.commands.updateEntity({ ...light, condition: { comparator: "<", second: condition.second } }, { coalesce: "light:9" });
+    expect(session.state.draft).not.toBeNull();
+    session.commands.updateEntity({ ...light, condition: { ...condition, first: signal("virtual", "signal-C") } }, { coalesce: "light:9" });
+    expect(session.state.draft).toBeNull();
+    expect(session.state.source).toContain("when virtual:signal-C > 3");
+    session.commands.undo();
+    expect(session.state.source).toBe(IRREGULAR);
+  });
+
+  it("a decider signal that is retyped is one step, with the empty slot written in between", () => {
+    const { session } = createSession(IRREGULAR);
     const gate = decider(session);
     session.commands.select([gate.id]);
-    // The signal text is retyped: valid, cleared (a draft), valid again, all within one focus.
     session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, first: B }] }, { coalesce: "gate:9" });
     const { first: _first, ...blank } = gate.conditions[0]!;
     session.commands.updateEntity({ ...gate, conditions: [blank] }, { coalesce: "gate:9" });
-    expect(session.state.draft).not.toBeNull();
-    session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, first: signal("virtual", "signal-C") }] }, { coalesce: "gate:9" });
     expect(session.state.draft).toBeNull();
+    expect(session.state.source).toContain("when 0 < 10");
+    session.commands.updateEntity({ ...gate, conditions: [{ ...gate.conditions[0]!, first: signal("virtual", "signal-C") }] }, { coalesce: "gate:9" });
     expect(session.state.source).toContain("when virtual:signal-C < 10");
     session.commands.undo();
     expect(session.state.source).toBe(IRREGULAR);

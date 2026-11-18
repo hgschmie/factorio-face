@@ -2,7 +2,7 @@
 import { wireKey, type TerminalSide, type WireColor } from "@face/model";
 import { describe, expect, it } from "vitest";
 import type { ProjectSession } from "../../src/session/projectSession.ts";
-import { createSession, entityNamed, fakeDesktop, idOf, IRREGULAR, project, replaceText, type } from "./helpers.ts";
+import { createSession, entityNamed, fakeDesktop, idOf, IRREGULAR, project, replaceText, type, unwritable } from "./helpers.ts";
 
 /** The key of a wire given as in the source, for example `key(session, "red", "src.out", "gate.in")`. */
 function key(session: ProjectSession, color: WireColor, a: string, b: string): string {
@@ -168,8 +168,7 @@ describe("wire selection", () => {
     const gate = entityNamed(session, "gate");
     if (gate.kind !== "decider") throw new Error("gate is a decider");
     session.commands.select([gate.id]);
-    const { first: _first, ...blank } = gate.conditions[0]!;
-    session.commands.updateEntity({ ...gate, conditions: [blank] });
+    session.commands.updateEntity(unwritable(gate));
     expect(session.state.draft).not.toBeNull();
     session.commands.select([gate.id], [key(session, "red", "src.out", "gate.in")]);
     expect(session.state.draft).toBeNull();

@@ -3,10 +3,10 @@
 
 import {
   conditionRole, DEFAULT_ENTITY, entityTable, isValidSignalName, NORMAL_QUALITY, settingDefault, settingSpecsOf, UNSET_CONDITION, wildcardOf,
-  type Circuit, type ConditionValue, type ConstantSection, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec, type SettingValue, type SignalId,
+  type Circuit, type ConditionValue, type ConstantSection, type DeciderCondition, type DeciderOutput, type Entity, type EntityOfKind, type NetworkSelection, type Operand, type SelectorMode, type SettingSpec, type SettingValue, type SignalId,
   type TerminalRef, type TerminalSide, type WireColor,
 } from "@face/model";
-import { BLUEPRINT_DATA_PROPERTY, NO_NETWORK, UNSET_WORD } from "./schema.ts";
+import { BLUEPRINT_DATA_PROPERTY, EMPTY_SIGNAL_WORD, NO_NETWORK, UNSET_WORD } from "./schema.ts";
 import { encodeString, isKeyword } from "./tokens.ts";
 
 export interface PrintOptions {
@@ -56,7 +56,10 @@ function printQuality(name: string): string {
   return name === "signal" ? encodeString(name) : printName(name);
 }
 
-/** What stands behind `when`: the comparison, `unset` for a condition in use without a signal; nothing for a comparison without a first signal, which no entity holds. */
+/**
+ * What stands behind `when` of an entity with one condition: the comparison, `unset` for a condition in use without a signal;
+ * nothing for a comparison without a first signal, which no such entity holds (a decider combinator does, as `0 < S`).
+ */
 function printCondition(condition: ConditionValue): string | undefined {
   if (condition === UNSET_CONDITION) return UNSET_WORD;
   if (!condition.first) return undefined;
@@ -213,9 +216,10 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
       if (entity.output) items.push({ key: "expression", text: `${printSignal(entity.output)} = ${printOperand(entity.first)} ${entity.operation} ${printOperand(entity.second)}`, implicit: false });
       break;
     case "decider": {
-      const conditions = entity.conditions.filter((c) => c.first);
-      if (conditions.length) {
-        const text = conditions.map((c, i) => `${i === 0 ? "when" : c.join} ${printSignal(c.first!)}${printNetworks(c.firstNetworks)} ${c.comparator} ${printOperand(c.second)}`).join(" ");
+      if (entity.conditions.length) {
+        // A condition without a first signal has 0 on its left side: the empty signal slot, which reads no network.
+        const left = (c: DeciderCondition) => (c.first ? `${printSignal(c.first)}${printNetworks(c.firstNetworks)}` : EMPTY_SIGNAL_WORD);
+        const text = entity.conditions.map((c, i) => `${i === 0 ? "when" : c.join} ${left(c)} ${c.comparator} ${printOperand(c.second)}`).join(" ");
         items.push({ key: "when", text, implicit: false });
       }
       for (const output of entity.outputs) items.push(outputItem(output, "output"));
