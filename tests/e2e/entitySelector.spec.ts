@@ -251,18 +251,18 @@ test("the search looks through every group by name, shows what it finds under th
 test("a tile says what it is in a popup on hover and on keyboard focus, beside the sidebar and off every tile", async ({ page }) => {
   const lines = () => popup(page).locator(".tile-popup-text p");
   await expect(popup(page)).toHaveCount(0);
-  // Hover, after a moment: the name in the game, what it is for, its tiles and its key, said so that it is no count.
+  // Hover, after a moment: the name in the game, its tiles and its key, said so that it is no count. Nothing on what it is for.
   await entry(page, "decider-combinator").hover();
   await expect(popup(page)).toHaveCount(0);
   await expect(popup(page)).toHaveAttribute("data-prototype", "decider-combinator");
   await expect(popup(page)).toHaveRole("tooltip");
   await expect(popup(page).locator(".tile-popup-name")).toHaveText("Decider combinator");
-  await expect(lines()).toHaveText(["Compare and decide", "1 x 2 tiles", "Key 3"]);
+  await expect(lines()).toHaveText(["1 x 2 tiles", "Key 3"]);
   await expect(popup(page).locator(".tile-popup-key kbd")).toHaveText("3");
   await expect(popup(page).locator(".bubble-pointer")).toBeVisible();
   // It describes the tile to assistive technology, which already has the name.
   await expect(entry(page, "decider-combinator")).toHaveAccessibleName("Decider combinator");
-  await expect(entry(page, "decider-combinator")).toHaveAccessibleDescription("Compare and decide 1 x 2 tiles Key 3");
+  await expect(entry(page, "decider-combinator")).toHaveAccessibleDescription("1 x 2 tiles Key 3");
   await expect(entry(page, "constant-combinator")).toHaveAccessibleDescription("");
 
   // Beside the sidebar at the height of its tile: it covers neither its own tile nor any other, and takes no pointer.
@@ -289,45 +289,44 @@ test("a tile says what it is in a popup on hover and on keyboard focus, beside t
   // The next tile takes the popup over at once. A lamp has the key 5; a speaker has none.
   await entry(page, "small-lamp").hover();
   await beside("small-lamp");
-  await expect(lines()).toHaveText(["See a condition light up", "1 tile", "Key 5"]);
+  await expect(lines()).toHaveText(["1 tile", "Key 5"]);
   await entry(page, "programmable-speaker").hover();
   await beside("programmable-speaker");
   await expect(popup(page).locator(".tile-popup-name")).toHaveText("Programmable speaker");
-  await expect(lines()).toHaveText(["Sound an alert on a condition", "1 tile"]);
+  await expect(lines()).toHaveText(["1 tile"]);
   await expect(popup(page).locator("kbd")).toHaveCount(0);
   // The tile of the lamp in "Entities in use" has the same popup, at its own place.
   await inUse(page, "small-lamp").hover();
   await beside("small-lamp", inUse(page, "small-lamp"));
-  await expect(inUse(page, "small-lamp")).toHaveAccessibleDescription("See a condition light up 1 tile Key 5");
+  await expect(inUse(page, "small-lamp")).toHaveAccessibleDescription("1 tile Key 5");
   await expect(entry(page, "small-lamp")).toHaveAccessibleDescription("");
   // So has the second tile of a combinator, in its subgroup.
   const copy = tabPanel(page).locator('.pinned-copy[data-prototype="decider-combinator"]');
   await copy.hover();
   await beside("decider-combinator", copy);
 
-  // An entity of the game is named as the game names it and says what its type does on a circuit, its tiles, and its wire
-  // reach where that is not the project's.
+  // An entity of the game is named as the game names it and says its tiles, and its wire reach where that is not the project's.
   await entry(page, "fast-inserter").hover();
   await beside("fast-inserter");
   await expect(popup(page).locator(".tile-popup-name")).toHaveText("Fast inserter");
-  await expect(lines()).toHaveText(["Switch it on a condition, set filters and stack size, read its hand", "1 tile"]);
+  await expect(lines()).toHaveText(["1 tile"]);
   await entry(page, "splitter").hover();
-  await expect(lines()).toHaveText(["Set its priorities and its filter by signal", "2 x 1 tiles"]);
+  await expect(lines()).toHaveText(["2 x 1 tiles"]);
   await entry(page, "big-electric-pole").hover();
   await beside("big-electric-pole");
-  await expect(lines()).toHaveText(["Relay signals over a distance", "2 x 2 tiles, wire reach 32"]);
+  await expect(lines()).toHaveText(["2 x 2 tiles, wire reach 32"]);
   await entry(page, "power-switch").hover();
-  await expect(lines()).toHaveText(["Join two power networks on a condition", "2 x 2 tiles, wire reach 10"]);
+  await expect(lines()).toHaveText(["2 x 2 tiles, wire reach 10"]);
   await page.screenshot({ path: resolve(SHOTS, "selector-popup.png") });
   await tab(page, "Production").hover();
   await expect(popup(page)).toHaveCount(0);
   await tab(page, "Production").click();
   await entry(page, "agricultural-tower").hover();
   await expect(popup(page).locator(".tile-popup-name")).toHaveText("Agricultural tower");
-  await expect(lines()).toHaveText(["Harvest and plant on conditions", "3 x 3 tiles, wire reach 30"]);
+  await expect(lines()).toHaveText(["3 x 3 tiles, wire reach 30"]);
   await tab(page, "Space").click();
   await entry(page, "rocket-silo").hover();
-  await expect(lines()).toHaveText(["Read its items and a launch", "9 x 9 tiles"]);
+  await expect(lines()).toHaveText(["9 x 9 tiles"]);
   await tab(page, "Combat").click();
   await entry(page, "stone-wall").hover();
   await expect(popup(page).locator(".tile-popup-name")).toHaveText("Wall");
@@ -343,7 +342,7 @@ test("a tile says what it is in a popup on hover and on keyboard focus, beside t
   await page.keyboard.press("Tab");
   await expect(entry(page, "radar")).toBeFocused();
   await beside("radar");
-  await expect(lines()).toHaveText(["Share signals with every radar of the surface", "3 x 3 tiles"]);
+  await expect(lines()).toHaveText(["3 x 3 tiles"]);
   // Space arms the tile; the popup stays while the focus does.
   await page.keyboard.press("Space");
   await expect(entry(page, "radar")).toHaveAttribute("aria-pressed", "true");
@@ -367,7 +366,7 @@ test("a tile says what it is in a popup on hover and on keyboard focus, beside t
   await expect(entry(page, "arithmetic-combinator")).toBeDisabled();
   await entry(page, "arithmetic-combinator").hover({ force: true });
   await beside("arithmetic-combinator");
-  await expect(lines()).toHaveText(["Transform your signals", "1 x 2 tiles", "Key 2"]);
+  await expect(lines()).toHaveText(["1 x 2 tiles", "Key 2"]);
 });
 
 test('"Entities in use" has a tile for each kind of entity the circuit contains, apart from the combinators, and follows the circuit', async ({ page }) => {
@@ -509,7 +508,7 @@ test("an entity the game hides is in no tab, but one a blueprint brought shows i
   for (const hidden of ["loader", "infinity-chest"]) await expect(entry(page, hidden)).toHaveCount(0);
   await inUse(page, "loader").hover();
   await expect(popup(page).locator(".tile-popup-name")).toHaveText("Loader");
-  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["Switch it on a condition, set its filters by signal", "1 x 2 tiles"]);
+  await expect(popup(page).locator(".tile-popup-text p")).toHaveText(["1 x 2 tiles"]);
   await page.screenshot({ path: resolve(SHOTS, "selector-in-use-hidden.png") });
   // The tile places another one; no tab changes for it, since none holds it.
   await inUse(page, "loader").click();
@@ -669,7 +668,7 @@ test("a tile of every tab places its entity on the edit canvas, named after its 
     await expect(entry(page, item.prototype)).toHaveAttribute("aria-pressed", "false");
     await expect(selectTool(page)).toHaveAttribute("aria-pressed", "true");
     await expect(page.getByLabel("Entity name")).toHaveValue(item.name);
-    await expect(page.getByRole("complementary", { name: "Inspector" }).locator("h2")).toHaveText(item.kind === "speaker" ? "Speaker" : item.title, { ignoreCase: true });
+    await expect(page.getByRole("complementary", { name: "Inspector" }).locator("h2")).toHaveText(item.kind === "speaker" ? "Programmable speaker" : item.title, { ignoreCase: true });
   }
   expect((await entityNames(page)).slice(-PLACED.length)).toEqual(PLACED.map((item) => item.name));
   // A second one of a prototype gets the next number; a tier number at the end of the prototype is not part of the name.

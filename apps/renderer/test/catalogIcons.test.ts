@@ -9,7 +9,7 @@ import { prototypeIconId } from "../src/entities/registry.ts";
 import { applyData } from "../src/gameData/dataInUse.ts";
 import { catalogEntityIconUrl, prototypesWithIcon } from "../src/icons/catalogEntityIcons.ts";
 import { catalogIconResolver, isDrawable, probeIcons } from "../src/icons/catalogSignalIcons.ts";
-import { MOD_ENTITY, MOD_SIGNAL, MODDED_MODULES, moddedData, STANDARD_ICONS } from "./fixtures/moddedData.ts";
+import { aliasedIconData, MOD_ENTITY, MOD_SIGNAL, MOD_TWIN, MODDED_MODULES, moddedData, STANDARD_ICONS } from "./fixtures/moddedData.ts";
 import { moddedKindsData } from "./fixtures/moddedKinds.ts";
 import { createSession, EMPTY_SOURCE, project } from "./session/helpers.ts";
 
@@ -91,6 +91,18 @@ describe("the entity icons that are asked for", () => {
     // Not known: every prototype is probed, as before.
     expect(prototypesWithIcon(null)).toEqual(PROTOTYPE_NAMES);
     expect(prototypesWithIcon(new Set())).toEqual([]);
+  });
+
+  it("are those the catalog names: a prototype whose item shares its picture with another item has that one's", () => {
+    const data = applyData(aliasedIconData());
+    expect([prototypeIconId(MOD_ENTITY), prototypeIconId(MOD_TWIN)]).toEqual([`item/${MOD_ENTITY}`, `item/${MOD_ENTITY}`]);
+    // No icon is under the id of the twin's own item, so asking for that one would leave the pictogram.
+    expect(data.icons!.has(`item/${MOD_TWIN}`)).toBe(false);
+    expect(prototypesWithIcon(data.icons)).toEqual(expect.arrayContaining([MOD_ENTITY, MOD_TWIN]));
+    expect(catalogEntityIconUrl(ROOT, MOD_TWIN)).toBe(`face-asset://catalog/icons/item/${MOD_ENTITY}.png`);
+    // An item the catalog does not have keeps the id of its name, as before.
+    applyData(moddedData());
+    expect(prototypeIconId(MOD_ENTITY)).toBe(`item/${MOD_ENTITY}`);
   });
 
   it("leave out what a mod adds, whose icon is the mod's", () => {

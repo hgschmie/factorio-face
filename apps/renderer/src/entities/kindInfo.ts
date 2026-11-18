@@ -1,27 +1,35 @@
 // Display metadata per entity kind, shared by palette, canvas and inspector, and the names an entity goes by.
-import { gamePrototype, prototypeData, prototypesOf, withArticle, type EntityKind, type EntityShape } from "@face/model";
-import { typeDescription } from "./typeInfo.ts";
+import { gamePrototype, prototypeData, prototypesOf, withArticle, type EntityKind, type EntityShape, type PrototypeName } from "@face/model";
 
 export interface KindInfo {
   readonly label: string;
-  readonly description: string;
-  /** Category line shown above the label in the inspector. */
-  readonly category: string;
   /** False where the game has no "Add description" for the entity: its description is then a note of the project (docs/dsl.md). */
   readonly describedInGame: boolean;
 }
 
 export const KIND_INFO: Readonly<Record<EntityKind, KindInfo>> = {
-  constant: { label: "Constant", description: "Emit steady signals", category: "Combinator", describedInGame: true },
-  arithmetic: { label: "Arithmetic", description: "Transform your signals", category: "Combinator", describedInGame: true },
-  decider: { label: "Decider", description: "Compare and decide", category: "Combinator", describedInGame: true },
-  selector: { label: "Selector", description: "Pick, count and sort signals", category: "Combinator", describedInGame: true },
-  lamp: { label: "Lamp", description: "See a condition light up", category: "Condition indicator", describedInGame: false },
-  pole: { label: "Pole", description: "Relay signals over a distance", category: "Signal relay", describedInGame: false },
-  speaker: { label: "Speaker", description: "Sound an alert on a condition", category: "Condition indicator", describedInGame: false },
-  // Every other entity of the game. Its label is the prototype's (`entityTitle`) and its description the one of its type (`entityDescription`).
-  entity: { label: "Entity", description: "An entity of the game on the circuit network", category: "Game entity", describedInGame: false },
+  constant: { label: "Constant", describedInGame: true },
+  arithmetic: { label: "Arithmetic", describedInGame: true },
+  decider: { label: "Decider", describedInGame: true },
+  selector: { label: "Selector", describedInGame: true },
+  lamp: { label: "Lamp", describedInGame: false },
+  pole: { label: "Pole", describedInGame: false },
+  speaker: { label: "Speaker", describedInGame: false },
+  // Every other entity of the game. Its label is the prototype's (`entityTitle`).
+  entity: { label: "Entity", describedInGame: false },
 };
+
+const GAME_COMBINATORS: ReadonlySet<PrototypeName> = new Set(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator"]);
+const COMBINATOR_KINDS: ReadonlySet<EntityKind> = new Set(["constant", "arithmetic", "decider", "selector"]);
+
+/**
+ * Whether the inspector has a settings form for a prototype. A mod's prototype of a combinator type is often something else
+ * than the type says (a controller built on a constant combinator), and the form of the type is wrong for it: of the four
+ * combinator kinds only the game's own prototypes have their form. The settings of the others are in the source only.
+ */
+export function hasSettingsForm(prototype: PrototypeName): boolean {
+  return GAME_COMBINATORS.has(prototype) || !COMBINATOR_KINDS.has(prototypeData({ prototype }).kind);
+}
 
 export function capitalized(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -48,12 +56,6 @@ export function entityTitle(entity: EntityShape): string {
 /** The same inside a sentence, with its article: "a decider", "a big electric pole". */
 export function entityNoun(entity: EntityShape): string {
   return withArticle(entityTitle(entity).toLowerCase());
-}
-
-/** What an entity is on a circuit for, in a line: of its kind, and for a generic entity of its prototype type. */
-export function entityDescription(entity: EntityShape): string {
-  const { kind } = prototypeData(entity);
-  return kind === "entity" ? typeDescription(entity.prototype) : KIND_INFO[kind].description;
 }
 
 /** The tiles a prototype covers when it faces north, width by height: "1 tile", "1 x 2 tiles", "9 x 9 tiles". */

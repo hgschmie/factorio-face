@@ -9,7 +9,7 @@ import {
 import { printTerminal } from "@face/language";
 import { useId, useImperativeHandle, useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { flushSync } from "react-dom";
-import { capitalized, entityDescription, entityNoun, entityTitle, KIND_INFO } from "../entities/kindInfo.ts";
+import { capitalized, entityNoun, KIND_INFO, prototypeLabel } from "../entities/kindInfo.ts";
 import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
@@ -42,8 +42,6 @@ export interface InspectorProps {
   /** The wire reach of the project in tiles; a selected wire between two entities with a tile shows its length against it. */
   readonly wireReach: number;
   readonly resolveEntityIcon?: EntityIconResolver;
-  /** Which prototypes the project can place and their order in the game, for the choice of what a generic entity is. */
-  readonly prototypes?: { offers(prototype: PrototypeName): boolean; position(prototype: PrototypeName): number };
   /** Catalog-backed signal picker for all signal fields; without it they are validated text inputs. */
   readonly renderSignalPicker?: SignalPickerRenderer;
   /** Catalog names and icons for the signals shown in the forms. */
@@ -333,7 +331,6 @@ function inputWires(circuit: Circuit, entity: EntityId): NetworkSelection {
 
 function EntityInspector(props: EntityInspectorProps) {
   const { entity, circuit, editable, draft } = props;
-  const info = KIND_INFO[entity.kind];
   // One key per stay in such a control: the session merges the edits made during it into a single undo step.
   const focusCount = useRef(0);
   const editKey = useRef<string | undefined>(undefined);
@@ -346,11 +343,7 @@ function EntityInspector(props: EntityInspectorProps) {
         <div className="inspector-icon">
           <EntityIcon entity={entity} size={40} resolveIcon={props.resolveEntityIcon} />
         </div>
-        <div>
-          <span className="eyebrow">{info.category}</span>
-          <h2>{entityTitle(entity)}</h2>
-          <p>{entityDescription(entity)}</p>
-        </div>
+        <h2>{prototypeLabel(entity)}</h2>
       </header>
       {warning && (
         <p className="entity-warning" role="note">
@@ -388,7 +381,7 @@ function EntityInspector(props: EntityInspectorProps) {
           }}
         >
           <InputWiresContext value={inputWires(circuit, entity.id)}>
-            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} resolveEntityIcon={props.resolveEntityIcon} prototypes={props.prototypes} onChange={change} />}
+            {props.renderSettings ? props.renderSettings(shown, change) : <EntitySettingsForm entity={shown} onChange={change} />}
           </InputWiresContext>
         </div>
         <Connections entity={entity} circuit={circuit} onRemoveWire={props.onRemoveWire} onSelect={props.onSelect} />

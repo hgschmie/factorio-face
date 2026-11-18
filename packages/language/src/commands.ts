@@ -8,7 +8,7 @@ import {
 import { analyze, statementKey, type EntitySource, type ParseResult } from "./analyze.ts";
 import type { CstBlock, CstMember, CstSection, CstStatement } from "./cst.ts";
 import { uniqueNames, type Fragment } from "./fragment.ts";
-import { entityItems, printAt, printCircuit, printEntity, printMembers, printName, printNumber, printWire, type StatementItem } from "./printer.ts";
+import { entityItems, printAt, printCircuit, printEntity, printMembers, printNumber, printWire, type StatementItem } from "./printer.ts";
 import { encodeString, isIdentifier, isKeyword, type Range } from "./tokens.ts";
 
 /** Replace `[from, to)` of the source with `insert`. Offsets refer to the source the command was computed from. */
@@ -28,7 +28,7 @@ export type EditFailureCode =
   | "invalid-position"
   | "invalid-terminal"
   | "self-wire"
-  | "kind-mismatch"
+  | "prototype-mismatch"
   | "invalid-entity"
   | "unrepresentable";
 
@@ -751,16 +751,16 @@ function diffSection(edit: Edit, statement: CstSection, kind: EntityKind, curren
 }
 
 /**
- * Rewrites entity `id` so that it equals `next` (same kind): which entity of the game it is (the declaration word), name,
- * position, placement and configuration. Statements whose meaning is unchanged keep their text and trivia byte for byte; changed
- * ones are replaced by canonical text, new ones are inserted in canonical order and dropped ones are deleted. An empty
- * description removes the property.
+ * Rewrites entity `id` so that it equals `next`: name, position, placement and configuration. Which entity of the game it is
+ * (the declaration word) is not changed: `next` has to be of the same prototype. Statements whose meaning is unchanged keep
+ * their text and trivia byte for byte; changed ones are replaced by canonical text, new ones are inserted in canonical order
+ * and dropped ones are deleted. An empty description removes the property.
  */
 export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): TextChange[] {
   const edit = new Edit(parse);
   const source = edit.entity(id);
   const current = edit.model(id);
-  if (next.kind !== current.kind) throw new EditError("kind-mismatch", `Entity '${current.name}' is a ${current.kind}, not a ${next.kind}`);
+  if (next.prototype !== current.prototype) throw new EditError("prototype-mismatch", `Entity '${current.name}' is '${current.prototype}', not '${next.prototype}'`);
   rename(edit, id, next.name);
   // An empty description is no description: the property is removed, not written as "". Where the source says "" already, it stays.
   if (next.description === "" && current.description !== "") next = { ...next, description: undefined };
@@ -768,7 +768,6 @@ export function updateEntity(parse: ParseResult, id: EntityId, next: Entity): Te
   if (!check.ok) throw new EditError(check.code, check.message);
 
   const node = source.node;
-  if (next.prototype !== current.prototype) edit.change(node.word.from, node.word.to, printName(next.prototype));
   if (next.position.x !== current.position.x || next.position.y !== current.position.y) {
     if (!source.at) edit.change(source.atInsert, source.atInsert, printAt(next.position));
     else {

@@ -2,17 +2,19 @@
 // data: the signal catalog says in which item group and subgroup an entity is and where in it, the entity table which entities
 // there are, and the enabled modules which of them the project has. No prototype is named here: a further entity of the game is
 // its record in the two tables. The palette, its count, the digit keys and the icon probes read it. Pure.
-import { isAvailable, pickerTree, type Catalog } from "@face/catalog";
+import { currentCatalog, findSignal, isAvailable, pickerTree, type Catalog } from "@face/catalog";
 import { entityTable, PROTOTYPES, prototypeData, prototypesOf, type EntityKind, type EntityShape, type EntityTable, type PrototypeName } from "@face/model";
-import { entityDescription, prototypeFacts, prototypeLabel } from "./kindInfo.ts";
+import { prototypeFacts, prototypeLabel } from "./kindInfo.ts";
 
 /**
  * The icon of a prototype below the catalog icon root, without extension: `item/big-electric-pole`. It is the icon of the item
- * that places the entity, which for all but a few has the entity's name (`placedBy` of the entity table). A prototype without
- * such an item (four chests of the game's editor) gets an id nothing is served for and keeps its pictogram.
+ * that places the entity, which for all but a few has the entity's name (`placedBy` of the entity table), as the catalog in use
+ * names it: an item that shares its picture with another one has no icon under its own id. A prototype without such an item
+ * (four chests of the game's editor) gets an id nothing is served for and keeps its pictogram.
  */
 export function prototypeIconId(prototype: PrototypeName): string {
-  return `item/${entityTable().byName.get(prototype)?.placedBy[0] ?? prototype}`;
+  const item = entityTable().byName.get(prototype)?.placedBy[0] ?? prototype;
+  return findSignal(currentCatalog(), { kind: "item", name: item })?.icon ?? `item/${item}`;
 }
 
 /** One entity the palette offers. */
@@ -21,8 +23,6 @@ export interface PaletteEntry {
   readonly prototype: PrototypeName;
   /** The name of the entity in the game: "Big electric pole". */
   readonly label: string;
-  /** What the entity is on a circuit for: of its kind, or of its prototype type. */
-  readonly description: string;
   /** Its tiles and, where it has one of its own, its wire reach: "2 x 2 tiles, wire reach 32", "1 tile". */
   readonly facts: string;
 }
@@ -74,7 +74,7 @@ export interface EntityRegistry {
 
 function entryOf(prototype: PrototypeName): PaletteEntry {
   const shape = { prototype };
-  return { kind: prototypeData(shape).kind, prototype, label: prototypeLabel(shape), description: entityDescription(shape), facts: prototypeFacts(shape) };
+  return { kind: prototypeData(shape).kind, prototype, label: prototypeLabel(shape), facts: prototypeFacts(shape) };
 }
 
 /**

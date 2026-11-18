@@ -41,6 +41,32 @@ export function moddedData(without: readonly string[] = []): GameDataInUse {
   };
 }
 
+export const MOD_TWIN = "mod-crate-one";
+
+/**
+ * `moddedData` as a game with the mod's pictures in its icon table gives it, and with a second crate of the mod whose item has
+ * the picture of the first one's: the catalog has no icon under the id of that item, its signal names the other one.
+ */
+export function aliasedIconData(): GameDataInUse {
+  const data = moddedData();
+  const item = (name: string, displayName: string) => ({ name, displayName, order: `zz[${name}]`, subgroup: "storage", modules: [MOD] });
+  const { entity } = data.catalog!.signals;
+  const table = data.entities as { readonly entities: readonly unknown[] };
+  return {
+    ...data,
+    catalog: {
+      ...data.catalog!,
+      signals: {
+        ...data.catalog!.signals,
+        item: [...data.catalog!.signals.item!, item(MOD_ENTITY, "Mod crate"), { ...item(MOD_TWIN, "Mod crate one"), icon: `item/${MOD_ENTITY}` }],
+        entity: [...entity!, { ...entity!.at(-1)!, name: MOD_TWIN, displayName: "Mod crate one", placedBy: [MOD_TWIN], icon: `item/${MOD_ENTITY}` }],
+      },
+    },
+    entities: { ...table, entities: [...table.entities, { name: MOD_TWIN, type: "container", displayName: "Mod crate one", width: 2, height: 2, modules: [MOD] }] },
+    icons: [...STANDARD_ICONS, `item/${MOD_ENTITY}`],
+  };
+}
+
 /** The game with the many mods of tests/fixtures/game/moddedCatalog.ts, as a window gets it. */
 export function manyModsData(): GameDataInUse {
   const mods = [...catalog.modules, ...MANY_MODS].map(({ name, version }) => ({ name, version }));

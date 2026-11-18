@@ -1,5 +1,5 @@
-// What the speaker form and the prototype control write: every setting as canonical source, nothing for a setting that was
-// never changed, and for a pole the tiles that follow its prototype. The forms emit entities; these are the edits they make.
+// What the speaker form writes: every setting as canonical source, nothing for a setting that was never changed. The forms
+// emit entities; these are the edits they make. Which entity of the game an entity is, is not among them.
 // A statement that is there stays when its value returns to the default (`polyphony = false`): that is the rule of the
 // language's `updateEntity` for every kind, which patches a statement and never removes one for its value.
 import { loadStandardCatalog } from "@face/catalog";
@@ -171,71 +171,12 @@ describe("speaker settings in the source", () => {
 });
 
 describe("the prototype of a pole", () => {
-  const POLES = `circuit "Poles" {
-    small-electric-pole p at (40, 80) tile (4.5, 0.5) {
-    }
-
-    small-lamp light at (300, 80) tile (5.5, 0.5) {
-    }
-
-    small-electric-pole free at (560, 80) {
-    }
-}
-`;
-  const pole = (session: ProjectSession, name: string): Pole => entityNamed(session, name) as Pole;
-
-  it("is written unless it is the small pole, and a pole without a tile just changes", () => {
-    const { session } = createSession(POLES);
-    session.commands.updateEntity({ ...pole(session, "free"), prototype: "substation" });
-    expect(session.document.text).toContain("    substation free at (560, 80) {\n    }\n");
-    // Back to the small pole: the statement that is there says so (the language patches a value, it does not remove a statement for it).
-    session.commands.updateEntity({ ...pole(session, "free"), prototype: "small-electric-pole" });
-    expect(session.document.text).toContain("    small-electric-pole free at (560, 80) {\n    }\n");
-    session.commands.undo();
-    session.commands.undo();
-    expect(session.document.text).toBe(POLES);
-  });
-
-  it("keeps the top-left tile of a pole that has a tile: the center moves with the footprint, in the same step", () => {
-    const { session } = createSession(POLES.replace("tile (5.5, 0.5)", "tile (7.5, 0.5)"));
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "big-electric-pole" });
-    // On the tile (4, 0) a 2x2 pole covers (4..5, 0..1); its center is (5, 1).
-    expect(session.document.text).toContain("    big-electric-pole p at (40, 80) tile (5, 1) {\n    }\n");
-    expect(session.state.diagnostics).toEqual([]);
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "substation" });
-    expect(session.document.text).toContain("    substation p at (40, 80) tile (5, 1) {\n    }\n");
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "medium-electric-pole" });
-    expect(session.document.text).toContain("    medium-electric-pole p at (40, 80) tile (4.5, 0.5) {\n    }\n");
-    session.commands.undo();
-    session.commands.undo();
-    session.commands.undo();
-    expect(session.document.text).toContain("    small-electric-pole p at (40, 80) tile (4.5, 0.5) {\n    }\n");
-    expect(session.state.canUndo).toBe(false);
-  });
-
-  it("is refused on the board when the bigger footprint would cover a tile of another entity, and warned about on the edit canvas", () => {
-    const { session } = createSession(POLES);
-    session.commands.select([idOf(session, "p")]);
-    session.commands.setDisplayMode("blueprint");
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "big-electric-pole" });
-    expect(session.state.error).toBe("Not changed: p would stand on a tile of light.");
-    expect(session.document.text).toBe(POLES);
-    expect(session.state.canUndo).toBe(false);
-    // A prototype of the same size is no problem, and the message about the refused change goes with the edit.
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "medium-electric-pole" });
-    expect(session.state.error).toBeNull();
-    expect(session.document.text).toBe(POLES.replace("small-electric-pole p", "medium-electric-pole p"));
-    // The message is about the selected entity: it goes when something else is selected.
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "substation" });
-    expect(session.state.error).toBe("Not changed: p would stand on a tile of light.");
-    session.commands.select([idOf(session, "light")]);
-    expect(session.state.error).toBeNull();
-    // On the edit canvas nothing is refused, as for a turn: the overlap is in the problems list.
-    session.commands.setDisplayMode("edit");
-    session.commands.updateEntity({ ...pole(session, "p"), prototype: "big-electric-pole" });
-    expect(session.state.error).toBeNull();
-    expect(session.document.text).toContain("big-electric-pole p at (40, 80) tile (5, 1) {\n    }");
-    expect(session.state.diagnostics.map((diagnostic) => diagnostic.code)).toEqual(["tile-overlap", "tile-overlap"]);
+  it("is the word of its declaration, which no edit of the entity writes", () => {
+    const source = 'circuit "Poles" {\n    small-electric-pole p at (40, 80) tile (4.5, 0.5) {\n    }\n}\n';
+    const { session } = createSession(source);
+    session.commands.updateEntity({ ...(entityNamed(session, "p") as Pole), prototype: "big-electric-pole" });
+    expect(session.document.text).toBe(source);
+    expect([session.state.error, session.state.canUndo]).toEqual([null, false]);
   });
 });
 

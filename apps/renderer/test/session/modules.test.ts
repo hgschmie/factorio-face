@@ -9,7 +9,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   BASE_IN_SPACE_TAB, FILLERS, fillerSignal, LISTED_MODS, MACHINE_CRATE, MACHINES, MACHINES_TITLE, ORE, ORE_ITEM, ORE_RECYCLING, UNREAD, UNREAD_SIGNAL,
 } from "../../../../tests/fixtures/game/moddedCatalog.ts";
-import { alternativePrototypes } from "../../src/entities/genericSettings.ts";
 import { applyData, type DataInUse } from "../../src/gameData/dataInUse.ts";
 import { completionCandidates } from "../../src/session/completion.ts";
 import { modulesUsedOff } from "../../src/session/moduleUse.ts";
@@ -180,7 +179,7 @@ describe("a signal or an entity of a mod that is switched off", () => {
     expect(session.state.catalog.entityWarning(MACHINE_CRATE)).toBeUndefined();
   });
 
-  it("is not offered: not in the picker, the selector, the Type field or the completion", () => {
+  it("is not offered: not in the picker, the selector or the completion", () => {
     const off = sessionWith(GAME);
     const on = sessionWith(ALL);
     const labels = (session: ProjectSession, text: string): string[] => completionCandidates(completionContext(analyze(text.replace("|", "")), text.indexOf("|")), session.state.catalog as CatalogService).map((candidate) => candidate.label);
@@ -201,10 +200,6 @@ describe("a signal or an entity of a mod that is switched off", () => {
     const [registryOn, registryOff] = [on.state.catalog.entities(), off.state.catalog.entities()];
     expect([registryOn.offers(MACHINE_CRATE), registryOff.offers(MACHINE_CRATE)]).toEqual([true, false]);
     expect(registryOn.groupOf(MACHINE_CRATE)).toBe("logistics");
-    expect(alternativePrototypes("steel-chest", registryOn.offers)).toContain(MACHINE_CRATE);
-    expect(alternativePrototypes("steel-chest", registryOff.offers)).not.toContain(MACHINE_CRATE);
-    // The entity itself keeps its own choice, as the one it is.
-    expect(alternativePrototypes(MACHINE_CRATE, registryOff.offers)).toContain(MACHINE_CRATE);
   });
 });
 

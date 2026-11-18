@@ -1,16 +1,18 @@
-// Prototypes a mod adds to the kinds of the editor, in the renderer: the selector, the choice of the prototype in the inspector,
-// the names, the footprints and pins on the board, placing and changing an entity in a session, and completion.
+// Prototypes a mod adds to the kinds of the editor, in the renderer: the selector, which of them the inspector has a settings
+// form for, the names, the footprints and pins on the board, placing an entity in a session, and completion.
 import { createCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
-import { PROTOTYPE_NAMES, prototypeData, type Entity } from "@face/model";
+import { PROTOTYPE_NAMES, prototypeData } from "@face/model";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { arrangeBoard, boardPinOffset } from "../src/canvas/board.ts";
 import { blueprintLayout } from "../src/canvas/layout.ts";
-import { alternativePrototypes, withPrototype } from "../src/entities/genericSettings.ts";
-import { capitalized, entityDescription, entityNoun, entityTitle, prototypeFacts, prototypeLabel } from "../src/entities/kindInfo.ts";
+import { capitalized, entityNoun, entityTitle, hasSettingsForm, prototypeFacts, prototypeLabel } from "../src/entities/kindInfo.ts";
 import { entriesInUse, keyedKindOf, searchEntries, type EntityRegistry } from "../src/entities/registry.ts";
-import { TYPE_DESCRIPTIONS } from "../src/entities/typeInfo.ts";
 import { applyData } from "../src/gameData/dataInUse.ts";
+import { EntitySettingsForm } from "../src/inspector/EntitySettingsForm.tsx";
+import { Inspector } from "../src/inspector/Inspector.tsx";
 import { CatalogService } from "../src/session/catalogService.ts";
 import { completionCandidates } from "../src/session/completion.ts";
 import { sameTool } from "../src/workbench/controller.ts";
@@ -97,15 +99,15 @@ describe("modded prototypes of the kinds of the editor", () => {
     expect(sameTool({ type: "place", prototype: "arithmetic-combinator" }, { type: "place", prototype: "mod-arithmetic" })).toBe(false);
   });
 
-  it("have an entry with the name, the tiles and the reach of the game, and the line of their kind or type", () => {
-    const facts = (prototype: string): string[] => [registry.entry(prototype)!.label, registry.entry(prototype)!.facts, registry.entry(prototype)!.description];
-    expect(facts("mod-arithmetic")).toEqual(["Tiny arithmetic combinator", "1 tile", "Transform your signals"]);
-    expect(facts("arithmetic-combinator")).toEqual(["Arithmetic combinator", "1 x 2 tiles", "Transform your signals"]);
-    expect(facts("mod-decider")).toEqual(["Wide decider combinator", "2 x 2 tiles", "Compare and decide"]);
-    expect(facts("mod-lamp")).toEqual(["Big lamp", "2 x 2 tiles", "See a condition light up"]);
-    expect(facts("mod-pole")).toEqual(["Huge electric pole", "2 x 2 tiles, wire reach 48", "Relay signals over a distance"]);
-    expect(facts("mod-loader")).toEqual(["Miniloader", "1 tile", TYPE_DESCRIPTIONS.loader]);
-    expect(entityDescription({ prototype: "mod-loader" })).toBe(TYPE_DESCRIPTIONS["loader-1x1"]);
+  it("have an entry with the name, the tiles and the reach of the game, and nothing on what they are for", () => {
+    const facts = (prototype: string): string[] => [registry.entry(prototype)!.label, registry.entry(prototype)!.facts];
+    expect(facts("mod-arithmetic")).toEqual(["Tiny arithmetic combinator", "1 tile"]);
+    expect(facts("arithmetic-combinator")).toEqual(["Arithmetic combinator", "1 x 2 tiles"]);
+    expect(facts("mod-decider")).toEqual(["Wide decider combinator", "2 x 2 tiles"]);
+    expect(facts("mod-lamp")).toEqual(["Big lamp", "2 x 2 tiles"]);
+    expect(facts("mod-pole")).toEqual(["Huge electric pole", "2 x 2 tiles, wire reach 48"]);
+    expect(facts("mod-loader")).toEqual(["Miniloader", "1 tile"]);
+    expect(Object.keys(registry.entry("mod-loader")!).sort()).toEqual(["facts", "kind", "label", "prototype"]);
     expect(searchEntries(registry.groups, "tiny").flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries.map((entry) => entry.prototype)))).toEqual(["mod-arithmetic", "mod-selector", "mod-constant"]);
   });
 
@@ -127,28 +129,57 @@ describe("modded prototypes of the kinds of the editor", () => {
     expect(entriesInUse(registry, [{ prototype: "arithmetic-combinator" }, { prototype: "mod-arithmetic" }]).map((entry) => entry.prototype)).toEqual(["mod-arithmetic"]);
   });
 
-  describe("the choice of the prototype in the inspector", () => {
-    it("is among the prototypes of the kind that the selector offers, in the game's order, and always has the one the entity is", () => {
-      const choices = (prototype: string): readonly string[] => alternativePrototypes(prototype, registry.offers, registry.position);
-      expect(choices("arithmetic-combinator")).toEqual(["arithmetic-combinator", "mod-arithmetic"]);
-      expect(choices("mod-constant")).toEqual(["constant-combinator", "mod-constant"]);
-      expect(choices("small-lamp")).toEqual(["5d-lamp", "small-lamp", "mod-lamp"]);
-      expect(choices("mod-hidden-lamp")).toEqual(["5d-lamp", "small-lamp", "mod-lamp", "mod-hidden-lamp"]);
-      expect(choices("substation")).toEqual(["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation", "mod-pole"]);
-      // One prototype: nothing to choose, so the inspector shows no field.
-      expect(choices("programmable-speaker")).toEqual(["programmable-speaker"]);
-      expect(choices("mod-loader")).toEqual(["mod-loader"]);
-      // Without the registry: the standard one of the kind first, the others by name.
-      expect(alternativePrototypes("mod-lamp")).toEqual(["small-lamp", "5d-lamp", "mod-lamp"]);
+  describe("the settings form of the inspector", () => {
+    const form = (name: string, session: TestSession["session"]): string => renderToStaticMarkup(createElement(EntitySettingsForm, { entity: entityNamed(session, name), onChange: () => undefined }));
+    const NOT_SHOWN = "The settings of this entity are not shown here. They stay in the source as they are.";
+
+    it("is there for the four combinators of the game and for no combinator of a mod, whatever the mod", () => {
+      expect(COMBINATORS.map(hasSettingsForm)).toEqual([true, true, true, true]);
+      expect(["mod-constant", "mod-arithmetic", "mod-decider", "mod-selector"].map(hasSettingsForm)).toEqual([false, false, false, false]);
+      // Every other kind has its form, a mod's prototype like the game's.
+      expect(["small-lamp", "mod-lamp", "5d-lamp", "mod-pole", "mod-loader", "programmable-speaker", "fast-inserter"].map(hasSettingsForm)).toEqual([true, true, true, true, true, true, true]);
     });
 
-    it("makes the entity another prototype of its kind and keeps its settings", () => {
+    it("gives a combinator of a mod one line in place of the form, and the game's own its form", () => {
+      const { session } = modded(SOURCE.replace("{\n", "{\n    arithmetic-combinator own at (40, 300) {\n        virtual:signal-A = virtual:signal-A * 2\n    }\n\n"));
+      expect(session.state.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+      for (const name of ["source", "double", "gate"]) {
+        const markup = form(name, session);
+        expect(markup, name).toContain(`data-note="settings-not-shown">${NOT_SHOWN}</p>`);
+        expect(markup, name).not.toContain("form-section");
+      }
+      expect(form("own", session)).toContain("form-section");
+      expect(form("own", session)).not.toContain("settings-not-shown");
+      // A lamp and a loader of a mod keep their forms.
+      for (const name of ["light", "feed"]) expect(form(name, session), name).toContain("form-section");
+    });
+
+    it("has the icon and the name of the game as the header of the inspector, and the common part around the line", () => {
       const { session } = modded(SOURCE);
-      const light = entityNamed(session, "light");
-      expect(withPrototype(light, "5d-lamp")).toEqual({ ...light, prototype: "5d-lamp" });
-      expect(withPrototype(light, "small-lamp")).toEqual({ ...light, prototype: "small-lamp" });
-      expect(withPrototype(entityNamed(session, "small"), "mod-lamp")).toMatchObject({ kind: "lamp", prototype: "mod-lamp", condition: { comparator: ">" } });
-      expect(withPrototype(entityNamed(session, "relay"), "small-electric-pole")).toMatchObject({ kind: "pole", prototype: "small-electric-pole" });
+      const nothing = (): void => undefined;
+      const inspector = (name: string): string =>
+        renderToStaticMarkup(
+          createElement(Inspector, {
+            circuit: session.state.circuit, selection: [entityNamed(session, name).id], wireSelection: [], editable: true, wireReach: 9,
+            onRename: nothing, onChange: nothing, onFace: nothing, onDelete: nothing, onDeleteSelection: nothing, onRemoveWire: nothing, onSelect: nothing, onUndo: nothing, onRedo: nothing,
+          }),
+        );
+      const header = (markup: string): string => /<header class="inspector-identity">(.*?)<\/header>/.exec(markup)![1]!.replace(/<div class="inspector-icon">.*?<\/div>/, "");
+      expect(header(inspector("double"))).toBe("<h2>Tiny arithmetic combinator</h2>");
+      expect(header(inspector("light"))).toBe("<h2>Big lamp</h2>");
+      expect(header(inspector("feed"))).toBe("<h2>Miniloader</h2>");
+      const double = inspector("double");
+      for (const part of ['aria-label="Entity name"', 'aria-label="Facing"', 'placeholder="Add description"', 'aria-label="Delete double"', 'data-note="settings-not-shown"', "Connections"]) expect(double, part).toContain(part);
+      expect(double).not.toContain("form-section");
+      // No control says or changes which entity of the game it is, for any kind.
+      for (const name of ["source", "double", "gate", "relay", "light", "small", "feed"]) expect(inspector(name), name).not.toContain("data-prototype");
+    });
+
+    it("leaves the settings of such a combinator in the source through an edit of what the inspector does show", () => {
+      const { session } = modded(SOURCE);
+      const before = session.document.text;
+      session.commands.updateEntity({ ...entityNamed(session, "double"), description: "times two" });
+      expect(session.document.text).toBe(before.replace("        virtual:signal-A = virtual:signal-A * 2\n", '        description = "times two"\n        virtual:signal-A = virtual:signal-A * 2\n'));
     });
   });
 
@@ -220,31 +251,6 @@ describe("modded prototypes of the kinds of the editor", () => {
       expect(entityNamed(session, "lamp2")).toMatchObject({ prototype: "mod-lamp", placement: { tile: { x: 13, y: 11 } } });
       expect(session.state.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
     });
-
-    it("changes the prototype of an entity: it keeps its top-left tile, and a change onto a taken tile is refused", () => {
-      const { session } = modded(SOURCE);
-      session.commands.setDisplayMode("blueprint");
-      const named = (name: string): Entity => entityNamed(session, name);
-      // The lamp of one tile becomes the big one: from its top-left tile (16, 0) it then covers (16..17, 0..1).
-      session.commands.updateEntity(withPrototype(named("small"), "mod-lamp"));
-      expect(session.state.error).toBeNull();
-      expect(named("small")).toMatchObject({ prototype: "mod-lamp", placement: { tile: { x: 17, y: 1 } } });
-      expect(session.document.text).toContain("    mod-lamp small at (1000, 300) tile (17, 1) {\n        when virtual:signal-A > 0\n    }");
-      // And back: the word of the declaration is the lamp of the game again.
-      session.commands.updateEntity(withPrototype(named("small"), "small-lamp"));
-      expect(session.document.text).toContain("    small-lamp small at (1000, 300) tile (16.5, 0.5) {\n        when virtual:signal-A > 0\n    }");
-      expect(named("small")).toMatchObject({ kind: "lamp", placement: { tile: { x: 16.5, y: 0.5 } } });
-      expect(named("small").prototype).toBe("small-lamp");
-      // The standard arithmetic combinator is two tiles long: the tiny one at (2, 0) would reach onto (3, 0), which is free, ...
-      session.commands.updateEntity(withPrototype(named("double"), "arithmetic-combinator"));
-      expect(named("double")).toMatchObject({ kind: "arithmetic", placement: { tile: { x: 3, y: 0.5 } } });
-      expect(named("double").prototype).toBe("arithmetic-combinator");
-      // ... but a lamp on the tile left of the lamp `small` cannot grow into it.
-      session.commands.placeEntityOnTile("small-lamp", { x: 15.5, y: 0.5 });
-      session.commands.updateEntity(withPrototype(named("lamp1"), "mod-lamp"));
-      expect(session.state.error).toBe("Not changed: lamp1 would stand on a tile of small.");
-      expect(named("lamp1").prototype).toBe("small-lamp");
-    });
   });
 
   it("offers the entities of the game data at the start of a member, as the source writes them and with their names in the game", () => {
@@ -274,7 +280,7 @@ describe("the name a mod gives its prototype", () => {
     const { session } = createSession(EMPTY_SOURCE, { data: applyData(moddedKindsData({ "mod-constant": "LTN Combinator", "mod-loader": "AAI Loader (Mk2)" })), project: project(EMPTY_SOURCE, { modules: MODDED_MODULES }) });
     const registry = session.state.catalog.entities();
     const ltn = { kind: "constant", prototype: "mod-constant" } as const;
-    // The tile of the selector and its popup, the Type field of the inspector, the title of the inspector and the heading of the card.
+    // The tile of the selector and its popup, the title of the inspector and the heading of the card.
     expect(registry.entry("mod-constant")!.label).toBe("LTN Combinator");
     expect(prototypeLabel(ltn)).toBe("LTN Combinator");
     expect(entityTitle(ltn)).toBe("LTN Combinator");
@@ -301,13 +307,10 @@ describe("the name a mod gives its prototype", () => {
 });
 
 describe("with the built-in data", () => {
-  it("has one prototype of every kind but the pole, so the inspector shows the choice for a pole only", () => {
+  it("has one prototype of every kind but the pole, which goes by its kind on its card, and a settings form for every prototype", () => {
     reset();
-    const { session } = createSession(EMPTY_SOURCE);
-    const registry = session.state.catalog.entities();
-    const choices = (prototype: string): readonly string[] => alternativePrototypes(prototype, registry.offers, registry.position);
-    expect(["constant-combinator", "arithmetic-combinator", "decider-combinator", "selector-combinator", "small-lamp", "programmable-speaker"].map((name) => choices(name).length)).toEqual([1, 1, 1, 1, 1, 1]);
-    expect(choices("big-electric-pole")).toEqual(["small-electric-pole", "medium-electric-pole", "big-electric-pole", "substation"]);
     expect(entityTitle({ prototype: "arithmetic-combinator" })).toBe("Arithmetic");
+    expect(entityTitle({ prototype: "big-electric-pole" })).toBe("Big electric pole");
+    expect(PROTOTYPE_NAMES.filter((prototype) => !hasSettingsForm(prototype))).toEqual([]);
   });
 });

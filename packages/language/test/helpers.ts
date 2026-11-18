@@ -174,10 +174,8 @@ export class Generator {
     ]));
   }
 
-  /** A random entity that the language can express exactly. */
-  entity(kind: EntityKind, name: string): Entity {
-    // Which prototype of its kind: any the game data has.
-    const prototype = this.pick(prototypesOf(kind));
+  /** A random entity that the language can express exactly. Which prototype of its kind: any the game data has, unless one is given. */
+  entity(kind: EntityKind, name: string, prototype: string = this.pick(prototypesOf(kind))): Entity {
     const base = {
       id: `x-${name}`,
       name,

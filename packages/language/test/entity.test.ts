@@ -467,18 +467,15 @@ describe("commands", () => {
     expect(update((feeder) => ({ ...feeder, settings: rest }), unset)).toBe(SOURCE.replace("        when item:iron-plate < 100 // stop when full\n", ""));
   });
 
-  it("changes the blueprint data and the prototype", () => {
+  it("changes the blueprint data and not the prototype", () => {
     expect(update((feeder) => ({ ...feeder, blueprintData: '{"quality":"epic"}' }))).toBe(SOURCE.replace("rare", "epic"));
     const { blueprintData: _data, ...bare } = feederOf(valid(SOURCE));
     expect(update(() => bare)).toBe(SOURCE.replace('        blueprint-data = "{\\"quality\\":\\"rare\\"}"\n', ""));
-    // Another prototype of the type keeps the settings; one of another type cannot hold what it does not have.
-    expect(update((feeder) => ({ ...feeder, prototype: "bulk-inserter" }))).toBe(SOURCE.replace("fast-inserter", "bulk-inserter"));
-    const result = executeCommand(valid(SOURCE), { type: "updateEntity", id: "e2", entity: { ...feederOf(valid(SOURCE)), prototype: "steel-chest" } });
-    expect(result).toMatchObject({ ok: false, code: "unrepresentable" });
-    expect(update((feeder) => ({ ...feeder, prototype: "steel-chest", settings: {} }))).toBe(SOURCE.replace("fast-inserter", "steel-chest").replace("        when item:iron-plate < 100 // stop when full\n", "").replace("        read-hand = pulse\n", ""));
-    // The chest cannot turn: the clause that the inserter needed stays and is said to be unused.
-    expect(codes(update((feeder) => ({ ...feeder, prototype: "steel-chest", settings: {} })))).toEqual(["unused-facing"]);
-    expect(executeCommand(valid(SOURCE), { type: "updateEntity", id: "e2", entity: { ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", id: "e2", name: "feeder", position: { x: 300, y: 80 } } })).toMatchObject({ ok: false, code: "kind-mismatch" });
+    // Which entity of the game it is, is the word of its declaration: another prototype is refused, of its type or not.
+    for (const prototype of ["bulk-inserter", "steel-chest"]) {
+      expect(executeCommand(valid(SOURCE), { type: "updateEntity", id: "e2", entity: { ...feederOf(valid(SOURCE)), prototype, settings: {} } }), prototype).toMatchObject({ ok: false, code: "prototype-mismatch" });
+    }
+    expect(executeCommand(valid(SOURCE), { type: "updateEntity", id: "e2", entity: { ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", id: "e2", name: "feeder", position: { x: 300, y: 80 } } })).toMatchObject({ ok: false, code: "prototype-mismatch" });
   });
 
   it("renames, wires, turns, moves and deletes it like any other entity", () => {

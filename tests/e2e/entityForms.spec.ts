@@ -1,14 +1,12 @@
 // The settings of the other entities of the game (kind `entity`) in the inspector: a form made from the settings table, with a
-// control per field type that writes to the source and reads it back; the choice of the prototype among those of its type; the
-// facing as the game builds the entity; and what the simulation shows of them: whether their circuit conditions hold, on the
-// card, on the board and in the dock.
+// control per field type that writes to the source and reads it back; the facing as the game builds the entity; and what the
+// simulation shows of them: whether their circuit conditions hold, on the card, on the board and in the dock.
 import type { Page } from "@playwright/test";
 import { resolve } from "node:path";
 import { card, expect, openProject, SCREENSHOT_DIR, selectEntity, showDisplay, sourceText, test, writeProject } from "./app.ts";
-import { bubble, declarationCount, footprint, hoverOnBoard, inspector, selectOnBoard, setSource } from "./board.ts";
+import { bubble, declarationCount, hoverOnBoard, inspector, setSource } from "./board.ts";
 
 const SHOTS = resolve(SCREENSHOT_DIR, "entities-ui");
-const toast = (page: Page) => page.getByRole("alert");
 const setting = (page: Page, key: string) => inspector(page).locator(`.setting[data-setting="${key}"]`);
 const shownSettings = (page: Page) => inspector(page).locator(".setting").evaluateAll((all) => all.map((element) => element.getAttribute("data-setting")));
 const checkbox = (page: Page, name: string) => inspector(page).getByRole("checkbox", { name, exact: true });
@@ -64,8 +62,10 @@ async function openFactory(page: Page, source = FACTORY): Promise<void> {
 test("the form of an inserter has a control per setting of its type and writes every field type to the source", async ({ page }) => {
   await openFactory(page);
   await selectEntity(page, "feeder");
+  // The header is the icon and the name of the entity in the game: no heading above it, no line on what it is for.
   await expect(inspector(page).locator("h2")).toHaveText("Inserter");
-  await expect(inspector(page).locator(".inspector-identity p")).toHaveText("Switch it on a condition, set filters and stack size, read its hand");
+  await expect(inspector(page).locator(".inspector-identity")).toHaveText("Inserter");
+  await expect(inspector(page).locator(".inspector-identity .eyebrow, .inspector-identity p")).toHaveCount(0);
   // The settings of the type in the order of the table. The signal of the stack size belongs to its switch, which is off.
   expect(await shownSettings(page)).toEqual(["when", "logistic-when", "networks", "output-networks", "set-filters", "read-hand", "set-stack-size"]);
   expect(await inspector(page).locator(".setting").evaluateAll((all) => all.map((element) => element.getAttribute("data-type")))).toEqual(["condition", "condition", "networks", "networks", "boolean", "enum", "boolean"]);
@@ -175,9 +175,10 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   await field(page, "Empty slots signal").fill("");
   await field(page, "Empty slots signal").blur();
   await expect(field(page, "Empty slots signal")).toHaveValue("virtual:signal-E");
-  // A chest does not turn: no facing. It can be another chest; the chests of the game's editor are not offered.
+  // A chest does not turn: no facing. Nothing offers to make it another chest, though the game has three.
   await expect(inspector(page).getByRole("group", { name: "Facing" })).toHaveCount(0);
-  expect(await inspector(page).locator(".prototype-field.compact button").evaluateAll((all) => all.map((element) => element.getAttribute("data-prototype")))).toEqual(["wooden-chest", "iron-chest", "steel-chest"]);
+  await expect(inspector(page).locator(".form-section > .section-label")).toHaveText(["Circuit connection"]);
+  await expect(inspector(page).locator("[data-prototype]")).toHaveCount(0);
   await expect(inspector(page).locator(".kept-fields")).toHaveCount(0);
 
   // A train stop: its switches with their signals, and what a blueprint had for it that the editor only keeps.
@@ -198,8 +199,6 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
     'blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"',
   ]);
   await expect(inspector(page).locator(".kept-fields")).toHaveText("Kept from the blueprint: station, manual_trains_limit. The editor does not change these fields and writes them back on export.");
-  // The one train stop of the game: nothing to choose.
-  await expect(inspector(page).locator(".prototype-field")).toHaveCount(0);
   await expect(inspector(page).getByRole("group", { name: "Facing" }).getByRole("button")).toHaveCount(4);
   await page.screenshot({ path: resolve(SHOTS, "inspector-train-stop.png") });
 
@@ -216,10 +215,10 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   await expect(card(page, "split").locator(".card-summary")).toHaveText(["input-left I <… +1", "set-filter"]);
   await page.screenshot({ path: resolve(SHOTS, "inspector-splitter.png") });
 
-  // A wall: the condition that opens the gate and the gate sensor, and a note on what the game does with a wall.
+  // A wall: the condition that opens the gate and the gate sensor, and no note on what the game does with a wall.
   await selectEntity(page, "guard");
   await expect(inspector(page).locator("h2")).toHaveText("Wall");
-  await expect(inspector(page).locator(".prototype-note")).toContainText("only while a gate stands next to it");
+  await expect(inspector(page).locator(".prototype-note")).toHaveCount(0);
   await checkbox(page, "Open gate").check();
   await checkbox(page, "Read gate sensor").check();
   await expect(field(page, "Gate sensor signal")).toHaveValue("virtual:signal-G");
@@ -248,78 +247,6 @@ test("a chest, a train stop, a splitter, a wall and a roboport each have the for
   expect(await sourceText(page)).toContain("storage-tank tank at (720, 200) facing north {");
   await expect(facing.getByRole("button", { name: "North" })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => window.faceSession!.getState().diagnostics.filter((diagnostic) => diagnostic.severity === "error"))).toEqual([]);
-});
-
-/** The prototypes of the type `assembling-machine` in the game's order of their items: production, then space. */
-const MACHINES = ["foundry", "biochamber", "assembling-machine-1", "assembling-machine-2", "assembling-machine-3", "oil-refinery", "chemical-plant", "centrifuge", "electromagnetic-plant", "cryogenic-plant", "crusher"];
-
-/** An assembling machine with a chest two tiles beside it, and an inserter. */
-const TIGHT = `circuit "Tight" {
-    assembling-machine-1 maker at (0, 0) tile (1.5, 1.5) {
-        read-contents = true
-    }
-
-    iron-chest box at (240, 0) tile (4.5, 3.5) {
-    }
-
-    inserter feeder at (480, 0) tile (7.5, 0.5) {
-        read-hand = hold
-    }
-}
-`;
-
-test("an entity becomes another prototype of its type; on the board one whose footprint would cover another entity is refused", async ({ page }) => {
-  await openFactory(page, TIGHT);
-  await selectEntity(page, "feeder");
-  const chooser = inspector(page).locator(".prototype-field.compact");
-  // The inserters of the project, in the game's order, as icons; the chosen one is named under them with its tiles.
-  expect(await chooser.getByRole("button").evaluateAll((all) => all.map((element) => element.getAttribute("aria-label")))).toEqual(["Burner inserter", "Inserter", "Long-handed inserter", "Fast inserter", "Bulk inserter", "Stack inserter"]);
-  await expect(chooser.getByRole("button", { name: "Inserter", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(inspector(page).locator(".prototype-chosen")).toHaveText("Inserter 1 tile");
-  await chooser.getByRole("button", { name: "Fast inserter" }).click();
-  // The settings stay; the card, the inspector and the entities in use follow.
-  expect(await body(page, "feeder")).toEqual(["read-hand = hold"]);
-  expect(await sourceText(page)).toContain("    fast-inserter feeder at (");
-  await expect(inspector(page).locator("h2")).toHaveText("Fast inserter");
-  await expect(inspector(page).locator(".prototype-chosen")).toHaveText("Fast inserter 1 tile");
-  await expect(card(page, "feeder").locator(".card-kind")).toHaveText("FAST INSERTER");
-  await expect(page.locator('.palette-tile.in-use[data-prototype="fast-inserter"]')).toHaveCount(1);
-  await expect(page.locator('.palette-tile.in-use[data-prototype="inserter"]')).toHaveCount(0);
-  // The word of the declaration is all that changed, in one step.
-  const changed = await sourceText(page);
-  await page.getByRole("button", { name: "Undo" }).click();
-  expect(await sourceText(page)).toBe(changed.replace("    fast-inserter feeder at (", "    inserter feeder at ("));
-  expect(await body(page, "feeder")).toEqual(["read-hand = hold"]);
-
-  // On the board: an oil refinery covers 5 x 5 tiles from the top-left tile of the machine, and the chest stands on one of them.
-  await showDisplay(page, "blueprint");
-  await page.getByRole("button", { name: "Fit circuit" }).click();
-  await selectOnBoard(page, "maker");
-  const before = await sourceText(page);
-  // Every crafting machine of the game is of one type: eleven with Space Age, in the game's order of their items.
-  expect(await chooser.getByRole("button").evaluateAll((all) => all.map((element) => element.getAttribute("data-prototype")))).toEqual(MACHINES);
-  await chooser.getByRole("button", { name: "Oil refinery" }).click();
-  await expect(toast(page)).toHaveText("Not changed: maker would stand on a tile of box.");
-  expect(await sourceText(page)).toBe(before);
-  expect(await footprint(page, "maker")).toMatchObject({ tile: [0, 0], size: [3, 3] });
-  await expect(chooser.getByRole("button", { name: "Assembling machine 1" })).toHaveAttribute("aria-pressed", "true");
-  // One of the same size is taken, and one that is smaller in the turned direction as well.
-  await chooser.getByRole("button", { name: "Assembling machine 2" }).click();
-  await expect(toast(page)).toHaveCount(0);
-  expect(await body(page, "maker")).toEqual(["read-contents = true"]);
-  expect(await sourceText(page)).toBe(before.replace("    assembling-machine-1 maker at (", "    assembling-machine-2 maker at ("));
-  expect(await footprint(page, "maker")).toMatchObject({ tile: [0, 0], size: [3, 3] });
-  // An assembling machine 2 turns, which a machine 1 does not: the facing appears with it.
-  await expect(inspector(page).getByRole("group", { name: "Facing" }).getByRole("button")).toHaveCount(4);
-  // With the chest out of the way the refinery fits: the top-left tile stays, the center moves.
-  await page.evaluate(() => {
-    const session = window.faceSession!;
-    session.commands.setTiles([{ id: session.getState().circuit.entities.find((entity) => entity.name === "box")!.id, tile: { x: 6.5, y: 5.5 } }]);
-  });
-  await chooser.getByRole("button", { name: "Oil refinery" }).click();
-  await expect(toast(page)).toHaveCount(0);
-  expect(await footprint(page, "maker")).toMatchObject({ tile: [0, 0], size: [5, 5] });
-  expect(await sourceText(page)).toContain("oil-refinery maker at (0, 0) tile (2.5, 2.5) {\n        read-contents = true");
 });
 
 /** A constant feeds an inserter that works below 100 plates, a rail signal that closes above 20 and a chest. */

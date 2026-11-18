@@ -165,12 +165,12 @@ test("poles and a speaker from the source stand on both canvases, relay the sign
   // A pole and a speaker can be selected; the inspector names them. A pole has no trace in the dock, a speaker has one.
   await selectEntity(page, "big1");
   await expect(inspector(page).locator("h2")).toHaveText("Big electric pole");
-  await expect(inspector(page).getByRole("group", { name: "Pole" }).getByRole("button", { pressed: true })).toHaveText(/Big electric pole/);
+  await expect(inspector(page).getByRole("group", { name: "Pole" })).toHaveCount(0);
   await expect(page.locator("tr.trace")).toHaveCount(0);
   await expect(page.locator(".signal-history")).toContainText("a pole only passes signals on");
   await expect(page.locator(".signal-history")).not.toContainText("no output");
   await selectEntity(page, "alarm");
-  await expect(inspector(page).locator("h2")).toHaveText("Speaker");
+  await expect(inspector(page).locator("h2")).toHaveText("Programmable speaker");
   await expect(page.locator("tr.trace")).toHaveCount(1);
   await expect(page.locator("tr.trace")).toHaveAttribute("data-trace", "alarm sound");
   await expect(page.locator("tr.trace .trace-value")).toHaveText("playing alarms siren");
@@ -404,22 +404,17 @@ const REACH = `circuit "Reach" {
 }
 `;
 
-test("the inspector chooses which pole it is: the footprint and the wire reach follow, and a change onto a taken tile is refused on the board", async ({ page }) => {
+test("the inspector of a pole names it and offers no other pole; footprint and wire reach follow the word of its declaration", async ({ page }) => {
   await openBoard(page, REACH);
-  const choice = inspector(page).getByRole("group", { name: "Pole" });
-  const option = (name: string) => choice.getByRole("button", { name: new RegExp(`^${name}`) });
-  const pressed = () => choice.getByRole("button", { pressed: true });
-  const toast = page.locator(".toast");
   const far = await wireKeyOf(page, "red", "source.out", "p");
 
-  // Four options with icon, tiles and reach; the one the pole is is pressed.
+  // The header is the icon and the name in the game. A pole has nothing to set, and which pole it is, is the word of the source.
   await selectOnBoard(page, "p");
-  await expect(inspector(page).locator(".eyebrow")).toHaveText("Signal relay");
-  await expect(inspector(page).locator("h2")).toHaveText("Small electric pole");
-  await expect(choice.getByRole("button")).toHaveText(["Small electric pole1 tile, wire reach 7.5", "Medium electric pole1 tile, wire reach 9", "Big electric pole2 x 2 tiles, wire reach 32", "Substation2 x 2 tiles, wire reach 18"]);
-  await expect(choice.locator(".entity-icon")).toHaveCount(4);
-  await expect(pressed()).toHaveText(/^Small electric pole/);
-  await expect(inspector(page)).toContainText("A pole relays signals");
+  await expect(inspector(page).locator(".inspector-identity")).toHaveText("Small electric pole");
+  await expect(inspector(page).locator(".inspector-identity .eyebrow, .inspector-identity p")).toHaveCount(0);
+  await expect(inspector(page).getByRole("group", { name: "Pole" })).toHaveCount(0);
+  await expect(inspector(page).locator(".form-section, .settings-notes")).toHaveCount(0);
+  await expect(inspector(page)).not.toContainText("A pole relays signals");
   // A pole has no description in the game; the box says so.
   await expect(inspector(page).getByLabel("Description")).toHaveAttribute("title", "A small electric pole has no description in the game. This text stays in the project.");
 
@@ -428,46 +423,24 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   expect(await title(page, far).textContent()).toBe("red: source.out <-> p (8.6 tiles apart, over the wire reach of a small electric pole, 7.5)");
   expect(await diagnostics(page)).toEqual(["warning wire-too-long: Wire from 'source.out' to 'p': the entities are 8.6 tiles apart; the wire reach of a small electric pole is 7.5"]);
 
-  // A medium pole reaches 9: the flag goes with the choice. Same tile, same size.
-  await option("Medium electric pole").click();
-  await expect(pressed()).toHaveText(/^Medium electric pole/);
-  await expect(inspector(page).locator("h2")).toHaveText("Medium electric pole");
-  expect(await sourceText(page)).toContain("    medium-electric-pole p at (300, 80) tile (7.5, 7.5) {\n    }\n");
+  // A medium pole reaches 9: the flag goes with the word. Same tile, same size.
+  await setSource(page, REACH.replace("small-electric-pole p ", "medium-electric-pole p "));
   await expect(wire(page, far)).not.toHaveAttribute("data-too-long");
   expect(await title(page, far).textContent()).toBe("red: source.out <-> p (8.5 tiles apart)");
   expect(await diagnostics(page)).toEqual([]);
   expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [1, 1] });
+  await selectOnBoard(page, "p");
+  await expect(inspector(page).locator("h2")).toHaveText("Medium electric pole");
   await hoverOnBoard(page, "p");
   await expect(bubble(page).locator(".card-kind")).toHaveText("MEDIUM ELECTRIC POLE");
 
-  // A big pole would cover the tile of the lamp beside it: refused and reported, like a refused turn. Nothing changed.
-  const medium = await sourceText(page);
-  await option("Big electric pole").click();
-  await expect(toast).toHaveText("Not changed: p would stand on a tile of light.");
-  await expect(pressed()).toHaveText(/^Medium electric pole/);
-  expect(await sourceText(page)).toBe(medium);
-  await option("Substation").click();
-  await expect(toast).toHaveText("Not changed: p would stand on a tile of light.");
-  expect(await sourceText(page)).toBe(medium);
-  await expect(page.locator("g.card.conflict")).toHaveCount(0);
-  expect(await footprint(page, "p")).toMatchObject({ size: [1, 1] });
-  // The message is about the selected pole: it goes with another selection.
-  await selectOnBoard(page, "light");
-  await expect(toast).toHaveCount(0);
-
-  // With the lamp two tiles further away the change goes through: the pole keeps its top-left tile and covers four.
-  await dragOnBoard(page, "light", { x: 2, y: 0 });
-  expect((await committedTiles(page)).light).toEqual([10.5, 7.5]);
-  await selectOnBoard(page, "p");
-  await option("Big electric pole").click();
-  await expect(toast).toHaveCount(0);
-  await expect(pressed()).toHaveText(/^Big electric pole/);
+  // A big pole covers four tiles; with the lamp two tiles further away it stands free.
+  await setSource(page, REACH.replace("small-electric-pole p at (300, 80) tile (7.5, 7.5)", "big-electric-pole p at (300, 80) tile (8, 8)").replace("tile (8.5, 7.5)", "tile (10.5, 7.5)"));
   expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [2, 2] });
-  expect(await sourceText(page)).toContain("    big-electric-pole p at (300, 80) tile (8, 8) {\n    }\n");
   expect(await pinOffsets(page, "p")).toEqual({ "io red": [70, 12], "io green": [90, 12] });
-  await expect(inspector(page).locator(".inspector-footer")).toHaveText("Tile X 8 Y 8");
   await expect(page.locator("g.card.conflict")).toHaveCount(0);
-  await expect(card(page, "light")).toHaveAttribute("data-status", "lit");
+  await selectOnBoard(page, "p");
+  await expect(inspector(page).locator(".inspector-footer")).toHaveText("Tile X 8 Y 8");
 
   // The wire to the constant now has the reach of the project, the smaller one of its two ends; the inspector says so.
   const point = await wirePoint(page, far);
@@ -477,21 +450,4 @@ test("the inspector chooses which pole it is: the footprint and the wire reach f
   await expect(distance.locator(".wire-reach-source")).toHaveText("The wire reach of the project is 9. It is the smaller reach of the two ends: a big electric pole reaches 32.");
   await expect(distance).not.toHaveAttribute("data-too-long");
   await expect(inspector(page).locator(".wire-end small")).toHaveText(["output", "connection"]);
-
-  // One undo step takes back the prototype and the tile together.
-  await page.getByRole("button", { name: "Undo" }).click();
-  expect(await sourceText(page)).toContain("    medium-electric-pole p at (300, 80) tile (7.5, 7.5) {\n    }\n");
-  expect(await footprint(page, "p")).toMatchObject({ tile: [7, 7], size: [1, 1] });
-
-  // On the edit canvas nothing is refused, as for a turn there: the overlap is a warning of the source.
-  await page.getByRole("button", { name: "Undo" }).click();
-  expect((await committedTiles(page)).light).toEqual([8.5, 7.5]);
-  await showDisplay(page, "edit");
-  await selectEntity(page, "p");
-  await option("Substation").click();
-  await expect(toast).toHaveCount(0);
-  await expect(card(page, "p").locator(".card-kind")).toHaveText("SUBSTATION");
-  await expect(card(page, "p").locator(".card-summary")).toHaveText("reach 18 · 2x2");
-  expect(await sourceText(page)).toContain("    substation p at (300, 80) tile (8, 8) {\n    }\n");
-  expect((await diagnostics(page)).map((line) => line.split(":")[0])).toEqual(["warning tile-overlap", "warning tile-overlap"]);
 });

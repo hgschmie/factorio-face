@@ -38,8 +38,9 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("the speaker form writes every setting to the source", async ({ page }) => {
-  await expect(inspector(page).locator(".eyebrow")).toHaveText("Condition indicator");
-  await expect(inspector(page).locator("h2")).toHaveText("Speaker");
+  // The header is the icon and the name of the entity in the game, with nothing above or below it.
+  await expect(inspector(page).locator(".inspector-identity")).toHaveText("Programmable speaker");
+  await expect(inspector(page).locator(".eyebrow")).toHaveCount(0);
   await expect(inspector(page).locator(".form-section > .section-label")).toHaveText(["Plays", "Sound", "Playback", "Alert"]);
   await expect(field(page, "Description")).toHaveAttribute("title", "A speaker has no description in the game. This text stays in the project.");
   // A speaker does not turn.

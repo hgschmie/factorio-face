@@ -222,29 +222,6 @@ export function blockedTurn(entities: readonly Entity[], facings: ReadonlyMap<En
   return undefined;
 }
 
-/**
- * Changing what an entity is (another prototype of its kind, which may cover other tiles): `changed` is the entity as it would
- * be, with the `tile` it would have. The change is blocked when it would newly cover a tile of another entity that has a
- * `tile`; that entity is returned. Tiles the entity covers already do not count, as for a turn.
- */
-export function blockedReshape(entities: readonly Entity[], changed: Entity): EntityId | undefined {
-  const tile = changed.placement?.tile;
-  const current = entities.find((entity) => entity.id === changed.id);
-  if (!tile || !current) return undefined;
-  const before = takenTiles([current]);
-  const taken = new Map<string, EntityId>();
-  for (const entity of entities) {
-    const center = entity.placement?.tile;
-    if (!center || entity.id === changed.id) continue;
-    for (const covered of occupiedTiles(entity, facingOf(entity), center)) taken.set(tileKey(covered.x, covered.y), entity.id);
-  }
-  for (const covered of occupiedTiles(changed, facingOf(changed), tile)) {
-    const key = tileKey(covered.x, covered.y);
-    if (!before.has(key) && taken.has(key)) return taken.get(key);
-  }
-  return undefined;
-}
-
 /** Placing a new entity with the pointer: the top-left tile of a footprint that has `point` (canvas units) in its middle. A new entity faces east unless its place tool was turned. */
 export function footprintOriginAt(point: Point, entity: EntityShape, facing: Direction = DEFAULT_FACING): Point {
   const size = tileSize(entity, facing);

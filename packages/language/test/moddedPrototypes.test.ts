@@ -141,7 +141,7 @@ describe("the entities of a table that has modded ones", () => {
     expect(at(circuit("mod-loader m { | }"))).toContainEqual({ type: "property", kind: "entity", names: propertyNames("entity", "mod-loader") });
   });
 
-  it("adds an entity of a prototype and changes the prototype of one, leaving the rest of the declaration as it is", () => {
+  it("adds an entity of a prototype, and leaves the word of a declaration to the one who writes the source", () => {
     const empty = circuit("");
     const added = run(empty, () => ({ type: "addEntity", prototype: "mod-arithmetic", position: { x: 0, y: 0 }, tile: { x: 0.5, y: 0.5 } }));
     expect(added).toContain("    mod-arithmetic arithmetic1 at (0, 0) tile (0.5, 0.5) {\n    }");
@@ -150,20 +150,13 @@ describe("the entities of a table that has modded ones", () => {
     expect(executeCommand(valid(empty), { type: "addEntity", prototype: "mod-speaker", position: { x: 0, y: 0 } })).toMatchObject({ ok: false, code: "invalid-entity", message: "'mod-speaker' is not an entity of the game data in use" });
     expect(executeCommand(valid(empty), { type: "addEntity", prototype: "mod-lamp", position: { x: 0, y: 0 }, tile: { x: 0.5, y: 0.5 } })).toMatchObject({ ok: false, code: "invalid-position" });
 
-    // The Type of the inspector: another prototype of the kind is another word, and nothing else changes.
-    const source = circuit("small-lamp l at (20, 40) {\n    // a comment\n    when virtual:signal-A > 0\n}\nwire red l.in <-> l.in".replace("\nwire red l.in <-> l.in", ""));
-    const update = (text: string, prototype: string): string => run(text, (parsed) => ({ type: "updateEntity", id: idOf(parsed, "l"), entity: { ...parsed.circuit.entities[0]!, prototype } as Entity }));
-    const modded = update(source, "mod-lamp");
-    expect(modded).toBe(source.replace("small-lamp l", "mod-lamp l"));
-    const quoted = update(modded, "5d-lamp");
-    expect(quoted).toBe(source.replace("small-lamp l", '"5d-lamp" l'));
-    expect(update(quoted, "small-lamp")).toBe(source);
-    expect(update(update('circuit "t" { "small-lamp" l { always-on = true } }', "mod-lamp"), "small-lamp")).toBe('circuit "t" { small-lamp l { always-on = true } }');
-    // The same word and another setting: the word stays as it is written.
+    // An edit of an entity changes another setting and never the word, which stays as it is written.
     const quotedLamp = 'circuit "t" { "small-lamp" l { always-on = true } }';
     expect(run(quotedLamp, (parsed) => ({ type: "updateEntity", id: idOf(parsed, "l"), entity: { ...parsed.circuit.entities[0]!, alwaysOn: false } as Entity }))).toBe(quotedLamp.replace("true", "false"));
-    // Another kind is another entity.
-    expect(executeCommand(valid(source), { type: "updateEntity", id: "e1", entity: { ...valid(source).circuit.entities[0]!, prototype: "mod-pole" } as Entity })).toMatchObject({ ok: false });
+    // Another prototype is another entity, of the same kind or not.
+    for (const prototype of ["mod-lamp", "5d-lamp", "mod-pole"]) {
+      expect(executeCommand(valid(quotedLamp), { type: "updateEntity", id: "e1", entity: { ...valid(quotedLamp).circuit.entities[0]!, prototype } as Entity }), prototype).toMatchObject({ ok: false, code: "prototype-mismatch" });
+    }
   });
 });
 

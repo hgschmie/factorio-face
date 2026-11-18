@@ -95,89 +95,6 @@
   background: var(--accent-fill);
 }
 
-/* Which entity of its kind it is: one button per prototype, icon, name and what the choice decides. */
-.prototype-field {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.prototype-field button {
-  justify-content: flex-start;
-  gap: 9px;
-  padding: 4px 8px 4px 6px;
-  border-color: var(--border-input);
-  text-align: left;
-  color: var(--text-soft);
-  background: var(--surface-inset);
-}
-
-.prototype-field button > span {
-  flex: 1;
-  min-width: 0;
-}
-
-.prototype-field strong,
-.prototype-field small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.prototype-field strong {
-  font-size: var(--text-base);
-  font-weight: 550;
-}
-
-.prototype-field small {
-  margin-top: 1px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.prototype-field button[aria-pressed="true"],
-.prototype-field button[aria-pressed="true"]:hover:not(:disabled) {
-  border-color: var(--accent-fill);
-  color: var(--ink);
-  background: var(--accent-fill);
-}
-
-.prototype-field button[aria-pressed="true"] small {
-  color: var(--ink);
-}
-
-/* The prototypes of one type of the game (the inserters, the assembling machines): icons in a row, the chosen one named under them. */
-.prototype-field.compact {
-  flex-flow: row wrap;
-}
-
-.prototype-field.compact button {
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  padding: 0;
-}
-
-.prototype-chosen {
-  margin: 6px 0 0;
-  font-size: var(--text-base);
-  color: var(--text-soft);
-}
-
-.prototype-chosen strong {
-  font-weight: 550;
-}
-
-.prototype-chosen small {
-  margin-left: 4px;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-}
-
-.prototype-note {
-  margin-top: 7px;
-}
-
 /* One setting of a generic entity: its control, and under a condition that is in use its fields. */
 .setting + .setting {
   margin-top: 7px;
@@ -430,8 +347,9 @@
   background: var(--surface-raised);
 }
 
-/* Settings forms */
-.form-section {
+/* Settings forms, and what the editor says in place of one or in front of it. */
+.form-section,
+.settings-notes {
   display: flex;
   flex-direction: column;
   gap: 11px;

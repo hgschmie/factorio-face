@@ -107,7 +107,7 @@ test("the tool buttons name their key in the tooltip, the tiles of the entity se
   // A screen reader hears the key once: it is in the description (the popup), not in the name.
   await block(page, "constant").hover();
   await expect(block(page, "constant")).toHaveAccessibleName("Constant combinator");
-  await expect(block(page, "constant")).toHaveAccessibleDescription("Emit steady signals 1 tile Key 1");
+  await expect(block(page, "constant")).toHaveAccessibleDescription("1 tile Key 1");
   await expect(toolButton(page, "Red wire")).toHaveAccessibleName("Red wire");
   await expect(toolButton(page, "Red wire")).toHaveAccessibleDescription(MAC ? "Red wire (⌥R)" : "Red wire (Alt+R)");
   expect(await page.locator(".palette [aria-keyshortcuts]").count()).toBe(0);

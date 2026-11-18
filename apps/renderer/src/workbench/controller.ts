@@ -410,11 +410,9 @@ export interface WorkbenchCommands {
    */
   flipEntities(ids: readonly EntityId[], axis: FlipAxis): void;
   /**
-   * Replaces the configuration of the entity with `next.id`. Name and position changes go through their own commands.
+   * Replaces the configuration of the entity with `next.id`. Name and position changes go through their own commands, and
+   * which entity of the game it is stays what the source says: `next` of another prototype changes nothing.
    * A configuration the language cannot express yet is kept as `WorkbenchState.draft` and written once it becomes valid.
-   * Another prototype may cover other tiles: an entity with a `tile` keeps the top-left tile of its footprint, and the `tile` is
-   * corrected in the same step. On the blueprint board a change that would put it on a tile of another entity changes nothing
-   * and is reported.
    */
   updateEntity(next: Entity, options?: UpdateOptions): void;
   discardDraft(): void;

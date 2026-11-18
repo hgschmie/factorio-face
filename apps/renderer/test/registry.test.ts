@@ -4,7 +4,6 @@ import { findSignal, isAvailable, loadStandardCatalog, resolveModules } from "@f
 import { entityTable, PROTOTYPE_NAMES, PROTOTYPES, STANDARD_ENTITY_TABLE, type EntityTable } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { entityRegistry, entriesInUse, KEYED_KINDS, keyedKindOf, PINNED_KINDS, prototypeIconId, searchEntries, type EntityRegistry } from "../src/entities/registry.ts";
-import { TYPE_DESCRIPTIONS } from "../src/entities/typeInfo.ts";
 import { flippedTool, placeFacing, sameTool, SELECT_TOOL, turnedTool, type PlaceTool } from "../src/workbench/controller.ts";
 import { CIRCUIT_LIST_KEY, IN_USE_KEY, readCircuitListOpen, readSearch, readSectionOpen, readTab, SEARCH_KEY, TAB_KEY, writeCircuitListOpen, writeSearch, writeSectionOpen, writeTab, type KeyValueStore } from "../src/workbench/paletteGroups.ts";
 
@@ -110,11 +109,10 @@ describe("entity registry", () => {
     expect(spaceAge.groupOf("gun-turret")).toBe("combat");
   });
 
-  it("gives every entry the data of the model, a line on what it is for, its tiles and its reach where it has its own", () => {
+  it("gives every entry the data of the model, its tiles and its reach where it has its own", () => {
     for (const entry of spaceAge.entries) {
       expect(entry.kind).toBe(PROTOTYPES[entry.prototype]!.kind);
       expect(entry.label.toLowerCase()).toBe(PROTOTYPES[entry.prototype]!.label);
-      expect(entry.description.length, entry.prototype).toBeGreaterThan(8);
       expect(entry.facts, entry.prototype).toMatch(/^(1 tile|\d x \d tiles)(, wire reach [\d.]+)?$/);
     }
     const facts = (prototype: string): [string, string] => [spaceAge.entry(prototype)!.label, spaceAge.entry(prototype)!.facts];
@@ -129,10 +127,8 @@ describe("entity registry", () => {
     expect(facts("rocket-silo")).toEqual(["Rocket silo", "9 x 9 tiles"]);
     expect(facts("power-switch")).toEqual(["Power switch", "2 x 2 tiles, wire reach 10"]);
     expect(facts("agricultural-tower")).toEqual(["Agricultural tower", "3 x 3 tiles, wire reach 30"]);
-    // The description is the one of the prototype type: the same for every inserter, and a line for every type the table has.
-    expect(spaceAge.entry("fast-inserter")!.description).toBe(TYPE_DESCRIPTIONS.inserter);
-    expect(spaceAge.entry("stack-inserter")!.description).toBe(TYPE_DESCRIPTIONS.inserter);
-    expect(spaceAge.entry("small-lamp")!.description).toBe("See a condition light up");
+    // Nothing on what an entity is for: the name and the facts are the game's.
+    expect(Object.keys(spaceAge.entry("fast-inserter")!).sort()).toEqual(["facts", "kind", "label", "prototype"]);
   });
 
   it("has the icon of the item that places a prototype", () => {

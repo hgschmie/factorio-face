@@ -1,10 +1,9 @@
 // The settings form of a generic entity (kind `entity`) as data: which settings it shows, the value of each, the entity after an
-// edit, and what it keeps from a blueprint; and for an entity of any kind the prototypes it can become. Everything follows the
-// settings table of the model (`ENTITY_SETTINGS` by prototype type) and its entity table: a further type, setting or prototype
-// needs nothing here. Pure.
+// edit, and what it keeps from a blueprint. Everything follows the settings table of the model (`ENTITY_SETTINGS` by prototype
+// type): a further type, setting or prototype needs nothing here. Pure.
 import {
-  entityTable, gamePrototype, isSettingValue, PROTOTYPES, prototypesOf, sameSetting, settingDefault, settingShown, settingSpecsOf, signal, UNSET_CONDITION,
-  type Condition, type ConditionSetting, type ConditionValue, type Entity, type EnumSetting, type GenericEntity, type PrototypeName, type SettingSpec, type SettingValue,
+  gamePrototype, isSettingValue, sameSetting, settingDefault, settingShown, settingSpecsOf, signal, UNSET_CONDITION,
+  type Condition, type ConditionSetting, type ConditionValue, type EnumSetting, type GenericEntity, type SettingSpec, type SettingValue,
 } from "@face/model";
 
 /** The value a control shows: what the entity holds, else the default of a new entity. Undefined: no condition, or no signal. */
@@ -53,33 +52,6 @@ export function wordLabel(word: string): string {
 /** The modes of an enum for a select, in the order of the table. */
 export function enumOptions(spec: EnumSetting): readonly { readonly value: string; readonly label: string }[] {
   return spec.values.map(({ word }) => ({ value: word, label: wordLabel(word) }));
-}
-
-/**
- * The prototypes an entity can become. A generic entity stays in its prototype type (an inserter can be a fast inserter; they
- * take the same settings); an entity of any other kind stays in its kind, whose standard prototype comes first. In the order of
- * `position` where given. Without the ones the game hides and the ones `offers` refuses (a module that is off), but always with
- * the one the entity is.
- */
-export function alternativePrototypes(prototype: PrototypeName, offers: (candidate: PrototypeName) => boolean = () => true, position?: (candidate: PrototypeName) => number): readonly PrototypeName[] {
-  const table = entityTable();
-  const { kind } = PROTOTYPES[prototype]!;
-  const { type } = table.byName.get(prototype)!;
-  const candidates = kind === "entity" ? table.entities.filter((game) => game.type === type && PROTOTYPES[game.name]?.kind === "entity").map((game) => game.name) : prototypesOf(kind);
-  const same = candidates.filter((name) => name === prototype || (!table.byName.get(name)!.hidden && offers(name)));
-  return position ? [...same].sort((a, b) => position(a) - position(b)) : same;
-}
-
-/**
- * The entity as another prototype. A generic entity becomes another one of its type: the settings it holds stay, less those
- * that are the default of the new one (the defaults of the signals are the prototype's). An entity of any other kind becomes
- * another one of its kind and keeps everything else: the prototype decides its tiles and its reach, not what it does.
- */
-export function withPrototype<E extends Entity>(entity: E, prototype: PrototypeName): E {
-  if (entity.kind !== "entity") return { ...entity, prototype };
-  let next: GenericEntity = { ...entity, prototype, settings: {} };
-  for (const spec of settingSpecsOf(prototype)) next = withSetting(next, spec, entity.settings[spec.key]);
-  return next as E;
 }
 
 /** The fields a blueprint has for the entity that the editor keeps without modelling them: the top-level keys of `blueprintData`, as they are written. */

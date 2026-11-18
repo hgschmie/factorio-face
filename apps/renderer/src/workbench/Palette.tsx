@@ -1,5 +1,5 @@
 // Left panel: the entity selector and the list of entities in the circuit. Every entity is a square tile with its icon; what
-// it is, what it is for and its key come in a popup on hover and on focus. The combinators are the first row, "Entities in
+// it is, its tiles and its key come in a popup on hover and on focus. The combinators are the first row, "Entities in
 // use" has the other entities the circuit contains, and below them every entity the project's modules have is where the game
 // has the item that builds it: a tab per item group, its subgroups as rows, and a search through all of them. What the selector
 // offers is data: the `EntityRegistry` of the catalog (entities/registry.ts).
@@ -146,7 +146,7 @@ function popupFor(tile: TileRef, panel: HTMLElement, height: number): PopupState
   return placement ? { ...tile, placement } : null;
 }
 
-/** What a tile stands for, in the look of the board's bubble: the game's name, what it is for, its tiles and its reach where it has its own, the key. It takes no pointer events. */
+/** What a tile stands for, in the look of the board's bubble: the game's name, its tiles and its reach where it has its own, the key. It takes no pointer events. */
 function TilePopup({ id, popup, onMeasure }: { readonly id: string; readonly popup: PopupState; onMeasure(height: number): void }) {
   const { entry, placement } = popup;
   const ref = useRef<HTMLDivElement>(null);
@@ -160,7 +160,6 @@ function TilePopup({ id, popup, onMeasure }: { readonly id: string; readonly pop
       <div className={`tile-popup-body kind-${entry.kind}`}>
         <strong className="tile-popup-name">{entry.label}</strong>
         <div id={id} className="tile-popup-text">
-          <p>{entry.description}</p>
           <p className="tile-popup-facts">{entry.facts}</p>
           {keyed && (
             <p className="tile-popup-key">

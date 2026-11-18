@@ -88,14 +88,12 @@ src/
     tokenHighlight.ts  viewport decorations from an external tokenizer
     tokens.ts          token kind to class mapping, minimal text diff  (pure)
   inspector/
-    Inspector.tsx      identity, rename + Delete at the top, description, draft hint, settings slot, connections; a selected wire;
+    Inspector.tsx      identity (icon and the entity's name in the game), rename + Delete at the top, description, draft hint, settings slot, connections; a selected wire;
                        the summary of several selected things; undo and redo from its fields; back to its top for another entity or wire
-    EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm / SpeakerForm
+    EntitySettingsForm.tsx and ConstantForm / ArithmeticForm / DeciderForm / SelectorForm / LampForm / SpeakerForm; one line in
+                       place of the form for a prototype without one (`hasSettingsForm`: a combinator of a mod)
     GenericForm.tsx    the settings of a generic entity (kind `entity`): a control per setting of its prototype type, from the
                        settings table of the model
-    PrototypeField.tsx which entity of its kind an entity is, for a kind with several game prototypes in the game data (a pole; a
-                       combinator or a lamp where a mod adds one), and which one of its prototype type a generic entity is
-                       (`compact`: icons in a row, also for a kind with more than four prototypes)
     speakerEdits.ts    instrument and note of a speaker against the game's lists: what is a default and is not written   (pure)
     conditionEdits.ts  a condition with a switch (lamp, generic entity): the unset one as its fields show it, and what an edit makes of it   (pure)
     instruments.ts     `InstrumentsContext`: the speaker's instruments and notes from the catalog, for the form and the cards
@@ -130,8 +128,8 @@ src/
   simulation/
     SimulationDock.tsx controls, trace table with sparklines, tick counter
     sparkline.ts       sparkline geometry                              (pure)
-  entities/            kind labels and the names an entity goes by (`kindInfo.ts`), what a prototype type is on a circuit for
-                       and the notes on it (`typeInfo.ts`), what the selector offers as a function of the catalog, the entity
+  entities/            kind labels, the names an entity goes by and which prototypes have a settings form (`kindInfo.ts`), the
+                       editor's notes on a prototype type (`typeInfo.ts`), what the selector offers as a function of the catalog, the entity
                        table and the modules (`registry.ts`), the settings form of a generic entity as data
                        (`genericSettings.ts`), signal text forms (short names, lists, compact numbers), card summaries, the
                        quarter turns and the mirror images of the direction an entity faces (`facing.ts`)  (pure)
@@ -208,6 +206,16 @@ simulation (`run`, `pause`,
   its top right corner (`g.card-note`); the text itself is in the inspector only. The game has a description on the four
   combinators only (`KIND_INFO[kind].describedInGame`); for a lamp, a pole and a speaker the box says so in its tooltip ("A lamp
   has no description in the game. This text stays in the project.") and the text stays in the project.
+- **What the inspector shows of an entity.** The header (`header.inspector-identity`) is the icon and the name of the entity as the
+  game gives it (`prototypeLabel`: "Decider combinator", "Lamp", a mod's "LTN Combinator"), with no heading above it and no line
+  on what the entity is for: a mod's prototype of a type is often something else than the type suggests (a lamp as a connector, a
+  constant combinator as a controller). For the same reason the forms of the four combinator kinds are shown for the game's own
+  prototypes only (`hasSettingsForm` in `entities/kindInfo.ts`, one function of the prototype: `constant-combinator`,
+  `arithmetic-combinator`, `decider-combinator`, `selector-combinator`). Any other prototype of these kinds has the common part
+  (name, facing where it turns, description, Delete, connections) and in place of the form one line (`p[data-note="settings-not-shown"]`
+  in `div.settings-notes`): "The settings of this entity are not shown here. They stay in the source as they are." Nothing else
+  differs for it: source, card, simulation, blueprint import and export. Which entity of the game an entity is, is the word of
+  its declaration; the inspector has no control for it.
 - **Saving while a field holds unwritten text.** A name or a description is written when its field is left. Save and Save As
   (menu, key, the close prompt) first leave and re-enter the focused field when it carries `data-unwritten` (`writeFocusedField`
   in `Workbench.tsx`), so the saved file has the text and the caret stays where it was.
@@ -326,7 +334,7 @@ simulation (`run`, `pause`,
   A signal or an entity of a module that is off stays in the source and is parsed, drawn, simulated and exported; it gets a warning
   that names the module by its title (`disabled-signal`, `disabled-prototype`; the service is the language's `SignalResolver`
   and has its `PrototypeResolver` as `prototypes`) and is not offered: not in the picker, not in the selector (`registry.offers`),
-  not in the Type field (`alternativePrototypes`), not in the completion (`offersPrototype`). Every analysis runs on a recording
+  not in the completion (`offersPrototype`). Every analysis runs on a recording
   stand-in (`moduleUse`), so the session knows which switched-off modules the source uses: `ProjectView.modulesOff`, which
   `enableUsedModules` switches on, each with what it requires, as one change of the settings.
   A record may be of several modules (with data read from a game: a recipe that one mod makes of another's item, such as the
@@ -500,7 +508,6 @@ stands at a derived place, gives way to the others and is never in the way. `at`
 | Flipping | `flipTiles(entities, axis)`, `blockedFlip(entities, flips)` | The entities with a `tile` swap sides within the bounds of their footprints and every one that can turn faces the mirrored way ("Flipping" above). The flip is blocked for the whole selection when one of them would cover a tile of an entity that has a `tile` and is not flipped with it (`firstObstacle`). Blueprint mode only: on the edit canvas the cards are mirrored and nothing is refused. |
 | Placing where shown | `derivedTiles(entities)` | An entity without a `tile` gets the one of the place it is shown at ("Place here", "Place all", a drag that ends where it began). These places keep clear of all tiles that are taken and of each other, so placing any subset cannot be blocked. |
 | Unplacing | | The `tile` clause is removed; the entity stands at a derived place again. |
-| Another prototype | `blockedReshape(entities, changed)` | The inspector's choice of which pole an entity is may change the tiles it covers. The entity keeps the top-left tile of its footprint and its `tile` is corrected in the same step (a small pole on `tile (7.5, 7.5)` becomes a big one on `tile (8, 8)`). The change is blocked when the entity would newly cover a tile of another entity with a `tile`. Blueprint mode only, like the turn rule: on the edit canvas the change is made and the analysis warns (`tile-overlap`). |
 | A new entity | `footprintOriginAt(point, shape, facing)`, `canStandAt(entities, shape, origin, facing)`, `freeOriginNear(entities, shape, wanted, facing)`, `editPositionOf(origin)` | It faces the way the place tool was turned (east at first) and its footprint, turned with it, has the pointer in its middle: a 1x1 entity takes the tile under the pointer, a 2x1 entity the two tiles around it. It is refused when it would cover a taken tile. With Enter it goes to the free place nearest to the middle of the view (searched like a derived place). Its `at` is the position its tile is derived from (92 units per tile, on the 20 unit grid), moved on by 40 units while it is exactly the `at` of another entity (`pasteShift`). |
 
 - Session commands (`WorkbenchCommands`), each one undo step: `setTiles(tiles: { id, tile }[])` with the centers as the `tile`
@@ -509,7 +516,7 @@ stands at a derived place, gives way to the others and is never in the way. `at`
   `unplace(ids)`, `placeEntityOnTile(prototype, tile, facing?)`. `rotateEntities` and `faceEntities` apply the turn rule
   while the display mode has `tiles` and report a refusal in the toast: "Not rotated: gate would stand on a tile of light.";
   `flipEntities` applies the flip rule: "Not flipped: source would stand on a tile of gate."
-  `updateEntity` does the same for another prototype: "Not changed: p would stand on a tile of light." Both messages go
+  Both messages go
   with the next change of the document or of the selected entities ("Messages" above).
 - Dragging: the gesture of the edit canvas with a step of one tile. The preview is arranged with `arrangeBoard(entities, moved)`;
   entities of the drag are drawn last (`g.card.moving`), one on a taken tile is `blocked` (`data-blocked`, red body and outline)
@@ -989,7 +996,7 @@ when two rows share a key on a platform or when one key event matches two rows.
 
 `EntityIcon` / `EntityIconSvg` take an entity (or just its prototype) and an `EntityIconResolver`
 (`(prototype) => url | undefined`). `icons/catalogEntityIcons.ts` probes one item icon per prototype of `PROTOTYPES`
-(`prototypeIconId` of the registry: the item that places the prototype, `item/<prototype name>` for all that have one) of the generated catalog through
+(`prototypeIconId` of the registry: the icon the catalog in use names for the item that places the prototype, `item/<prototype name>` for all of the standard game that have one) of the generated catalog through
 `face-asset://catalog/icons/item/<name>.png` and resolves only those that load, so each pole shows its own item.
 `icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with three probes (`probeIcons`: the signal A and two
 more icons of the table; icons are there when one of them loads, since any one icon can be a mod's image that does not load); the two
@@ -1211,10 +1218,8 @@ interface EntityRegistry {
 
 A Space Age project has four tabs (Logistics, Production, Space, Combat) with 85 entities; the base game alone three (no Space: the
 rocket silo and the landing pad are in Production) with 67. **A further entity of the game** is its record in the catalog and in the
-entity table: its tile, its tab and row, its popup, the place tool, the footprint on the board, the card, the form of its type and
-the choice among the prototypes of its type follow. **A further prototype type** is a row of `ENTITY_SETTINGS` in the model; the
-renderer adds a line to `TYPE_DESCRIPTIONS` (`entities/typeInfo.ts`, a test fails without it; a type without a line is described from
-its settings). **A further kind** (a family with behaviour of its own) needs its part in the model, the language and the simulation,
+entity table: its tile, its tab and row, its popup, the place tool, the footprint on the board, the card and the form of its type
+follow. **A further prototype type** is a row of `ENTITY_SETTINGS` in the model; the renderer needs nothing for it. **A further kind** (a family with behaviour of its own) needs its part in the model, the language and the simulation,
 a `KIND_INFO` row, a summary line and, if it has settings, a form.
 
 - **Tiles.** Every entry is a square tile with nothing but its icon (`button.palette-tile`). The game's name is its accessible name
@@ -1227,8 +1232,7 @@ a `KIND_INFO` row, a summary line and, if it has settings, a form.
   the tile). Six is what keeps the icons legible (26 and 22 pixels) and the largest tab short: Logistics with Space Age is 42 tiles in
   seven subgroups, which are ten rows, 355 pixels high (308 in the narrow sidebar).
 - **The popup** (`div.tile-popup`, `role="tooltip"`, `data-prototype`, `data-side`) says what a tile stands for, in the look of the
-  board's bubble (card colors, the kind's accent on its left edge, the same pointer): the game's name, what the entity is on a circuit
-  for (`entityDescription`: of the kind, and for a generic entity of its prototype type), its tiles and, where it is not the
+  board's bubble (card colors, the kind's accent on its left edge, the same pointer): the game's name, its tiles and, where it is not the
   project's, its wire reach ("3 x 3 tiles", "2 x 2 tiles, wire reach 32"; `prototypeFacts`), and the key of the five entries that
   have one, written "Key 3" so that it is not read as a count. It shows for the tile the pointer rests on, by the rule of the board's
   bubble (`HoverIntent`: after 250 ms, at once from tile to tile, gone 120 ms after the pointer left), and without a wait for the tile
@@ -1278,10 +1282,8 @@ a `KIND_INFO` row, a summary line and, if it has settings, a form.
 ## Poles and speakers
 
 - A pole (`pole`, four prototypes) has one connection point (`io`), no settings and no state. Its card names the pole in the
-  heading and shows its reach, its tiles and the signals on its red and on its green network. The inspector has the choice of
-  the prototype (`.prototype-field`, a group named "Pole" with one `aria-pressed` button per prototype: icon, name, tiles and
-  reach) and a note on what a pole does; changing it is `updateEntity` with the rule "Another prototype" of the board, and in
-  the source the word of the declaration is replaced (`small-electric-pole p` becomes `big-electric-pole p`), nothing else.
+  heading and shows its reach, its tiles and the signals on its red and on its green network. The inspector has its name, its
+  description and its connections and nothing to set: which pole it is, is the word of its declaration in the source.
 - A speaker (`speaker`) reads on its one input. `SpeakerForm` has every setting of the language (`docs/dsl.md`): "Plays when"
   (a condition, edited with the `ConditionFields` the lamp uses, or "Signal value is pitch" with the pitch signal; the signal
   goes along when the mode changes, and a condition whose signal is taken out is no condition), instrument and note as
@@ -1302,11 +1304,11 @@ The model has 88 further prototypes of the game as one kind, `entity` (chests, i
 `@face/model`, `docs/dsl.md` "entity"). Everything the renderer does with them follows the entity table and the settings table; it names no
 prototype. What there is:
 
-- **Names** (`entities/kindInfo.ts`, `entities/typeInfo.ts`): `entityTitle` is the game's name of the prototype ("Fast inserter"), as for a pole;
-  `entityDescription` is a line per prototype type on what it is on a circuit for (`TYPE_DESCRIPTIONS`, one per row of the settings table; a type without one is
-  described from its settings); `KIND_INFO.entity` has the category line "Game entity"; a description is a note of the project.
+- **Names** (`entities/kindInfo.ts`): `entityTitle` is the game's name of the prototype ("Fast inserter"), as for a pole; a description is a
+  note of the project. Nothing says what an entity is for: a mod's prototype of a type is often something else than the type suggests.
 - **Icon** (`entities/registry.ts`, `prototypeIconId`): the icon of the item that places the prototype (`placedBy` of the entity table; for all but
-  four chests of the game's editor an item of its name). `useCatalogEntityIcons` probes all 98 prototypes; without the image an entity shows the
+  four chests of the game's editor an item of its name), as the catalog in use names it (the `icon` of the item's signal: an item of a mod that
+  shares its picture with another item has no icon under its own id). `useCatalogEntityIcons` probes all 98 prototypes; without the image an entity shows the
   boxed pictogram without a mark.
 - **Placing**: a tile arms a place tool with the prototype. On the board the ghost has the footprint of the prototype (1 x 1 up to 9 x 9, turned
   with the tool where it is not square). R and Shift+R turn what the game builds in four directions, give the other one of the two directions of
@@ -1341,12 +1343,10 @@ prototype. What there is:
   comparison. A comparator or a number changed while the signal is still missing is a draft with the hint 'The condition "Enable/disable" needs a
   signal.' (`session/drafts.ts`), written once the signal is there. The checkbox takes the condition away, unset or not. The lamp's form does
   the same with its one condition, and its card says `unset`. In the simulation an entity with an unset enable condition and a circuit wire is
-  `disabled` like one whose condition is false, and a lamp is off. Above the form: the choice of the prototype among those of its prototype type that the
-  project can place, as icons in the game's order with the chosen one named under them (`PrototypeField` with `compact`; `alternativePrototypes`,
-  `withPrototype`; the same two functions give an entity of any other kind the prototypes of its kind, which with the built-in data is a choice
-  for a pole only and with data of a modded game for every kind a mod adds a prototype to), refused on the board when the new footprint would cover a tile of another entity ("Not changed: maker would stand on a tile of
-  box."); the notes of `prototypeNotes` (a wall connects only next to a gate; an entity no item builds is taken into no blueprint; the messages of a
-  display panel and the research conditions of a lab are kept only). The facing control has the directions the game builds the entity in: four,
+  `disabled` like one whose condition is false, and a lamp is off. Above the form (`div.settings-notes`): the notes of `prototypeNotes`, which say
+  what the editor does and nothing on what the entity is in the game (an entity no item builds is left out of an export; the messages of the type
+  `display-panel` and the research conditions of the type `lab` are kept only). Which entity of the game an entity is, is the word of its
+  declaration: no form changes it, and `updateEntity` with another prototype changes nothing. The facing control has the directions the game builds the entity in: four,
   north and east for a storage tank, none for one that does not turn. Under the form a line names what a blueprint had that the editor only keeps
   (`keptFields`: the top-level keys of `blueprint-data`, "Kept from the blueprint: station, manual_trains_limit."). The description field says in
   its tooltip that the entity has no description in the game.

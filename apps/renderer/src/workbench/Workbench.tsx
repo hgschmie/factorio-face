@@ -569,7 +569,6 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
           showTile={capabilities.tiles}
           wireReach={project.wireReach}
           resolveEntityIcon={resolveEntityIcon}
-          prototypes={state.catalog.entities()}
           renderSignalPicker={renderSignalPicker}
           describeSignal={describeSignal}
           entityWarning={(prototype) => state.catalog.entityWarning(prototype)}

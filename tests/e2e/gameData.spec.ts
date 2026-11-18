@@ -630,6 +630,35 @@ test("a mod is switched on in the project settings; what it brings is then in th
   }
 });
 
+/** The four combinators of the game and the two of the mod, apart on the edit canvas. */
+const COMBINATORS_SOURCE = `circuit "Combinators" {
+    constant-combinator c at (40, 80) {
+        virtual:signal-A = 3
+    }
+
+    arithmetic-combinator a at (280, 80) {
+        virtual:signal-A = virtual:signal-A * 2
+    }
+
+    decider-combinator d at (520, 80) {
+        when virtual:signal-A > 5
+        output virtual:signal-A = 1
+    }
+
+    selector-combinator s at (760, 80) {
+    }
+
+    mod-arithmetic tiny at (40, 320) {
+        virtual:signal-A = virtual:signal-A * 2
+    }
+
+    mod-decider wide at (280, 320) {
+        when virtual:signal-A > 5
+        output virtual:signal-A = 1
+    }
+}
+`;
+
 const MODDED_KINDS_SOURCE = `circuit "Modded kinds" {
     constant-combinator source at (40, 80) tile (0.5, 0.5) {
         virtual:signal-A = 3
@@ -690,17 +719,40 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
     await expect(card(page, "arithmetic1")).toHaveAttribute("data-kind", "arithmetic");
     expect(await sourceText(page)).toMatch(/    mod-arithmetic arithmetic1 at \(\d+, \d+\) \{\n    \}/);
 
-    // The inspector has the form of the kind, and above it the choice among the prototypes of the kind.
-    const choice = inspector(page).getByRole("group", { name: "Arithmetic" });
-    expect(await choice.getByRole("button").evaluateAll((all) => all.map((element) => element.getAttribute("data-prototype")))).toEqual(["arithmetic-combinator", "mod-arithmetic"]);
-    await expect(choice.getByRole("button", { pressed: true })).toHaveText(/Tiny arithmetic combinator.*1 tile/);
+    // A combinator of a mod has the common part of the inspector: its name in the game, the name, the facing, the description
+    // and Delete. In place of the form of its kind it has one line, and nothing offers to make it another entity.
+    const notShown = inspector(page).locator('[data-note="settings-not-shown"]');
+    await expect(inspector(page).locator(".inspector-identity")).toHaveText("Tiny arithmetic combinator");
+    await expect(inspector(page).getByLabel("Entity name")).toHaveValue("arithmetic1");
+    await expect(inspector(page).getByRole("group", { name: "Facing" }).getByRole("button")).toHaveCount(4);
+    await expect(inspector(page).getByLabel("Description", { exact: true })).toBeVisible();
+    await expect(inspector(page).getByRole("button", { name: "Delete arithmetic1" })).toBeVisible();
+    await expect(notShown).toHaveText("The settings of this entity are not shown here. They stay in the source as they are.");
+    await expect(inspector(page).locator(".form-section")).toHaveCount(0);
+    await expect(inspector(page).getByRole("group", { name: "Arithmetic" })).toHaveCount(0);
+    await expect(inspector(page).locator("[data-prototype]")).toHaveCount(0);
     await expect(inspector(page).locator(".muted-note.prototype-note")).toHaveCount(0);
-    await choice.locator('[data-prototype="arithmetic-combinator"]').click();
-    await expect(choice.getByRole("button", { pressed: true })).toHaveText(/Arithmetic combinator.*1 x 2 tiles/);
-    expect(await sourceText(page)).toMatch(/    arithmetic-combinator arithmetic1 at \(\d+, \d+\) \{\n    \}/);
-    await choice.locator('[data-prototype="mod-arithmetic"]').click();
-    expect(await sourceText(page)).toMatch(/    mod-arithmetic arithmetic1 at \(\d+, \d+\) \{\n    \}/);
     await page.screenshot({ path: resolve(SHOTS, "modded-kinds-inspector.png") });
+
+    // The four combinators of the game keep their forms beside the mod's, which have none.
+    await setSource(page, COMBINATORS_SOURCE);
+    await page.getByRole("button", { name: "Fit circuit" }).click();
+    for (const name of ["c", "a", "d", "s"]) {
+      await selectEntity(page, name);
+      await expect(inspector(page).locator(".form-section").first(), name).toBeVisible();
+      await expect(notShown, name).toHaveCount(0);
+    }
+    for (const [name, title] of [["tiny", "Tiny arithmetic combinator"], ["wide", "Wide decider combinator"]] as const) {
+      await selectEntity(page, name);
+      await expect(inspector(page).locator("h2")).toHaveText(title);
+      await expect(notShown, name).toHaveCount(1);
+      await expect(inspector(page).locator(".form-section"), name).toHaveCount(0);
+    }
+    // What the inspector does show is edited as ever, and the settings stay in the source as they are.
+    await inspector(page).getByLabel("Description", { exact: true }).fill("gate");
+    await page.keyboard.press("ControlOrMeta+Enter");
+    await expect.poll(() => sourceText(page)).toContain('        description = "gate"\n');
+    for (const kept of ["        when virtual:signal-A > 5\n", "        output virtual:signal-A = 1\n", "        virtual:signal-A = virtual:signal-A * 2\n"]) expect(await sourceText(page)).toContain(kept);
 
     // A circuit of modded prototypes is free of problems, and on the board each stands on the tiles of its prototype.
     await setSource(page, MODDED_KINDS_SOURCE);

@@ -2,7 +2,7 @@
 import { analyze } from "@face/language";
 import { DIRECTIONS, facingOf, isTileCenter, occupiedTiles, prototypesOf, TERMINALS, tileHalves, tileCenter, tileOrigin, tileSize, WIRE_COLORS, type Entity, type Point } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, BOARD_PIN, boardPinOffset, boardWireLine, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE, WIRE_PIN_CLEARANCE } from "../src/canvas/board.ts";
+import { arrangeBoard, blockedMoves, blockedTurn, BOARD_PIN, boardPinOffset, boardWireLine, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE, WIRE_PIN_CLEARANCE } from "../src/canvas/board.ts";
 import { BOARD_NAME_FONT, plainContent } from "../src/canvas/BlueprintEntity.tsx";
 import { CARD, GRID, PIN_SPACING } from "../src/canvas/geometry.ts";
 import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
@@ -450,26 +450,5 @@ describe("the line of a wire on the board", () => {
     const [upper, lower] = [{ red: at(12, 30), green: at(12, 50) }, { red: at(12, 190), green: at(12, 210) }];
     expect(line("red", upper, lower)).toEqual([at(12, 30), at(2, 30), at(2, 190), at(12, 190)]);
     expect(line("green", upper, lower)).toEqual([at(12, 50), at(22, 50), at(22, 210), at(12, 210)]);
-  });
-});
-
-describe("another prototype on the board", () => {
-  const entities = entitiesOf("small-electric-pole p at (0, 0) tile (2.5, 0.5) { }\nsmall-lamp right at (0, 0) tile (3.5, 0.5) { }\nsmall-lamp below at (0, 0) tile (2.5, 2.5) { }\nsmall-lamp loose at (0, 0) { }");
-  const [pole, right] = entities as [Entity, Entity];
-  const big = (tile: Point): Entity => ({ ...pole, prototype: "big-electric-pole", placement: { tile } }) as Entity;
-
-  it("is blocked by the entity whose tile the bigger footprint would newly cover", () => {
-    // From the tile (2, 0) a big pole covers (2..3, 0..1): the lamp on (3, 0) is in the way.
-    expect(blockedReshape(entities, big({ x: 3, y: 1 }))).toBe(right.id);
-    // One tile further left it covers (1..2, 0..1), which is free: the lamp below stands on (2, 2).
-    expect(blockedReshape(entities, big({ x: 2, y: 1 }))).toBeUndefined();
-  });
-
-  it("is never blocked without a tile, by an entity without one, or by the tiles the entity covers already", () => {
-    expect(blockedReshape(entities, { ...pole, prototype: "big-electric-pole", placement: undefined } as Entity)).toBeUndefined();
-    expect(blockedReshape(entities.slice(2), big({ x: 3, y: 1 }))).toBeUndefined();
-    const crowded = entitiesOf("substation p at (0, 0) tile (3, 1) { }\nsmall-lamp inside at (0, 0) tile (3.5, 1.5) { }");
-    expect(blockedReshape(crowded, { ...crowded[0]!, prototype: "big-electric-pole" } as Entity)).toBeUndefined();
-    expect(blockedReshape(crowded, { ...crowded[0]!, prototype: "small-electric-pole", placement: { tile: { x: 2.5, y: 0.5 } } } as Entity)).toBeUndefined();
   });
 });

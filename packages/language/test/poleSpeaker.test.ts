@@ -340,15 +340,12 @@ describe("edit commands", () => {
     expect(unwired).not.toContain("p1 <-> p2");
   });
 
-  it("changes the prototype as the word of the declaration, and the settings of a speaker statement by statement", () => {
+  it("leaves the word of a pole's declaration alone, and changes the settings of a speaker statement by statement", () => {
     const parsed = valid(CHAIN);
-    const p1 = parsed.circuit.entities[1] as EntityOfKind<"pole">;
-    // Nothing but the word changes.
-    expect(run(CHAIN, () => ({ type: "updateEntity", id: p1.id, entity: { ...p1, prototype: "medium-electric-pole" } }))).toBe(CHAIN.replace("small-electric-pole p1", "medium-electric-pole p1"));
     const p2 = parsed.circuit.entities[2] as EntityOfKind<"pole">;
-    expect(run(CHAIN, () => ({ type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "substation" } }))).toBe(CHAIN.replace("big-electric-pole p2", "substation p2"));
-    expect(executeCommand(parsed, { type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "huge-pole" } })).toMatchObject({ ok: false, code: "invalid-entity" });
-    expect(executeCommand(parsed, { type: "updateEntity", id: p2.id, entity: { ...p2, prototype: "small-lamp" } })).toMatchObject({ ok: false });
+    for (const prototype of ["substation", "huge-pole", "small-lamp"]) {
+      expect(executeCommand(parsed, { type: "updateEntity", id: p2.id, entity: { ...p2, prototype } }), prototype).toMatchObject({ ok: false, code: "prototype-mismatch", message: `Entity 'p2' is 'big-electric-pole', not '${prototype}'` });
+    }
 
     const source = circuit("    programmable-speaker s {\n        when virtual:signal-A > 0 // why\n        volume = 50\n    }");
     const speaker = valid(source).circuit.entities[0] as EntityOfKind<"speaker">;

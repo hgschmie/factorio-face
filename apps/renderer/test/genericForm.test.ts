@@ -1,14 +1,10 @@
 // The settings form of a generic entity as data and through the session: which settings it shows, what an edit of each field
-// type makes of the entity and of the source, the prototypes an entity can become, what it keeps from a blueprint, and the lines
-// and notes per prototype type.
-import { loadStandardCatalog } from "@face/catalog";
-import { ENTITY_SETTINGS, entityTable, PROTOTYPES, settingSpecsOf, signal, UNSET_CONDITION, type Condition, type ConditionValue, type GenericEntity, type Lamp, type SettingSpec, type SettingValue } from "@face/model";
+// type makes of the entity and of the source, what it keeps from a blueprint, and the notes per prototype type.
+import { ENTITY_SETTINGS, entityTable, settingSpecsOf, signal, UNSET_CONDITION, type Condition, type ConditionValue, type GenericEntity, type Lamp, type SettingSpec, type SettingValue } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { alternativePrototypes, enumOptions, incompleteCondition, keptFields, newCondition, settingValue, shownSettings, withPrototype, withSetting, wordLabel } from "../src/entities/genericSettings.ts";
-import { entityDescription } from "../src/entities/kindInfo.ts";
-import { entityRegistry } from "../src/entities/registry.ts";
+import { enumOptions, incompleteCondition, keptFields, newCondition, settingValue, shownSettings, withSetting, wordLabel } from "../src/entities/genericSettings.ts";
 import { conditionLines, summaryLines } from "../src/entities/summary.ts";
-import { describeSettings, prototypeNotes, TYPE_DESCRIPTIONS, TYPE_NOTES, typeDescription } from "../src/entities/typeInfo.ts";
+import { prototypeNotes } from "../src/entities/typeInfo.ts";
 import { BLANK_CONDITION, editedCondition, shownCondition } from "../src/inspector/conditionEdits.ts";
 import { checkDraft } from "../src/session/drafts.ts";
 import { createSession, entityNamed, errorsOf, idOf } from "./session/helpers.ts";
@@ -142,8 +138,6 @@ describe("an edit of one setting", () => {
     expect(checkDraft(draft)).toMatchObject({ ok: false, message: 'The condition "Enable/disable" needs a signal.' });
     // Switching the condition off takes it away, as any other.
     expect(withSetting(unset, when, undefined).settings).toEqual({});
-    // It stays with the entity when the prototype changes, and it is no default of any.
-    expect(withPrototype(unset, "transport-belt").settings).toEqual({ when: UNSET_CONDITION });
     const left = spec("splitter", "input-left-when");
     expect(withSetting(entity("splitter"), left, UNSET_CONDITION).settings).toEqual({ "input-left-when": UNSET_CONDITION });
     // A lamp has the same switch.
@@ -344,83 +338,19 @@ describe("through the session", () => {
     for (const one of session.state.circuit.entities) expect(checkDraft(one)).toEqual({ ok: true });
   });
 
-  it("changes the prototype within its type and keeps the settings and what the blueprint had", () => {
+  it("keeps what the blueprint had, and never changes which entity of the game it is", () => {
     const { session } = createSession(SOURCE);
     session.commands.updateEntity(withSetting(entityNamed(session, "feeder") as GenericEntity, spec("inserter", "read-hand"), "hold"));
     const before = session.document.text;
-    session.commands.updateEntity(withPrototype(entityNamed(session, "feeder") as GenericEntity, "fast-inserter"));
-    // The word of the declaration is the prototype: nothing else changes, in one step.
-    expect(session.document.text).toBe(before.replace("    inserter feeder at", "    fast-inserter feeder at"));
-    session.commands.undo();
+    // The word of the declaration is the prototype: an edit of the entity does not write it.
+    session.commands.updateEntity({ ...entityNamed(session, "feeder"), prototype: "fast-inserter" });
     expect(session.document.text).toBe(before);
-    session.commands.redo();
-    expect(body(session.document.text, "feeder")).toEqual(["read-hand = hold"]);
-    expect(entityNamed(session, "feeder")).toMatchObject({ prototype: "fast-inserter", settings: { "read-hand": "hold" }, placement: { tile: { x: 0.5, y: 0.5 } } });
+    expect(session.state.error).toBeNull();
     const stop = entityNamed(session, "stop") as GenericEntity;
     session.commands.updateEntity(withSetting(stop, spec("train-stop", "read-from-train"), true));
     expect(body(session.document.text, "stop")).toEqual(["read-from-train = true", 'blueprint-data = "{\\"station\\":\\"Iron\\",\\"manual_trains_limit\\":2}"']);
     expect(keptFields(entityNamed(session, "stop") as GenericEntity)).toEqual(["station", "manual_trains_limit"]);
     expect(errorsOf(session)).toEqual([]);
-  });
-
-  it("refuses a prototype whose footprint would cover a tile of another entity on the board, and takes it on the edit canvas", () => {
-    const source = `circuit "Tight" {
-    assembling-machine-1 maker at (40, 80) tile (1.5, 1.5) {
-    }
-
-    iron-chest box at (280, 80) tile (4.5, 3.5) {
-    }
-}
-`;
-    const { session } = createSession(source);
-    const maker = (): GenericEntity => entityNamed(session, "maker") as GenericEntity;
-    expect(alternativePrototypes("assembling-machine-1")).toContain("oil-refinery");
-    session.commands.setDisplayMode("blueprint");
-    // An oil refinery covers 5 x 5 tiles from the same top-left tile: the chest stands on one of them.
-    session.commands.updateEntity(withPrototype(maker(), "oil-refinery"));
-    expect(session.state.error).toBe("Not changed: maker would stand on a tile of box.");
-    expect(session.document.text).toBe(source);
-    session.commands.dismissError();
-    // An assembling machine 2 covers the same 3 x 3 tiles.
-    session.commands.updateEntity(withPrototype(maker(), "assembling-machine-2"));
-    expect(session.state.error).toBeNull();
-    expect(maker()).toMatchObject({ prototype: "assembling-machine-2", placement: { tile: { x: 1.5, y: 1.5 } } });
-    session.commands.setDisplayMode("edit");
-    session.commands.updateEntity(withPrototype(maker(), "oil-refinery"));
-    // The top-left tile stays: the center moves with the size. The overlap is the source's warning.
-    expect(maker()).toMatchObject({ prototype: "oil-refinery", placement: { tile: { x: 2.5, y: 2.5 } } });
-    expect(session.state.diagnostics.filter((diagnostic) => diagnostic.code === "tile-overlap")).toHaveLength(2);
-    expect(idOf(session, "maker")).toBeDefined();
-  });
-});
-
-describe("the prototypes an entity can become", () => {
-  const registry = (modules: readonly string[]) => entityRegistry(loadStandardCatalog(), entityTable(), modules);
-  const spaceAge = registry(["base", "elevated-rails", "recycler", "quality", "space-age"]);
-  const base = registry(["base"]);
-
-  it("are those of its prototype type that the project can place, in the game's order", () => {
-    expect(alternativePrototypes("inserter", spaceAge.offers, spaceAge.position)).toEqual(["burner-inserter", "inserter", "long-handed-inserter", "fast-inserter", "bulk-inserter", "stack-inserter"]);
-    expect(alternativePrototypes("inserter", base.offers, base.position)).toEqual(["burner-inserter", "inserter", "long-handed-inserter", "fast-inserter", "bulk-inserter"]);
-    expect(alternativePrototypes("splitter", spaceAge.offers, spaceAge.position)).toEqual(["splitter", "fast-splitter", "express-splitter", "turbo-splitter"]);
-    // The chests of the game's editor are of the same type as a wooden chest and hidden.
-    expect(alternativePrototypes("iron-chest", spaceAge.offers, spaceAge.position)).toEqual(["wooden-chest", "iron-chest", "steel-chest"]);
-    expect(alternativePrototypes("train-stop", spaceAge.offers, spaceAge.position)).toEqual(["train-stop"]);
-    expect(alternativePrototypes("gun-turret", spaceAge.offers, spaceAge.position)).toEqual(["gun-turret", "rocket-turret", "railgun-turret"]);
-  });
-
-  it("always have the one the entity is, also a hidden one and one of a module that is off", () => {
-    expect(alternativePrototypes("red-chest", spaceAge.offers, spaceAge.position)).toEqual(["wooden-chest", "iron-chest", "steel-chest", "red-chest"]);
-    expect(alternativePrototypes("loader", spaceAge.offers, spaceAge.position)).toEqual(["loader"]);
-    expect(alternativePrototypes("stack-inserter", base.offers, base.position)).toContain("stack-inserter");
-    // Without the registry: every prototype of the type that is not hidden, by name.
-    expect(alternativePrototypes("fast-loader")).toEqual(["fast-loader"]);
-    expect(alternativePrototypes("fast-inserter")).toEqual(["bulk-inserter", "burner-inserter", "fast-inserter", "inserter", "long-handed-inserter", "stack-inserter"]);
-  });
-
-  it("keep the settings the new prototype does not have as its default", () => {
-    const chest = entity("iron-chest", { "read-empty-slots": true, "empty-slots-signal": A }, '{"bar":3}');
-    expect(withPrototype(chest, "steel-chest")).toEqual({ ...chest, prototype: "steel-chest" });
   });
 });
 
@@ -434,27 +364,12 @@ describe("what a blueprint had", () => {
   });
 });
 
-describe("what a type is for", () => {
-  it("has a line for every prototype type of the settings table and for no other", () => {
-    expect(Object.keys(TYPE_DESCRIPTIONS).sort()).toEqual(Object.keys(ENTITY_SETTINGS).sort());
-    for (const text of Object.values(TYPE_DESCRIPTIONS)) expect(text.length).toBeLessThanOrEqual(70);
-    for (const type of Object.keys(TYPE_NOTES)) expect(Object.keys(ENTITY_SETTINGS)).toContain(type);
-  });
-
-  it("describes an entity by its prototype type, and a type without a line by its settings", () => {
-    expect(entityDescription({ prototype: "bulk-inserter" })).toBe(TYPE_DESCRIPTIONS.inserter);
-    expect(entityDescription({ prototype: "steel-chest" })).toBe("Read what a chest holds");
-    expect(entityDescription({ prototype: "decider-combinator" })).toBe("Compare and decide");
-    for (const name of Object.keys(PROTOTYPES)) expect(entityDescription({ prototype: name }).length, name).toBeGreaterThan(8);
-    expect(typeDescription("no-such-entity")).toBe("An entity of the game on the circuit network");
-    expect(describeSettings(settingSpecsOf("inserter"))).toBe("Act on a circuit condition, take settings from signals, send what it reads");
-    expect(describeSettings(settingSpecsOf("iron-chest"))).toBe("Send what it reads");
-    expect(describeSettings([])).toBe("An entity of the game on the circuit network");
-  });
-
-  it("notes what the game does otherwise: a wall without a gate, the chests no item builds", () => {
-    expect(prototypeNotes("stone-wall")).toEqual([TYPE_NOTES.wall]);
-    expect(TYPE_NOTES.wall).toContain("only while a gate stands next to it");
+describe("what the editor notes about a type", () => {
+  it("says what it keeps without editing it, and that an export leaves out the chests no item builds", () => {
+    expect(prototypeNotes("display-panel")).toEqual(["The messages of this entity are kept from a blueprint and not edited here."]);
+    expect(prototypeNotes("lab")).toEqual(["The research conditions of this entity are kept from a blueprint and not edited here."]);
+    // Nothing on what an entity is or does in the game.
+    expect(prototypeNotes("stone-wall")).toEqual([]);
     // No list of names: whatever the table says no item builds.
     const unbuilt = entityTable().entities.filter((game) => game.placedBy.length === 0).map((game) => game.name);
     expect(unbuilt).toEqual(["blue-chest", "crash-site-chest-1", "crash-site-chest-2", "red-chest"]);

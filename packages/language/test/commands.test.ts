@@ -596,9 +596,9 @@ describe("updateEntity: statement-level minimal rewrite", () => {
     expect(update(source, "c", (e) => ({ ...e, placement: { direction: "south" } }))).toBe(source.replace("north", "south"));
   });
 
-  it("rejects kind changes, bad names and inexpressible configurations", () => {
+  it("rejects another prototype, bad names and inexpressible configurations", () => {
     const lamp = entityOf<Lamp>(parsed, "light");
-    expect(failure(() => updateEntity(parsed, lamp.id, { ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", id: lamp.id, name: lamp.name, position: lamp.position }))).toBe("kind-mismatch");
+    expect(failure(() => updateEntity(parsed, lamp.id, { ...DEFAULT_ENTITY.decider, prototype: "decider-combinator", id: lamp.id, name: lamp.name, position: lamp.position }))).toBe("prototype-mismatch");
     expect(failure(() => updateEntity(parsed, lamp.id, { ...lamp, name: "source" }))).toBe("duplicate-name");
     expect(failure(() => updateEntity(parsed, lamp.id, { ...lamp, name: "no good" }))).toBe("invalid-name");
     expect(failure(() => updateEntity(parsed, lamp.id, { ...lamp, useColors: false, colorMode: "components" }))).toBe("unrepresentable");
@@ -611,7 +611,8 @@ describe("updateEntity: statement-level minimal rewrite", () => {
     for (let round = 0; round < 400; round++) {
       const kind = generator.pick(ENTITY_KINDS);
       const from = generator.entity(kind, "target");
-      const to = { ...generator.entity(kind, generator.chance(0.2) ? "renamed" : "target"), ...(generator.chance(0.5) ? { position: from.position } : {}) };
+      // Of the same prototype: an edit does not change which entity of the game it is.
+      const to = { ...generator.entity(kind, generator.chance(0.2) ? "renamed" : "target", from.prototype), ...(generator.chance(0.5) ? { position: from.position } : {}) };
       const layout = round % 3;
       let declaration = printEntity(from);
       if (layout === 1) declaration = declaration.split("\n").map((line, i) => `${line} // c${i}`).join("\n");

@@ -11,7 +11,7 @@ import { currentCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
 import { canRotate, DEFAULT_FACING, facingOf, isPrototypeName, isWireReach, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point, type PrototypeName } from "@face/model";
 import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
-import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
+import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import { builtInData, type DataInUse } from "../gameData/dataInUse.ts";
@@ -384,16 +384,10 @@ export class ProjectSession {
 
   private updateEntity(next: Entity, options: UpdateOptions = {}): void {
     const current = this.entity(next.id);
-    if (!this.editable || !current || current.kind !== next.kind) return;
-    // Another prototype may cover other tiles. The entity keeps the top-left tile of its footprint, as it does when it is turned.
-    const tile = current.placement?.tile;
-    const reshaped = tile !== undefined && next.prototype !== current.prototype;
-    const placement = reshaped ? { ...current.placement, tile: tileCenter(next, facingOf(next), tileOrigin(current, facingOf(current), tile)) } : current.placement;
+    // Which entity of the game it is, is the word of its declaration: no edit of the entity changes it.
+    if (!this.editable || !current || current.prototype !== next.prototype) return;
     // Name, position and placement belong to their own commands; a draft made before a move must not undo the move.
-    const wanted = normalizeEntity({ ...next, name: current.name, position: current.position, placement });
-    // Where positions are tiles, a change that would put the entity onto a tile of another one is refused, like such a turn.
-    const obstacle = reshaped && DISPLAY_CAPABILITIES[this.displayMode].tiles ? blockedReshape(this.analysis.circuit.entities, wanted) : undefined;
-    if (obstacle !== undefined) return this.show(`Not changed: ${current.name} would stand on a tile of ${this.entity(obstacle)?.name}.`, "selection");
+    const wanted = normalizeEntity({ ...next, name: current.name, position: current.position, placement: current.placement });
     const check = checkDraft(wanted);
     if (!check.ok) {
       this.draft = { id: current.id, base: current, entity: wanted, message: check.message };
