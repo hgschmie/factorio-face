@@ -3,6 +3,7 @@
 // line where the canvas is narrow.
 import type { WireColor } from "@face/model";
 import { Icon } from "../icons/Icon.tsx";
+import { IconImage } from "../icons/IconImage.tsx";
 import { withShortcut } from "../shortcuts/shortcuts.ts";
 import { DISPLAY_MODES, sameTool, SELECT_TOOL, type DisplayMode, type Tool } from "./controller.ts";
 
@@ -32,7 +33,8 @@ const DISPLAY_LABELS: Readonly<Record<DisplayMode, string>> = { edit: "Edit", bl
 
 function WireIcon({ color, resolveIcon }: { readonly color: WireColor; readonly resolveIcon?: WireIconResolver }) {
   const url = resolveIcon?.(color);
-  return url ? <img className="wire-icon" src={url} width={24} height={24} alt="" draggable={false} /> : <Icon name="wire" size={16} />;
+  const glyph = <Icon name="wire" size={16} />;
+  return url ? <IconImage className="wire-icon" src={url} size={24} fallback={glyph} /> : glyph;
 }
 
 function counted(count: number, singular: string, plural: string): string {

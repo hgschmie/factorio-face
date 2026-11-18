@@ -23,6 +23,8 @@ export interface InstallationIcons {
   ready(): Promise<unknown>;
   /** True when an installation is in use and its icon table has the id. */
   covers(id: string): boolean;
+  /** True for an icon with an image file of a mod among its layers: nothing stands in for it when it cannot be rendered. */
+  ofMod(id: string): boolean;
   /** PNG bytes, or undefined when the icon cannot be rendered. Never rejects. The bytes are shared and must not be changed. */
   icon(id: string): Promise<Uint8Array | undefined>;
 }
@@ -58,9 +60,11 @@ export function fileHandler(served: ServedRoot, extraHeaders: Readonly<Record<st
 
 /**
  * Serves the catalog asset root. `/icons/<id>.png` is answered, in this order, with the icon rendered from the installation
- * in use, with the file of that name below the root (icons bundled with the app), and with a placeholder when the
- * installation should have the icon but cannot provide it. Everything else, and every path without an installation, is a file
- * below the root or 404, on which the renderer falls back to names and pictograms.
+ * in use (and the user's mods), with the file of that name below the root (icons bundled with the app), and with a
+ * placeholder when the installation should have the icon but cannot provide it. An icon with a mod's image that cannot be
+ * rendered (the mod is gone or changed, the image is none the app reads) is 404 at once: a bundled file of that id would be
+ * the game's own picture, and the placeholder says less than the name. Everything else, and every path without an
+ * installation, is a file below the root or 404. On 404 the renderer falls back to names and pictograms.
  */
 export function assetHandler(served: ServedRoot, icons?: InstallationIcons, renderTimeoutMs = ICON_RENDER_TIMEOUT_MS): RequestHandler {
   const files = fileHandler(served);
@@ -73,6 +77,7 @@ export function assetHandler(served: ServedRoot, icons?: InstallationIcons, rend
     const covered = icons.covers(id);
     const rendered = covered ? await withTimeout(icons.icon(id), renderTimeoutMs, () => undefined) : undefined;
     if (rendered) return found(rendered, "image/png");
+    if (covered && icons.ofMod(id)) return notFound();
     const bundled = await files(request);
     return bundled.ok || !covered ? bundled : found(placeholderIcon(), "image/png");
   };

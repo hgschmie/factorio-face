@@ -9,7 +9,7 @@ import { registerBlueprintIpc } from "./blueprintIpc.ts";
 import { buildTextContextMenu } from "./contextMenu.ts";
 import { Examples } from "./examples.ts";
 import { GAME_DATA_FILE_NAME, GameDataCache } from "./gameData/cache.ts";
-import { modDirectoryFromEnv } from "./gameData/refresh.ts";
+import { modDirectoryFromEnv, userDataLocation } from "./gameData/refresh.ts";
 import { GAME_DATA_RUNS_DIRECTORY, GameDataService, usableGameData } from "./gameData/service.ts";
 import { confirmGameRead, registerGameDataIpc } from "./gameDataIpc.ts";
 import { GameIcons } from "./gameIcons/gameIcons.ts";
@@ -117,7 +117,9 @@ async function start(): Promise<void> {
       if (++iconProblems > LOGGED_ICON_PROBLEMS) return;
       console.warn(`[face] icon ${id}: ${error instanceof Error ? error.message : String(error)}${iconProblems === LOGGED_ICON_PROBLEMS ? " (further problems are not logged)" : ""}`);
     },
-  });
+    // Icons of mods come from the user's mod directory as it is when an icon is asked for; looking it up starts nothing.
+    modDirectory: async (dataDirectory) => (await userDataLocation(dataDirectory, host))?.modDirectory,
+  }, cached.status === "ok" ? cached.data.mods : []);
   const gameSettings = new GameSettings({
     store: new AppSettingsStore(join(userData, APP_SETTINGS_FILE_NAME)),
     icons: {
@@ -145,7 +147,7 @@ async function start(): Promise<void> {
     },
     onActivate: (data) => {
       iconProblems = 0;
-      gameIcons.setTable(data?.iconTable ?? standardIcons);
+      gameIcons.setTable(data?.iconTable ?? standardIcons, data?.mods);
       void gameSettings.setCatalogVersion(data?.version ?? standardIcons.game.version).catch((error: unknown) => console.error("[face] switching the game data failed:", error));
     },
   });
@@ -168,6 +170,7 @@ async function start(): Promise<void> {
   handleSchemes(join(__dirname, "renderer"), resolveAssetRoot(locations), {
     ready: () => gameSettings.ready(),
     covers: (id) => gameIcons.covers(id),
+    ofMod: (id) => gameIcons.ofMod(id),
     icon: (id) => gameIcons.icon(id),
   });
 

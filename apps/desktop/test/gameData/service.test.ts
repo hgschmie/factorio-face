@@ -13,7 +13,7 @@ import { modDirectoryFromEnv, planGameRead, type GameReadPlan } from "../../src/
 import { GameDataService, NO_INSTALLATION, usableGameData, type GameDataServiceOptions } from "../../src/gameData/service.ts";
 import type { GameDataRun } from "../../src/ipc.ts";
 import { ValidationError } from "../../src/validation.ts";
-import { FLAWED_ENTITIES, MOD_ENTITY, SOME_MOD_INFO, fakeGameStarts, modArchive, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
+import { FLAWED_ENTITIES, MOD_ENTITY, fakeGameStarts, someModArchive, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
 import { writeGameData } from "../support/fakeGame.ts";
 import { useScratch } from "../support/scratch.ts";
 
@@ -53,7 +53,7 @@ async function setup(name: string, dump: CannedDump = {}, behaviour: Partial<Fak
   const mods = join(home, ".factorio", "mods");
   await mkdir(mods, { recursive: true });
   await writeFile(join(mods, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "some-mod", enabled: true }] }));
-  await writeFile(join(mods, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
+  await writeFile(join(mods, "some-mod_1.2.3.zip"), someModArchive());
   const inspection = await inspectDataDirectory(dataDirectory, "2.1.25");
   if (!inspection.ok) throw new Error(inspection.message);
   const host: Host = { platform: "linux", env: {}, home };
@@ -183,7 +183,7 @@ describe("reading the game", () => {
     const status = await service.read();
     expect(states(runs)).toEqual(["confirming", "running prepare 1/5", "running prepare 1/5", "running data 2/5", "running locale 3/5", "running runtime 4/5", "running collect 5/5", "done"]);
     expect(status).toMatchObject({ inUse: BUILT_IN, pending: MODDED, stale: false, unavailable: null, problem: null, discardable: true });
-    expect(status.run).toMatchObject({ state: "done", warnings: ["3 icons of mods are not shown: the app reads icons from the game's own files only."] });
+    expect(status.run).toMatchObject({ state: "done", warnings: [] });
     expect(status.run.state === "done" && status.run.steps.map((step) => step.step)).toEqual(["prepare", "data", "locale", "runtime", "collect"]);
     expect((await fakeGameStarts(control)).map((start) => start.command)).toEqual(["data", "locale", "runtime"]);
     expect(await readdir(options.run.runsDirectory)).toEqual([]);
@@ -205,11 +205,10 @@ describe("reading the game", () => {
     expect(parseEntityTable(current.entities).byName.has(MOD_ENTITY)).toBe(true);
     expect(current.catalog!.signals.virtual!.map((signal) => signal.name)).toEqual(["mod-signal", "signal-A"]);
     expect(service.iconTable!.icons.has("virtual/signal-A")).toBe(true);
-    expect(service.iconTable!.icons.has("virtual/mod-signal")).toBe(false);
-    // The window is told which icons it can ask for: those of the icon table. The three the catalog names beside them are the mod's.
+    expect(service.iconTable!.icons.get("virtual/mod-signal")).toEqual({ expected: 64, layers: [{ icon: "__some-mod__/graphics/icons/mod-signal.png", size: 64 }] });
+    // The window is told which icons it can ask for: those of the icon table, the mod's among them.
     expect(current.icons).toEqual([...service.iconTable!.icons.keys()]);
-    expect(current.icons).toEqual(expect.arrayContaining(["virtual/signal-A", "item/plate", "item/constant-combinator", "group/g"]));
-    expect(["virtual/mod-signal", `item/${MOD_ENTITY}`, "item/gadget"].filter((id) => current.icons.includes(id))).toEqual([]);
+    expect(current.icons).toEqual(expect.arrayContaining(["virtual/signal-A", "item/plate", "item/constant-combinator", "group/g", "virtual/mod-signal", `item/${MOD_ENTITY}`, "item/gadget"]));
     expect(await service.status()).toMatchObject({ inUse: MODDED, pending: null, stale: false, discardable: true });
 
     // The next start of the app has it at once.
@@ -315,6 +314,17 @@ describe("reading the game", () => {
     expect(await service.status()).toMatchObject({ inUse: MODDED, stale: true, unavailable: null });
   });
 
+  it("says with the data it activates which mods the game had loaded: the icons of mods are drawn from those", async () => {
+    const seen: unknown[] = [];
+    const { service } = await setup("activate-mods", {}, {}, { onActivate: (data) => void seen.push(data && { version: data.version, mods: data.mods, table: data.iconTable === service.iconTable }) });
+    await service.read();
+    service.activate();
+    expect(seen).toEqual([{ version: "2.1.25", mods: [{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }], table: true }]);
+    await service.discard();
+    service.activate();
+    expect(seen[1]).toBeUndefined();
+  });
+
   it("says which wired entities the read left out and why, as data of what was read: after the read, in use, after a restart, until it is discarded", async () => {
     const { service, restart } = await setup("left-out", { entities: FLAWED_ENTITIES });
     const leftOut = [
@@ -325,7 +335,7 @@ describe("reading the game", () => {
     const status = await service.read();
     // The data waits for the window; the list is of what the cache holds. It is no warning of the run.
     expect(status).toMatchObject({ inUse: BUILT_IN, pending: MODDED, leftOut });
-    expect(status.run).toMatchObject({ state: "done", warnings: ["6 icons of mods are not shown: the app reads icons from the game's own files only."] });
+    expect(status.run).toMatchObject({ state: "done", warnings: [] });
     service.activate();
     expect((await service.status()).leftOut).toEqual(leftOut);
     const entities = parseEntityTable(service.current().entities).byName;
@@ -368,11 +378,11 @@ describe("the cache at start", () => {
     const service = await restart();
     expect(service.current()).toMatchObject({ source: MODDED, problem: null });
     expect(service.iconTable).toBeDefined();
-    // Which icons can be drawn is no field of the file: it is the icon table the file has always held, so a file of an earlier version says it as well.
+    // Which icons there are is no field of the file: it is the icon table the file holds.
     const file = JSON.parse(await readFile(cacheFile, "utf8")) as { icons: { icons: Record<string, unknown> } };
     expect(Object.keys(file).sort()).toEqual(["catalog", "entities", "icons", "key", "keyId", "mods", "notes", "readAt", "skippedIcons", "version"]);
     expect(service.current().icons).toEqual(Object.keys(file.icons.icons));
-    expect(service.current().icons).not.toContain("virtual/mod-signal");
+    expect(file.icons.icons["virtual/mod-signal"]).toEqual(["__some-mod__/graphics/icons/mod-signal.png"]);
   });
 
   it("falls back to the built-in data, with the reason, when the file is damaged; discarding removes it", async () => {
@@ -397,7 +407,7 @@ describe("the cache at start", () => {
     expect(service.current()).toEqual({ source: BUILT_IN, problem, mods: [], catalog: null, entities: null, icons: BUILT_IN_ICONS });
     expect(await service.status()).toMatchObject({ inUse: BUILT_IN, pending: null, problem, discardable: true, unavailable: null });
     expect(await service.read()).toMatchObject({ inUse: BUILT_IN, pending: MODDED, problem: null, run: { state: "done" } });
-    expect(JSON.parse(await readFile(cacheFile, "utf8"))).toMatchObject({ version: 3 });
+    expect(JSON.parse(await readFile(cacheFile, "utf8"))).toMatchObject({ version: 4 });
     expect((await restart()).current()).toMatchObject({ source: MODDED, problem: null });
   });
 

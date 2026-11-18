@@ -133,7 +133,7 @@ src/
                        (`genericSettings.ts`), signal text forms (short names, lists, compact numbers), card summaries, the
                        quarter turns and the mirror images of the direction an entity faces (`facing.ts`)  (pure)
   icons/               interface glyphs, entity icons per prototype, catalog icon resolvers (with probes: the icons come from the
-                       user's installation of the game or from bundled files, and neither may be there)
+                       user's installation of the game and the user's mods, or from bundled files, and none may be there)
   styles/              tokens.css and one stylesheet per area
 test/                  vitest: pure view modules
 test/session/          vitest: the session, headless (commands, invalid source, simulation, catalog, persistence, drafts)
@@ -966,13 +966,24 @@ when two rows share a key on a platform or when one key event matches two rows.
 (`(prototype) => url | undefined`). `icons/catalogEntityIcons.ts` probes one item icon per prototype of `PROTOTYPES`
 (`prototypeIconId` of the registry: the item that places the prototype, `item/<prototype name>` for all that have one) of the generated catalog through
 `face-asset://catalog/icons/item/<name>.png` and resolves only those that load, so each pole shows its own item.
-`icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with one probe; the two wire tool buttons of the palette
-take the game's `item/red-wire` and `item/green-wire` icons from it. The main process answers these URLs with icons it renders from the
-user's installation of the game, or with bundled files (`packages/catalog/generated` in development, git-ignored). With neither,
+`icons/catalogSignalIcons.ts` does the same for signal, group and quality icons with three probes (`probeIcons`: the signal A and two
+more icons of the table; icons are there when one of them loads, since any one icon can be a mod's image that does not load); the two
+wire tool buttons of the palette take the game's `item/red-wire` and `item/green-wire` icons from it. The main process answers these
+URLs with icons it renders from the user's installation of the game and, for data read from a game with mods, from the user's mods,
+or with bundled files (`packages/catalog/generated` in development, git-ignored). With none of them,
 entities and wire tools show inline pictograms and signals are shown by name, in the picker as well. The pictograms tell the
 kinds apart by their shape, not only by a mark: a combinator is a box with a display, a lamp a bulb, a speaker a loudspeaker
 with sound waves, a pole a mast with a crossbar (taller and wider for the bigger poles, a box with two masts for a substation).
 An icon the installation should have but lacks (a module that is not installed) arrives as a gray placeholder image.
+
+Which icons there are is data of the main process (`DataInUse.icons`, the ids of its icon table): an icon that is not among them has
+no URL and is never asked for. An icon of a mod is among them, and is drawn from the mod's folder or archive in the user's mod
+directory when it is asked for. It can fail then (the mod was removed or updated since the game was read, or its image is none the
+app reads), and the answer is 404, not a placeholder. Every view that shows a catalog icon gives way on its own: `IconImage` (the
+picker, the selector's tabs, the inspector's signal field, the signal history, the wire tool buttons) shows its `fallback`, the name
+or the glyph, or nothing where the icon only decorates; a status row of a card lays the signal out by its short name again once its
+`<image>` reports an error (`StatusRow` in `canvas/EntityCard.tsx`); an entity keeps its pictogram because its icon is probed before
+it is used. No view shows the browser's mark for a broken image.
 
 The URL of an icon does not say where it comes from, and an image does not fetch an unchanged URL again. When the installation in use
 changes while the app runs, the state of the application settings carries a higher `iconRevision`; both resolvers take it, append it
@@ -1109,7 +1120,7 @@ in a native dialog of its own before it starts the game.
   used (`"data-problem"`), data that waits for a reload (`"pending"`), and the request: `"confirming"` while the native dialog is
   open, `"progress"` while the game runs (a progress bar, "Step 2 of 5: the game loads its data and your mods", the time since the
   start, and Cancel in place of the read button), `"read-failed"` with the end of the game's log in a scrollable, focusable `<pre>`
-  (`.game-log`), `"outcome"` (read in so many seconds, or cancelled) and `"warnings"` (icons of mods that are not shown, files
+  (`.game-log`), `"outcome"` (read in so many seconds, or cancelled) and `"warnings"` (icons that are left out because a layer of theirs is no image the app can read, files
   of the user that changed during the run, a run without the sandbox). The wired entities a read left out are no warning of
   the run: they belong to the data and are there after a restart (`GameDataStatus.leftOut`, of the data the cache holds, else of
   the data in use; `[data-message="left-out"]`). One line says how many there are and what that means ("31 entities of your game
@@ -1129,8 +1140,9 @@ in a native dialog of its own before it starts the game.
   dialog is open again after the reload (`reopen.ts`), with the outcome of the last request, which the main process keeps.
 - **Keyboard and focus** are the dialog's: Tab goes round its enabled buttons, and when the button under the focus is replaced or
   disabled (Read by Cancel, Cancel by Read) the one that takes its place gets the focus.
-- **What a mod brings** is in the selector, the signal picker, completion and the language like anything of the game. Its icons are
-  not rendered: the icon table has no entry for them, so the views show the name and their pictogram. Names of mods get through the
+- **What a mod brings** is in the selector, the signal picker, completion and the language like anything of the game, with its own
+  icons: the main process draws them from the mod's files (see "Icons"). Where an icon of a mod cannot be drawn, the views show the
+  name and their pictogram. Names of mods get through the
   language quoted where they are not one word (`"5d-chest" box { }`, `item:"my item"`; `test/gameData/modNames.test.ts`); the
   signal field of the inspector takes typed keys of the plain form only, so a signal with a name outside `[A-Za-z0-9_.-]` is chosen
   in the picker or written in the source.

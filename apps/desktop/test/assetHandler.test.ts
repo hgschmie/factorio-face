@@ -60,10 +60,10 @@ const url = (path: string): string => `face-asset://catalog/${path}`;
 const get = (path: string) => ({ method: "GET", url: url(path) });
 const bytes = async (response: Response): Promise<Uint8Array> => new Uint8Array(await response.arrayBuffer());
 
-/** Icons of an installation that renders `rendered` for the ids it is given and has every id of `known`. */
-function icons(rendered: Readonly<Record<string, Uint8Array>>, known = Object.keys(rendered), ready: Promise<unknown> = Promise.resolve()): InstallationIcons & { readonly asked: string[] } {
+/** Icons of an installation that renders `rendered` for the ids it is given and has every id of `known`; those of `ofMod` have an image of a mod. */
+function icons(rendered: Readonly<Record<string, Uint8Array>>, known = Object.keys(rendered), ready: Promise<unknown> = Promise.resolve(), ofMod: readonly string[] = []): InstallationIcons & { readonly asked: string[] } {
   const asked: string[] = [];
-  return { asked, ready: () => ready, covers: (id) => known.includes(id), icon: async (id) => (asked.push(id), rendered[id]) };
+  return { asked, ready: () => ready, covers: (id) => known.includes(id), ofMod: (id) => ofMod.includes(id), icon: async (id) => (asked.push(id), rendered[id]) };
 }
 
 describe("files of a served directory", () => {
@@ -135,6 +135,24 @@ describe("catalog icons", () => {
     expect(await bytes(response)).toEqual(PLACEHOLDER);
   });
 
+  it("are 404 when an image of a mod is among their layers and they cannot be rendered: no placeholder, and not the bundled file of that id", async () => {
+    const installation = icons({ "item/mod-drawn": RENDERED }, ["item/mod-drawn", "item/mod-gone", "item/both", "item/red"], Promise.resolve(), ["item/mod-drawn", "item/mod-gone", "item/both"]);
+    const handler = assetHandler(served, installation);
+    const drawn = await handler(get("icons/item/mod-drawn.png"));
+    expect([drawn.status, drawn.headers.get("content-type")]).toEqual([200, "image/png"]);
+    expect(await bytes(drawn)).toEqual(RENDERED);
+    for (const path of ["icons/item/mod-gone.png", "icons/item/mod-gone.png?r=2", "icons/item/both.png"]) {
+      const response = await handler(get(path));
+      expect([response.status, (await bytes(response)).length], path).toEqual([404, 0]);
+    }
+    // An icon of the game's own files beside them is as before.
+    expect(await bytes(await handler(get("icons/item/red.png")))).toEqual(PLACEHOLDER);
+    expect(installation.asked).toEqual(["item/mod-drawn", "item/mod-gone", "item/mod-gone", "item/both", "item/red"]);
+    // Nor does an icon of a mod wait for an installation that does not answer.
+    const hanging: InstallationIcons = { ready: () => Promise.resolve(), covers: () => true, ofMod: () => true, icon: () => new Promise(() => undefined) };
+    expect((await assetHandler(served, hanging, 20)(get("icons/item/both.png"))).status).toBe(404);
+  });
+
   it("are 404 when nothing has them: without an installation, and for an id outside the table", async () => {
     expect((await assetHandler(served)(get("icons/item/red.png"))).status).toBe(404);
     const installation = icons({}, ["item/red"]);
@@ -159,7 +177,7 @@ describe("catalog icons", () => {
   });
 
   it("do not wait for an installation that does not answer", async () => {
-    const hanging: InstallationIcons = { ready: () => Promise.resolve(), covers: () => true, icon: () => new Promise(() => undefined) };
+    const hanging: InstallationIcons = { ready: () => Promise.resolve(), covers: () => true, ofMod: () => false, icon: () => new Promise(() => undefined) };
     const handler = assetHandler(served, hanging, 20);
     expect(await bytes(await handler(get("icons/item/both.png")))).toEqual(BUNDLED);
     expect(await bytes(await handler(get("icons/item/red.png")))).toEqual(PLACEHOLDER);
@@ -184,7 +202,7 @@ describe("catalog icons of a game folder", () => {
     await symlink(scratch("game/outside.png"), join(data, "base/graphics/icons/escape.png"));
     const problems: string[] = [];
     const gameIcons = new GameIcons(table, { onProblem: (id) => void problems.push(id) });
-    const handler = assetHandler(served, { ready: () => Promise.resolve(), covers: (id) => gameIcons.covers(id), icon: (id) => gameIcons.icon(id) });
+    const handler = assetHandler(served, { ready: () => Promise.resolve(), covers: (id) => gameIcons.covers(id), ofMod: (id) => gameIcons.ofMod(id), icon: (id) => gameIcons.icon(id) });
 
     // No installation yet: the bundled files alone.
     expect((await handler(get("icons/item/red.png"))).status).toBe(404);

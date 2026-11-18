@@ -44,7 +44,7 @@ export interface GameData {
   readonly entities: Readonly<Record<string, unknown>>;
   /** Wired entities that were left out, and why. */
   readonly notes: readonly string[];
-  /** How many icons the catalog refers to that the icon table lacks (icons of mods). */
+  /** How many icons the catalog refers to that the icon table lacks: a layer of each is no file of the game or of a loaded mod that the table can name. */
   readonly skippedIcons: number;
 }
 

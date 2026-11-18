@@ -12,8 +12,9 @@ export interface DataInUse {
   /** Why data read from the game is not in use although there is some. */
   readonly problem: string | null;
   /**
-   * The ids of the icons the main process can draw; no other one is asked for. A game with mods has signals, groups and
-   * entities whose icon is not among them. Null when the main process did not say: every icon is then asked for.
+   * The ids of the icons the main process has in its icon table; no other one is asked for. A game with mods can have
+   * signals, groups and entities whose icon is not among them, and an icon of a mod that is among them may not load when the
+   * mod is gone. Null when the main process did not say: every icon is then asked for.
    */
   readonly icons: ReadonlySet<string> | null;
 }

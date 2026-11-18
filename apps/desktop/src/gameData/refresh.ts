@@ -66,7 +66,8 @@ export function modDirectoryFromEnv(env: Readonly<Record<string, string | undefi
   return normalize(directory);
 }
 
-async function userDataLocation(dataDirectory: string, host: Host): Promise<UserDataLocation | undefined> {
+/** Where the user's files of the game with this data directory are: as FACE_GAME_MODS_DIR says, else where the game keeps them. Starts nothing. */
+export async function userDataLocation(dataDirectory: string, host: Host): Promise<UserDataLocation | undefined> {
   const modDirectory = modDirectoryFromEnv(host.env);
   return modDirectory === undefined ? locateUserData(dataDirectory, host) : { writeData: dirname(modDirectory), modDirectory, decidedBy: "FACE_GAME_MODS_DIR" };
 }
@@ -103,6 +104,11 @@ function unreadWarning(mods: readonly string[]): string[] {
   const names = `${mods.slice(0, NAMED_MODS).join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
   const [count, listed] = mods.length === 1 ? ["1 mod", "it is listed"] : [`${mods.length} mods`, "they are listed"];
   return [`The info.json of ${count} could not be read (${names}): ${listed} by name, without what ${mods.length === 1 ? "it depends" : "they depend"} on.`];
+}
+
+/** For icons the icon table lacks: a layer of each is no PNG file of the game or of a mod the game had loaded. */
+export function skippedIconsWarning(count: number): string {
+  return `${count} ${count === 1 ? "icon is" : "icons are"} not shown: ${count === 1 ? "it names an image" : "they name images"} the app cannot read, such as a file of a mod that was not loaded.`;
 }
 
 function changeWarning(changed: readonly string[]): string[] {
@@ -146,7 +152,7 @@ export async function readGameData(options: RefreshOptions): Promise<RefreshResu
     warnings.push(`The game did not say which mod ${untagged.length} of its signals and entities come from (${examples}): they are kept and belong to no mod.`);
   }
   if (!result.sandboxed && host.platform === "darwin" && options.sandbox !== "off") warnings.push("The game ran without the system's sandbox, which could not be entered here.");
-  if (data.skippedIcons > 0) warnings.push(`${data.skippedIcons} icons of mods are not shown: the app reads icons from the game's own files only.`);
+  if (data.skippedIcons > 0) warnings.push(skippedIconsWarning(data.skippedIcons));
   // The wired entities that were left out (`data.notes`) are no warning of this run: they belong to the data and are listed with it (leftOut.ts).
   return { ok: true, data, iconTable, warnings, sandboxed: result.sandboxed, changed: result.changed, steps: result.steps };
 }

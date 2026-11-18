@@ -171,10 +171,36 @@ describe("single-set build of a made-up dump", () => {
     expect(before.catalog.signals.recipe!.map((record) => record.modules)).toEqual([["base"]]);
   });
 
-  it("leaves icons of mods out of the icon table and names them", () => {
-    expect(built.skippedIcons).toEqual(["item/gadget"]);
-    expect([...built.icons.keys()]).toEqual(["entity/ghost-lamp", "entity/odd-lamp", "group/g", "item/lamp", "item/plate"]);
-    expect(parseIconTable(iconTableFile({ game: GAME, icons: built.icons })).icons.size).toBe(5);
+  it("keeps the icon of a loaded mod in the icon table, as the file of that mod", () => {
+    expect(built.skippedIcons).toEqual([]);
+    expect([...built.icons.keys()]).toEqual(["entity/ghost-lamp", "entity/odd-lamp", "group/g", "item/gadget", "item/lamp", "item/plate"]);
+    expect(built.icons.get("item/gadget")).toEqual({ expected: 64, layers: [{ icon: "__some-mod__/graphics/gadget.png", size: 64 }] });
+    expect(iconTableFile(parseIconTable(iconTableFile({ game: GAME, icons: built.icons }))).icons["item/gadget"]).toEqual(["__some-mod__/graphics/gadget.png"]);
+    expect(built.catalog.provenance?.icons).toContain("of the loaded mods");
+  });
+
+  it("leaves out and names an icon with a layer the table cannot name: a file of a mod that was not loaded, a path that is none", () => {
+    const item = (name: string) => ({ ...signal(name, "item", "some-mod"), stack_size: 50, weight: 100 });
+    const layered = (...icons: string[]) => ({ icons: icons.map((icon) => ({ icon, icon_size: 64 })) });
+    const odd = buildSingleSet({
+      raw: {
+        ...raw,
+        item: {
+          ...raw.item,
+          "of-gone-mod": { icon: "__gone-mod__/graphics/a.png" },
+          "half-gone": layered("__base__/graphics/icons/plate.png", "__gone-mod__/graphics/overlay.png"),
+          climbing: { icon: "__some-mod__/../other/a.png" },
+          "back-slash": { icon: "__some-mod__/graphics\\a.png" },
+          "no-png": { icon: "__some-mod__/graphics/a.jpg" },
+          "two-mods": layered("__some-mod__/graphics/gadget.png", "__base__/graphics/icons/plate.png", "__some-mod__/graphics/over lay.png"),
+        },
+      },
+      runtime: { ...runtime, item: [...runtime.item, ...["of-gone-mod", "half-gone", "climbing", "back-slash", "no-png", "two-mods"].map(item)] },
+      locale, modules, ...HEAD,
+    });
+    expect(odd.skippedIcons).toEqual(["item/back-slash", "item/climbing", "item/half-gone", "item/no-png", "item/of-gone-mod"]);
+    expect([...odd.icons.keys()]).toEqual(["entity/ghost-lamp", "entity/odd-lamp", "group/g", "item/gadget", "item/lamp", "item/plate", "item/two-mods"]);
+    expect(parseIconTable(iconTableFile({ game: GAME, icons: odd.icons })).icons.size).toBe(7);
   });
 
   it("leaves out the wired entities the game contradicts and says why, instead of failing", () => {

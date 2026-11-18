@@ -8,18 +8,21 @@ import { readRegularFile } from "../regularFile.ts";
 import { USER_MOD_LIMITS, type ModFile } from "./userMods.ts";
 import { readZipEntry } from "./zipEntry.ts";
 
-const INFO_FILE = "info.json";
+export const INFO_FILE = "info.json";
 const VERSION = /^\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 /** In an archive the mod is one folder of any name. */
-const isInfoEntry = (name: string): boolean => /^[^/\\]+\/info\.json$/.test(name);
+export const isInfoEntry = (name: string): boolean => /^[^/\\]+\/info\.json$/.test(name);
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Whether two version texts name the same version: the game writes 1.2.3 for a file named 1.02.3. */
-function sameVersion(a: unknown, b: unknown): boolean {
+export function sameVersion(a: unknown, b: unknown): boolean {
   if (typeof a !== "string" || typeof b !== "string" || !VERSION.test(a) || !VERSION.test(b)) return false;
   const [x, y] = [a.split(".").map(Number), b.split(".").map(Number)];
   return x.every((part, index) => part === y[index]);
 }
+
+/** The content of an `info.json` as JSON. Throws for bytes that are no UTF-8 or no JSON. */
+export const parseModInfo = (bytes: Uint8Array): unknown => JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
 
 /** The bytes of the `info.json` of a mod, undefined for an archive without one. Rejects for whatever cannot be read. */
 async function infoBytes(file: string, kind: ModFile["kind"]): Promise<Uint8Array | undefined> {
@@ -48,7 +51,7 @@ export async function readModInfos(directory: string, files: readonly ModFile[],
     if (file.name !== undefined && (infos.has(file.name) || !sameVersion(loaded.get(file.name), file.version))) continue;
     try {
       const bytes = await infoBytes(path.join(directory, file.fileName), file.kind);
-      const info: unknown = bytes === undefined ? undefined : JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+      const info: unknown = bytes === undefined ? undefined : parseModInfo(bytes);
       if (!isRecord(info) || typeof info.name !== "string" || (file.name !== undefined && info.name !== file.name)) continue;
       if (!infos.has(info.name) && sameVersion(loaded.get(info.name), info.version)) infos.set(info.name, info);
     } catch {

@@ -2,16 +2,18 @@
 import { STANDARD_CATALOG_VERSION, availableSignals, createCatalog, loadStandardCatalog } from "@face/catalog";
 import { missingEditorPrototypes, parseEntityTable, PROTOTYPES, prototypesOf, setEntityTable, STANDARD_ENTITY_TABLE } from "@face/model";
 import { existsSync } from "node:fs";
-import { cp, mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, symlink, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { GameInstallation, Host } from "../../src/gameInstallation.ts";
 import { inspectDataDirectory } from "../../src/gameInstallation.ts";
 import { GameDataCache, GAME_DATA_FILE_NAME, GAME_DATA_FILE_VERSION, OUTDATED_GAME_DATA } from "../../src/gameData/cache.ts";
 import { describeGameDataSource, gameDataKeyId, gameDataSource, parseGameData, parseGameDataKey, sameGameState, type GameData, type GameDataKey } from "../../src/gameData/gameData.ts";
-import { planGameRead, readGameData, type RefreshOptions } from "../../src/gameData/refresh.ts";
+import { planGameRead, readGameData, skippedIconsWarning, userDataLocation, type RefreshOptions } from "../../src/gameData/refresh.ts";
+import { GameIcons } from "../../src/gameIcons/gameIcons.ts";
+import { decodePng } from "../../src/gameIcons/png.ts";
 import { ValidationError } from "../../src/validation.ts";
-import { fakeGameStarts, MODDED_KINDS, modArchive, SOME_MOD_INFO, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
+import { fakeGameStarts, MOD_ICON_COLOR, MODDED_KINDS, modArchive, SOME_MOD_INFO, someModArchive, writeCannedDump, writeFakeGame, type CannedDump, type FakeGameControl } from "../support/cannedDump.ts";
 import { writeGameData } from "../support/fakeGame.ts";
 import { useScratch } from "../support/scratch.ts";
 import { treeSnapshot } from "../support/treeSnapshot.ts";
@@ -44,7 +46,7 @@ async function userMods(directory: string): Promise<void> {
   await mkdir(directory, { recursive: true });
   await writeFile(join(directory, "mod-list.json"), JSON.stringify({ mods: [{ name: "base", enabled: true }, { name: "quality", enabled: false }, { name: "some-mod", enabled: true }, { name: "off", enabled: false }] }));
   await writeFile(join(directory, "mod-settings.dat"), new Uint8Array([1, 2, 3, 4]));
-  await writeFile(join(directory, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
+  await writeFile(join(directory, "some-mod_1.2.3.zip"), someModArchive());
   await writeFile(join(directory, "some-mod_1.2.0.zip"), modArchive({ ...SOME_MOD_INFO, version: "1.2.0", title: "The older Some Mod" }));
   await writeFile(join(directory, "off_0.1.0.zip"), modArchive({ name: "off", version: "0.1.0", title: "Switched off" }));
 }
@@ -55,7 +57,8 @@ describe("readGameData", () => {
     const result = await readGameData(options);
     expect(result).toMatchObject({ ok: true, sandboxed: false, changed: [] });
     if (!result.ok) return;
-    expect(result.warnings).toEqual(["1 icons of mods are not shown: the app reads icons from the game's own files only."]);
+    // The game says nothing of the mod whose image one item has for its icon.
+    expect(result.warnings).toEqual(["1 icon is not shown: it names an image the app cannot read, such as a file of a mod that was not loaded."]);
     const { data } = result;
     expect(data.key).toEqual({ version: "2.1.25", build: 88022, mods: [{ name: "base", version: "2.1.25" }, { name: "quality", version: "2.1.25" }], modSettings: null });
     expect(data).toMatchObject({ readAt: "2026-11-14T12:00:00.000Z", mods: [{ name: "base", version: "2.1.25" }], notes: [], skippedIcons: 1 });
@@ -80,8 +83,12 @@ describe("readGameData", () => {
     const before = await treeSnapshot(home);
     const seen: string[][] = [];
     const result = await readGameData({ ...options, onProgress: ({ step, state }) => void (step === "collect" && state === "started" && seen.push(["collect"])) });
-    expect(result).toMatchObject({ ok: true, warnings: ["1 icons of mods are not shown: the app reads icons from the game's own files only."] });
+    expect(result).toMatchObject({ ok: true, warnings: [] });
     if (!result.ok) return;
+    // The icon of the mod's item is in the table, as the file of the mod.
+    expect(result.data.skippedIcons).toBe(0);
+    expect(result.data.icons.icons).toMatchObject({ "item/gadget": ["__some-mod__/graphics/gadget.png"], "item/plate": ["__base__/graphics/icons/plate.png"] });
+    expect(result.iconTable.icons.get("item/gadget")).toEqual({ expected: 64, layers: [{ icon: "__some-mod__/graphics/gadget.png", size: 64 }] });
     expect(result.data.key).toEqual({ version: "2.1.25", build: 88022, mods: [{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }], modSettings: SETTINGS_HASH });
     expect(result.data.mods).toEqual([{ name: "base", version: "2.1.25" }, { name: "some-mod", version: "1.2.3" }]);
     // The mod as its own info.json describes it, read from the archive of the version the game loaded; of what it depends on, the hard ones that are loaded.
@@ -111,6 +118,37 @@ describe("readGameData", () => {
     expect(changed.ok && sameGameState(result.data.key, changed.plan.key)).toBe(false);
   });
 
+  it("makes data whose icons of mods the icon service draws from the user's mod directory, as that is then", async () => {
+    const { options, mods } = await setup("mod-icons", { editor: true, activeMods: { base: "2.1.25", "some-mod": "1.2.3" } });
+    await userMods(mods);
+    const result = await readGameData(options);
+    expect(result).toMatchObject({ ok: true, warnings: [], data: { skippedIcons: 0 } });
+    if (!result.ok) return;
+    const service = (host: Host): GameIcons => {
+      const icons = new GameIcons(result.iconTable, { modDirectory: async (dataDirectory) => (await userDataLocation(dataDirectory, host))?.modDirectory }, result.data.mods);
+      icons.reset(options.installation.dataDirectory);
+      return icons;
+    };
+    const icons = service(options.host);
+    for (const id of ["item/gadget", "virtual/mod-signal", "item/mod-crate"]) {
+      expect(icons.ofMod(id), id).toBe(true);
+      const image = decodePng((await icons.icon(id))!);
+      expect([image.width, image.height, ...image.data.subarray(0, 4)], id).toEqual([64, 64, ...MOD_ICON_COLOR]);
+    }
+    // The mod directory of a test run stands in for the user's; one without the mod has no image for its icons.
+    const elsewhere = scratch("mod-icons", "other-mods");
+    await mkdir(elsewhere, { recursive: true });
+    expect(await service({ ...options.host, env: { FACE_GAME_MODS_DIR: mods } }).icon("item/gadget")).toBeDefined();
+    expect(await service({ ...options.host, env: { FACE_GAME_MODS_DIR: elsewhere } }).icon("item/gadget")).toBeUndefined();
+    // The mod is updated after the game was read: its icons are gone until the game is read again.
+    await rename(join(mods, "some-mod_1.2.3.zip"), join(mods, "some-mod_1.2.4.zip"));
+    expect(await service(options.host).icon("item/gadget")).toBeUndefined();
+    expect([skippedIconsWarning(1), skippedIconsWarning(12)]).toEqual([
+      "1 icon is not shown: it names an image the app cannot read, such as a file of a mod that was not loaded.",
+      "12 icons are not shown: they name images the app cannot read, such as a file of a mod that was not loaded.",
+    ]);
+  });
+
   it("lists a mod whose info.json cannot be read by its name and says so once", async () => {
     const { options, mods } = await setup("unread", { activeMods: { base: "2.1.25", "some-mod": "1.2.3", "b-mod": "0.1.0", "c-mod": "1.0.0" } });
     await userMods(mods);
@@ -122,7 +160,6 @@ describe("readGameData", () => {
     if (!result.ok) return;
     expect(result.warnings).toEqual([
       "The info.json of 2 mods could not be read (b-mod, some-mod): they are listed by name, without what they depend on.",
-      "1 icons of mods are not shown: the app reads icons from the game's own files only.",
     ]);
     expect(result.data.catalog.modules.slice(1)).toEqual([
       { name: "b-mod", title: "b-mod", version: "0.1.0", requires: [], recommends: [], featureFlags: [] },
@@ -131,7 +168,7 @@ describe("readGameData", () => {
     ]);
     // Without a mod directory at all (a game whose mods are elsewhere) every mod is listed that way.
     const bare = await setup("unread-bare", { activeMods: { base: "2.1.25", "some-mod": "1.2.3" } });
-    expect(await readGameData(bare.options)).toMatchObject({ ok: true, warnings: ["The info.json of 1 mod could not be read (some-mod): it is listed by name, without what it depends on.", "1 icons of mods are not shown: the app reads icons from the game's own files only."] });
+    expect(await readGameData(bare.options)).toMatchObject({ ok: true, warnings: ["The info.json of 1 mod could not be read (some-mod): it is listed by name, without what it depends on."] });
   });
 
   it("keeps a record the game names no loaded creator for, with no module, and says how many there are", async () => {
@@ -144,7 +181,7 @@ describe("readGameData", () => {
     const result = await readGameData(options);
     expect(result).toMatchObject({ ok: true });
     if (!result.ok) return;
-    expect(result.warnings).toEqual(["The game did not say which mod 2 of its signals and entities come from (item gadget, subgroup s): they are kept and belong to no mod.", "1 icons of mods are not shown: the app reads icons from the game's own files only."]);
+    expect(result.warnings).toEqual(["The game did not say which mod 2 of its signals and entities come from (item gadget, subgroup s): they are kept and belong to no mod.", "1 icon is not shown: it names an image the app cannot read, such as a file of a mod that was not loaded."]);
     expect(availableSignals(createCatalog(result.data.catalog), []).map((signal) => signal.key)).toEqual(["item:gadget"]);
     expect(result.data.catalog.subgroups).toMatchObject([{ name: "s", modules: [] }]);
   });
@@ -288,7 +325,9 @@ describe("game data cache", () => {
     expect(loaded).toMatchObject({ status: "ok" });
     if (loaded.status !== "ok") return;
     expect(loaded.data).toEqual(data);
-    expect([...loaded.iconTable.icons.keys()]).toEqual(["group/g", "item/lamp", "item/plate"]);
+    // The icon of the mod's item comes back as the file of the mod it is.
+    expect([...loaded.iconTable.icons.keys()]).toEqual(["group/g", "item/gadget", "item/lamp", "item/plate"]);
+    expect(loaded.iconTable.icons.get("item/gadget")!.layers).toEqual([{ icon: "__some-mod__/graphics/gadget.png", size: 64 }]);
     expect(describeGameDataSource(gameDataSource(loaded.data), () => "<date>")).toBe("Read from your game on <date>: 2.1.25 with 1 mod");
     expect(await cache.discard()).toBe(true);
     expect(await cache.load()).toEqual({ status: "none" });
@@ -339,10 +378,10 @@ describe("game data cache", () => {
     const data = await read("outdated-cache-source");
     await cache.store(data);
     const stored = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-    expect(stored.version).toBe(3);
-    expect(GAME_DATA_FILE_VERSION).toBe(3);
-    // Whatever else it holds: a file of such a version is not looked into. Version 2 has the same fields as this one.
-    for (const content of [{ ...stored, version: 1 }, { ...stored, version: 2 }, { version: 1 }, { ...stored, version: 1, catalog: "damaged" }]) {
+    expect(stored.version).toBe(4);
+    expect(GAME_DATA_FILE_VERSION).toBe(4);
+    // Whatever else it holds: a file of such a version is not looked into. Versions 2 and 3 have the same fields as this one.
+    for (const content of [{ ...stored, version: 1 }, { ...stored, version: 2 }, { ...stored, version: 3 }, { version: 1 }, { ...stored, version: 1, catalog: "damaged" }]) {
       await writeFile(file, JSON.stringify(content));
       expect(await cache.load()).toEqual({ status: "damaged", message: OUTDATED_GAME_DATA });
     }

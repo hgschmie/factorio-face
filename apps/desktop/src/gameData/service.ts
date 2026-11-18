@@ -53,8 +53,8 @@ export interface GameDataServiceOptions {
   readonly read?: (options: RefreshOptions) => Promise<RefreshResult>;
   /** Told whenever the request moves on. */
   onRun(run: GameDataRun): void;
-  /** Told the icon table and release of the data a window is given from now on; undefined for the built-in data. */
-  onActivate(data: { readonly iconTable: IconTable; readonly version: string } | undefined): void;
+  /** Told the icon table, the release and the loaded mods of the data a window is given from now on; undefined for the built-in data. */
+  onActivate(data: { readonly iconTable: IconTable; readonly version: string; readonly mods: GameData["mods"] } | undefined): void;
 }
 
 const IDLE: GameDataRun = { state: "idle" };
@@ -95,7 +95,8 @@ export class GameDataService {
 
   /**
    * What a window works with. Its icons are the ids of the icon table in use, the one the asset scheme answers from: a game
-   * with mods has a catalog that names more (`GameData.skippedIcons` of them), and the table is what the cache file holds.
+   * with mods can have a catalog that names more (`GameData.skippedIcons` of them), and the table is what the cache file
+   * holds. Whether an icon of a mod can be drawn shows when it is asked for: the mod may be gone by then.
    */
   current(): GameDataInUse {
     const { inUse } = this;
@@ -127,7 +128,7 @@ export class GameDataService {
   activate(): boolean {
     if (this.inUse === this.stored) return false;
     this.inUse = this.stored;
-    this.options.onActivate(this.inUse && { iconTable: this.inUse.iconTable, version: this.inUse.data.key.version });
+    this.options.onActivate(this.inUse && { iconTable: this.inUse.iconTable, version: this.inUse.data.key.version, mods: this.inUse.data.mods });
     return true;
   }
 

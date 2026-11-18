@@ -87,20 +87,23 @@ There is one implementation of this, shared by the generator and the app, in thr
 
 | What | Where | Why there |
 | --- | --- | --- |
-| Icon table: `IconLayer`, `IconEntry`, `IconTable`, `parseIconTable`, `iconTableFile`, `iconFileLocation` | `src/iconTable.ts` (`@face/catalog/icons`) | no Node APIs; it describes the committed file |
+| Icon table: `IconLayer`, `IconEntry`, `IconTable`, `parseIconTable`, `iconTableFile`, `iconFileLocation`, `modFileLocation` | `src/iconTable.ts` (`@face/catalog/icons`) | no Node APIs; it describes the committed file |
 | PNG codec and compositor: `decodePng`, `encodePng`, `iconSource`, `renderIcon`, `renderIconPng` | `apps/desktop/src/gameIcons/png.ts`, `iconRenderer.ts` | the codec needs `node:zlib`, which a package must not import; the generator imports the two files as they are |
 | Prototype to layers (`iconLayers`), the table's text (`iconTableText`), rendering from a data directory (`iconFileRenderer`) | `tools/catalog/lib/prototypeIcons.ts`, `iconFiles.ts` | only the generator sees prototypes and writes files |
 
 The generator writes the files with the codec's `COMPACT_ENCODING` (best of four row filters, deflate level 9); the app renders the same
 pixels from the user's installation while it runs and encodes them with `FAST_ENCODING`. The codec reads what the game's icon files use:
-8 bits per sample, not interlaced, at most 1024 pixels on a side. A layer may only name a `.png` inside one of the game's own modules
-(`base`, `core`, `space-age`, `quality`, `elevated-rails`, `recycler`); the generator refuses to write a table with anything else.
+8 bits per sample, not interlaced, at most 1024 pixels on a side. In this table a layer may only name a `.png` inside one of the game's
+own modules (`base`, `core`, `space-age`, `quality`, `elevated-rails`, `recycler`); the generator refuses to write a table with anything
+else (`iconTableText`). The parser also takes a layer that names a file of a mod, which only the table of a user's game has (see
+"Single-set mode").
 
 In the running app `GameIcons` (`apps/desktop/src/gameIcons/gameIcons.ts`) does this for the installation the application settings name
 (`gameSettings.ts`: the user's choice, or the installation the app finds by itself, `/Applications/factorio.app` on macOS). The renderer
 asks for `face-asset://catalog/icons/<icon id>.png`, the same URL under which a generated file would be served, and the main process
 answers with the icon rendered from the installation, else the generated file, else a gray placeholder when the installation should
-have the icon but lacks its files (a module that is not installed), else 404 (`assetHandler.ts`). Against Factorio 2.1.24 installed on
+have the icon but lacks its files (a module that is not installed), else 404 (`assetHandler.ts`). An icon with an image of a mod that
+cannot be rendered is 404 at once. Against Factorio 2.1.24 installed on
 the development machine all 1138 icons render, and the pixels equal those of the generated files.
 
 `--dump-icon-sprites` is not used, see "Isolation". One such dump of the `base` set exists from the pilot run and serves as reference:
@@ -309,8 +312,18 @@ What differs from the standard tables, because one dump cannot say what a record
   mapping is `moduleInfo` of `commands.ts`, the one the generator reads the game's own modules with. A mod without a usable
   `info.json` is there by name and version alone and is named in `unread`. `provenance.modSets` has the one set; the entity table has
   `mods` (name to version) in its head. The icon table's head has no place for them.
-- An icon that is not made of image files of the game's own modules (a mod's) is left out of the icon table and counted; the table is
-  checked one icon at a time with `parseIconTable`.
+- The icon table keeps the icons of mods. A layer names its file as the game's data does, `__<name>__/<path>`: with one of the
+  game's own modules as the name it is a file of the installation, by the rule of the standard table (`iconFileLocation`); with
+  any other name it is a file of that mod (`modFileLocation`: `{ mod, segments }`). For a mod's file the name is what the list of
+  loaded mods may hold (letters, digits, `_`, `-`, `.` and blanks, up to 100 characters) and the path is relative and ends in
+  `.png` (in any case); no segment is empty, begins with a dot (so none is `.` or `..`), or holds a backslash, a colon or a
+  control character, and the whole stays within 300 characters. The name holds no slash, so it ends before the first one,
+  whatever underscores it has. The notation is the game's own, so the format of the table does not change and the committed
+  table is the same bytes; that a name is a loaded mod the parser cannot know, so the build checks it. An icon is left out and
+  counted (`skippedIcons`) only when a layer cannot be named so: a file of a mod the game had not loaded, a path of another form
+  (no PNG, a backslash). The table is checked one icon at a time with `parseIconTable`. Where a mod is, the table does not say:
+  the app finds the mod's folder or archive in the user's mod directory when an icon is asked for
+  (`apps/desktop/src/gameIcons/modFiles.ts`; `docs/adr/0001-architecture.md`, item 15, "Icons of mods").
 - The entity table is built leniently (`buildEntityTable(input, { lenient: true })`): a wired prototype that cannot be derived, or that
   the game contradicts, is left out and named in the notes instead of failing the build. The standard build stays strict.
 - Every record of the entity table is then read with the model's own reader (`parseEntityTable`), one at a time like the icons: one
@@ -340,7 +353,8 @@ profile, `info.json` reading, the version line) is in `tools/catalog/lib/command
 `data/icons-2.1.25.json` (147 kB, 1139 icons): `{ "schema": 1, "game": { "version", "build" }, "icons": { "<icon id>": ... } }`, one icon
 per line and sorted by id, so a changed icon is a changed line. An icon is its list of layers, bottom first, or
 `{ "expected": 128, "layers": [...] }` when the prototype expects another icon size than 64 (the item groups). A layer is its path
-(`"__base__/graphics/icons/small-lamp.png"`) when its first mip level is 64 px and nothing modifies it, otherwise
+(`"__base__/graphics/icons/small-lamp.png"`; in the table of a user's game also a file of a mod, `"__some-mod__/graphics/gadget.png"`)
+when its first mip level is 64 px and nothing modifies it, otherwise
 `{ "icon", "size", "scale"?, "shift"?: [x, y], "tint"?: [r, g, b, a] in 0..1, "floating"?: true }`. `parseIconTable` validates every
 field and is the only reader; `iconTableFile` writes this form. `test/standardIconTable.test.ts` checks the committed table against the
 catalog, and `tools/catalog/lib/lib.test.ts` against what the generator builds from the dumps, where they exist.
@@ -397,6 +411,7 @@ import { loadStandardIconTable } from "@face/catalog/icons/standard";   // impor
 const table = loadStandardIconTable();                       // { game: { version, build }, icons: ReadonlyMap<id, { expected, layers }> }
 table.icons.get(signal.icon);                                // the layers of a catalog icon; undefined for anything else
 iconFileLocation("__base__/graphics/icons/small-lamp.png");  // { module: "base", segments: ["graphics", "icons", "small-lamp.png"] }
+modFileLocation("__some-mod__/graphics/icons/gadget.png");   // { mod: "some-mod", segments: ["graphics", "icons", "gadget.png"] }; undefined for a file of the game
 ```
 
 Types: `Catalog`, `CatalogSignal`, `CatalogGroup`, `CatalogSubgroup`, `ModuleInfo`, `QualityInfo`, `CatalogData` (the JSON shape),

@@ -1,12 +1,20 @@
-// Reads one entry of a zip archive through a file handle: the end record, the central directory, then that entry alone. The
+// Reads entries of a zip archive through a file handle: the end record, the central directory, then one entry at a time. The
 // archive itself is never loaded (a mod can have hundreds of megabytes). It is a file the app does not control: every count,
 // size and offset is checked against the file and against limits before anything is allocated or read, and whatever is not
 // a plain archive (encrypted, in several parts, compressed by anything but deflate) is refused.
-import type { FileHandle } from "node:fs/promises";
+//
+// For one entry `readZipEntry` is all there is to it. For many entries of one archive (the images of a mod) the central
+// directory is read once into an index (`readZipIndex`), and `ZipArchives` keeps the indexes of the archives in use.
+import { constants } from "node:fs";
+import { open, type FileHandle } from "node:fs/promises";
 import { crc32, inflateRawSync } from "node:zlib";
 
 /** A mod with every sprite in a file of its own has some ten thousand entries; a central directory entry is 46 bytes and the name. */
 export const ZIP_LIMITS = { entries: 200_000, nameLength: 1024, directoryBytes: 32 * 1024 * 1024 } as const;
+/** What `ZipArchives` keeps at most: the indexes of so many archives, and of so many bytes in memory by an estimate; the least recently used go first. */
+export const ZIP_INDEX_LIMITS = { archives: 256, bytes: 48 * 1024 * 1024 } as const;
+/** An indexed entry in memory, roughly: its record and its place in the map, and two bytes for every character of the name. */
+const INDEX_ENTRY_BYTES = 160;
 
 const END_RECORD = 0x06054b50, END_RECORD_BYTES = 22, MAX_COMMENT_BYTES = 0xffff;
 const ZIP64_LOCATOR = 0x07064b50, ZIP64_LOCATOR_BYTES = 20;
@@ -77,8 +85,12 @@ async function locateDirectory(handle: FileHandle, fileSize: number): Promise<Di
   return directory;
 }
 
-interface Entry {
-  readonly name: Buffer;
+/** One entry as the central directory describes it. */
+export interface ZipEntry {
+  readonly name: string;
+  /** Length of the name as the archive has it, in bytes. */
+  readonly nameBytes: number;
+  readonly encrypted: boolean;
   readonly method: number;
   readonly crc: number;
   readonly compressedSize: number;
@@ -102,48 +114,50 @@ function zip64Fields(extra: Buffer, fields: { size: number; compressedSize: numb
   }
 }
 
-/** The first entry of the central directory whose name `wanted` accepts. Names are read as UTF-8; what is not, never equals a name asked for. */
-function findEntry(directory: Buffer, count: number, wanted: (name: string) => boolean): Entry | undefined {
+/**
+ * The entries of a central directory in its order: each name, and the rest of the entry for whoever wants it. Names are read
+ * as UTF-8; what is not, never equals a name asked for.
+ */
+function* directoryEntries(directory: Buffer, count: number): Generator<{ readonly name: string; entry(): ZipEntry }> {
   const decoder = new TextDecoder();
   let at = 0;
   for (let index = 0; index < count; index++) {
     if (at + CENTRAL_ENTRY_BYTES > directory.length || directory.readUInt32LE(at) !== CENTRAL_ENTRY) fail("a malformed central directory");
-    const [nameLength, extraLength, commentLength] = [directory.readUInt16LE(at + 28), directory.readUInt16LE(at + 30), directory.readUInt16LE(at + 32)];
-    const next = at + CENTRAL_ENTRY_BYTES + nameLength + extraLength + commentLength;
-    if (nameLength > ZIP_LIMITS.nameLength) fail(`a name of more than ${ZIP_LIMITS.nameLength} bytes`);
+    const [nameBytes, extraLength, commentLength] = [directory.readUInt16LE(at + 28), directory.readUInt16LE(at + 30), directory.readUInt16LE(at + 32)];
+    const start = at, next = at + CENTRAL_ENTRY_BYTES + nameBytes + extraLength + commentLength;
+    if (nameBytes > ZIP_LIMITS.nameLength) fail(`a name of more than ${ZIP_LIMITS.nameLength} bytes`);
     if (next > directory.length) fail("a malformed central directory");
-    const name = directory.subarray(at + CENTRAL_ENTRY_BYTES, at + CENTRAL_ENTRY_BYTES + nameLength);
-    if (wanted(decoder.decode(name))) {
-      if (directory.readUInt16LE(at + 8) & ENCRYPTED) fail("an encrypted entry");
-      const fields = { size: directory.readUInt32LE(at + 24), compressedSize: directory.readUInt32LE(at + 20), offset: directory.readUInt32LE(at + 42) };
-      if (Object.values(fields).includes(NONE32)) zip64Fields(directory.subarray(next - commentLength - extraLength, next - commentLength), fields);
-      return { name, method: directory.readUInt16LE(at + 10), crc: directory.readUInt32LE(at + 16), ...fields };
-    }
+    const name = decoder.decode(directory.subarray(start + CENTRAL_ENTRY_BYTES, start + CENTRAL_ENTRY_BYTES + nameBytes));
+    yield {
+      name,
+      entry: () => {
+        const fields = { size: directory.readUInt32LE(start + 24), compressedSize: directory.readUInt32LE(start + 20), offset: directory.readUInt32LE(start + 42) };
+        if (Object.values(fields).includes(NONE32)) zip64Fields(directory.subarray(next - commentLength - extraLength, next - commentLength), fields);
+        return { name, nameBytes, encrypted: (directory.readUInt16LE(start + 8) & ENCRYPTED) !== 0, method: directory.readUInt16LE(start + 10), crc: directory.readUInt32LE(start + 16), ...fields };
+      },
+    };
     at = next;
   }
-  return undefined;
 }
 
 /**
- * The content of the first entry of the archive behind `handle` (a file of `fileSize` bytes) whose name `wanted` accepts;
- * undefined when the archive has none. Throws for a file that is no plain zip archive, and for an entry that is larger than
- * `maxBytes` (compressed or not), not stored or deflated, or not what its checksum says.
+ * The content of one entry of the archive behind `handle`, whose central directory begins at `directoryOffset`. Throws for
+ * an entry that is larger than `maxBytes` (compressed or not), encrypted, not stored or deflated, not where the directory
+ * says or not what its checksum says.
  */
-export async function readZipEntry(handle: FileHandle, fileSize: number, wanted: (name: string) => boolean, maxBytes: number): Promise<Uint8Array | undefined> {
-  const directory = await locateDirectory(handle, fileSize);
-  const entry = findEntry(await readAt(handle, directory.offset, directory.size), directory.entries, wanted);
-  if (entry === undefined) return undefined;
+async function readEntry(handle: FileHandle, entry: ZipEntry, directoryOffset: number, maxBytes: number): Promise<Uint8Array> {
+  if (entry.encrypted) fail("an encrypted entry");
   if (entry.method !== STORED && entry.method !== DEFLATED) fail(`an entry compressed by method ${entry.method}`);
   if (entry.size > maxBytes || entry.compressedSize > maxBytes) fail(`an entry of more than ${maxBytes} bytes`);
   if (entry.method === STORED && entry.compressedSize !== entry.size) fail("a stored entry with two sizes");
   // The local header repeats the name; its own extra field may differ from the central one.
-  const headerBytes = LOCAL_ENTRY_BYTES + entry.name.length;
-  if (entry.offset + headerBytes > directory.offset) fail("an entry outside the file");
+  const headerBytes = LOCAL_ENTRY_BYTES + entry.nameBytes;
+  if (entry.offset + headerBytes > directoryOffset) fail("an entry outside the file");
   const header = await readAt(handle, entry.offset, headerBytes);
-  const sameName = header.readUInt16LE(26) === entry.name.length && header.subarray(LOCAL_ENTRY_BYTES).equals(entry.name);
+  const sameName = header.readUInt16LE(26) === entry.nameBytes && new TextDecoder().decode(header.subarray(LOCAL_ENTRY_BYTES)) === entry.name;
   if (header.readUInt32LE(0) !== LOCAL_ENTRY || !sameName) fail("an entry that is not where the central directory says");
   const start = entry.offset + headerBytes + header.readUInt16LE(28);
-  if (start + entry.compressedSize > directory.offset) fail("an entry outside the file");
+  if (start + entry.compressedSize > directoryOffset) fail("an entry outside the file");
   const stored = await readAt(handle, start, entry.compressedSize);
   let content: Buffer;
   try {
@@ -153,4 +167,136 @@ export async function readZipEntry(handle: FileHandle, fileSize: number, wanted:
   }
   if (content.length !== entry.size || crc32(content) !== entry.crc) fail("an entry that is not what its sizes and checksum say");
   return content;
+}
+
+/**
+ * The content of the first entry of the archive behind `handle` (a file of `fileSize` bytes) whose name `wanted` accepts;
+ * undefined when the archive has none. Throws for a file that is no plain zip archive, and for an entry that is larger than
+ * `maxBytes` (compressed or not), not stored or deflated, or not what its checksum says.
+ */
+export async function readZipEntry(handle: FileHandle, fileSize: number, wanted: (name: string) => boolean, maxBytes: number): Promise<Uint8Array | undefined> {
+  const directory = await locateDirectory(handle, fileSize);
+  for (const { name, entry } of directoryEntries(await readAt(handle, directory.offset, directory.size), directory.entries)) {
+    if (wanted(name)) return readEntry(handle, entry(), directory.offset, maxBytes);
+  }
+  return undefined;
+}
+
+/** What the central directory of one archive says about the entries that were asked for. The directory itself is not kept. */
+export interface ZipIndex {
+  /** By name, in the directory's order; of two entries with one name the first. */
+  readonly entries: ReadonlyMap<string, ZipEntry>;
+  /** Where the central directory begins: every entry lies before it. */
+  readonly directoryOffset: number;
+  /** What the index holds in memory, by an estimate. */
+  readonly bytes: number;
+}
+
+/**
+ * Reads the central directory of the archive behind `handle` (a file of `fileSize` bytes) once: the entries whose name
+ * `keep` accepts. Throws for a file that is no plain zip archive. Bounded by `ZIP_LIMITS` like every read of a directory.
+ */
+export async function readZipIndex(handle: FileHandle, fileSize: number, keep: (name: string) => boolean = () => true): Promise<ZipIndex> {
+  const directory = await locateDirectory(handle, fileSize);
+  const entries = new Map<string, ZipEntry>();
+  let bytes = 0;
+  for (const { name, entry } of directoryEntries(await readAt(handle, directory.offset, directory.size), directory.entries)) {
+    if (entries.has(name) || !keep(name)) continue;
+    entries.set(name, entry());
+    bytes += INDEX_ENTRY_BYTES + 2 * name.length;
+  }
+  return { entries, directoryOffset: directory.offset, bytes };
+}
+
+/** The content of the entry `name` of an indexed archive; undefined when the index has none of that name. Throws as `readZipEntry` does for an entry it does not read. */
+export async function readIndexedEntry(handle: FileHandle, index: ZipIndex, name: string, maxBytes: number): Promise<Uint8Array | undefined> {
+  const entry = index.entries.get(name);
+  return entry && readEntry(handle, entry, index.directoryOffset, maxBytes);
+}
+
+interface IndexedArchive {
+  /** Size, time and file number of the archive when it was indexed: another file under the same name is indexed anew. */
+  readonly stamp: string;
+  readonly index: Promise<ZipIndex>;
+  /** 0 until the index is there. */
+  bytes: number;
+}
+
+/**
+ * Reads entries of archives by their path, and keeps the index of every archive it read so that the next entry of it costs
+ * one read. No file stays open: an archive is opened for each entry and closed again. An archive that cannot be indexed is
+ * remembered as that until its file changes. What is kept is bounded (`limits`); `clear` drops all of it.
+ */
+export class ZipArchives {
+  private readonly keep: (name: string) => boolean;
+  private readonly limits: { readonly archives: number; readonly bytes: number };
+  /** By path, least recently used first. */
+  private readonly indexes = new Map<string, IndexedArchive>();
+
+  constructor(keep: (name: string) => boolean = () => true, limits: { readonly archives: number; readonly bytes: number } = ZIP_INDEX_LIMITS) {
+    this.keep = keep;
+    this.limits = limits;
+  }
+
+  /** How much is kept: the indexed archives and the estimated bytes of their indexes. */
+  get held(): { readonly archives: number; readonly bytes: number } {
+    return { archives: this.indexes.size, bytes: [...this.indexes.values()].reduce((sum, indexed) => sum + indexed.bytes, 0) };
+  }
+
+  clear(): void {
+    this.indexes.clear();
+  }
+
+  /**
+   * The content of the entry `name` of the archive `file`, of at most `maxBytes`; undefined when the archive has no entry of
+   * that name that is kept. Rejects for a file that is no plain archive and for an entry that is not read.
+   */
+  read(file: string, name: string, maxBytes: number): Promise<Uint8Array | undefined> {
+    return this.use(file, (handle, index) => readIndexedEntry(handle, index, name, maxBytes));
+  }
+
+  /** The name of the first kept entry of the archive `file` that `wanted` accepts, undefined when there is none. Rejects for a file that is no plain archive. */
+  find(file: string, wanted: (name: string) => boolean): Promise<string | undefined> {
+    return this.use(file, async (_, index) => {
+      for (const name of index.entries.keys()) if (wanted(name)) return name;
+      return undefined;
+    });
+  }
+
+  private async use<T>(file: string, task: (handle: FileHandle, index: ZipIndex) => Promise<T>): Promise<T> {
+    // Neither flag exists on Windows. Without blocking, so that a pipe under an archive's name cannot hold the app.
+    const handle = await open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));
+    try {
+      const info = await handle.stat();
+      if (!info.isFile()) throw new Error(`Not a regular file: ${file}`);
+      const stamp = `${info.size} ${info.mtimeMs} ${info.ino}`;
+      let indexed = this.indexes.get(file);
+      this.indexes.delete(file);
+      if (indexed?.stamp !== stamp) indexed = this.indexed(handle, info.size, stamp);
+      this.indexes.set(file, indexed);
+      return await task(handle, await indexed.index);
+    } finally {
+      await handle.close();
+    }
+  }
+
+  /** Starts reading the index through `handle`, which whoever asked first keeps open until the index is there. */
+  private indexed(handle: FileHandle, fileSize: number, stamp: string): IndexedArchive {
+    const indexed: IndexedArchive = { stamp, index: readZipIndex(handle, fileSize, this.keep), bytes: 0 };
+    indexed.index.then((index) => {
+      indexed.bytes = index.bytes;
+      this.trim();
+    }, () => undefined);
+    return indexed;
+  }
+
+  private trim(): void {
+    let { archives, bytes } = this.held;
+    for (const [file, indexed] of this.indexes) {
+      if (archives <= this.limits.archives && bytes <= this.limits.bytes) break;
+      this.indexes.delete(file);
+      archives--;
+      bytes -= indexed.bytes;
+    }
+  }
 }

@@ -1,8 +1,9 @@
-// Entity icons (the game's own artwork), served by the main process through face-asset://: rendered from the user's
-// installation of the game, or bundled files. Neither may be there, so every icon that can be drawn at all (`DataInUse.icons`)
-// is probed once per icon revision; prototypes whose icon does not load, and those with an icon of a mod or none, keep the
-// inline pictogram. This is the only use of the catalog here: the path follows `iconPath` of @face/catalog
-// (`icons/<icon id>.png`), with the icon id the registry gives for a prototype (`prototypeIconId`).
+// Entity icons (the artwork of the game and of the user's mods), served by the main process through face-asset://: rendered
+// from the user's installation of the game and the mods, or bundled files. None may be there, so every icon of the icon table
+// in use (`DataInUse.icons`) is probed once per icon revision; prototypes whose icon does not load (a mod that is gone since
+// the game was read), and those without one in the table, keep the inline pictogram. This is the only use of the catalog
+// here: the path follows `iconPath` of @face/catalog (`icons/<icon id>.png`), with the icon id the registry gives for a
+// prototype (`prototypeIconId`).
 import { PROTOTYPE_NAMES, type PrototypeName } from "@face/model";
 import { useEffect, useMemo, useState } from "react";
 import { prototypeIconId } from "../entities/registry.ts";

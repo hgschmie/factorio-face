@@ -1,7 +1,7 @@
 // One entity drawn as a card, and the face of a card on its own (`CardFace`). Purely presentational and memoized: pointer handling is delegated to the canvas through
 // the data-entity-id / data-terminal / data-wire-color attributes, so a card only re-renders when its own props change.
 import { facingOf, TERMINALS, WIRE_COLORS, type Entity, type TerminalSide, type WireColor } from "@face/model";
-import { Fragment, memo, useContext } from "react";
+import { Fragment, memo, useContext, useState } from "react";
 import { entityTitle } from "../entities/kindInfo.ts";
 import { SUMMARY_CHARS, summaryLines, truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -46,6 +46,8 @@ const ROW_BASELINE = 3.2;
 /** How far the header content moves down on a card with pins on its top edge, which reach 7 units into the card. */
 const HEADER_SHIFT = 2;
 
+const NO_ICONS: ReadonlySet<string> = new Set();
+
 interface StatusRowProps {
   readonly kind: "red" | "green" | "out";
   /** Vertical center of the row and the distance to the next line. */
@@ -65,7 +67,10 @@ interface StatusRowProps {
  * change, so a tick only renders the rows whose content changed.
  */
 const StatusRow = memo(function StatusRow({ kind, y, pitch, lines = 1, signals, dimmed, describeSignal }: StatusRowProps) {
-  const { items, more, moreX } = layoutRow(signals, describeSignal && ((signal) => describeSignal(signal).iconUrl), lines);
+  // An icon that does not load after all (a mod's, gone or changed since the game was read) gives way to the signal's name.
+  const [failed, setFailed] = useState<ReadonlySet<string>>(NO_ICONS);
+  const loadable = (url: string | undefined): string | undefined => (url !== undefined && failed.has(url) ? undefined : url);
+  const { items, more, moreX } = layoutRow(signals, describeSignal && ((signal) => loadable(describeSignal(signal).iconUrl)), lines);
   const { icon, markerX, contentX } = STATUS_ROWS;
   const lastLine = items.at(-1)?.line ?? 0;
   return (
@@ -73,7 +78,7 @@ const StatusRow = memo(function StatusRow({ kind, y, pitch, lines = 1, signals, 
       {kind === "out" ? <path className="row-marker" d={`M ${markerX} 0 h 6 m -2.6 -2.6 l 2.6 2.6 l -2.6 2.6`} /> : <rect className="row-marker" x={markerX} y={-5} width="3" height="10" rx="1.5" />}
       {items.map((item, index) => (
         <Fragment key={index}>
-          {item.iconUrl && <image href={item.iconUrl} x={item.x} y={item.line * pitch - icon / 2} width={icon} height={icon} />}
+          {item.iconUrl && <image href={item.iconUrl} x={item.x} y={item.line * pitch - icon / 2} width={icon} height={icon} onError={() => setFailed((known) => new Set(known).add(item.iconUrl!))} />}
           <text className="row-value" x={item.textX} y={item.line * pitch + ROW_BASELINE}>
             {item.text}
           </text>

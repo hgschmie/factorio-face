@@ -1,7 +1,9 @@
 // Signal, group and quality icons, served by the main process through face-asset://: rendered from the user's installation of
-// the game, or bundled files. Neither may be there, so one well-known icon is probed first; without it every icon URL is
-// undefined and the views fall back to names. Which icons there can be at all is data of the main process (`DataInUse.icons`):
-// an icon that is not among them (a mod's) has no URL either, so nothing asks for it.
+// the game and the user's mods, or bundled files. None may be there, so well-known icons are probed first; without one of them
+// every icon URL is undefined and the views fall back to names. Which icons there can be at all is data of the main process
+// (`DataInUse.icons`, the ids of its icon table): an icon that is not among them has no URL either, so nothing asks for it.
+// One that is among them can still fail when it is asked for (a mod that is gone since the game was read): every view that
+// shows an icon gives way to the name or the pictogram then (`IconImage`, the status rows, the probes of the entity icons).
 import { iconPath } from "@face/catalog";
 import { useEffect, useMemo, useState } from "react";
 
@@ -16,6 +18,7 @@ export interface CatalogIcons {
 }
 
 const PROBE_ICON = "virtual/signal-A";
+const PROBES = 3;
 const NO_ICONS: CatalogIconUrl = () => undefined;
 
 /**
@@ -40,11 +43,18 @@ export function catalogIconResolver(catalogAssetUrl: string, revision = 0, drawa
   return (icon) => (isDrawable(drawable, icon) ? catalogIconUrl(catalogAssetUrl, icon, revision) : undefined);
 }
 
-/** The icon that is asked for first: the well-known one, or any other one of a game whose signal A has a mod's picture. Undefined when there is none to draw. */
-export function probeIcon(drawable: ReadonlySet<string> | null): string | undefined {
-  if (drawable === null || drawable.has(PROBE_ICON)) return PROBE_ICON;
-  const [first] = drawable;
-  return first;
+/**
+ * The icons that are asked for first: the well-known one and two more, since any one icon can be a mod's picture that does not
+ * load when it is asked for. Icons are there when one of them loads. None when there is none to draw.
+ */
+export function probeIcons(drawable: ReadonlySet<string> | null): string[] {
+  if (drawable === null) return [PROBE_ICON];
+  const probes = drawable.has(PROBE_ICON) ? [PROBE_ICON] : [];
+  for (const icon of drawable) {
+    if (probes.length >= PROBES) break;
+    if (icon !== PROBE_ICON) probes.push(icon);
+  }
+  return probes;
 }
 
 /** Resolves once the image has loaded or failed. */
@@ -57,29 +67,43 @@ export function probeImage(url: string): Promise<boolean> {
   });
 }
 
+/** Resolves with true as soon as one of the images has loaded, with false once all have failed. */
+function probeImages(urls: readonly string[]): Promise<boolean> {
+  return new Promise((resolve) => {
+    let pending = urls.length;
+    for (const url of urls) {
+      void probeImage(url).then((loaded) => {
+        if (loaded) resolve(true);
+        else if (--pending === 0) resolve(false);
+      });
+    }
+  });
+}
+
 /**
- * Resolver from catalog icon ids to URLs of one icon revision; it resolves nothing until the probe icon of that revision has
+ * Resolver from catalog icon ids to URLs of one icon revision; it resolves nothing until a probe icon of that revision has
  * loaded, and never an icon that is not among `drawable` (null: not known, every icon resolves).
  */
 export function useCatalogIcons(catalogAssetUrl: string | undefined, revision = 0, drawable: ReadonlySet<string> | null = null): CatalogIcons {
-  const probe = probeIcon(drawable);
-  const probeUrl = catalogAssetUrl === undefined || probe === undefined ? undefined : catalogIconUrl(catalogAssetUrl, probe, revision);
-  const [probed, setProbed] = useState<{ readonly url: string; readonly available: boolean }>();
+  const probeUrls = useMemo(() => {
+    return catalogAssetUrl === undefined ? undefined : probeIcons(drawable).map((icon) => catalogIconUrl(catalogAssetUrl, icon, revision));
+  }, [catalogAssetUrl, revision, drawable]);
+  const [probed, setProbed] = useState<{ readonly urls: readonly string[]; readonly available: boolean }>();
   useEffect(() => {
-    if (probeUrl === undefined) return;
+    if (probeUrls === undefined || probeUrls.length === 0) return;
     let cancelled = false;
-    void probeImage(probeUrl).then((available) => {
-      if (!cancelled) setProbed({ url: probeUrl, available });
+    void probeImages(probeUrls).then((available) => {
+      if (!cancelled) setProbed({ urls: probeUrls, available });
     });
     return () => {
       cancelled = true;
     };
-  }, [probeUrl]);
+  }, [probeUrls]);
   const status = ((): CatalogIconStatus => {
     // With nothing to draw there is nothing to wait for.
-    if (catalogAssetUrl !== undefined && probe === undefined) return "missing";
+    if (probeUrls?.length === 0) return "missing";
     // An answer for another revision says nothing about this one.
-    if (probed === undefined || probed.url !== probeUrl) return "probing";
+    if (probed === undefined || probed.urls !== probeUrls) return "probing";
     return probed.available ? "available" : "missing";
   })();
   return useMemo(() => {

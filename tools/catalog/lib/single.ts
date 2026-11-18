@@ -16,10 +16,12 @@
 // another mod's things, as `base` makes the barrel of every fluid: an item names, after its creator, what every recipe of
 // that creator needs that produces it (`itemModules`). Every other record has its creator alone.
 //
-// Icons that are not made of image files of the game's own modules (a mod's) are left out of the icon table: the app has
-// nowhere to read them from, and an icon id the table lacks is answered like any unknown icon.
+// An icon is in the icon table when every layer of it is an image file of the game's own modules or of a mod the game had
+// loaded, named the way the table's parser takes it; the app reads a mod's file from the user's mod directory. Any other
+// icon (a file of a mod that was not loaded, a path the table cannot hold) is left out and counted: an icon id the table
+// lacks is answered like any unknown icon.
 import type { CatalogData, ModuleInfo } from "@face/catalog";
-import { iconTableFile, parseIconTable, type IconEntry } from "@face/catalog/icons";
+import { iconTableFile, modFileLocation, parseIconTable, type IconEntry } from "@face/catalog/icons";
 import { parseEntityTable } from "@face/model";
 import { KINDS, LOCALE_SECTIONS, SPEAKER_LOCALE_SECTIONS, buildCatalog, type DumpSet } from "./build.mjs";
 import { DUMP_COMMANDS, STANDARD_MODULES, gameArguments, modSetId, moduleInfo, readModuleInfos, type DumpCommand } from "./commands.ts";
@@ -124,9 +126,9 @@ export interface SingleSetInput {
 
 export interface SingleSet {
   readonly catalog: CatalogData;
-  /** The icon table's content: every icon the catalog refers to that is made of the game's own image files. */
+  /** The icon table's content: every icon the catalog refers to that is made of image files of the game and of the loaded mods. */
   readonly icons: Map<string, IconEntry>;
-  /** Icon ids the catalog refers to and the icon table lacks, sorted. */
+  /** Icon ids the catalog refers to and the icon table lacks, sorted: a layer of each is no file the table can name. */
   readonly skippedIcons: string[];
   /** The entity table as its file has it, with the loaded mods and their versions in the head. */
   readonly entities: EntityTableFile & { readonly mods: Readonly<Record<string, string>> };
@@ -253,16 +255,20 @@ export function buildSingleSet({ raw, runtime, locale, modules, game, generator,
       locale: "en",
       commands: (Object.keys(DUMP_COMMANDS) as DumpCommand[]).map(commandTemplate),
       modSets: [modSetId(mods.map((mod) => mod.name))],
-      icons: "the icon table names the image files of the game that each icon is composited from; icons of mods are not in it",
+      icons: "the icon table names the image files of the game and of the loaded mods that each icon is composited from",
     },
   };
 
   const icons = new Map<string, IconEntry>();
   const skippedIcons: string[] = [];
+  const loaded = new Set(mods.map((mod) => mod.name));
   for (const [id, entry] of [...built.icons].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     try {
       // Through the app's own parser, one icon at a time: what it would refuse is left out, not the whole table.
-      parseIconTable(iconTableFile({ game: input.game, icons: new Map([[id, entry]]) }));
+      const [parsed] = parseIconTable(iconTableFile({ game: input.game, icons: new Map([[id, entry]]) })).icons.values();
+      // The parser takes a file of any mod; an icon can only be drawn from the mods the game was read with.
+      const named = parsed!.layers.flatMap(({ icon }) => modFileLocation(icon)?.mod ?? []);
+      if (!named.every((mod) => loaded.has(mod))) throw new Error("a file of a mod that was not loaded");
       icons.set(id, entry);
     } catch {
       skippedIcons.push(id);

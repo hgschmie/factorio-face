@@ -51,7 +51,7 @@ describe("the section", () => {
   });
 
   it("shows how long it took and the warnings when it worked, and that other data waits for the window", () => {
-    const warnings = ["12 icons of mods are not shown: the app reads icons from the game's own files only.", "The game ran without the system's sandbox, which could not be entered here."];
+    const warnings = ["12 icons are not shown: they name images the app cannot read, such as a file of a mod that was not loaded.", "The game ran without the system's sandbox, which could not be entered here."];
     const steps = [{ step: "prepare", seconds: 0.2 }, { step: "data", seconds: 6.4 }, { step: "locale", seconds: 5.1 }, { step: "runtime", seconds: 7.9 }, { step: "collect", seconds: 0.3 }] as const;
     const done = view({ ...BUILT_IN, pending: GAME, discardable: true, run: { state: "done", warnings, steps } });
     expect(done).toMatchObject({

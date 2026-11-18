@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ICON_TABLE_LIMITS, iconFileLocation, iconTableFile, IconTableError, parseIconTable } from "../src/iconTable.ts";
+import { ICON_TABLE_LIMITS, iconFileLocation, iconTableFile, IconTableError, modFileLocation, parseIconTable } from "../src/iconTable.ts";
 
 const lamp = "__base__/graphics/icons/small-lamp.png";
 const game = { version: "2.1.25", build: 88022 };
@@ -44,7 +44,93 @@ describe("icon file locations", () => {
   });
 });
 
+/** Paths no layer may have: not as a file of the game, and not as a file of a mod. */
+const HOSTILE_MOD_PATHS: readonly string[] = [
+  "__some-mod__/../other-mod/a.png",
+  "__some-mod__/graphics/../../a.png",
+  "__some-mod__/..",
+  "__some-mod__/./a.png",
+  "__some-mod__/graphics//a.png",
+  "__some-mod__//etc/a.png",
+  "__some-mod__/",
+  "__some-mod__/.hidden.png",
+  "__some-mod__/.png",
+  "__some-mod__/graphics/.git/a.png",
+  "__some-mod__/a.png/",
+  "__some-mod__/a.jpg",
+  "__some-mod__/info.json",
+  "__some-mod__/a",
+  "__some-mod__/a\\b.png",
+  "__some-mod__/..\\..\\a.png",
+  "__some-mod__/C:/a.png",
+  "__some-mod__/a:b.png",
+  "__some-mod__/a\0.png",
+  "__some-mod__/a\nb.png",
+  "__some-mod__/a\u001b[31m.png",
+  "__some-mod__/a\u0085.png",
+  "__some-mod__/a\u2028.png",
+  "__some-mod__/a.png\n",
+  "__some/mod__/a.png",
+  "__some\\mod__/a.png",
+  "__some:mod__/a.png",
+  "__../x__/a.png",
+  "__some\0mod__/a.png",
+  "____/a.png",
+  "__some-mod_/a.png",
+  "_some-mod__/a.png",
+  "some-mod/a.png",
+  "/__some-mod__/a.png",
+  " __some-mod__/a.png",
+  "file:///__some-mod__/a.png",
+  `__${"m".repeat(ICON_TABLE_LIMITS.modNameLength + 1)}__/a.png`,
+  `__some-mod__/${"a".repeat(ICON_TABLE_LIMITS.pathLength)}.png`,
+  // The game's own modules keep their stricter rule.
+  "__base__/a b.png",
+  "__base__/../core/a.png",
+  "__core__/a.PNG",
+];
+
+describe("the location of a mod's file", () => {
+  it("is the mod's name and the segments inside the mod", () => {
+    expect(modFileLocation("__some-mod__/graphics/icons/gadget.png")).toEqual({ mod: "some-mod", segments: ["graphics", "icons", "gadget.png"] });
+    expect(modFileLocation("__Flare Stack__/graphics/icon/flare stack.png")).toEqual({ mod: "Flare Stack", segments: ["graphics", "icon", "flare stack.png"] });
+    expect(modFileLocation("__a.b_c__/Icon (1).PNG")).toEqual({ mod: "a.b_c", segments: ["Icon (1).PNG"] });
+    expect(modFileLocation("__mod__/bilder/gr\u00fcn.png")?.segments).toEqual(["bilder", "gr\u00fcn.png"]);
+    expect(modFileLocation(`__${"m".repeat(ICON_TABLE_LIMITS.modNameLength)}__/a.png`)?.mod).toHaveLength(ICON_TABLE_LIMITS.modNameLength);
+  });
+
+  it("ends the name before the first slash, whatever underscores the name and the path have", () => {
+    expect(modFileLocation("__my__mod__/a.png")).toEqual({ mod: "my__mod", segments: ["a.png"] });
+    expect(modFileLocation("__mod___/a.png")?.mod).toBe("mod_");
+    expect(modFileLocation("__mod__/__base__/a.png")).toEqual({ mod: "mod", segments: ["__base__", "a.png"] });
+    expect(modFileLocation("__mod__/a__/b.png")).toEqual({ mod: "mod", segments: ["a__", "b.png"] });
+  });
+
+  it("is none for a file of the game's own modules, which the other function places", () => {
+    expect(modFileLocation(lamp)).toBeUndefined();
+    expect(iconFileLocation("__some-mod__/graphics/icons/gadget.png")).toBeUndefined();
+  });
+
+  it.each(HOSTILE_MOD_PATHS.map((path) => [path]))("refuses %j", (path) => {
+    expect(modFileLocation(path)).toBeUndefined();
+    expect(iconFileLocation(path)).toBeUndefined();
+  });
+});
+
 describe("icon table", () => {
+  it("reads a layer that names a file of a mod, and writes it back as it was", () => {
+    const file = table({ "item/gadget": ["__some-mod__/graphics/gadget.png"], "item/tinted": [lamp, { icon: "__Flare Stack__/graphics/over lay.png", size: 32, tint: [1, 0, 0, 1] }] });
+    const parsed = parseIconTable(file);
+    expect(parsed.icons.get("item/gadget")).toEqual({ expected: 64, layers: [{ icon: "__some-mod__/graphics/gadget.png", size: 64 }] });
+    expect(parsed.icons.get("item/tinted")?.layers[1]).toEqual({ icon: "__Flare Stack__/graphics/over lay.png", size: 32, tint: [1, 0, 0, 1] });
+    expect(iconTableFile(parsed)).toEqual(file);
+  });
+
+  it.each(HOSTILE_MOD_PATHS.map((path) => [path]))("refuses a layer with the path %j", (path) => {
+    expect(() => parseIconTable(table({ "item/a": [path] }))).toThrow(/does not name an image file of the game or of a mod/);
+    expect(() => parseIconTable(table({ "item/a": [lamp, { icon: path, size: 64 }] }))).toThrow(IconTableError);
+  });
+
   it("reads plain paths as 64 pixel layers and plain lists as icons that expect 64", () => {
     const parsed = parseIconTable(table({
       "item/small-lamp": [lamp],
@@ -109,7 +195,7 @@ describe("icon table", () => {
     ["an expected size of 0", table({ "item/a": { expected: 0, layers: [lamp] } })],
     ["an expected size beyond the limit", table({ "item/a": { expected: 4096, layers: [lamp] } })],
     ["a layer that is a number", table({ "item/a": [1] })],
-    ["a path outside the game's modules", table({ "item/a": ["__mymod__/a.png"] })],
+    ["a path into a mod that climbs", table({ "item/a": ["__mymod__/../a.png"] })],
     ["a path that climbs", table({ "item/a": ["__base__/../../secret.png"] })],
     ["an absolute path", table({ "item/a": ["/etc/passwd.png"] })],
     ["a path that is no png", table({ "item/a": ["__base__/info.json"] })],

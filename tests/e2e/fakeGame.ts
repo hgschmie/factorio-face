@@ -4,24 +4,16 @@ import type { ElectronApplication } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { executablePath } from "../../apps/desktop/src/gameData/executable.ts";
-import { decodePng, encodePng } from "../../apps/desktop/src/gameIcons/png.ts";
-import { SOME_MOD_INFO, modArchive, writeCannedDump, writeFakeGame as writeFakeProgram, type CannedDump, type FakeGameControl } from "../../apps/desktop/test/support/cannedDump.ts";
+import { decodePng } from "../../apps/desktop/src/gameIcons/png.ts";
+import { iconStrip, modArchive, someModArchive, writeCannedDump, writeFakeGame as writeFakeProgram, type CannedDump, type Color, type FakeGameControl } from "../../apps/desktop/test/support/cannedDump.ts";
 import { GAMES_DIR } from "./app.ts";
 
-export type Color = readonly [number, number, number, number];
+export { iconStrip, MOD_ICON_COLOR, type Color } from "../../apps/desktop/test/support/cannedDump.ts";
 
 export const RED: Color = [220, 40, 40, 255];
 export const BLUE: Color = [40, 80, 220, 255];
 export const ORANGE: Color = [240, 150, 20, 255];
 export const VIOLET: Color = [150, 60, 200, 255];
-
-/** An icon file as the game ships them: the 64 pixel icon and its smaller copies side by side. */
-export function iconStrip(color: Color): Uint8Array {
-  const width = 120, height = 64;
-  const data = new Uint8Array(width * height * 4);
-  for (let i = 0; i < width * height; i++) data.set(color, i * 4);
-  return encodePng({ width, height, data });
-}
 
 export interface FakeGameOptions {
   readonly version?: string;
@@ -71,7 +63,7 @@ export interface FakeProgram {
   readonly executable: string;
   /** What the program does; `setFakeProgram` changes it between runs. */
   readonly control: FakeGameControl;
-  /** The mod directory to launch the app with (FACE_GAME_MODS_DIR): one mod, `some-mod` 1.2.3, enabled; its archive has the `info.json` the app reads its title and dependencies from. */
+  /** The mod directory to launch the app with (FACE_GAME_MODS_DIR): one mod, `some-mod` 1.2.3, enabled; its archive has the `info.json` the app reads its title and dependencies from, and the images of its icons, each in `MOD_ICON_COLOR`. */
   readonly modDirectory: string;
 }
 
@@ -90,7 +82,7 @@ export async function addFakeProgram(game: FakeGame, dump: CannedDump = {}, beha
   const modDirectory = join(parent, "user", "mods");
   await mkdir(modDirectory, { recursive: true });
   await writeFile(join(modDirectory, "mod-list.json"), JSON.stringify({ mods: ["base", "some-mod", ...mods.map((mod) => mod.name)].map((name) => ({ name, enabled: true })) }));
-  await writeFile(join(modDirectory, "some-mod_1.2.3.zip"), modArchive(SOME_MOD_INFO));
+  await writeFile(join(modDirectory, "some-mod_1.2.3.zip"), someModArchive());
   for (const mod of mods) await writeFile(join(modDirectory, `${mod.name}_${mod.version}.zip`), modArchive({ author: "nobody", factorio_version: "2.1", dependencies: ["base >= 2.1"], ...mod }));
   return { executable, control, modDirectory };
 }

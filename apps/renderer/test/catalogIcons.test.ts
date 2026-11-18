@@ -1,5 +1,6 @@
-// Which icons a view asks for: only those the main process can draw (`DataInUse.icons`). A game with mods has signals and
-// entities whose icon is an image of a mod; they have no URL, so every view shows what it shows without icons.
+// Which icons a view asks for: only those of the main process's icon table (`DataInUse.icons`). A game with mods can have
+// signals and entities whose icon is not in it (here: every icon of the mod); they have no URL, so every view shows what it
+// shows without icons.
 import { loadStandardCatalog, STANDARD_CATALOG_VERSION } from "@face/catalog";
 import { PROTOTYPE_NAMES, signal } from "@face/model";
 import { afterEach, describe, expect, it } from "vitest";
@@ -7,7 +8,7 @@ import { layoutRow, STATUS_ROWS } from "../src/canvas/statusRows.ts";
 import { prototypeIconId } from "../src/entities/registry.ts";
 import { applyData } from "../src/gameData/dataInUse.ts";
 import { catalogEntityIconUrl, prototypesWithIcon } from "../src/icons/catalogEntityIcons.ts";
-import { catalogIconResolver, isDrawable, probeIcon } from "../src/icons/catalogSignalIcons.ts";
+import { catalogIconResolver, isDrawable, probeIcons } from "../src/icons/catalogSignalIcons.ts";
 import { MOD_ENTITY, MOD_SIGNAL, MODDED_MODULES, moddedData, STANDARD_ICONS } from "./fixtures/moddedData.ts";
 import { moddedKindsData } from "./fixtures/moddedKinds.ts";
 import { createSession, EMPTY_SOURCE, project } from "./session/helpers.ts";
@@ -35,11 +36,16 @@ describe("the URL of a catalog icon", () => {
     expect([isDrawable(null, "anything/at-all"), isDrawable(DRAWABLE, "anything/at-all"), isDrawable(DRAWABLE, "item/iron-plate")]).toEqual([true, false, true]);
   });
 
-  it("is probed with an icon that can be drawn: the signal A, another one when a mod drew that, none when there is none", () => {
-    expect(probeIcon(null)).toBe("virtual/signal-A");
-    expect(probeIcon(DRAWABLE)).toBe("virtual/signal-A");
-    expect(probeIcon(new Set(["item/iron-plate", "item/copper-plate"]))).toBe("item/iron-plate");
-    expect(probeIcon(new Set())).toBeUndefined();
+  it("is probed with the signal A and two more icons of the table, since any one can be a mod's image that does not load; with none when there is none", () => {
+    expect(probeIcons(null)).toEqual(["virtual/signal-A"]);
+    expect(probeIcons(DRAWABLE)).toHaveLength(3);
+    expect(probeIcons(DRAWABLE)[0]).toBe("virtual/signal-A");
+    expect(new Set(probeIcons(DRAWABLE)).size).toBe(3);
+    expect(probeIcons(DRAWABLE).every((icon) => DRAWABLE.has(icon))).toBe(true);
+    expect(probeIcons(new Set(["item/iron-plate", "virtual/signal-A"]))).toEqual(["virtual/signal-A", "item/iron-plate"]);
+    expect(probeIcons(new Set(["item/iron-plate", "item/copper-plate"]))).toEqual(["item/iron-plate", "item/copper-plate"]);
+    expect(probeIcons(new Set(["a/1", "a/2", "a/3", "a/4"]))).toEqual(["a/1", "a/2", "a/3"]);
+    expect(probeIcons(new Set())).toEqual([]);
   });
 });
 
@@ -52,7 +58,7 @@ describe("the built-in data", () => {
   });
 });
 
-describe("a signal with an icon of a mod", () => {
+describe("a signal whose icon the icon table lacks", () => {
   it("is written by its short name in a status row, laid out as text, beside a signal with an icon", () => {
     const data = applyData(moddedData());
     const catalog = createSession(EMPTY_SOURCE, { data, project: project(EMPTY_SOURCE, { modules: MODDED_MODULES }) }).session.state.catalog;

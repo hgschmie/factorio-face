@@ -1,6 +1,7 @@
 import { strToU8, zipSync } from "fflate";
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { encodePng } from "../../src/gameIcons/png.ts";
 
 export const FAKE_GAME_VERSION = { version: "2.1.25", build: 88022, variant: "mac-arm64, full, space-age" };
 
@@ -10,7 +11,8 @@ export interface CannedDump {
   readonly gameVersion?: string;
   /**
    * A game the editor can work with: the ten prototypes it has a kind of its own for, the signal A, and what only a mod has, a
-   * crate a wire connects to (`mod-crate`, with a mod's icon) and a virtual signal (`mod-signal`).
+   * crate a wire connects to (`mod-crate`, with a mod's icon) and a virtual signal (`mod-signal`). The mod's icons are files
+   * of `some-mod` (`someModImages`), whether or not the game says it loaded that mod.
    */
   readonly editor?: boolean;
   /** With `editor`: prototypes the game lacks after all (a mod removed them). */
@@ -22,14 +24,30 @@ export interface CannedDump {
 /** The mod of the canned dumps as its `info.json` describes it: what it cannot do without, what it can do with, and what it refuses. */
 export const SOME_MOD_INFO = { name: "some-mod", version: "1.2.3", title: "Some Mod", author: "nobody", factorio_version: "2.1", dependencies: ["base >= 2.1", "? quality", "! not-there", "missing-lib >= 1.0"] };
 
-/** The bytes of a mod's archive: one folder with its `info.json` and a file of code, as the mod portal packs them. */
-export function modArchive(info: { readonly name: string; readonly version: string } & Readonly<Record<string, unknown>>, folder = `${info.name}_${info.version}`): Uint8Array {
-  return zipSync({ [`${folder}/control.lua`]: strToU8("-- nothing\n"), [`${folder}/info.json`]: strToU8(JSON.stringify(info, null, 2)) });
+export type Color = readonly [number, number, number, number];
+
+/** An icon file as the game and its mods ship them: the 64 pixel icon and its smaller copies side by side, here in one colour. */
+export function iconStrip(color: Color): Uint8Array {
+  const width = 120, height = 64;
+  const data = new Uint8Array(width * height * 4);
+  for (let i = 0; i < width * height; i++) data.set(color, i * 4);
+  return encodePng({ width, height, data });
+}
+
+/**
+ * The bytes of a mod's archive: one folder with its `info.json` and a file of code, as the mod portal packs them, and
+ * `images` by their path inside the mod.
+ */
+export function modArchive(info: { readonly name: string; readonly version: string } & Readonly<Record<string, unknown>>, folder = `${info.name}_${info.version}`, images: Readonly<Record<string, Uint8Array>> = {}): Uint8Array {
+  const files = Object.fromEntries(Object.entries(images).map(([file, bytes]) => [`${folder}/${file}`, bytes]));
+  return zipSync({ [`${folder}/control.lua`]: strToU8("-- nothing\n"), [`${folder}/info.json`]: strToU8(JSON.stringify(info, null, 2)), ...files });
 }
 
 /** What only the mod of an `editor` dump has. */
 export const MOD_ENTITY = "mod-crate";
 export const MOD_SIGNAL = "mod-signal";
+/** The one colour of every image of the canned dumps' mod. */
+export const MOD_ICON_COLOR: Color = [20, 160, 150, 255];
 
 export interface WiredEntity {
   readonly name: string;
@@ -77,6 +95,18 @@ export const FLAWED_ENTITIES: readonly WiredEntity[] = [
   { name: "mod-helper-a", type: "constant-combinator", label: "Helper A", size: [1, 1], turns: true, module: "some-mod", flaw: "no-collision-box" },
   { name: "mod-hidden-lamp", type: "lamp", label: "Hidden lamp", size: [1, 1], module: "some-mod", flaw: "no-size" },
 ];
+
+/** The images of the canned dumps' mod by their path inside it: the icon of everything a dump can say the mod has. */
+export function someModImages(): Record<string, Uint8Array> {
+  const icon = iconStrip(MOD_ICON_COLOR);
+  const entities = [MOD_ENTITY, ...[...MODDED_KINDS, ...FLAWED_ENTITIES].map((entity) => entity.name)];
+  return Object.fromEntries(["graphics/gadget.png", `graphics/icons/${MOD_SIGNAL}.png`, ...entities.map((name) => `graphics/icons/${name}.png`)].map((file) => [file, icon]));
+}
+
+/** The archive of the canned dumps' mod: what `modArchive` packs, with the images its prototypes name as their icons. */
+export function someModArchive(info: { readonly name: string; readonly version: string } & Readonly<Record<string, unknown>> = SOME_MOD_INFO): Uint8Array {
+  return modArchive(info, undefined, someModImages());
+}
 
 /**
  * Writes the files the three dump commands leave below `script-output`, for a game with two items (one with a mod's icon),

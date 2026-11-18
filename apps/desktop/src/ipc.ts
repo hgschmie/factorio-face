@@ -269,9 +269,10 @@ export interface GameDataInUse {
   /** As `packages/model/data/entities-<version>.json`. */
   readonly entities: Readonly<Record<string, unknown>> | null;
   /**
-   * The ids of the icons the app can draw for this data, built in or read: the ones of its icon table, which is all the asset
-   * scheme answers. A catalog of a game with mods names icons beside them (a mod's own images); the renderer asks for none
-   * of those and shows a name.
+   * The ids of the icons of this data, built in or read: the ones of its icon table, which is all the asset scheme answers.
+   * A catalog of a game with mods can name icons beside them (an image the table cannot name); the renderer asks for none
+   * of those and shows a name. An icon of a mod that is in the table is drawn from the user's mods when it is asked for, and
+   * is 404 when the mod is gone by then.
    */
   readonly icons: readonly string[];
 }

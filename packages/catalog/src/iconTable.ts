@@ -1,9 +1,12 @@
-// The icon table: which image files of the game make up each catalog icon. The app reads these files from the user's
-// installation; an icon id that is not a key of the table is never looked up. The generator writes the table with
-// `iconTableFile` and the app reads it with `parseIconTable`; the table itself is in standardIconTable.ts, so that neither
-// the generator nor the renderer bundle loads it. Exported as `@face/catalog/icons`.
+// The icon table: which image files make up each catalog icon. The app reads these files from the user's installation, and
+// for data read from a game with mods from the user's mods; an icon id that is not a key of the table is never looked up.
+// The generator writes the table with `iconTableFile` and the app reads it with `parseIconTable`; the table itself is in
+// standardIconTable.ts, so that neither the generator nor the renderer bundle loads it. Exported as `@face/catalog/icons`.
+//
+// A layer names its file the way the game's data does, `__<name>__/<path>`: with one of the game's own modules as the name
+// it is a file of the installation, with any other name a file of that mod. The standard table has files of the game only.
 
-/** The game's own modules. A layer may only name a file inside one of them. */
+/** The game's own modules. A layer with another name between the underscores names a file of a mod. */
 export const GAME_MODULES = ["base", "core", "space-age", "quality", "elevated-rails", "recycler"] as const;
 export type GameModuleName = (typeof GAME_MODULES)[number];
 
@@ -11,7 +14,7 @@ export const ICON_TABLE_SCHEMA = 1;
 /** Edge of the first mip level of a layer, and the icon size a prototype expects, unless stated otherwise. */
 export const DEFAULT_ICON_SIZE = 64;
 
-/** One layer of an icon, as the game's IconData describes it. `icon` is a path such as `__base__/graphics/icons/small-lamp.png`. */
+/** One layer of an icon, as the game's IconData describes it. `icon` is a path such as `__base__/graphics/icons/small-lamp.png`, or `__some-mod__/graphics/icon.png` for a file of a mod. */
 export interface IconLayer {
   readonly icon: string;
   /** Edge of the first mip level in the file, in pixels. */
@@ -53,10 +56,14 @@ export class IconTableError extends Error {
   override readonly name = "IconTableError";
 }
 
-export const ICON_TABLE_LIMITS = { icons: 20_000, idLength: 200, pathLength: 300, layers: 16, pixels: 1024, minScale: 0.001, maxScale: 16, shift: 1024 } as const;
+export const ICON_TABLE_LIMITS = { icons: 20_000, idLength: 200, pathLength: 300, modNameLength: 100, layers: 16, pixels: 1024, minScale: 0.001, maxScale: 16, shift: 1024 } as const;
 
 const ICON_ID = /^[a-z-]+\/[A-Za-z0-9_.~+-]+$/;
 const ICON_PATH = /^__([a-z-]+)__\/([A-Za-z0-9_/.-]+\.png)$/;
+/** The name as the list of loaded mods may have it (tools/catalog/lib/single.ts); it holds no slash, so it ends before the first one. */
+const MOD_ICON_PATH = /^__([A-Za-z0-9_ .-]+)__\/(.+\.[pP][nN][gG])$/;
+/** What no segment of a path inside a mod may hold: control characters, and what makes a path absolute or another notation on some platform. */
+const UNSAFE_IN_SEGMENT = /[\u0000-\u001f\u007f-\u009f\\:]/;
 const GAME_VERSION = /^\d+\.\d+\.\d+$/;
 const LAYER_FIELDS: ReadonlySet<string> = new Set(["icon", "size", "scale", "shift", "tint", "floating"]);
 
@@ -79,6 +86,19 @@ export function iconFileLocation(icon: string): { readonly module: GameModuleNam
   return { module, segments };
 }
 
+/**
+ * Where a layer's file is when it is a mod's: the mod's name and the path segments inside the mod. Undefined for a file of the
+ * game's own modules and for anything but a relative path to a PNG: no segment is empty, begins with a dot (so none is `.` or
+ * `..`) or holds a backslash, a colon or a control character. Whether the game had that mod loaded, the table does not say.
+ */
+export function modFileLocation(icon: string): { readonly mod: string; readonly segments: readonly string[] } | undefined {
+  if (icon.length > ICON_TABLE_LIMITS.pathLength) return undefined;
+  const [, mod, path] = MOD_ICON_PATH.exec(icon) ?? [];
+  if (mod === undefined || path === undefined || mod.length > ICON_TABLE_LIMITS.modNameLength || GAME_MODULES.some((name) => name === mod)) return undefined;
+  const segments = path.split("/");
+  return segments.some((segment) => segment === "" || segment.startsWith(".") || UNSAFE_IN_SEGMENT.test(segment)) ? undefined : { mod, segments };
+}
+
 function parseNumber(value: unknown, what: string, min: number, max: number): number {
   return typeof value === "number" && Number.isFinite(value) && value >= min && value <= max ? value : fail(`${what} must be a number in ${min}..${max}`);
 }
@@ -99,7 +119,8 @@ function parseLayer(value: unknown, id: string): IconLayer {
   const unknown = Object.keys(fields).find((key) => !LAYER_FIELDS.has(key));
   if (unknown !== undefined) fail(`${what} has an unknown field ${JSON.stringify(unknown)}`);
   const { icon, size, scale, shift, tint, floating } = fields;
-  if (typeof icon !== "string" || !iconFileLocation(icon)) fail(`${what} does not name an image file of the game: ${JSON.stringify(icon)}`);
+  const named = typeof icon === "string" && (iconFileLocation(icon) ?? modFileLocation(icon)) !== undefined;
+  if (typeof icon !== "string" || !named) fail(`${what} does not name an image file of the game or of a mod: ${String(JSON.stringify(icon)).slice(0, 120)}`);
   if (floating !== undefined && floating !== true) fail(`${what}: floating must be true when present`);
   const limits = ICON_TABLE_LIMITS;
   return {

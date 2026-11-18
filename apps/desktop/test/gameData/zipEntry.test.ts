@@ -2,10 +2,10 @@
 // what nobody should: sizes, counts and offsets that lie, parts that are missing, forms the reader does not take.
 import { strToU8, zipSync } from "fflate";
 import { randomBytes } from "node:crypto";
-import { open, writeFile, type FileHandle } from "node:fs/promises";
+import { mkdir, open, utimes, writeFile, type FileHandle } from "node:fs/promises";
 import { crc32, deflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { ZIP_LIMITS, readZipEntry } from "../../src/gameData/zipEntry.ts";
+import { ZIP_LIMITS, ZipArchives, readIndexedEntry, readZipEntry, readZipIndex } from "../../src/gameData/zipEntry.ts";
 import { useScratch } from "../support/scratch.ts";
 
 const scratch = useScratch("zip-entry");
@@ -273,5 +273,207 @@ describe("readZipEntry", () => {
     const started = performance.now();
     expect(await text(many)).toBe(INFO);
     expect(performance.now() - started).toBeLessThan(1000);
+  });
+});
+
+const isPng = (name: string): boolean => name.endsWith(".png");
+const ICONS: readonly EntrySpec[] = [
+  { name: "mod/info.json", content: INFO },
+  { name: "mod/graphics/a.png", content: "image a" },
+  { name: "mod/control.lua", content: "-- code" },
+  { name: "mod/graphics/b.png", content: "image b", stored: true },
+  { name: "mod/graphics/a.png", content: "a second file of that name" },
+];
+const string = (bytes: Uint8Array | undefined): string | undefined => bytes && Buffer.from(bytes).toString("utf8");
+
+describe("readZipIndex", () => {
+  it("lists the entries that are asked for, in the directory's order, the first of two with one name", async () => {
+    await withHandle(archive(ICONS), async (handle, size) => {
+      const all = await readZipIndex(handle, size);
+      expect([...all.entries.keys()]).toEqual(["mod/info.json", "mod/graphics/a.png", "mod/control.lua", "mod/graphics/b.png"]);
+      const images = await readZipIndex(handle, size, isPng);
+      expect([...images.entries.keys()]).toEqual(["mod/graphics/a.png", "mod/graphics/b.png"]);
+      expect(images.bytes).toBeGreaterThan(0);
+      expect(images.bytes).toBeLessThan(all.bytes);
+      expect(string(await readIndexedEntry(handle, images, "mod/graphics/a.png", MAX))).toBe("image a");
+      expect(string(await readIndexedEntry(handle, images, "mod/graphics/b.png", MAX))).toBe("image b");
+      expect(await readIndexedEntry(handle, images, "mod/info.json", MAX)).toBeUndefined();
+      expect(await readIndexedEntry(handle, images, "mod/graphics/c.png", MAX)).toBeUndefined();
+    });
+  });
+
+  it("reads the directory once: a further entry costs its own bytes", async () => {
+    const entries = [...Array.from({ length: 2000 }, (_, index) => ({ name: `mod/graphics/icon-${index}.png`, content: `image ${index}` })), { name: "mod/graphics/sheet.png", content: new Uint8Array(4 * 1024 * 1024).fill(3), stored: true }];
+    await withHandle(archive(entries), async (handle, size) => {
+      let total = 0;
+      const counting = { read: async (buffer: Buffer, offset: number, length: number, position: number) => {
+        total += length;
+        return handle.read(buffer, offset, length, position);
+      } } as unknown as FileHandle;
+      const index = await readZipIndex(counting, size, isPng);
+      expect(index.entries.size).toBe(2001);
+      const forIndex = total;
+      for (const number of [0, 999, 1999]) expect(string(await readIndexedEntry(counting, index, `mod/graphics/icon-${number}.png`, MAX))).toBe(`image ${number}`);
+      expect(total - forIndex).toBeLessThan(3 * 200);
+      // The size limit is the reader's, for each entry.
+      await expect(readIndexedEntry(counting, index, "mod/graphics/sheet.png", MAX)).rejects.toThrow(/an entry of more than 65536 bytes/);
+    });
+  });
+
+  it("refuses what is no plain archive, as the reader of one entry does", async () => {
+    const index = (bytes: Uint8Array): Promise<unknown> => withHandle(bytes, (handle, size) => readZipIndex(handle, size, isPng));
+    await expect(index(strToU8("a mod"))).rejects.toThrow(/too small/);
+    await expect(index(new Uint8Array(5000))).rejects.toThrow(/no end record/);
+    await expect(index(archive(ICONS, { end: { disk: 1 } }))).rejects.toThrow(/several parts/);
+    await expect(index(archive(ICONS, { end: { size: 10_000_000 } }))).rejects.toThrow(/central directory is outside the file/);
+    await expect(index(archive(ICONS, { zip64: true, end: { entries: ZIP_LIMITS.entries + 1, entriesHere: ZIP_LIMITS.entries + 1 } }))).rejects.toThrow(/more than 200000 entries/);
+    await expect(index(archive(ICONS, { end: { entries: 9, entriesHere: 9 } }))).rejects.toThrow(/malformed central directory|outside the file/);
+    // The whole directory is walked: a name that is too long fails the index wherever it is, and an entry that is kept must have its sizes.
+    await expect(index(archive([...ICONS, { name: `mod/${"n".repeat(ZIP_LIMITS.nameLength)}`, content: "" }]))).rejects.toThrow(/a name of more than 1024 bytes/);
+    await expect(index(archive([{ name: "mod/a.png", content: "x", central: { size: NONE32 } }]))).rejects.toThrow(/an entry without its zip64 sizes/);
+  });
+
+  it("indexes an archive with entries it does not read, and refuses those when they are asked for", async () => {
+    const odd = archive([
+      { name: "mod/fine.png", content: "fine" },
+      { name: "mod/encrypted.png", content: "x", central: { flags: 1 } },
+      { name: "mod/lzma.png", content: "x", central: { method: 14 } },
+      { name: "mod/elsewhere.png", content: "x", central: { offset: 4_000_000 } },
+      { name: "mod/lying.png", content: "x", central: { crc: 1 } },
+      { name: "mod/moved.png", content: "x", localName: "mod/other.png" },
+      { name: "mod/unsized.lua", content: "x", central: { size: NONE32 } },
+    ]);
+    await withHandle(odd, async (handle, size) => {
+      const index = await readZipIndex(handle, size, isPng);
+      expect(index.entries.size).toBe(6);
+      expect(string(await readIndexedEntry(handle, index, "mod/fine.png", MAX))).toBe("fine");
+      await expect(readIndexedEntry(handle, index, "mod/encrypted.png", MAX)).rejects.toThrow(/an encrypted entry/);
+      await expect(readIndexedEntry(handle, index, "mod/lzma.png", MAX)).rejects.toThrow(/compressed by method 14/);
+      await expect(readIndexedEntry(handle, index, "mod/elsewhere.png", MAX)).rejects.toThrow(/an entry outside the file/);
+      await expect(readIndexedEntry(handle, index, "mod/lying.png", MAX)).rejects.toThrow(/not what its sizes and checksum say/);
+      await expect(readIndexedEntry(handle, index, "mod/moved.png", MAX)).rejects.toThrow(/not where the central directory says/);
+    });
+  });
+
+  it("does not stall on a directory of many entries, and holds what it says it holds", async () => {
+    const many = archive(Array.from({ length: 20_000 }, (_, index) => ({ name: `mod/graphics/icons/sprite-${index}.png`, content: "", stored: true })));
+    const started = performance.now();
+    const index = await withHandle(many, (handle, size) => readZipIndex(handle, size, isPng));
+    expect(performance.now() - started).toBeLessThan(1000);
+    expect(index.entries.size).toBe(20_000);
+    // Some 240 bytes for an entry with a name of 35 characters.
+    expect(index.bytes).toBeGreaterThan(20_000 * 200);
+    expect(index.bytes).toBeLessThan(20_000 * 300);
+  });
+});
+
+describe("ZipArchives", () => {
+  let count = 0;
+  const place = async (bytes: Uint8Array): Promise<string> => {
+    const file = scratch(`kept-${++count}.zip`);
+    await writeFile(file, bytes);
+    return file;
+  };
+
+  it("reads entries by the archive's path, finds one by a rule, and says nothing for one that is not there or not kept", async () => {
+    const archives = new ZipArchives((name) => isPng(name) || isInfo(name));
+    const file = await place(archive(ICONS));
+    expect(await archives.find(file, isInfo)).toBe("mod/info.json");
+    expect(string(await archives.read(file, "mod/info.json", MAX))).toBe(INFO);
+    expect(string(await archives.read(file, "mod/graphics/b.png", MAX))).toBe("image b");
+    expect(await archives.read(file, "mod/control.lua", MAX)).toBeUndefined();
+    expect(await archives.read(file, "mod/graphics/../info.json", MAX)).toBeUndefined();
+    expect(await archives.find(file, (name) => name.endsWith(".lua"))).toBeUndefined();
+    expect(archives.held.archives).toBe(1);
+    expect(archives.held.bytes).toBeGreaterThan(0);
+    await expect(archives.read(file, "mod/graphics/a.png", 3)).rejects.toThrow(/an entry of more than 3 bytes/);
+  });
+
+  it("reads the directory of an archive once and uses it for every further entry", async () => {
+    const archives = new ZipArchives();
+    const bytes = archive(ICONS);
+    const file = await place(bytes);
+    // A time of whole seconds, which can be set again exactly.
+    const written = new Date("2026-11-01T12:00:00Z");
+    await utimes(file, written, written);
+    expect(string(await archives.read(file, "mod/graphics/a.png", MAX))).toBe("image a");
+    // The directory is wiped where it stands, with the size, the time and the file as they were: only the index still knows the entries.
+    const directoryOffset = bytes.readUInt32LE(bytes.length - 6), directorySize = bytes.readUInt32LE(bytes.length - 10);
+    const handle = await open(file, "r+");
+    await handle.write(Buffer.alloc(directorySize), 0, directorySize, directoryOffset);
+    await handle.close();
+    await utimes(file, written, written);
+    expect(string(await archives.read(file, "mod/graphics/b.png", MAX))).toBe("image b");
+    expect(string(await archives.read(file, "mod/control.lua", MAX))).toBe("-- code");
+    await expect(new ZipArchives().read(file, "mod/graphics/b.png", MAX)).rejects.toThrow(/malformed central directory/);
+  });
+
+  it("indexes an archive again when another file is under its name", async () => {
+    const archives = new ZipArchives();
+    const file = await place(archive([{ name: "mod/a.png", content: "the first" }]));
+    expect(string(await archives.read(file, "mod/a.png", MAX))).toBe("the first");
+    await writeFile(file, archive([{ name: "mod/a.png", content: "the second, which is longer" }, { name: "mod/b.png", content: "new" }]));
+    expect(string(await archives.read(file, "mod/a.png", MAX))).toBe("the second, which is longer");
+    expect(string(await archives.read(file, "mod/b.png", MAX))).toBe("new");
+    expect(archives.held.archives).toBe(1);
+  });
+
+  it("shares one index among reads that come at once", async () => {
+    const archives = new ZipArchives();
+    const entries = Array.from({ length: 200 }, (_, index) => ({ name: `mod/icon-${index}.png`, content: `image ${index}` }));
+    const file = await place(archive(entries));
+    const contents = await Promise.all(entries.map((entry) => archives.read(file, entry.name, MAX)));
+    expect(contents.map(string)).toEqual(entries.map((entry) => entry.content));
+    expect(archives.held.archives).toBe(1);
+  });
+
+  it("keeps no more archives than its limit, the least recently used going first", async () => {
+    const archives = new ZipArchives(() => true, { archives: 2, bytes: 1024 * 1024 });
+    const [a, b, c] = await Promise.all(["a", "b", "c"].map((name) => place(archive([{ name: `${name}.png`, content: name }]))));
+    await archives.read(a!, "a.png", MAX);
+    await archives.read(b!, "b.png", MAX);
+    await archives.read(a!, "a.png", MAX);
+    await archives.read(c!, "c.png", MAX);
+    expect(archives.held.archives).toBe(2);
+    // What was dropped is read again when it is asked for.
+    expect(string(await archives.read(b!, "b.png", MAX))).toBe("b");
+    expect(archives.held.archives).toBe(2);
+    archives.clear();
+    expect(archives.held).toEqual({ archives: 0, bytes: 0 });
+    expect(string(await archives.read(a!, "a.png", MAX))).toBe("a");
+  });
+
+  it("keeps no more bytes than its limit, and still reads an archive whose index alone is above it", async () => {
+    const small = archive([{ name: "mod/a.png", content: "a" }]);
+    const large = archive(Array.from({ length: 500 }, (_, index) => ({ name: `mod/graphics/icons/sprite-${index}.png`, content: `${index}` })));
+    const archives = new ZipArchives(() => true, { archives: 100, bytes: 20_000 });
+    const [first, second, big] = [await place(small), await place(small), await place(large)];
+    await archives.read(first, "mod/a.png", MAX);
+    await archives.read(second, "mod/a.png", MAX);
+    expect(archives.held.archives).toBe(2);
+    expect(string(await archives.read(big, "mod/graphics/icons/sprite-499.png", MAX))).toBe("499");
+    expect(archives.held).toEqual({ archives: 0, bytes: 0 });
+    expect(string(await archives.read(big, "mod/graphics/icons/sprite-7.png", MAX))).toBe("7");
+    expect(string(await archives.read(first, "mod/a.png", MAX))).toBe("a");
+    expect(archives.held.bytes).toBeLessThanOrEqual(20_000);
+  });
+
+  it("refuses a file that is no archive every time, until an archive is there", async () => {
+    const archives = new ZipArchives();
+    const file = await place(strToU8("this is not an archive, whatever its name says"));
+    await expect(archives.read(file, "mod/a.png", MAX)).rejects.toThrow(/^Not a readable zip archive: no end record/);
+    await expect(archives.find(file, isInfo)).rejects.toThrow(/no end record/);
+    expect(archives.held).toEqual({ archives: 1, bytes: 0 });
+    await writeFile(file, archive([{ name: "mod/a.png", content: "now it is one" }]));
+    expect(string(await archives.read(file, "mod/a.png", MAX))).toBe("now it is one");
+  });
+
+  it("refuses what is no regular file, and a file that is not there", async () => {
+    const archives = new ZipArchives();
+    const folder = scratch("a-folder.zip");
+    await mkdir(folder);
+    await expect(archives.read(folder, "mod/a.png", MAX)).rejects.toThrow();
+    await expect(archives.read(scratch("missing.zip"), "mod/a.png", MAX)).rejects.toThrow(/ENOENT/);
+    expect(archives.held.archives).toBe(0);
   });
 });
