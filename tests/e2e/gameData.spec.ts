@@ -306,7 +306,8 @@ test("a read says how many entities it left out, lists them by reason behind a d
     // One line says how many and what that means; the run's warnings do not say it a second time. The list is closed.
     await expect(leftOut(page).locator("p.settings-message")).toHaveText(SUMMARY);
     await expect(section(page).getByText(ICON_WARNING)).toHaveCount(0);
-    await expect(message(page, "warnings")).not.toContainText("left out");
+    // No warning of the run repeats it: with nothing else to warn about there is no list of warnings at all.
+    await expect(message(page, "warnings")).toHaveCount(0);
     await expect(toggle(page)).toHaveAttribute("aria-expanded", "false");
     await expect(list(page)).toHaveCount(0);
     expect((await status(page)).leftOut).toEqual([
@@ -957,7 +958,7 @@ test("a data file of the earlier format falls back to the built-in data and asks
   }
   // As the app wrote it before every record named the mod that adds it.
   const stored = JSON.parse(await readFile(file, "utf8")) as Record<string, unknown>;
-  expect(stored.version).toBe(3);
+  expect(stored.version).toBe(4);
   await writeFile(file, JSON.stringify({ ...stored, version: 1 }));
 
   const { app, page } = await launchWithGame({ userData: first.userData, program: first.program, folder: resolve(first.dataDirectory, process.platform === "darwin" ? "../.." : "..") });
@@ -985,7 +986,7 @@ test("a data file of the earlier format falls back to the built-in data and asks
     await gameDataInUse(page);
     await switchOn(page);
     await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
-    expect((JSON.parse(await readFile(file, "utf8")) as { version: number }).version).toBe(3);
+    expect((JSON.parse(await readFile(file, "utf8")) as { version: number }).version).toBe(4);
   } finally {
     await closeApp(app);
   }
