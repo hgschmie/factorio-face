@@ -20,7 +20,9 @@ import { clipboardIsForEntities, dropTextSelectionOnPress, pageTextIsSelected } 
 import type { BlueprintExport, BlueprintProblem, ImportedBlueprint, ImportReportView } from "../session/blueprints.ts";
 import type { GameDataController } from "../gameData/useGameData.ts";
 import { takeSettingsOpen } from "../gameData/reopen.ts";
+import { offerSelectAll } from "../dialog/selectAll.ts";
 import { AppSettings } from "../settings/AppSettings.tsx";
+import { ModuleItems } from "../settings/ModuleItems.tsx";
 import { gameFolderHint, needsGameFolderHint } from "../settings/appSettings.ts";
 import { ProjectSettings } from "../settings/ProjectSettings.tsx";
 import type { AppSettingsController } from "../settings/useAppSettings.ts";
@@ -97,6 +99,14 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
   const inspectorRef = useRef<InspectorHandle>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  // The module whose signals and entities the user is hiding: a dialog over the project settings, which stay open under it.
+  const [itemsModuleName, setItemsModuleName] = useState<string | null>(null);
+  const closeItems = useCallback(() => setItemsModuleName(null), []);
+  const itemsModule = settingsOpen && itemsModuleName !== null ? state.catalog.modules.find((module) => module.name === itemsModuleName) : undefined;
+  // Another project, or other modules, may not have the module: the dialog is then closed for good, not until it is back.
+  useEffect(() => {
+    if (itemsModuleName !== null && !itemsModule) setItemsModuleName(null);
+  }, [itemsModuleName, itemsModule]);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   // After the window was loaded again for other game data, the dialog that asked for it is open again.
@@ -376,7 +386,10 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
         case "edit.delete":
           return typing ? void document.execCommand("delete") : commands.deleteSelection();
         case "edit.selectAll":
-          return typing ? void document.execCommand("selectAll") : commands.select(current.circuit.entities.map((entity) => entity.id));
+          if (typing) return void document.execCommand("selectAll");
+          // A list with the focus selects its own rows.
+          if (offerSelectAll(document.activeElement)) return;
+          return commands.select(current.circuit.entities.map((entity) => entity.id));
         case "view.circuit":
           return commands.setMode("circuit");
         case "view.source":
@@ -474,6 +487,8 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
           onWireReachChange={commands.setWireReach}
           onModuleChange={commands.setModuleEnabled}
           onEnableUsedModules={commands.enableUsedModules}
+          onChooseItems={setItemsModuleName}
+          covered={itemsModule !== undefined}
           close={closeSettings}
         />
       )}
@@ -618,6 +633,18 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
         </span>
       </footer>
 
+      {itemsModule && (
+        <ModuleItems
+          key={itemsModule.name}
+          module={itemsModule}
+          items={state.catalog.items(itemsModule.name)}
+          hidden={state.catalog.hiddenOf(itemsModule.name)}
+          iconUrl={resolveCatalogIcon}
+          resolveEntityIcon={resolveEntityIcon}
+          onChange={commands.setHiddenItems}
+          close={closeItems}
+        />
+      )}
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
       {appSettingsOpen && appSettings && <AppSettings settings={appSettings} gameData={gameData} close={closeAppSettings} />}
       {blueprintDialog?.type === "import" && <ImportBlueprint key={blueprintDialog.file?.name} file={blueprintDialog.file} read={commands.readBlueprint} open={openBlueprint} close={closeBlueprintDialog} />}

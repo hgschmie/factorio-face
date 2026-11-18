@@ -120,8 +120,9 @@ async function start(): Promise<void> {
     // Icons of mods come from the user's mod directory as it is when an icon is asked for; looking it up starts nothing.
     modDirectory: async (dataDirectory) => (await userDataLocation(dataDirectory, host))?.modDirectory,
   }, cached.status === "ok" ? cached.data.mods : []);
+  const appSettings = new AppSettingsStore(join(userData, APP_SETTINGS_FILE_NAME));
   const gameSettings = new GameSettings({
-    store: new AppSettingsStore(join(userData, APP_SETTINGS_FILE_NAME)),
+    store: appSettings,
     icons: {
       reset: (dataDirectory) => {
         iconProblems = 0;
@@ -195,7 +196,7 @@ async function start(): Promise<void> {
 
   const handle = createIpcHandle(window);
   const projectsDirectory = projectsDirectoryFromEnv(process.env);
-  registerAppSettingsIpc(window, handle, gameSettings);
+  registerAppSettingsIpc(window, handle, gameSettings, appSettings);
   registerGameDataIpc(window, handle, gameData);
   registerBlueprintIpc(handle, { window, projectsDirectory });
   registerProjectIpc(handle, {

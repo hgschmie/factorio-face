@@ -164,8 +164,13 @@
   font-size: var(--text-md);
 }
 
+/* A row: the switch with the title and what the module adds, beside it the button that opens the dialog of the module, and below both the note of the row. */
 .module-list li {
+  display: grid;
   flex: none;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 6px;
+  align-items: start;
   padding: 5px 9px 6px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -217,8 +222,15 @@
   color: var(--text-dim);
 }
 
+.module-list li .icon-button {
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px 0 0;
+}
+
 .module-list small {
   display: block;
+  grid-column: 1 / -1;
   margin: 1px 0 0 23px;
   font-size: var(--text-sm);
   line-height: 1.4;
@@ -227,6 +239,181 @@
 
 .module-list li.invalid small {
   color: var(--status-warning);
+}
+
+/*
+ * The signals and entities of a module, to hide: a modal dialog. The two lists have the same width and one height, which the
+ * dialog keeps whatever a filter leaves of them, and scroll by themselves.
+ */
+.module-items {
+  width: min(720px, 100%);
+}
+
+/* The title is a mod's own text of any length: one line of it. */
+.module-items > header h2 {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.module-items > .muted-note {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.module-items-bar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.module-items-bar input {
+  flex: 1;
+  font-family: var(--font-ui);
+  font-size: var(--text-base);
+}
+
+.side-switch {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border-edge);
+  border-radius: var(--radius-md);
+  background: var(--surface-well);
+}
+
+.side-switch button {
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 3px;
+  font-size: var(--text-md);
+  color: var(--text-label);
+}
+
+.side-switch button[aria-pressed="true"] {
+  color: var(--ink);
+  background: var(--accent-fill);
+}
+
+.side-switch .count {
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+}
+
+.module-items-lists {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.module-items-lists > .settings-button {
+  justify-self: start;
+  padding: 4px 10px;
+  font-size: var(--text-md);
+}
+
+.module-items-lists > .settings-button:last-child {
+  grid-column: 3;
+}
+
+.module-items-moves {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.module-items-moves .settings-button {
+  padding: 6px 8px;
+}
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.item-list .section-label {
+  margin: 0;
+}
+
+.item-list-rows {
+  position: relative;
+}
+
+.item-list ul {
+  height: min(340px, 45vh);
+  margin: 0;
+  padding: 3px;
+  overflow-y: auto;
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-md);
+  list-style: none;
+  background: var(--surface-inset);
+}
+
+.item-list li {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: 26px;
+  padding: 0 6px;
+  border-radius: 3px;
+  font-size: var(--text-base);
+  color: var(--text);
+  cursor: default;
+  /* A mod may add thousands of signals: a row out of view is not laid out. */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 26px;
+}
+
+.item-list li:hover {
+  background: var(--surface-hover);
+}
+
+.item-list li[aria-selected="true"] {
+  color: var(--ink);
+  background: var(--accent-fill);
+}
+
+.item-list ul:focus-visible li[data-active="true"] {
+  outline: 1px solid var(--focus-ring);
+  outline-offset: -1px;
+}
+
+.item-list ul:focus-visible li[data-active="true"][aria-selected="true"] {
+  outline-color: var(--ink);
+}
+
+.item-icon {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+
+/* A name of the game or of a mod, of any length: one line of it; the hover text has the internal name. */
+.item-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What an empty list says, in the room of its rows. */
+.item-list-rows > .muted-note {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  left: 12px;
+  margin: 0;
+  pointer-events: none;
 }
 
 /* Application settings: a modal dialog. */

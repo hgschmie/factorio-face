@@ -212,6 +212,42 @@ describe("entities in use", () => {
   });
 });
 
+describe("what the user hid", () => {
+  const hidden = new Set(["wooden-chest", "small-lamp", "decider-combinator"]);
+  const thinned = entityRegistry(catalog, entityTable(), SPACE_AGE, (game) => hidden.has(game.name));
+  const offered = (registry: EntityRegistry): string[] => registry.groups.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries.map((entry) => entry.prototype)));
+
+  it("is in no tab and in no search, like what the game hides", () => {
+    expect(offered(thinned)).toEqual(offered(spaceAge).filter((prototype) => prototype === "decider-combinator" || !hidden.has(prototype)));
+    expect([thinned.offers("wooden-chest"), thinned.groupOf("wooden-chest"), thinned.offers("small-lamp"), thinned.offers("iron-chest")]).toEqual([false, undefined, false, true]);
+    expect(searchEntries(thinned.groups, "wooden")).toEqual([]);
+    expect(thinned.entries).toHaveLength(spaceAge.entries.length - 2);
+    expect(rows(thinned, "logistics").storage).toEqual(["iron-chest", "steel-chest", "storage-tank"]);
+  });
+
+  it("is not asked about the four combinators of the first row, which stay in their subgroup as well", () => {
+    expect(thinned.pinned).toEqual(spaceAge.pinned.map((entry) => thinned.entry(entry.prototype)));
+    expect(thinned.pinned.map((entry) => entry.prototype)).toEqual(COMBINATORS);
+    expect(rows(thinned, "logistics")["circuit-network"]).toEqual(["arithmetic-combinator", "decider-combinator", "selector-combinator", "constant-combinator", "power-switch", "programmable-speaker", "display-panel"]);
+    expect(thinned.offers("decider-combinator")).toBe(true);
+  });
+
+  it("has its entry and its place in the game's order all the same, and is listed when a circuit contains it", () => {
+    expect(thinned.entry("wooden-chest")).toEqual(spaceAge.entry("wooden-chest"));
+    expect(thinned.position("small-lamp")).toBe(spaceAge.position("small-lamp"));
+    const used = [{ prototype: "small-lamp" }, { prototype: "iron-chest" }, { prototype: "wooden-chest" }];
+    expect(entriesInUse(thinned, used).map((entry) => entry.prototype)).toEqual(["wooden-chest", "iron-chest", "small-lamp"]);
+  });
+
+  it("leaves a tab and a row out that have nothing else", () => {
+    const space = new Set(rows(spaceAge, "space")["space-platform"]);
+    const withoutRow = entityRegistry(catalog, entityTable(), SPACE_AGE, (game) => space.has(game.name));
+    expect(Object.keys(rows(withoutRow, "space"))).toEqual(["space-interactors"]);
+    const all = new Set(spaceAge.groups.find((group) => group.name === "space")!.subgroups.flatMap((subgroup) => subgroup.entries.map((entry) => entry.prototype)));
+    expect(entityRegistry(catalog, entityTable(), SPACE_AGE, (game) => all.has(game.name)).groups.map((group) => group.name)).toEqual(["logistics", "production", "combat"]);
+  });
+});
+
 describe("place tool", () => {
   const pole = (prototype: "small-electric-pole" | "big-electric-pole" = "small-electric-pole"): PlaceTool => ({ type: "place", prototype });
 

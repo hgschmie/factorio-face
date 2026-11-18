@@ -630,6 +630,145 @@ test("a mod is switched on in the project settings; what it brings is then in th
   }
 });
 
+const USES_MOD = `circuit "Uses the mod" {
+    ${MOD_ENTITY} crate at (40, 80) {
+    }
+
+    constant-combinator source at (300, 80) {
+        virtual:${MOD_SIGNAL} = 1
+        item:gadget = 2
+    }
+}
+`;
+const MOD_HIDDEN = { module: "some-mod", signals: ["item:gadget", `virtual:${MOD_SIGNAL}`], entities: [MOD_ENTITY] };
+const storedSettings = async (userData: string): Promise<unknown> => JSON.parse(await readFile(resolve(userData, "app-settings.json"), "utf8"));
+
+test("signals and an entity of a mod are hidden in the dialog of its row: neither the picker nor the selector offers them, a project that uses them has no warning, and the choice holds after a restart and for a new project", async () => {
+  const itemsButtons = (page: Page): Locator => projectSettingsOf(page).locator('.module-list li [data-action="choose-items"]');
+  const itemsDialog = (page: Page): Locator => page.getByRole("dialog", { name: "Some Mod", exact: true });
+  const openItems = (page: Page): Promise<void> => projectSettingsOf(page).getByRole("button", { name: "Signals and entities of Some Mod", exact: true }).click();
+  const listOf = (page: Page, name: string): Locator => itemsDialog(page).getByRole("listbox", { name, exact: true });
+  const rowsOf = (page: Page, name: string): Locator => listOf(page, name).getByRole("option");
+  const side = (page: Page, name: "signals" | "entities"): Locator => itemsDialog(page).locator(`.side-switch button[data-side="${name}"]`);
+  const button = (page: Page, name: string): Locator => itemsDialog(page).getByRole("button", { name, exact: true });
+  const inUse = (page: Page): Locator => palette(page).locator(`.palette-tile.in-use[data-prototype="${MOD_ENTITY}"]`);
+
+  const first = await launchWithGame();
+  try {
+    const { app, page, userData } = first;
+    await readGame(app, page);
+    await page.keyboard.press("Escape");
+    await expect(settingsDialog(page)).toHaveCount(0);
+    // A project with the mod on that uses its crate and two of its signals.
+    await switchOn(page);
+    await setSource(page, USES_MOD);
+    await expect(card(page, "crate")).toHaveCount(1);
+    expect(await problems(page)).toEqual([]);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
+    await expect(inUse(page)).toHaveCount(1);
+
+    // The module of the game and the mod have the button; the dialog of the mod lists what it brings, in the game's order.
+    await page.locator("[data-settings-toggle]").click();
+    await expect(itemsButtons(page)).toHaveCount(2);
+    await openItems(page);
+    await expect(itemsDialog(page)).toBeVisible();
+    await expect(projectSettingsOf(page)).toHaveCount(1);
+    await expect(side(page, "signals")).toHaveText("Signals3");
+    await expect(side(page, "entities")).toHaveText("Entities1");
+    await expect(rowsOf(page, "Shown signals")).toHaveText(["Gadget", "Mod crate", "Mod signal"]);
+    await expect(rowsOf(page, "Shown signals").first()).toHaveAttribute("title", "item:gadget");
+    await expect(rowsOf(page, "Hidden signals")).toHaveCount(0);
+    // A row has the mod's own icon where the app can draw it, as the picker has.
+    expect(await loadedImage(rowsOf(page, "Shown signals").last())).toMatch(iconAddress(`virtual/${MOD_SIGNAL}`));
+
+    // Two signals with the arrow to the right, then the entity.
+    await rowsOf(page, "Shown signals").first().click();
+    await listOf(page, "Shown signals").getByRole("option", { name: "Mod signal", exact: true }).click({ modifiers: ["ControlOrMeta"] });
+    await button(page, "Hide").click();
+    await expect(rowsOf(page, "Hidden signals")).toHaveText(["Gadget", "Mod signal"]);
+    await expect(rowsOf(page, "Shown signals")).toHaveText(["Mod crate"]);
+    await expect(side(page, "signals")).toHaveText("Signals3, 2 hidden");
+    await side(page, "entities").click();
+    await expect(rowsOf(page, "Shown entities")).toHaveText(["Mod crate"]);
+    await rowsOf(page, "Shown entities").first().click();
+    await button(page, "Hide").click();
+    await expect(rowsOf(page, "Hidden entities")).toHaveText(["Mod crate"]);
+    await expect(rowsOf(page, "Shown entities")).toHaveCount(0);
+    await expect(itemsDialog(page).locator('[data-list="shown"] [data-note="empty"]')).toHaveText("Every entity is hidden.");
+    await expect.poll(() => storedSettings(userData)).toEqual({ version: 1, gameDirectory: null, hidden: [MOD_HIDDEN] });
+    await page.screenshot({ path: resolve(SHOTS, "module-items-mod.png") });
+    await button(page, "Close").click();
+    await expect(itemsDialog(page)).toHaveCount(0);
+    await expect(moduleRow(page, "some-mod").locator(".module-count")).toHaveText("3 signals, 1 entity, 3 hidden");
+    await page.keyboard.press("Escape");
+    await expect(projectSettingsOf(page)).toHaveCount(0);
+
+    // The selector does not offer the crate, in its tab or in its search; the one of the circuit is in use all the same.
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
+    await expect(paletteEntry(page, "small-lamp")).toHaveCount(1);
+    await expect(inUse(page)).toHaveCount(1);
+    await palette(page).getByLabel("Search entities").fill("crate");
+    await expect(palette(page).locator(".palette-catalog .palette-empty")).toHaveText('No entity matches "crate".');
+    await palette(page).getByLabel("Search entities").fill("");
+
+    // The picker has the one signal of the mod that is not hidden, and neither of the two that are.
+    await selectEntity(page, "source");
+    await inspector(page).getByRole("button", { name: "Choose signal 1" }).click();
+    const picker = page.getByRole("dialog", { name: "Choose a signal" });
+    await picker.getByLabel("Search signals").fill("mod");
+    await expect(picker.locator('[data-signal="item:mod-crate"]')).toHaveCount(1);
+    await expect(picker.locator(`[data-signal="virtual:${MOD_SIGNAL}"]`)).toHaveCount(0);
+    await picker.getByLabel("Search signals").fill("gadget");
+    await expect(picker.locator(".picker-signals .muted-note")).toHaveText('No signal matches "gadget".');
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
+
+    // The project uses all three: no warning, the crate is drawn, the source is as it was.
+    expect(await problems(page)).toEqual([]);
+    await expect(page.locator(".statusbar")).not.toContainText("warning");
+    await expect(card(page, "crate")).toHaveCount(1);
+    await expect(inspector(page).locator(".field-warning")).toHaveCount(0);
+    expect(await sourceText(page)).toBe(USES_MOD);
+  } finally {
+    await closeApp(first.app);
+  }
+
+  // After a restart, with the data of the game in use again, a new project has the choice: a mod that is off shows it in its row,
+  // and switched on it does not offer what is hidden.
+  const second = await launchWithGame({ userData: first.userData, program: first.program, folder: resolve(first.dataDirectory, process.platform === "darwin" ? "../.." : "..") });
+  try {
+    const { page, userData } = second;
+    await gameDataInUse(page);
+    expect(await enabledModules(page)).toEqual(["base"]);
+    await page.locator("[data-settings-toggle]").click();
+    await expect(itemsButtons(page)).toHaveCount(2);
+    await expect(moduleRow(page, "some-mod").locator(".module-count")).toHaveText("3 signals, 1 entity, 3 hidden");
+    await moduleRow(page, "some-mod").locator("input").check();
+    await page.keyboard.press("Escape");
+    await expect(projectSettingsOf(page)).toHaveCount(0);
+    await expect(paletteEntry(page, "small-lamp")).toHaveCount(1);
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(0);
+
+    // Shown again, with the buttons for all of a list: the crate is offered again and the settings file holds nothing about it.
+    await page.locator("[data-settings-toggle]").click();
+    await openItems(page);
+    await expect(rowsOf(page, "Hidden signals")).toHaveText(["Gadget", "Mod signal"]);
+    await button(page, "Show all").click();
+    await expect(rowsOf(page, "Hidden signals")).toHaveCount(0);
+    await expect(rowsOf(page, "Shown signals")).toHaveText(["Gadget", "Mod crate", "Mod signal"]);
+    await side(page, "entities").click();
+    await button(page, "Show all").click();
+    await expect(rowsOf(page, "Shown entities")).toHaveText(["Mod crate"]);
+    await expect.poll(() => storedSettings(userData)).toEqual({ version: 1, gameDirectory: null });
+    await button(page, "Close").click();
+    await expect(moduleRow(page, "some-mod").locator(".module-count")).toHaveText("3 signals, 1 entity");
+    await page.keyboard.press("Escape");
+    await expect(paletteEntry(page, MOD_ENTITY)).toHaveCount(1);
+  } finally {
+    await closeApp(second.app);
+  }
+});
+
 /** The four combinators of the game and the two of the mod, apart on the edit canvas. */
 const COMBINATORS_SOURCE = `circuit "Combinators" {
     constant-combinator c at (40, 80) {

@@ -26,6 +26,8 @@ const api: FaceApi = {
     ipcRenderer.on(CHANNELS.appSettingsChanged, handler);
     return () => ipcRenderer.removeListener(CHANNELS.appSettingsChanged, handler);
   },
+  getHiddenItems: () => ipcRenderer.invoke(CHANNELS.getHiddenItems),
+  setHiddenItems: (items) => ipcRenderer.invoke(CHANNELS.setHiddenItems, items),
   getGameData: () => ipcRenderer.invoke(CHANNELS.getGameData),
   getGameDataStatus: () => ipcRenderer.invoke(CHANNELS.getGameDataStatus),
   readGameData: () => ipcRenderer.invoke(CHANNELS.readGameData),

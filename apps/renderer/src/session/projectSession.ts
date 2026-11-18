@@ -10,13 +10,14 @@ import type { Extension, Transaction } from "@codemirror/state";
 import { currentCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
 import { canRotate, DEFAULT_FACING, facingOf, isPrototypeName, isWireReach, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point, type PrototypeName } from "@face/model";
-import type { FaceApi, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
+import type { FaceApi, HiddenModuleItems, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
 import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
 import { builtInData, type DataInUse } from "../gameData/dataInUse.ts";
 import { describeRecord, modsNotice, modsRecord } from "../gameData/projectMods.ts";
 import { rotated } from "../entities/facing.ts";
+import { hiddenItems, withHiddenModule, type HiddenItems } from "../settings/hiddenItems.ts";
 import {
   DISPLAY_CAPABILITIES, DISPLAY_MODES, placeFacing, sameTool, SELECT_TOOL, toolAllowed,
   type Diagnostic, type DisplayMode, type EntityTile, type InspectorDraft, type ProjectView, type Tool, type UpdateOptions, type WorkbenchCommands,
@@ -39,6 +40,7 @@ import { SimulationRunner, type Scheduler } from "./simulationRunner.ts";
 
 const NO_DESKTOP = "Projects can only be opened and saved in the desktop app.";
 const LAST_PROJECT_NOT_REOPENED = "The last project could not be reopened.";
+const HIDDEN_NOT_STORED = "What you hid could not be stored, so it holds only until the app is closed:";
 const NOT_A_FRAGMENT = "Nothing was pasted: the clipboard does not hold entities of a circuit.";
 const NO_DIAGNOSTICS: readonly Diagnostic[] = [];
 const NO_WIRES: readonly string[] = [];
@@ -63,6 +65,8 @@ export interface SessionOptions {
   readonly scheduler?: Scheduler;
   /** The project to start with. Defaults to an empty, unsaved project with the modules of a new one. */
   readonly project?: LoadedProject;
+  /** What the user hid of the modules on this machine, as the settings of the application have it when the window starts. Defaults to nothing. */
+  readonly hidden?: readonly HiddenModuleItems[];
 }
 
 interface Draft extends InspectorDraft {
@@ -80,6 +84,8 @@ export class ProjectSession {
   private readonly data: DataInUse;
   private readonly analysis = new Analysis();
   private services: CatalogService;
+  /** A setting of the application, not of the project: it stays through every project of the window. */
+  private hidden: HiddenItems;
   private file: ProjectFile;
   private settings: ProjectSettings;
   private epoch = 0;
@@ -123,6 +129,7 @@ export class ProjectSession {
     const { file, source, settings } = openProjectFile(options.project ?? this.asNew(emptyProject()));
     this.file = file;
     this.settings = settings;
+    this.hidden = hiddenItems(options.hidden ?? []);
     this.services = this.servicesFor(settings.modules);
     this.simulation = new SimulationRunner(createCatalogEnvironment(this.catalog, this.services.enabled), () => this.touch(), options.scheduler);
     const language = languageSupport({ parseOf: (text) => (this.analysis.parse?.source === text ? this.analysis.parse : undefined), catalog: () => this.services });
@@ -227,11 +234,12 @@ export class ProjectSession {
   }
 
   private servicesFor(modules: readonly string[]): CatalogService {
-    return new CatalogService(this.catalog, modules);
+    return new CatalogService(this.catalog, modules, this.hidden);
   }
 
+  /** Not for offers: what the user hid plays no part in it. */
   private freshServices(): CatalogService {
-    return (this.importServices ??= this.servicesFor(defaultModules(this.catalog)));
+    return (this.importServices ??= new CatalogService(this.catalog, defaultModules(this.catalog)));
   }
 
   /** The empty project as a new one is with the data in use: the game's own modules that the data has are on, mods are off. */
@@ -578,6 +586,12 @@ export class ProjectSession {
       setWireReach: changing((wireReach) => {
         if (isWireReach(wireReach) && wireReach !== this.settings.wireReach) this.applySettings({ ...this.settings, wireReach });
       }),
+      // Only what is offered changes, so nothing is analyzed again: the window has the choice at once, the file a moment later.
+      setHiddenItems: changing((items) => {
+        this.hidden = hiddenItems(withHiddenModule(this.hidden.entries, items));
+        this.services = this.services.withHidden(this.hidden);
+        void this.storeHiddenItems(items);
+      }),
 
       newProject: async () => void (await this.replaceProject(async (api) => {
         const empty = await api.newProject();
@@ -698,6 +712,13 @@ export class ProjectSession {
 
   private fail(message: string): void {
     this.change(() => this.show(message));
+  }
+
+  /** Writes what is hidden of one module to the settings of the application. The window keeps the choice when that fails, and says so. */
+  private async storeHiddenItems(items: HiddenModuleItems): Promise<void> {
+    if (!this.api) return;
+    const result = await this.api.setHiddenItems(items).catch((error: unknown): IpcResult<never> => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
+    if (!result.ok) this.fail(`${HIDDEN_NOT_STORED} ${result.error}`);
   }
 
   /** Unwraps an IPC result; a failure becomes the visible error and yields undefined. */

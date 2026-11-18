@@ -2,6 +2,7 @@
 // the application settings say which installation of the game the icons come from and which data the editor works with, and
 // the workbench renders all of it. Nothing below this component knows where its props come from.
 import { useCallback, useMemo } from "react";
+import type { HiddenModuleItems } from "../../desktop/src/ipc.ts";
 import type { DataInUse } from "./gameData/dataInUse.ts";
 import { useGameData } from "./gameData/useGameData.ts";
 import { useCatalogEntityIcons } from "./icons/catalogEntityIcons.ts";
@@ -17,11 +18,13 @@ import { Workbench } from "./workbench/Workbench.tsx";
 export interface AppProps {
   /** The game data the window works with, applied before anything was rendered. */
   readonly data: DataInUse;
+  /** What the user hid of the modules on this machine, as it is when the window starts. */
+  readonly hidden: readonly HiddenModuleItems[];
 }
 
-export function App({ data }: AppProps) {
+export function App({ data, hidden }: AppProps) {
   const api = window.face;
-  const controller = useProjectSession(api, data);
+  const controller = useProjectSession(api, data, hidden);
   const appSettings = useAppSettings(api);
   // The installation decides whether the game can be read; its state is asked for again when it changes.
   const gameData = useGameData(api, controller.commands.reloadWindow, appSettings?.state);

@@ -111,7 +111,7 @@ describe("with data read from the game", () => {
   it("shows a mod by its title, with what it brings and what switching it does", () => {
     const { session } = modded();
     const { catalog } = session.state;
-    expect(catalog.modules.at(-1)).toEqual({ name: MOD, title: "Some Mod", version: "1.2.3", game: false, enabled: false, canDisable: true, enables: [], disables: [], missing: [], signalCount: 1, entityCount: 1 });
+    expect(catalog.modules.at(-1)).toEqual({ name: MOD, title: "Some Mod", version: "1.2.3", game: false, enabled: false, canDisable: true, enables: [], disables: [], missing: [], signalCount: 1, entityCount: 1, hasItems: true });
     expect(catalog.modules[0]).toMatchObject({ name: "base", game: true, enabled: true, canDisable: false, disables: ["elevated-rails", "recycler", "quality", "space-age"] });
     expect(catalog.modules[4]).toMatchObject({ name: "space-age", game: true, entityCount: 17 });
     const data = createCatalog(moddedData().catalog!);

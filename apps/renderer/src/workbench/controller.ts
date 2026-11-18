@@ -6,7 +6,7 @@ import type { EditorState, Transaction } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { PickerGroup, SpeakerInstrumentInfo } from "@face/catalog";
 import { canRotate, DEFAULT_FACING, facingOf, type Circuit, type Direction, type Entity, type EntityId, type Point, type PrototypeName, type SignalId, type Wire, type WireColor } from "@face/model";
-import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
+import type { BlueprintFileText, HiddenModuleItems } from "../../../desktop/src/ipc.ts";
 import { flipped, rotated, type FlipAxis, type RotationTurn } from "../entities/facing.ts";
 import type { EntityRegistry } from "../entities/registry.ts";
 import type { BlueprintExport, BlueprintReading, ImportedBlueprint } from "../session/blueprints.ts";
@@ -289,9 +289,27 @@ export interface ModuleView {
   readonly signalCount: number;
   /** Number of entities it adds to the selector. */
   readonly entityCount: number;
+  /** It has signals or entities the user can hide (`CatalogView.items`): its row has the button for that. */
+  readonly hasItems: boolean;
 }
 
-/** Catalog data for the project's enabled modules. A new object whenever the module set changes. */
+/** A signal or an entity of a module that the user can hide: one row of the lists in the dialog of the module. */
+export interface ModuleItem {
+  /** What the settings store for it: a signal as `kind:name`, an entity by the name of its prototype. Also what it is called in a source. */
+  readonly key: string;
+  /** Its name in the game. Of a mod this is the mod's own text. */
+  readonly label: string;
+  /** A signal: its catalog icon id. An entity is drawn by its prototype. */
+  readonly icon?: string;
+}
+
+/** What a module has to hide, each list in the order the picker and the selector have it. */
+export interface ModuleItems {
+  readonly signals: readonly ModuleItem[];
+  readonly entities: readonly ModuleItem[];
+}
+
+/** Catalog data for the project's enabled modules. A new object whenever the module set changes, and whenever the user hides or shows a signal or an entity. */
 export interface CatalogView {
   readonly gameVersion: string;
   /** The modules the project switches, the game's own first: with data read from a game also its mods that add a signal or a wired entity. */
@@ -304,10 +322,16 @@ export interface CatalogView {
   readonly qualities: readonly QualityOption[];
   /** The instruments of the programmable speaker with their notes, in the game's order, with their names in the game. */
   readonly speakerInstruments: readonly SpeakerInstrumentInfo[];
-  /** The signal picker for the enabled modules in game order, wildcards included. Built on first use. */
+  /** The signal picker for the enabled modules in game order, wildcards included, without the signals the user hid. Built on first use. */
   picker(): readonly PickerGroup[];
   /** The entity selector for the enabled modules: what can be placed, in the game's groups and order. Built on first use. */
   entities(): EntityRegistry;
+  /** What the dialog of a module lists, hidden or not: its signals and entities as they would be offered with the module on. Built on first use. */
+  items(module: string): ModuleItems;
+  /** What the settings of the application hold as hidden for a module, as stored: it may name what the data in use does not have. */
+  hiddenOf(module: string): HiddenModuleItems;
+  /** How many of `items(module)` are hidden. */
+  hiddenCount(module: string): number;
   describe(signal: SignalId): SignalInfo;
   /** The warning of an entity of modules that are switched off, in the words the source has on its declaration; undefined for any other entity. */
   entityWarning(prototype: PrototypeName): string | undefined;
@@ -487,6 +511,13 @@ export interface WorkbenchCommands {
   setProjectName(name: string): void;
   /** Sets the wire reach in tiles (0: unlimited) and measures the wires again. A value outside `WIRE_REACH_RANGE` is ignored. */
   setWireReach(wireReach: number): void;
+
+  // Settings of the application: not part of a project and not of the undo history.
+  /**
+   * Hides these signals and entities of a module, in place of what was hidden of it, and stores that for every project on this
+   * machine. The window stops offering them at once; nothing else about them changes.
+   */
+  setHiddenItems(items: HiddenModuleItems): void;
 
   // Project lifecycle. Replacing a project with unsaved changes asks the user first.
   newProject(): Promise<void>;

@@ -15,7 +15,8 @@ Two layers:
 ```
 src/
   App.tsx              composition root: session hook, catalog icons, signal picker and signal descriptions for the views
-  main.tsx, index.html entry point: asks for the game data and applies it, then renders; index.html carries the Content-Security-Policy
+  main.tsx, index.html entry point: asks for the game data and applies it, and for what the user hid, then renders; index.html
+                       carries the Content-Security-Policy
   gameData/
     dataInUse.ts       the data this window works with: asked for once, installed in the model and the catalog, built-in on failure
     projectMods.ts     the record of the game a project was made with: when a save writes it, what it says against the data in use   (pure)
@@ -35,7 +36,8 @@ src/
     clipboard.ts       copy and paste of entities: the clipboard text, what is accepted from it, where a pasted group lands   (pure)
     simulationRunner.ts  compile on change, keep state by semantic fingerprint, timer, bounded history, SimulationView
     simulationView.ts  snapshots to dock traces and card statuses                    (pure)
-    catalogService.ts  per module set: SignalResolver, signal info, picker tree, module list for the settings
+    catalogService.ts  per module set and for what the user hid: SignalResolver, signal info, picker tree, module list for the
+                       settings, what the dialog of a module lists
     moduleUse.ts       which switched-off modules a source uses (the game data of one analysis, recording)
     environment.ts     simulation environment from the catalog (order, stack sizes, rocket capacity, qualities)   (pure)
     persistence.ts     project file mapping, dirty comparison, the empty project a session begins with   (pure)
@@ -113,11 +115,17 @@ src/
     AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from, the game data (modal)
     appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
     useAppSettings.ts  the state as the main process reports it, and the two requests that change it
+    hiddenItems.ts     what the user hid of the modules, for every project: the rule the offers are filtered by, the entries
+                       after a change, what comes over IPC   (pure apart from the one call that loads it)
+    ModuleItems.tsx    the dialog of a module in which signals and entities of it are hidden: two lists and two arrows (modal)
+    moduleItems.ts     that dialog as view logic: what the lists hold, the selection under the mouse and the keys, what a
+                       move stores, its words   (pure)
   dialog/
     Modal.tsx          the modal dialog: backdrop, title, close button, focus kept inside and given back; it starts in the
                        control marked `data-autofocus`, otherwise in its first one
     focusReturn.ts     `useFocusReturn`: a panel that opens from a button and is not modal (project settings, signal picker)
                        gives the focus back to that button
+    selectAll.ts       Edit > Select All offered to the control with the focus, for a list that selects its own rows
   blueprint/
     ImportBlueprint.tsx  the dialog to paste a blueprint string into (also: what is in the way of a chosen file, the list of a
                        blueprint book), and the report on what an import left out
@@ -160,14 +168,14 @@ interface WorkbenchController {
 `WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, otherMods, unknownModules, qualities,
-`speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`, `entityWarning(prototype)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
+`speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`, `entityWarning(prototype)`, and for what the user hid `items(module)`, `hiddenOf(module)`, `hiddenCount(module)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `flipEntities`, `updateEntity`,
 `discardDraft`, `renameEntity`, `deleteEntities`, `deleteSelection`, `copyEntities`, `pasteEntities`, `nudgeSelection`, `duplicateSelection`, `addWire`, `removeWire`,
 `toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `placeHere`, `unplace`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
-`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `enableUsedModules`, `setProjectName`, `setWireReach`) and project (`newProject`, `openProject`,
+`step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `enableUsedModules`, `setProjectName`, `setWireReach`), the one setting of the application the session holds (`setHiddenItems`; see "Hidden signals and entities") and project (`newProject`, `openProject`,
 `loadProject`, `openExample`, `save`, `saveAs`) and blueprints (`readBlueprint`, `openBlueprint`, `chooseBlueprintFile`, `exportBlueprint`,
 `saveBlueprintFile`; see "Blueprints of the game").
 
@@ -348,6 +356,23 @@ simulation (`run`, `pause`,
   removes, which has no module to name; "Not a signal of Factorio's catalog" for one the data does not have.
   A new project (the one the window starts with, File > New Project) has `defaultModules`: the game's own modules that the data in
   use has, in the order of the empty project, and no mod. An existing project is opened with the list it has.
+- **Hidden signals and entities.** What the user hid of a module (`settings/hiddenItems.ts`; the dialog is described under
+  "Signals and entities of a module") is a setting of the application, stored by the main process per module name
+  (`docs/adr/0001-architecture.md`, item 16). `main.tsx` asks for it before the first render (`loadHiddenItems`), the session
+  holds it (`SessionOptions.hidden`) and gives it to every `CatalogService` it makes; `setHiddenItems({ module, signals,
+  entities })` replaces the entry of one module, makes new services for the same modules (`withHidden`, which keeps what does
+  not depend on it: the picker tree of the modules and the lists of the dialogs) and asks the main process to store it. The
+  window so has the choice at once; when it cannot be stored the toast says "What you hid could not be stored, so it holds only
+  until the app is closed: ..." and the window keeps it. It is not part of the project: no unsaved change, no undo step, no new
+  analysis, and it stays through every project of the window.
+  It is a second rule of what is offered, beside the modules, and sits in the same places, one per offer: `picker()` (the tree
+  without the hidden signals; a subgroup goes with its last signal and a tab with its last subgroup), `selectableSignals()` for
+  completion in the source, `entities()` (`entityRegistry` takes it as `hiddenByUser`, in the one test that leaves out what the
+  game hides: no tile in a tab, none in the search, not in the count) and `offersPrototype()` for the words of a declaration.
+  Nothing else knows it. A hidden signal or entity that a project uses has its status, name, icon and warnings as ever, so it
+  is valid, without a warning, drawn, simulated, imported and exported, and `registry.entry` and "Entities in use" have it.
+  A record is of the first module it names (`HiddenItems.signal`, `HiddenItems.entity`): the entry of another module does not
+  hide it. The wildcards are never hidden, and neither are the four combinators of the selector's first row.
 - **Simulation.** `SimulationRunner` compiles each new valid circuit with the catalog environment. If `semanticFingerprint` is unchanged
   (moves, renames, comments) the running engine, its tick and its history stay; otherwise it starts at tick 0. It has no reference to the
   document, so no simulation activity can create an edit. While the source has errors it is blocked with a notice and resumes afterwards.
@@ -1094,6 +1119,51 @@ loads either does the workbench show one hint at the right end of the title bar 
 nothing and takes no room from the workbench), with a button "Game folder..." that opens the dialog and one that dismisses the hint
 until the next start.
 
+## Signals and entities of a module
+
+A module that is on offers all its signals in the picker and all its entities in the selector; with the mods of a game that is
+a lot. The button of a row of the project settings opens `settings/ModuleItems.tsx` for that module: a `Modal` over the project
+settings, which stay open under it (`ProjectSettings` gets `covered` and leaves the keys and the pointer to the dialog; the
+workbench holds which module it is for and closes it when the project settings close or the module is gone). The choice is a
+setting of the application (see "Hidden signals and entities" under "How the session works"); the dialog is presentational
+and its logic is `settings/moduleItems.ts` (pure).
+
+- **What it shows.** The title is the module's (a mod's own text, as text, one line of it). Below it one sentence: "What you
+  hide is not offered any more, in every project on this machine. A project that uses it keeps it, and anything new is shown."
+  Then a switch between the two sides (`.side-switch button[data-side="signals|entities"]`, `aria-pressed`: "Signals" and
+  "Entities", each with how many the module has and how many of them are hidden, "576, 3 hidden"; a side with nothing to list is
+  disabled, and the dialog opens on the entities for a module without signals) and a filter field ("Filter by name", where the
+  dialog starts; it narrows both lists by the name in the game or the internal name, whatever the case; Escape empties it first
+  and closes the dialog from the empty field).
+  For the side on show, two lists of one size (`section.item-list[data-list="shown|hidden"]`): "Shown" on the left and "Hidden"
+  on the right, each with its count in the heading (`.count-badge`: "12", or "5 of 12" under a filter) and, while it has no row,
+  a line in its own room (`[data-note="empty"]`: "No signal is hidden.", "Every entity is hidden.", "Nothing matches the
+  filter."). Between them two buttons, one above the other: the arrow to the right hides the selected rows of the left list
+  (named "Hide"), the arrow to the left shows the selected rows of the right one ("Show"); each is disabled without a selection
+  in its list. Under the lists "Hide all" and "Show all", which act on what the filter leaves of their list, and "Close".
+- **What is listed** (`CatalogView.items(module)`): the signals the picker would offer for the module and the entities the
+  selector would, were the module switched on beside the modules of the project, with what it requires. So nothing the game
+  hides, no wildcard, and none of the four combinators of the selector's first row, which are always offered. A record that
+  names several modules is in the list of the first one only. Both lists are in the order of the picker and of the selector
+  (the game's), whatever order things were hidden in. A row is the icon as the picker and the selector draw it (none for a
+  signal without one) and the name in the game; its hover text is the internal name (`item:iron-plate`, `wooden-chest`), which
+  is also `data-key`.
+- **The lists** are list boxes with several rows selected at a time (`ul[role="listbox"][aria-multiselectable]`, named "Shown
+  signals", "Hidden entities"; a row is `li[role="option"]` with `aria-selected`; the list has the focus and names its active
+  row, `aria-activedescendant`, `data-active`). A click selects the row alone, with Cmd (Ctrl on the other platforms) it adds
+  the row or takes it out, with Shift it selects from the row chosen last to this one. The up and down arrows, Home and End
+  move the selection, with Shift they extend it; Cmd/Ctrl+A selects all the list has under the filter; Enter moves the
+  selected rows across, or the active one while none is selected; a double click moves that row across. A selected row that a
+  filter takes away is not acted on. Rows that moved are selected in the list they arrive in, so the other arrow takes them
+  back; the list they left has no selection, the focus, and the row after the first of them as its active one, so Enter after
+  Enter moves row after row.
+  Cmd/Ctrl+A is also Edit > Select All of the native menu, which may take the key before the page sees it. The workbench
+  therefore offers that command to the control with the focus first (`offerSelectAll` of `dialog/selectAll.ts`, an event the
+  list takes), and only then selects the entities of the circuit.
+- **Storing.** Every move is handed on at once (`onChange` with the module's entry, `moveItems`; there is no Save button):
+  hiding appends to what is stored, showing removes from it, and names stored for things the data in use does not have stay.
+  "Close", the close button and Escape close the dialog and give the focus back to the button of the row.
+
 ## Game data
 
 The entity and signal data is the one that comes with the build or one the main process read from the user's installed game, mods
@@ -1119,7 +1189,10 @@ in a native dialog of its own before it starts the game.
   `workbench/moduleOrder.ts`; the catalog has them by name): the checkbox and the title, which has the width of the row (a mod's
   own text, rendered as text, on two lines where it needs them and cut after that; on hover the title in full with the name,
   `rowHint`); below it what the module adds (`.module-count`, `moduleCounts`: "N signals, M entities", a count of none left out,
-  "Only hidden signals or entities" for a mod none of whose records can be chosen); and below that the note
+  "Only hidden signals or entities" for a mod none of whose records can be chosen; with ", 3 hidden" at its end when the user
+  hid signals or entities of the module, `CatalogView.hiddenCount`); beside them the button that opens the dialog of the module
+  (`button[data-action="choose-items"]`, the eye glyph, named "Signals and entities of <title>"; every row whose module has
+  something to list has it, `ModuleView.hasItems`, on or off); and below that the note
   of what switching it does ("Switching on also switches on ...", "Always enabled" for `base`; `small`). The signals counted are
   the selectable ones that are there only with the module: those it created, and those of another creator that need it, so a
   record of two modules counts in both rows (the sum of the rows can exceed the number of signals). From eleven rows on the list
@@ -1202,14 +1275,16 @@ table, modules)` in `entities/registry.ts` makes it from
   is built with);
 - the entity table (`@face/model`): which prototypes a circuit wire connects to, which of them the game hides (`hidden`: the chests
   of its editor, the loaders), which module adds them, and through `PROTOTYPES` their kind, name, tiles and reach;
-- the modules of the project (`CatalogView.entities()`, built on first use per module set).
+- the modules of the project (`CatalogView.entities()`, built on first use per module set);
+- what the user hid in the settings of the application (`hiddenByUser`, see "Hidden signals and entities"): in no tab, like
+  what the game hides, and known to `entry` and `position` all the same.
 
 ```ts
 interface EntityRegistry {
   pinned: PaletteEntry[];               // the first row: the combinators (`PINNED_KINDS`, a decision of the user)
   groups: PaletteGroup[];               // the tabs: { name, label, icon, subgroups: [{ name, entries }] }, all in the game's order
   entries: PaletteEntry[];              // everything offered, once
-  entry(prototype): PaletteEntry | undefined;   // also of a prototype that is not offered (hidden, module off)
+  entry(prototype): PaletteEntry | undefined;   // also of a prototype that is not offered (hidden, hidden by the user, module off)
   offers(prototype): boolean;
   groupOf(prototype): string | undefined;       // the tab that holds its tile
   position(prototype): number;                  // its place in the game's order of everything

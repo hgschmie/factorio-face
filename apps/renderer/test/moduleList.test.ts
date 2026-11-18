@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { consequence, FILTER_FROM, filterModules, listedRows, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, NOTHING_TO_CHOOSE, otherModsNote, rowHint } from "../src/settings/moduleList.ts";
 import type { ModuleView } from "../src/workbench/controller.ts";
 
-const view = (name: string, title: string, more: Partial<ModuleView> = {}): ModuleView => ({ name, title, version: "1.0.0", game: false, enabled: true, canDisable: true, enables: [], disables: [], missing: [], signalCount: 0, entityCount: 0, ...more });
+const view = (name: string, title: string, more: Partial<ModuleView> = {}): ModuleView => ({ name, title, version: "1.0.0", game: false, enabled: true, canDisable: true, enables: [], disables: [], missing: [], signalCount: 0, entityCount: 0, hasItems: false, ...more });
 const MODULES = [view("base", "Base Mod", { game: true, canDisable: false }), view("space-age", "Space Age", { game: true }), view("quality", "Quality", { game: true }), view("bobs", "Bob's Logistics"), view("ltn", "LTN - Logistic Train Network")];
 const LONG = "x".repeat(200);
 
@@ -47,6 +47,12 @@ describe("the note of a row", () => {
     // A row it has only while it is on or in use: what it adds is all hidden.
     expect(moduleCounts(view("a", "A"))).toBe("Only hidden signals or entities");
     expect(NOTHING_TO_CHOOSE).toBe("Only hidden signals or entities");
+  });
+
+  it("says how many of them the user hid, when there are some", () => {
+    expect(moduleCounts(view("a", "A", { signalCount: 771, entityCount: 17 }), 3)).toBe("771 signals, 17 entities, 3 hidden");
+    expect(moduleCounts(view("a", "A", { entityCount: 1 }), 1)).toBe("1 entity, 1 hidden");
+    expect(moduleCounts(view("a", "A", { signalCount: 5 }), 0)).toBe("5 signals");
   });
 });
 

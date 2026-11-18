@@ -55,6 +55,12 @@ export const LIMITS = {
   blueprintFileBytes: 16 * 1024 * 1024,
   /** Characters of a blueprint string File > Export Blueprint writes: the longest one the importer reads back. */
   blueprintStringLength: 8 * 1024 * 1024,
+  /** Modules the application settings hold hidden signals or entities for. */
+  hiddenModules: 2000,
+  /** Hidden signals and entities of all modules together. */
+  hiddenItems: 200_000,
+  /** A hidden signal as `kind:name`, or the name of a hidden entity. The game takes names of up to 200 characters. */
+  hiddenItemLength: 256,
 } as const;
 
 /** The extension a blueprint file gets unless the user names another one. The file is the blueprint string as text. */
@@ -202,6 +208,20 @@ export interface AppSettingsState {
   readonly iconRevision: number;
 }
 
+/**
+ * What the user hid of one module (one of the game's, or a mod) on this machine, for every project: the editor does not offer
+ * these signals and entities. Only what is hidden is stored, so anything a module adds later is shown. An entry stays while its
+ * module is not part of the data in use.
+ */
+export interface HiddenModuleItems {
+  /** The name of the module, as the game data has it. */
+  readonly module: string;
+  /** Signals without a quality, as `kind:name`. */
+  readonly signals: readonly string[];
+  /** Entity prototypes by name. */
+  readonly entities: readonly string[];
+}
+
 // The entity and signal data the editor works with: the one that comes with the build, or one read from the user's own game.
 
 export type GameDataSource =
@@ -334,6 +354,8 @@ export const CHANNELS = {
   chooseGameFolder: "face:app-settings:choose-game-folder",
   resetGameFolder: "face:app-settings:reset-game-folder",
   appSettingsChanged: "face:app-settings:changed",
+  getHiddenItems: "face:app-settings:hidden:get",
+  setHiddenItems: "face:app-settings:hidden:set",
   getGameData: "face:game-data:get",
   getGameDataStatus: "face:game-data:status",
   readGameData: "face:game-data:read",
@@ -399,6 +421,14 @@ export interface FaceApi {
   resetGameFolder(): Promise<IpcResult<AppSettingsState>>;
   /** Called after the game installation in use changed. */
   onAppSettingsChanged(listener: (state: AppSettingsState) => void): () => void;
+  /** The signals and entities the user hid, per module: the modules of the data in use and any other the settings file names. */
+  getHiddenItems(): Promise<IpcResult<readonly HiddenModuleItems[]>>;
+  /**
+   * Replaces what is hidden of one module and stores it in the settings file of this machine; a module with nothing hidden loses
+   * its entry, the entries of all other modules stay. Resolves with everything that is hidden then. Input out of bounds is an
+   * error and stores nothing.
+   */
+  setHiddenItems(items: HiddenModuleItems): Promise<IpcResult<readonly HiddenModuleItems[]>>;
   /** The data this window works with: what it must apply before it reads a circuit. Takes no arguments. */
   getGameData(): Promise<IpcResult<GameDataInUse>>;
   /** Where the data comes from, whether the game changed since, whether the game can be read, and where a request to read it stands. */

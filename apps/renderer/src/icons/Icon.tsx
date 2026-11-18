@@ -65,6 +65,12 @@ const GLYPHS = {
     </>
   ),
   note: <path d="M4 6h16M4 12h16M4 18h10" />,
+  eye: (
+    <>
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+      <circle cx="12" cy="12" r="2.8" />
+    </>
+  ),
   copy: (
     <>
       <rect x="9" y="9" width="12" height="12" rx="2" />

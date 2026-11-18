@@ -1,7 +1,9 @@
+import { STANDARD_SIGNAL_KINDS } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { LIMITS, type ProjectData } from "../src/ipc.ts";
 import {
   manifestFileContent,
+  hiddenItemCount,
   parseAppSettingsFile,
   parseArchiveEntryName,
   parseBoolean,
@@ -9,6 +11,8 @@ import {
   parseExampleFileName,
   parseExportBlueprintRequest,
   parseGameDirectory,
+  parseHiddenItemsFile,
+  parseHiddenModuleItems,
   parseManifest,
   parseManifestFile,
   parseProjectData,
@@ -379,15 +383,56 @@ describe("application settings", () => {
   });
 
   it("reads the settings file", () => {
-    expect(parseAppSettingsFile({ version: 1, gameDirectory: "/Applications/factorio.app" })).toEqual({ gameDirectory: "/Applications/factorio.app" });
-    expect(parseAppSettingsFile({ version: 1, gameDirectory: null })).toEqual({ gameDirectory: null });
-    expect(parseAppSettingsFile({ version: 1 })).toEqual({ gameDirectory: null });
-    expect(parseAppSettingsFile({ version: 1, gameDirectory: "/games/factorio", unknown: { nested: true } })).toEqual({ gameDirectory: "/games/factorio" });
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: "/Applications/factorio.app" })).toEqual({ gameDirectory: "/Applications/factorio.app", hidden: [] });
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: null })).toEqual({ gameDirectory: null, hidden: [] });
+    expect(parseAppSettingsFile({ version: 1 })).toEqual({ gameDirectory: null, hidden: [] });
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: "/games/factorio", unknown: { nested: true } })).toEqual({ gameDirectory: "/games/factorio", hidden: [] });
   });
 
   const folder = "/games/factorio";
   const damaged = [undefined, null, [], "text", {}, { version: 2, gameDirectory: folder }, { version: "1", gameDirectory: folder }, { version: 1, gameDirectory: "games/factorio" }, { version: 1, gameDirectory: [folder] }];
   it.each(damaged.map((value) => [value]))("reads %j as the default settings", (value) => {
-    expect(parseAppSettingsFile(value)).toEqual({ gameDirectory: null });
+    expect(parseAppSettingsFile(value)).toEqual({ gameDirectory: null, hidden: [] });
+  });
+
+  it("reads the folder and what is hidden independently of each other", () => {
+    const hidden = [{ module: "base", signals: ["item:wooden-chest"], entities: ["wooden-chest"] }];
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: "relative", hidden })).toEqual({ gameDirectory: null, hidden });
+    expect(parseAppSettingsFile({ version: 1, gameDirectory: folder, hidden: "nothing" })).toEqual({ gameDirectory: folder, hidden: [] });
+    expect(parseAppSettingsFile({ version: 2, gameDirectory: folder, hidden })).toEqual({ gameDirectory: null, hidden: [] });
+  });
+
+  it("accepts what the renderer asks to hide of a module", () => {
+    const signals = STANDARD_SIGNAL_KINDS.map((kind) => `${kind}:some-name`);
+    expect(parseHiddenModuleItems({ module: "base", signals, entities: ["wooden-chest", "A mod's Entity (v2)"] })).toEqual({ module: "base", signals, entities: ["wooden-chest", "A mod's Entity (v2)"] });
+    expect(parseHiddenModuleItems({ module: "LogisticTrainNetwork", signals: [], entities: [] })).toEqual({ module: "LogisticTrainNetwork", signals: [], entities: [] });
+    // The name of a signal is a mod's own: any text of one line.
+    expect(parseHiddenModuleItems({ module: "m", signals: ["item:A mod's @ item (v2)"], entities: [] }).signals).toEqual(["item:A mod's @ item (v2)"]);
+    expect(parseHiddenModuleItems({ module: "m", signals: [`item:${"x".repeat(LIMITS.hiddenItemLength - 5)}`], entities: ["x".repeat(LIMITS.hiddenItemLength)] }).entities[0]).toHaveLength(LIMITS.hiddenItemLength);
+  });
+
+  it.each<[string, unknown]>([
+    ["no object", ["base"]],
+    ["no module", { signals: [], entities: [] }],
+    ["a module name with a line break", { module: "a\nb", signals: [], entities: [] }],
+    ["signals that are no list", { module: "base", signals: { 0: "item:a" }, entities: [] }],
+    ["a signal without a kind", { module: "base", signals: ["iron-plate"], entities: [] }],
+    ["a signal of no kind there is", { module: "base", signals: ["thing:iron-plate"], entities: [] }],
+    ["a signal without a name", { module: "base", signals: ["item:"], entities: [] }],
+    ["a signal that is too long", { module: "base", signals: [`item:${"x".repeat(LIMITS.hiddenItemLength)}`], entities: [] }],
+    ["an entity that is no text", { module: "base", signals: [], entities: [{ name: "crate" }] }],
+    ["too many entities", { module: "base", signals: [], entities: Array.from({ length: LIMITS.hiddenItems + 1 }, () => "crate") }],
+    ["too many of both together", { module: "base", signals: Array.from({ length: LIMITS.hiddenItems / 2 }, (_, i) => `item:s${i}`), entities: Array.from({ length: LIMITS.hiddenItems / 2 + 1 }, (_, i) => `e${i}`) }],
+  ])("rejects a request to hide with %s", (_name, value) => {
+    expect(() => parseHiddenModuleItems(value)).toThrow(ValidationError);
+  });
+
+  it("reads the hidden items of the file up to its limits", () => {
+    const entry = (module: string, count: number) => ({ module, signals: [], entities: Array.from({ length: count }, (_, i) => `e${i}`) });
+    const read = parseHiddenItemsFile([entry("a", LIMITS.hiddenItems - 2), entry("b", 5), entry("c", 5)]);
+    expect(read.map((item) => [item.module, item.entities.length])).toEqual([["a", LIMITS.hiddenItems - 2], ["b", 2]]);
+    expect(hiddenItemCount(read)).toBe(LIMITS.hiddenItems);
+    expect(parseHiddenItemsFile(Array.from({ length: LIMITS.hiddenModules + 10 }, (_, i) => entry(`m${i}`, 1)))).toHaveLength(LIMITS.hiddenModules);
+    for (const value of [undefined, null, {}, "text", 3]) expect(parseHiddenItemsFile(value)).toEqual([]);
   });
 });

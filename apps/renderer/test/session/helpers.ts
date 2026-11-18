@@ -1,7 +1,7 @@
 import { STANDARD_CATALOG_VERSION } from "@face/catalog";
 import type { Entity, EntityId } from "@face/model";
 import { createEmptyProject, DEFAULT_GAME_VERSION } from "../../../desktop/src/emptyProject.ts";
-import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, GameDataStatus, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
+import type { AppSettingsState, BlueprintFileText, ExportBlueprintRequest, FaceApi, GameDataStatus, HiddenModuleItems, IpcResult, LoadedProject, ProjectData, ProjectManifest } from "../../../desktop/src/ipc.ts";
 import { DEFAULT_FILE_NAME } from "../../src/session/persistence.ts";
 import { ProjectSession, type SessionOptions } from "../../src/session/projectSession.ts";
 import type { Scheduler } from "../../src/session/simulationRunner.ts";
@@ -99,6 +99,10 @@ export interface FakeDesktop {
   readonly blueprintExports: ExportBlueprintRequest[];
   /** How often the window was asked to be loaded again. */
   reloads: number;
+  /** What the settings of the application hold as hidden, per module. */
+  hidden: HiddenModuleItems[];
+  /** Why hidden signals and entities cannot be stored; null when they can. */
+  hiddenError: string | null;
 }
 
 const NO_GAME: AppSettingsState = { chosenFolder: null, dataDirectory: null, source: "none", gameVersion: null, catalogVersion: STANDARD_CATALOG_VERSION, versionMatch: null, modules: [], problem: null, iconRevision: 0 };
@@ -121,6 +125,8 @@ export function fakeDesktop(): FakeDesktop {
     blueprintPath: "/blueprints/exported.txt",
     blueprintExports: [],
     reloads: 0,
+    hidden: [],
+    hiddenError: null,
     api: {
       platform: "test",
       catalogAssetUrl: "face-asset://catalog/",
@@ -166,6 +172,12 @@ export function fakeDesktop(): FakeDesktop {
       chooseGameFolder: () => ok(null),
       resetGameFolder: () => ok(NO_GAME),
       onAppSettingsChanged: () => () => undefined,
+      getHiddenItems: () => ok(desktop.hidden),
+      setHiddenItems: (items) => {
+        if (desktop.hiddenError !== null) return Promise.resolve({ ok: false, error: desktop.hiddenError });
+        desktop.hidden = [...desktop.hidden.filter((entry) => entry.module !== items.module), ...(items.signals.length + items.entities.length > 0 ? [structuredClone(items)] : [])];
+        return ok(desktop.hidden);
+      },
       getGameData: () => ok({ source: { kind: "built-in", version: STANDARD_CATALOG_VERSION }, problem: null, mods: [], catalog: null, entities: null, icons: [] }),
       getGameDataStatus: () => ok(BUILT_IN_DATA),
       readGameData: () => ok(BUILT_IN_DATA),

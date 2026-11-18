@@ -1,5 +1,5 @@
 // Validators for everything that crosses the IPC boundary or is read from disk. Pure: no Electron, no filesystem access.
-import { clampWireReach } from "@face/model";
+import { clampWireReach, isSignalKind } from "@face/model";
 import { basename, isAbsolute, normalize } from "node:path";
 import type { AppSettings } from "./appSettings.ts";
 import {
@@ -12,6 +12,7 @@ import {
   type CustomSignalGroup,
   type ExportBlueprintRequest,
   type GameMod,
+  type HiddenModuleItems,
   type JsonValue,
   type ProjectData,
   type ProjectManifest,
@@ -286,14 +287,68 @@ export function parseGameDirectory(value: unknown): string {
   return parseAbsolutePath(value, "Game folder");
 }
 
-/** Tolerant reader for the settings file of this machine: unknown or damaged content reads as the defaults. */
+/** A signal kind and a name. The name is the game's or a mod's and is not looked into: it only ever compares equal to a signal of the data or not. */
+const HIDDEN_SIGNAL = /^([a-z-]+):./;
+
+function parseHiddenItem(value: unknown, what: "signal" | "entity"): string {
+  const item = parseString(value, `Hidden ${what}`, LIMITS.hiddenItemLength);
+  if (what === "signal" && !isSignalKind(HIDDEN_SIGNAL.exec(item)?.[1] ?? "")) fail("Hidden signal must be a signal kind and a name");
+  return item;
+}
+
+/** What the renderer asks to hide of one module: bounded, each signal and entity once. A module with two empty lists is valid: nothing of it is hidden. */
+export function parseHiddenModuleItems(value: unknown): HiddenModuleItems {
+  if (!isRecord(value)) fail("Hidden items must be an object");
+  const list = (items: unknown, what: "signal" | "entity"): string[] => [...new Set(parseArray(items, `Hidden ${what} list`, LIMITS.hiddenItems).map((item) => parseHiddenItem(item, what)))];
+  const hidden = { module: parseString(value.module, "Module name", LIMITS.identifierLength), signals: list(value.signals, "signal"), entities: list(value.entities, "entity") };
+  if (hidden.signals.length + hidden.entities.length > LIMITS.hiddenItems) fail(`Too many hidden signals and entities (limit ${LIMITS.hiddenItems})`);
+  return hidden;
+}
+
+/** How many signals and entities the entries hide together. */
+export function hiddenItemCount(hidden: readonly HiddenModuleItems[]): number {
+  return hidden.reduce((sum, entry) => sum + entry.signals.length + entry.entities.length, 0);
+}
+
+/**
+ * Tolerant reader for the hidden signals and entities of the settings file: an entry or an item that is malformed, a module
+ * named twice and whatever is beyond the limits are dropped, the rest is kept. An entry that hides nothing is dropped as well.
+ */
+export function parseHiddenItemsFile(value: unknown): HiddenModuleItems[] {
+  if (!Array.isArray(value)) return [];
+  const result: HiddenModuleItems[] = [];
+  let budget: number = LIMITS.hiddenItems;
+  const list = (items: unknown, what: "signal" | "entity"): string[] => {
+    const kept = new Set<string>();
+    for (const item of Array.isArray(items) ? items : []) {
+      if (kept.size >= budget) break;
+      try {
+        kept.add(parseHiddenItem(item, what));
+      } catch (error) {
+        if (!(error instanceof ValidationError)) throw error;
+      }
+    }
+    budget -= kept.size;
+    return [...kept];
+  };
+  for (const entry of value) {
+    if (result.length >= LIMITS.hiddenModules || budget <= 0) break;
+    if (!isRecord(entry) || typeof entry.module !== "string" || entry.module === "" || entry.module.length > LIMITS.identifierLength || hasControlCharacters(entry.module)) continue;
+    if (result.some((known) => known.module === entry.module)) continue;
+    const hidden = { module: entry.module, signals: list(entry.signals, "signal"), entities: list(entry.entities, "entity") };
+    if (hidden.signals.length + hidden.entities.length > 0) result.push(hidden);
+  }
+  return result;
+}
+
+/** Tolerant reader for the settings file of this machine: unknown or damaged content reads as the defaults, each setting on its own. */
 export function parseAppSettingsFile(value: unknown): AppSettings {
-  const defaults: AppSettings = { gameDirectory: null };
-  if (!isRecord(value) || value.version !== APP_SETTINGS_VERSION || value.gameDirectory === null || value.gameDirectory === undefined) return defaults;
+  if (!isRecord(value) || value.version !== APP_SETTINGS_VERSION) return { gameDirectory: null, hidden: [] };
+  let gameDirectory: string | null = null;
   try {
-    return { gameDirectory: parseGameDirectory(value.gameDirectory) };
+    if (value.gameDirectory !== null && value.gameDirectory !== undefined) gameDirectory = parseGameDirectory(value.gameDirectory);
   } catch (error) {
     if (!(error instanceof ValidationError)) throw error;
-    return defaults;
   }
+  return { gameDirectory, hidden: parseHiddenItemsFile(value.hidden) };
 }

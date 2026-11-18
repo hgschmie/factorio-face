@@ -3,7 +3,7 @@
 // there are, and the enabled modules which of them the project has. No prototype is named here: a further entity of the game is
 // its record in the two tables. The palette, its count, the digit keys and the icon probes read it. Pure.
 import { currentCatalog, findSignal, isAvailable, pickerTree, type Catalog } from "@face/catalog";
-import { entityTable, PROTOTYPES, prototypeData, prototypesOf, type EntityKind, type EntityShape, type EntityTable, type PrototypeName } from "@face/model";
+import { entityTable, PROTOTYPES, prototypeData, prototypesOf, type EntityKind, type EntityPrototype, type EntityShape, type EntityTable, type PrototypeName } from "@face/model";
 import { prototypeFacts, prototypeLabel } from "./kindInfo.ts";
 
 /**
@@ -58,13 +58,13 @@ export const PINNED_KINDS = ["constant", "arithmetic", "decider", "selector"] as
 export interface EntityRegistry {
   /** The first row: always on show. */
   readonly pinned: readonly PaletteEntry[];
-  /** The tabs in the game's order, each with its subgroups and their entries in the game's order. Hidden prototypes are in none. */
+  /** The tabs in the game's order, each with its subgroups and their entries in the game's order. Prototypes the game hides and those the user hid are in none. */
   readonly groups: readonly PaletteGroup[];
   /** Every entry that is offered, once: the pinned ones, then the others in the order of the groups. */
   readonly entries: readonly PaletteEntry[];
-  /** The entry of a prototype the editor has, offered or not (a hidden one, one of a module that is off); undefined for a name it does not have. */
+  /** The entry of a prototype the editor has, offered or not (a hidden one, one the user hid, one of a module that is off); undefined for a name it does not have. */
   entry(prototype: PrototypeName): PaletteEntry | undefined;
-  /** Whether the selector offers the prototype: it exists for the modules and the game does not hide it. */
+  /** Whether the selector offers the prototype in a tab: it exists for the modules, and neither the game nor the user hides it. */
   offers(prototype: PrototypeName): boolean;
   /** The name of the group whose tab holds the tile of a prototype. */
   groupOf(prototype: PrototypeName): string | undefined;
@@ -85,8 +85,11 @@ function entryOf(prototype: PrototypeName): PaletteEntry {
  * A tab and a block of rows are there with an entity in them, whichever module created the group or the subgroup (`pickerTree`):
  * an entity of a mod may sit in a subgroup of another one. Data the catalog cannot order (a signal without its subgroup) leaves
  * the groups empty; the pinned row stays.
+ *
+ * `hiddenByUser` says which entities the user hid in the settings of the application: they are in no tab, like those the game
+ * hides, and nothing else about them changes. It is not asked about the pinned entries, which are always offered.
  */
-export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: Iterable<string>): EntityRegistry {
+export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: Iterable<string>, hiddenByUser: (game: EntityPrototype) => boolean = () => false): EntityRegistry {
   const active = new Set(enabled);
   const has = (name: string): boolean => Object.hasOwn(PROTOTYPES, name) && table.byName.has(name);
   const byPrototype = new Map<PrototypeName, PaletteEntry>();
@@ -102,6 +105,8 @@ export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: It
   } catch {
     // Signals without their group: nothing consistent to order by.
   }
+  const pinned = PINNED_KINDS.map((kind) => entry(standardPrototype(kind))!);
+  const pinnedNames = new Set(pinned.map((candidate) => candidate.prototype));
   const positions = new Map<PrototypeName, number>();
   const tabs = new Map<PrototypeName, string>();
   const groups: PaletteGroup[] = [];
@@ -113,7 +118,7 @@ export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: It
         const game = table.byName.get(name);
         if (!game || !has(name) || !isAvailable(game, active)) continue;
         positions.set(name, positions.size);
-        if (game.hidden) continue;
+        if (game.hidden || (!pinnedNames.has(name) && hiddenByUser(game))) continue;
         entries.push(entry(name)!);
         tabs.set(name, group.name);
       }
@@ -121,7 +126,6 @@ export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: It
     }
     if (shown.length > 0) groups.push({ name: group.name, label: group.displayName, icon: group.icon, subgroups: shown });
   }
-  const pinned = PINNED_KINDS.map((kind) => entry(standardPrototype(kind))!);
   const grouped = groups.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries));
   const unordered = table.entities.map((game) => game.name).filter((name) => !positions.has(name));
   return {
@@ -138,7 +142,7 @@ export function entityRegistry(catalog: Catalog, table: EntityTable, enabled: It
 /**
  * "Entities in use": the entries of the entities a circuit contains, one per game prototype, in the game's order (so an entry
  * keeps its place whatever the order of the circuit). The pinned entries are left out: they are always on show. A prototype the
- * selector does not offer (a hidden one from a blueprint, one of a module that is off) is among them: the circuit has it.
+ * selector does not offer (a hidden one from a blueprint, one the user hid, one of a module that is off) is among them: the circuit has it.
  */
 export function entriesInUse(registry: EntityRegistry, entities: readonly EntityShape[]): readonly PaletteEntry[] {
   const used = [...new Set(entities.map((entity) => entity.prototype))].flatMap((prototype) => registry.entry(prototype) ?? []);

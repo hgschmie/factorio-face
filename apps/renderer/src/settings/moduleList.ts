@@ -47,9 +47,12 @@ export function listedRows(modules: readonly ModuleView[], used: readonly string
   return modules.filter((module) => module.game || module.signalCount > 0 || module.entityCount > 0 || module.enabled || used.includes(module.name));
 }
 
-/** What the module brings, without a count of none: "12 signals, 3 entities", "771 signals", "3 entities". */
-export function moduleCounts(module: ModuleView): string {
-  const counts = [module.signalCount > 0 && count(module.signalCount, "signal"), module.entityCount > 0 && count(module.entityCount, "entity", "entities")].filter((part) => part !== false);
+/**
+ * What the module brings, without a count of none: "12 signals, 3 entities", "771 signals", "3 entities". `hidden` is how many
+ * of them the user hid in the settings of the application, said when there are some: "771 signals, 17 entities, 3 hidden".
+ */
+export function moduleCounts(module: ModuleView, hidden = 0): string {
+  const counts = [module.signalCount > 0 && count(module.signalCount, "signal"), module.entityCount > 0 && count(module.entityCount, "entity", "entities"), hidden > 0 && `${hidden} hidden`].filter((part) => part !== false);
   return counts.length > 0 ? counts.join(", ") : NOTHING_TO_CHOOSE;
 }
 

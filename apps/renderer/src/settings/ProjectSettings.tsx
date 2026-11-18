@@ -1,11 +1,13 @@
 // Project settings panel: the project name, the wire reach and the modules the project switches (the game's own and, with data
 // read from a game, its mods), shown as the signal groups they contribute. Presentational; enabling and disabling (with
-// dependencies) is decided by the session.
+// dependencies) is decided by the session. A row also opens the dialog in which the user hides signals and entities of its
+// module, which is a setting of the application: the workbench shows that dialog over this panel.
 import { DEFAULT_WIRE_REACH, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE } from "@face/model";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useFocusReturn } from "../dialog/focusReturn.ts";
 import { Icon } from "../icons/Icon.tsx";
 import type { CatalogView, ProjectView } from "../workbench/controller.ts";
+import { openLabel } from "./moduleItems.ts";
 import { consequence, FILTER_FROM, filterModules, listedRows, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote, rowHint } from "./moduleList.ts";
 import { parseWireReach, WIRE_REACH_DETAILS_LABEL, WIRE_REACH_ERROR, WIRE_REACH_NOTE } from "./wireReach.ts";
 
@@ -17,6 +19,10 @@ export interface ProjectSettingsProps {
   onModuleChange(name: string, enabled: boolean): void;
   /** Switches on the modules the project uses although they are off. */
   onEnableUsedModules(): void;
+  /** Opens the dialog that hides signals and entities of a module. Without it no row has the button. */
+  onChooseItems?(module: string): void;
+  /** A modal dialog is over the panel: the panel stays open under it and leaves the keys and the pointer to it. */
+  readonly covered?: boolean;
   close(): void;
 }
 
@@ -134,7 +140,7 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
   );
 }
 
-export function ProjectSettings({ project, catalog, onRename, onWireReachChange, onModuleChange, onEnableUsedModules, close }: ProjectSettingsProps) {
+export function ProjectSettings({ project, catalog, onRename, onWireReachChange, onModuleChange, onEnableUsedModules, onChooseItems, covered = false, close }: ProjectSettingsProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const giveFocusBack = useFocusReturn();
@@ -164,6 +170,7 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
   // off) leaves the focus with the page. The next key brings it back to the panel, and Escape closes the panel all the same,
   // before the key means anything to the circuit behind it.
   useEffect(() => {
+    if (covered) return;
     const onStrayKey = (event: KeyboardEvent): void => {
       if (document.activeElement !== document.body) return;
       panelRef.current?.focus();
@@ -173,9 +180,10 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
     };
     document.addEventListener("keydown", onStrayKey, true);
     return () => document.removeEventListener("keydown", onStrayKey, true);
-  }, [dismiss]);
+  }, [dismiss, covered]);
 
   useEffect(() => {
+    if (covered) return;
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target;
       if (!(target instanceof Element) || panelRef.current?.contains(target) || target.closest("[data-settings-toggle]")) return;
@@ -185,7 +193,7 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
     };
     document.addEventListener("pointerdown", onPointerDown, true);
     return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [close]);
+  }, [close, covered]);
 
   return (
     <div
@@ -257,8 +265,13 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
                 <span className="module-title" title={rowHint(module)}>
                   {module.title}
                 </span>
-                <span className="module-count">{moduleCounts(module)}</span>
+                <span className="module-count">{moduleCounts(module, catalog.hiddenCount(module.name))}</span>
               </label>
+              {module.hasItems && onChooseItems && (
+                <button type="button" className="icon-button" data-action="choose-items" aria-haspopup="dialog" aria-label={openLabel(module)} title={openLabel(module)} onClick={() => onChooseItems(module.name)}>
+                  <Icon name="eye" size={15} />
+                </button>
+              )}
               {note && <small>{note}</small>}
             </li>
           );

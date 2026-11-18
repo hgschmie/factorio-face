@@ -1,19 +1,26 @@
 // Catalog services for one set of enabled modules: signal status for the language, display data for the views, the picker
 // tree and the module list of the project settings. Instances are immutable; a module change creates a new one.
 //
+// What is offered follows two rules, applied side by side in one place per offer (`picker`, `selectableSignals`, `entities`,
+// `offersPrototype`): the modules of the project, and what the user hid of a module in the settings of the application
+// (`HiddenItems`). The second one changes nothing but the offers: status, names, icons and warnings do not know it.
+//
 // The enabled modules are the project's list, whatever data is in use: the built-in data has the game's five modules, data
 // read from the user's game has the modules of that game and its mods. `base` is on in any case.
 import {
   availableQualities, availableSignals, BASE_MODULE, dependentModules, disableModule, enableModule, findSignal, isAvailable, isGameModule, listedModules, namedModules, pickerTree, resolveModules,
   speakerInstruments,
-  type Catalog, type ModuleInfo, type PickerGroup, type SpeakerInstrumentInfo,
+  type Catalog, type CatalogSignal, type ModuleInfo, type PickerGroup, type SpeakerInstrumentInfo,
 } from "@face/catalog";
 import { disabledPrototypeMessage, type PrototypeResolver, type SignalResolver } from "@face/language";
-import { entityTable, isPrototypeName, NORMAL_QUALITY, signalKey, type PrototypeName, type SignalId, type SpeakerInstrument } from "@face/model";
-import { entityRegistry, type EntityRegistry } from "../entities/registry.ts";
-import type { CatalogView, ModuleView, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
+import { entityTable, isPrototypeName, NORMAL_QUALITY, signalKey, type EntityPrototype, type PrototypeName, type SignalId, type SpeakerInstrument } from "@face/model";
+import type { HiddenModuleItems } from "../../../desktop/src/ipc.ts";
+import { entityRegistry, PINNED_KINDS, standardPrototype, type EntityRegistry } from "../entities/registry.ts";
+import { NOTHING_HIDDEN, type HiddenItems } from "../settings/hiddenItems.ts";
+import type { CatalogView, ModuleItem, ModuleItems, ModuleView, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
 
 const NONE: readonly string[] = [];
+const NO_ITEMS: ModuleItems = { signals: [], entities: [] };
 
 interface Lookup {
   readonly info: SignalInfo;
@@ -41,11 +48,18 @@ export class CatalogService implements CatalogView, SignalResolver {
   private readonly active: ReadonlySet<string>;
   private readonly titles: ReadonlyMap<string, string>;
   private readonly lookups = new Map<string, Lookup>();
-  private tree: readonly PickerGroup[] | undefined;
+  /** What does not depend on what the user hid, so that `withHidden` hands it on: the picker and the selector of the modules, and what the dialog of a module lists. */
+  private made: { tree?: readonly PickerGroup[]; registry?: EntityRegistry; readonly listings: Map<string, ModuleItems> } = { listings: new Map() };
+  private offered: readonly PickerGroup[] | undefined;
   private registry: EntityRegistry | undefined;
+  /** The four entities of the selector's first row: always offered, so the user's rule passes them over. */
+  private readonly pinned: ReadonlySet<string> = new Set(PINNED_KINDS.map(standardPrototype));
 
-  /** `requested` is the module list of the project file; names the list of the data does not have are reported, never dropped by this class. */
-  constructor(readonly catalog: Catalog, readonly requested: readonly string[]) {
+  /**
+   * `requested` is the module list of the project file; names the list of the data does not have are reported, never dropped by this class.
+   * `hidden` is what the user hid on this machine.
+   */
+  constructor(readonly catalog: Catalog, readonly requested: readonly string[], readonly hidden: HiddenItems = NOTHING_HIDDEN) {
     const table = entityTable();
     this.listed = listedModules(catalog.modules, namedModules(table.entities, namedModules(catalog.signals)));
     const base = this.listed.some((module) => module.name === BASE_MODULE);
@@ -57,9 +71,9 @@ export class CatalogService implements CatalogView, SignalResolver {
     this.unknownModules = this.kept.filter((name) => !this.titles.has(name));
     this.otherMods = catalog.modules.length - this.listed.length;
     this.active = new Set(resolution.enabled);
-    const selectable = availableQualities(catalog, this.active).filter((quality) => !quality.hidden);
+    const qualities = availableQualities(catalog, this.active).filter((quality) => !quality.hidden);
     // Without the quality module only "normal" exists, and a choice of one is no choice.
-    this.qualities = selectable.length > 1 ? selectable.map(({ name, displayName, icon, color }) => ({ name, displayName, icon, color })) : [];
+    this.qualities = qualities.length > 1 ? qualities.map(({ name, displayName, icon, color }) => ({ name, displayName, icon, color })) : [];
     this.speakerInstruments = speakerInstruments(catalog, this.active);
     this.instruments = this.speakerInstruments.map((instrument) => ({ name: instrument.name, notes: instrument.notes.map((note) => note.name) }));
     const count = (records: Iterable<{ readonly modules: readonly string[] }>): Map<string, number> => {
@@ -67,8 +81,12 @@ export class CatalogService implements CatalogView, SignalResolver {
       for (const record of records) for (const name of new Set(record.modules)) counts.set(name, (counts.get(name) ?? 0) + 1);
       return counts;
     };
-    const signals = count(catalog.signals.filter((entry) => entry.visibility === "normal"));
-    const entities = count(table.entities.filter((game) => !game.hidden && isPrototypeName(game.name)));
+    const selectable = catalog.signals.filter((entry) => entry.visibility === "normal");
+    const placeable = table.entities.filter((game) => !game.hidden && isPrototypeName(game.name));
+    const signals = count(selectable);
+    const entities = count(placeable);
+    // A record is in the dialog of its first module only. Roughly which modules have one to list: the lists themselves are made when asked for.
+    const own = new Set([...selectable, ...placeable.filter((game) => !this.pinned.has(game.name))].flatMap((record) => record.modules.slice(0, 1)));
     this.modules = this.listed.map((module): ModuleView => {
       const enabled = this.active.has(module.name);
       return {
@@ -83,8 +101,16 @@ export class CatalogService implements CatalogView, SignalResolver {
         missing: resolution.missing.find((entry) => entry.module === module.name)?.requires ?? [],
         signalCount: signals.get(module.name) ?? 0,
         entityCount: entities.get(module.name) ?? 0,
+        hasItems: own.has(module.name),
       };
     });
+  }
+
+  /** The same services with other things hidden: what the user changed in the settings of the application. */
+  withHidden(hidden: HiddenItems): CatalogService {
+    const next = new CatalogService(this.catalog, this.requested, hidden);
+    next.made = this.made;
+    return next;
   }
 
   /** The module list after switching one module, with its dependencies or dependents. Names that are not in the list are kept at the end. */
@@ -141,10 +167,66 @@ export class CatalogService implements CatalogView, SignalResolver {
     return game && off.length > 0 ? disabledPrototypeMessage(prototype, game.displayName, off.map((name) => this.titleOf(name))) : undefined;
   }
 
-  /** Whether an entity is offered: the data has it for these modules. One of a module that is off stays in a source, with a warning. */
+  /** Whether an entity is offered: the data has it for these modules and the user did not hide it. One that is not offered stays in a source; one of a module that is off with a warning. */
   offersPrototype(prototype: string): boolean {
     const game = entityTable().byName.get(prototype);
-    return game !== undefined && isAvailable(game, this.active);
+    return game !== undefined && isAvailable(game, this.active) && !this.hidesEntity(game);
+  }
+
+  private hidesEntity(game: EntityPrototype): boolean {
+    return !this.pinned.has(game.name) && this.hidden.entity(game);
+  }
+
+  /** The wildcards are no signals of a list: the slot decides about them. */
+  private hidesSignal(entry: CatalogSignal): boolean {
+    return entry.visibility === "normal" && this.hidden.signal(entry);
+  }
+
+  /**
+   * What the dialog of a module lists: the signals the picker would offer for it and the entities the selector would, were the
+   * module switched on beside the modules of the project (with what it requires), in the order the picker and the selector
+   * have them. A record that names several modules (a recipe of a mod's item) is in the list of its first one only. Nothing
+   * the game hides is in it, no wildcard, and none of the four entities of the selector's first row.
+   */
+  items(module: string): ModuleItems {
+    let found = this.made.listings.get(module);
+    if (!found) this.made.listings.set(module, (found = this.listItems(module)));
+    return found;
+  }
+
+  private listItems(module: string): ModuleItems {
+    if (!this.listed.some((candidate) => candidate.name === module)) return NO_ITEMS;
+    const on = this.active.has(module);
+    const active = on ? this.active : new Set(enableModule(this.listed, this.active, module).enabled);
+    const owned = (record: { readonly modules: readonly string[] }): boolean => record.modules[0] === module;
+    let tree: readonly PickerGroup[] = [];
+    try {
+      tree = on ? this.allSignals() : pickerTree(this.catalog, active, { wildcards: false });
+    } catch {
+      // As in `picker`: nothing consistent to list.
+    }
+    const signals = tree.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals.filter((entry) => entry.visibility === "normal" && owned(entry))));
+    const table = entityTable();
+    const registry = on ? this.allEntities() : entityRegistry(this.catalog, table, active);
+    const entities = registry.groups.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.entries.filter((entry) => !this.pinned.has(entry.prototype) && owned(table.byName.get(entry.prototype)!))));
+    return {
+      signals: signals.map((entry): ModuleItem => ({ key: entry.key, label: entry.displayName, icon: entry.icon })),
+      entities: entities.map((entry): ModuleItem => ({ key: entry.prototype, label: entry.label })),
+    };
+  }
+
+  /** What is stored as hidden for a module, as it is stored: it may name what the data in use does not have. */
+  hiddenOf(module: string): HiddenModuleItems {
+    return this.hidden.of(module);
+  }
+
+  /** How many of the signals and entities the dialog of a module lists are hidden. */
+  hiddenCount(module: string): number {
+    const stored = this.hidden.of(module);
+    if (stored.signals.length + stored.entities.length === 0) return 0;
+    const { signals, entities } = this.items(module);
+    const [hiddenSignals, hiddenEntities] = [new Set(stored.signals), new Set(stored.entities)];
+    return signals.filter((item) => hiddenSignals.has(item.key)).length + entities.filter((item) => hiddenEntities.has(item.key)).length;
   }
 
   private off(modules: readonly string[]): readonly string[] {
@@ -175,26 +257,45 @@ export class CatalogService implements CatalogView, SignalResolver {
     return { info: { status, displayName: quality ? `${shown.displayName} (${quality.displayName})` : shown.displayName, icon: shown.icon, ...switchedOff }, off };
   }
 
-  picker(): readonly PickerGroup[] {
-    if (!this.tree) {
+  /** The picker of the modules, before the user's rule. */
+  private allSignals(): readonly PickerGroup[] {
+    if (!this.made.tree) {
       try {
-        this.tree = pickerTree(this.catalog, this.active, { wildcards: true });
+        this.made.tree = pickerTree(this.catalog, this.active, { wildcards: true });
       } catch (error) {
         // No set of modules does this: the data has a signal whose subgroup, or a subgroup whose group, it lacks. There is
         // then nothing consistent to pick from.
         console.error("[face] no signal picker for modules", this.enabled, error);
-        this.tree = [];
+        this.made.tree = [];
       }
     }
-    return this.tree;
+    return this.made.tree;
+  }
+
+  /** The signals the modules have, without those the user hid; a subgroup and a group go with their last signal. */
+  picker(): readonly PickerGroup[] {
+    const tree = this.allSignals();
+    if (this.hidden.entries.length === 0) return tree;
+    return (this.offered ??= tree.flatMap((group) => {
+      const subgroups = group.subgroups.flatMap((subgroup) => {
+        const signals = subgroup.signals.filter((entry) => !this.hidesSignal(entry));
+        return signals.length > 0 ? [{ ...subgroup, signals }] : [];
+      });
+      return subgroups.length > 0 ? [{ ...group, subgroups }] : [];
+    }));
+  }
+
+  /** The selector of the modules, before the user's rule. */
+  private allEntities(): EntityRegistry {
+    return (this.made.registry ??= entityRegistry(this.catalog, entityTable(), this.active));
   }
 
   entities(): EntityRegistry {
-    return (this.registry ??= entityRegistry(this.catalog, entityTable(), this.active));
+    return (this.registry ??= this.hidden.entries.length === 0 ? this.allEntities() : entityRegistry(this.catalog, entityTable(), this.active, (game) => this.hidesEntity(game)));
   }
 
   /** Signals a completion list may offer: everything the picker shows except the wildcards, which are keywords in the language. */
   selectableSignals(): readonly { readonly id: SignalId; readonly displayName: string }[] {
-    return availableSignals(this.catalog, this.active, { visibility: ["normal"] }).map((entry) => ({ id: entry.id, displayName: entry.displayName }));
+    return availableSignals(this.catalog, this.active, { visibility: ["normal"] }).filter((entry) => !this.hidesSignal(entry)).map((entry) => ({ id: entry.id, displayName: entry.displayName }));
   }
 }
