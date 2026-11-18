@@ -109,8 +109,8 @@ test("runs the renderer sandboxed, isolated and without remote or dynamic code",
   expect(inPage.nodeGlobals).toEqual(["undefined", "undefined", "undefined"]);
   expect(inPage.api).toEqual([
     "applyGameData", "cancelGameDataRead", "catalogAssetUrl", "chooseGameFolder", "clearRecentProjects", "confirmUnsavedChanges", "discardGameData", "exportBlueprintFile", "getAppSettings", "getGameData",
-    "getGameDataStatus", "getRecentProjects", "importBlueprintFile", "loadProject", "newProject", "onAppSettingsChanged", "onGameDataRunChanged", "onMenuCommand", "onSaveBeforeClose", "openExample",
-    "openLastProject", "openProject", "paste", "platform", "readGameData", "resetGameFolder", "saveProject", "saveProjectAs", "setDirty",
+    "getGameDataStatus", "getHiddenItems", "getRecentProjects", "importBlueprintFile", "loadProject", "newProject", "onAppSettingsChanged", "onGameDataRunChanged", "onMenuCommand", "onSaveBeforeClose", "openExample",
+    "openLastProject", "openProject", "paste", "platform", "readGameData", "resetGameFolder", "saveProject", "saveProjectAs", "setDirty", "setHiddenItems",
   ]);
   expect(inPage.eval).toBe("EvalError");
   expect(inPage.functionConstructor).toBe("EvalError");
