@@ -14,7 +14,7 @@ import { EntityIcon, type EntityIconResolver } from "../icons/EntityIcon.tsx";
 import { Icon, type IconName } from "../icons/Icon.tsx";
 import { EntitySettingsForm } from "./EntitySettingsForm.tsx";
 import type { InspectorDraft, UpdateOptions } from "../workbench/controller.ts";
-import { countLabel, entityNames, inspectedSubject, selectedItems, wireEndsLabel, wireReachNote, type EntityNames } from "../workbench/selectionText.ts";
+import { componentsNote, countLabel, entityNames, inspectedSubject, selectedItems, wireEndsLabel, wireReachNote, type EntityNames } from "../workbench/selectionText.ts";
 import { FieldTextEpochContext, InputWiresContext, useFieldText } from "./fields.tsx";
 import { SignalInfoContext, SignalPickerContext, type SignalDescriber, type SignalPickerRenderer } from "./SignalField.tsx";
 import { entityNameError } from "./validation.ts";
@@ -488,7 +488,7 @@ export function Inspector({ ref, onUndo, onRedo, ...props }: InspectorProps) {
             <p>Select a component to adjust its settings and inspect its connections.</p>
             <div className="mini-fact">
               <b>{circuit.entities.length}</b>
-              <span>components in this circuit</span>
+              <span>{componentsNote(circuit.entities.length)}</span>
             </div>
           </div>
         )}

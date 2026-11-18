@@ -143,16 +143,78 @@ test("Escape returns to the select tool from outside the canvas, after it has dr
   await page.keyboard.press("Escape");
   await expect(page.locator("g.card.selected")).toHaveCount(0);
 
-  // Escape that closes a dialog is the dialog's: the tool behind it stays.
+  // Escape that closes a dialog is the dialog's: the tool behind it stays. The project settings have the focus from the moment
+  // their button opens them, so the key is theirs right away.
   await page.keyboard.press("4");
   await expect(block(page, "selector")).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Project Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Project settings" });
-  await settings.getByLabel("Project name").focus();
+  await expect(settings).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(settings).toHaveCount(0);
   await expect(block(page, "selector")).toHaveAttribute("aria-pressed", "true");
   await expectUntouched(page, { type: "place", prototype: "selector-combinator" });
+});
+
+test("the project settings take the focus when their button opens them, Escape closes them from there, and closing gives the focus back to the button", async ({ page }) => {
+  const button = page.getByRole("button", { name: "Project Settings", exact: true });
+  const settings = page.getByRole("dialog", { name: "Project settings" });
+  const close = settings.getByRole("button", { name: "Close project settings" });
+  const title = (await page.getByTestId("project-name").textContent())!;
+
+  // Opened with the pointer: the focus is on the panel itself and on none of its fields, so a key typed now renames nothing
+  // and is no shortcut of the circuit either.
+  await button.click();
+  await expect(settings).toBeFocused();
+  await expect(button).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.type("x2");
+  await expect(settings.getByLabel("Project name")).toHaveValue(title);
+  await expect(page.getByTestId("project-name")).toHaveText(title);
+  await expectUntouched(page);
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(button).toBeFocused();
+  await expect(button).toHaveAttribute("aria-expanded", "false");
+
+  // Opened with the keyboard: Tab goes on into the panel, to its first control, and Escape closes from any of them.
+  await page.keyboard.press("Enter");
+  await expect(settings).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(close).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(button).toBeFocused();
+
+  // The close button gives the focus back as well, and a click on the button still closes the open panel.
+  await button.click();
+  await close.click();
+  await expect(settings).toHaveCount(0);
+  await expect(button).toBeFocused();
+  await button.click();
+  await expect(settings).toBeFocused();
+  await button.click();
+  await expect(settings).toHaveCount(0);
+
+  // The reset of the wire reach is disabled once it is pressed: the focus goes to the field it reset and stays in the panel.
+  await button.click();
+  const reach = settings.getByLabel("Wire reach");
+  await reach.fill("12");
+  await reach.press("Enter");
+  const reset = settings.getByRole("button", { name: "Reset to 9" });
+  await reset.click();
+  await expect(reset).toBeDisabled();
+  await expect(reach).toHaveValue("9");
+  await expect(reach).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(settings).toHaveCount(0);
+  await expect(button).toBeFocused();
+
+  // A press elsewhere closes the panel, and the focus goes where the press takes it.
+  await button.click();
+  await expect(settings).toBeFocused();
+  await selectEntity(page, "gate");
+  await expect(settings).toHaveCount(0);
+  await expect(canvas(page)).toBeFocused();
 });
 
 test("the keys are text in the name field, the description, the signal search and the source editor", async ({ page }) => {

@@ -1,6 +1,6 @@
 // The module list of the project settings in words: the note of a row, its counts, the filter, and the notes around the list.
 import { describe, expect, it } from "vitest";
-import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, NOTHING_TO_CHOOSE, otherModsNote, rowHint } from "../src/settings/moduleList.ts";
+import { consequence, FILTER_FROM, filterModules, listedRows, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, moduleTitles, NOTHING_TO_CHOOSE, otherModsNote, rowHint } from "../src/settings/moduleList.ts";
 import type { ModuleView } from "../src/workbench/controller.ts";
 
 const view = (name: string, title: string, more: Partial<ModuleView> = {}): ModuleView => ({ name, title, version: "1.0.0", game: false, enabled: true, canDisable: true, enables: [], disables: [], missing: [], signalCount: 0, entityCount: 0, ...more });
@@ -44,9 +44,36 @@ describe("the note of a row", () => {
     expect(moduleCounts(view("a", "A", { signalCount: 5 }))).toBe("5 signals");
     expect(moduleCounts(view("a", "A", { entityCount: 67 }))).toBe("67 entities");
     expect(moduleCounts(view("a", "A", { entityCount: 1 }))).toBe("1 entity");
-    // Listed for what it adds, all of which is hidden.
+    // A row it has only while it is on or in use: what it adds is all hidden.
     expect(moduleCounts(view("a", "A"))).toBe("Only hidden signals or entities");
     expect(NOTHING_TO_CHOOSE).toBe("Only hidden signals or entities");
+  });
+});
+
+describe("the rows of the list", () => {
+  const names = (modules: readonly ModuleView[], used: readonly string[] = []): string[] => listedRows(modules, used).map((module) => module.name);
+  const game = view("elevated-rails", "Elevated Rails", { game: true, enabled: false });
+  const signals = view("nixie", "Nixie Tubes", { enabled: false, signalCount: 8 });
+  const entities = view("crates", "Crates", { enabled: false, entityCount: 1 });
+  const hidden = view("helper", "Helper", { enabled: false });
+
+  it("have every module of the game and every mod that adds a signal or an entity to choose, on or off", () => {
+    expect(names([game, signals, entities])).toEqual(["elevated-rails", "nixie", "crates"]);
+    expect(names([{ ...signals, enabled: true }, { ...entities, enabled: true }])).toEqual(["nixie", "crates"]);
+    expect(names([])).toEqual([]);
+  });
+
+  it("have a mod that adds only hidden signals or entities while the project has it switched on or uses something of it", () => {
+    const modules = [game, signals, hidden, view("other", "Other", { enabled: false })];
+    expect(names(modules)).toEqual(["elevated-rails", "nixie"]);
+    // In use although it is off: the row is where it is switched on.
+    expect(names(modules, ["helper"])).toEqual(["elevated-rails", "nixie", "helper"]);
+    expect(names(modules, ["other", "helper", "gone"])).toEqual(["elevated-rails", "nixie", "helper", "other"]);
+    // Switched on: the row is where it is switched off again.
+    expect(names([game, signals, { ...hidden, enabled: true }])).toEqual(["elevated-rails", "nixie", "helper"]);
+    // The list it is given stays as it is, and so do its rows.
+    expect(listedRows(modules, ["helper"])[2]).toBe(hidden);
+    expect(modules).toHaveLength(4);
   });
 });
 
@@ -75,8 +102,9 @@ describe("the notes around the list", () => {
 
   it("count the mods that are not in the list, and say where the mods come from", () => {
     expect(otherModsNote(0)).toBeNull();
-    expect(otherModsNote(1)).toBe("1 other mod of your game adds no signals or entities.");
-    expect(otherModsNote(14)).toBe("14 other mods of your game add no signals or entities.");
+    // True of a mod that adds nothing and of one that adds only what is hidden.
+    expect(otherModsNote(1)).toBe("1 other mod of your game adds nothing that can be chosen here.");
+    expect(otherModsNote(14)).toBe("14 other mods of your game add nothing that can be chosen here.");
     expect(MODS_HINT).toBe("The mods of your game appear here after the game has been read in the application settings.");
   });
 });

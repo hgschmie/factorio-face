@@ -18,6 +18,7 @@ import {
   readProjectEntries,
   ROOT,
   selectEntity,
+  shrinkToMinimum,
   sourceText,
   stubDialogs,
   test,
@@ -578,6 +579,72 @@ test("the signal picker selects a Space Age signal with its icon, and the module
   await expect(page.locator(".source-pane .cm-lintRange-warning")).toHaveCount(0);
   await expect(page.locator(".statusbar")).not.toContainText("warning");
   expect(await sourceText(page)).toBe(withSignal);
+});
+
+test("the signal picker stays above the status line and its list ends with a whole row, at the default and at the smallest window size", async ({ page, app }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  const choose = inspector.getByRole("button", { name: "Choose signal 1" });
+  const picker = page.getByRole("dialog", { name: "Choose a signal" });
+  /** Where the panel and its list are, and how many tiles and headings an edge of the list runs through. */
+  const layout = () =>
+    picker.evaluate((panel) => {
+      const list = panel.querySelector(".picker-signals")!;
+      const [box, room, status] = [panel.getBoundingClientRect(), list.getBoundingClientRect(), document.querySelector(".statusbar")!.getBoundingClientRect()];
+      const rows = [...list.querySelectorAll(".picker-signal, h3")].map((row) => row.getBoundingClientRect());
+      const through = (edge: number): number => rows.filter((row) => row.top < edge - 0.5 && row.bottom > edge + 0.5).length;
+      return {
+        top: box.top,
+        aboveStatusLine: status.top - box.bottom,
+        height: box.height,
+        listInPanel: room.top >= box.top && room.bottom <= box.bottom,
+        scrolls: list.scrollHeight - list.clientHeight,
+        whole: rows.filter((row) => row.top >= room.top - 0.5 && row.bottom <= room.bottom + 0.5).length,
+        cutBelow: through(room.bottom),
+        cutAbove: through(room.top),
+      };
+    });
+  const scrollToEnd = () => picker.locator(".picker-signals").evaluate((list) => list.scrollTo(0, list.scrollHeight));
+
+  for (const size of ["default", "smallest"] as const) {
+    if (size === "smallest") await shrinkToMinimum(app, page);
+    // The signal of a constant combinator: a field low in the inspector, from which the panel has to move up.
+    await selectEntity(page, "source");
+    await choose.click();
+    await expect(picker).toBeVisible();
+    await expect(picker.getByRole("tab", { name: "Signals" })).toHaveAttribute("aria-selected", "true");
+    const opened = await layout();
+    // A margin above the status line and below the top of the window, and no higher than 520.
+    expect(opened.aboveStatusLine, size).toBeGreaterThanOrEqual(7.5);
+    expect(opened.top, size).toBeGreaterThanOrEqual(7.5);
+    expect(opened.height, size).toBeLessThanOrEqual(520);
+    expect(opened.listInPanel, size).toBe(true);
+    // The virtual signals are more rows than the list shows: it scrolls, and its lower edge runs through no tile.
+    expect(opened.scrolls, size).toBeGreaterThan(0);
+    expect(opened.whole, size).toBeGreaterThan(20);
+    expect(opened.cutBelow, size).toBe(0);
+    // Scrolled to its end it shows whole rows too, at both edges.
+    await scrollToEnd();
+    expect(await layout(), size).toMatchObject({ cutBelow: 0, cutAbove: 0 });
+
+    // A search lists the signals of every group under the heading of the group, which is as high as a row: the same holds.
+    await picker.getByLabel("Search signals").fill("a");
+    await expect(picker.locator(".picker-signals h3").first()).toBeVisible();
+    const found = await layout();
+    expect(found.scrolls, size).toBeGreaterThan(0);
+    expect(found, size).toMatchObject({ top: opened.top, listInPanel: true, cutBelow: 0, cutAbove: 0 });
+    expect(found.aboveStatusLine, size).toBeGreaterThanOrEqual(7.5);
+    // A search with one hit makes the panel lower; it does not move.
+    await picker.getByLabel("Search signals").fill("carbon-fib");
+    await expect(picker.locator(".picker-signal")).toHaveCount(1);
+    const one = await layout();
+    expect(one.height, size).toBeLessThan(opened.height);
+    expect(one.top, size).toBe(opened.top);
+
+    // Escape closes the picker and gives the focus back to the button that opened it.
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
+    await expect(choose).toBeFocused();
+  }
 });
 
 test("save, quit, relaunch and reopen restores source, layout and module settings", async () => {

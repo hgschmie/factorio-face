@@ -14,6 +14,7 @@ import { applyData, type DataInUse } from "../../src/gameData/dataInUse.ts";
 import { completionCandidates } from "../../src/session/completion.ts";
 import { modulesUsedOff } from "../../src/session/moduleUse.ts";
 import { CatalogService } from "../../src/session/catalogService.ts";
+import { listedRows, otherModsNote } from "../../src/settings/moduleList.ts";
 import { defaultModules } from "../../src/session/persistence.ts";
 import { ProjectSession } from "../../src/session/projectSession.ts";
 import { manyModsData } from "../fixtures/moddedData.ts";
@@ -43,6 +44,9 @@ afterAll(() => applyData({ source: { kind: "built-in", version: STANDARD_CATALOG
 const sessionWith = (modules: readonly string[], source = EMPTY_SOURCE, api?: ReturnType<typeof fakeDesktop>["api"]): ProjectSession => createSession(source, { data, api, project: project(source, { modules: [...modules] }) }).session;
 const enabledOf = (session: ProjectSession): string[] => session.state.catalog.modules.filter((module) => module.enabled).map((module) => module.name);
 const row = (session: ProjectSession, name: string) => session.state.catalog.modules.find((module) => module.name === name)!;
+/** The rows of the project settings, and the line about the mods that have none. */
+const rows = (session: ProjectSession): string[] => listedRows(session.state.catalog.modules, session.state.project.modulesOff).map((module) => module.name);
+const otherMods = (session: ProjectSession): string | null => otherModsNote(session.state.catalog.otherMods + session.state.catalog.modules.length - rows(session).length);
 const picked = (session: ProjectSession): string[] => session.state.catalog.picker().flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals.map((entry) => entry.key)));
 
 describe("the module list with the mods of a game", () => {
@@ -61,6 +65,29 @@ describe("the module list with the mods of a game", () => {
     expect(row(session, ORE)).toMatchObject({ signalCount: 2, entityCount: 0, enables: [] });
     expect(row(session, "recycler").signalCount).toBe(loadStandardCatalog().signals.filter((entry) => entry.visibility === "normal" && entry.modules.includes("recycler")).length + 1);
     expect(row(session, UNREAD)).toMatchObject({ title: UNREAD, signalCount: 0, entityCount: 0, canDisable: true, enables: [] });
+  });
+
+  it("gives a mod with hidden signals only a row while the project has it on or uses it, and counts it with the other mods otherwise", () => {
+    const visible = ALL.filter((name) => name !== UNREAD);
+    const unused = sessionWith(GAME);
+    expect(rows(unused)).toEqual(visible);
+    expect(otherMods(unused)).toBe("4 other mods of your game add nothing that can be chosen here.");
+    // The catalog still lists it: that is how a source that uses it, and the import of a blueprint, switch it on.
+    expect(row(unused, UNREAD)).toMatchObject({ enabled: false, signalCount: 0, entityCount: 0 });
+
+    // In use although it is off: it has its row, and the notice of the modules in use names it.
+    const used = sessionWith(GAME, USES_MODS);
+    expect(used.state.project.modulesOff).toContain(UNREAD);
+    expect(rows(used)).toEqual(ALL);
+    expect(otherMods(used)).toBe("3 other mods of your game add nothing that can be chosen here.");
+    // Switched on it keeps the row, where it is switched off again; off and no longer in use, it has none.
+    used.commands.enableUsedModules();
+    expect(used.state.project.modulesOff).toEqual([]);
+    expect(rows(used)).toEqual(ALL);
+    unused.commands.setModuleEnabled(UNREAD, true);
+    expect(rows(unused)).toEqual(ALL);
+    unused.commands.setModuleEnabled(UNREAD, false);
+    expect(rows(unused)).toEqual(visible);
   });
 
   it("switches a mod on with what it requires and recommends, and off with what requires it", () => {
@@ -237,6 +264,20 @@ describe("a blueprint import with the mods of a game", () => {
       session.commands.enableUsedModules();
       expect(session.state.diagnostics).toEqual([]);
     }
+  });
+
+  it("switches on a mod of which it uses a hidden signal, names it, and the mod then has its row", async () => {
+    const hidden = blueprint([{ entity_number: 1, name: "constant-combinator", ...at(0.5, 0.5), control_behavior: { sections: { sections: [{ index: 1, filters: [filter(1, "virtual", UNREAD_SIGNAL)] }] } } }]);
+    const session = sessionWith(GAME, EMPTY_SOURCE, fakeDesktop().api);
+    expect(rows(session)).not.toContain(UNREAD);
+    const reading = session.commands.readBlueprint(hidden);
+    if (reading.kind !== "blueprint") throw new Error(JSON.stringify(reading));
+    expect(reading.blueprint.modules).toEqual([...GAME, UNREAD]);
+    expect(reading.blueprint.report?.modules).toEqual([`Switched on: ${UNREAD}. The blueprint has its signals or entities; a new project has only the modules of the game itself on.`]);
+    expect(await session.commands.openBlueprint(reading.blueprint)).toBe(true);
+    expect(enabledOf(session)).toEqual([...GAME, UNREAD]);
+    expect(session.state).toMatchObject({ diagnostics: [], project: { modulesOff: [] } });
+    expect(rows(session)).toContain(UNREAD);
   });
 
   it("opens a blueprint of the game itself with the modules of a new project and no report", async () => {

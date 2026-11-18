@@ -7,11 +7,11 @@ import type { ElectronApplication, Locator, Page } from "@playwright/test";
 import { existsSync } from "node:fs";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { FLAWED_ENTITIES, MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump } from "../../apps/desktop/test/support/cannedDump.ts";
+import { FLAWED_ENTITIES, MOD_ENTITY, MOD_SIGNAL, MODDED_KINDS, type CannedDump, type WiredEntity } from "../../apps/desktop/test/support/cannedDump.ts";
 import type { GameDataInUse, GameDataStatus } from "../../apps/desktop/src/ipc.ts";
 import { decodeBlueprintString, encodeBlueprintString } from "../../packages/blueprints/src/string.ts";
 import {
-  APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, pin, readProjectEntries, SCREENSHOT_DIR, selectEntity, showDisplay, sourceText, test,
+  APP_TITLE, card, clickMenu, clientPointOf, closeApp, entityNames, expect, launchApp, newProjectPath, openProject, pin, readProjectEntries, SCREENSHOT_DIR, selectEntity, showDisplay, shrinkToMinimum, sourceText, test,
   type RunningApp,
 } from "./app.ts";
 import { inspector, setSource } from "./board.ts";
@@ -279,6 +279,35 @@ test("reads the game after the confirmation, shows the steps, loads the window a
   }
 });
 
+interface DialogShape {
+  /** The dialog is as high as the window allows: the height of the backdrop without its padding. */
+  readonly fills: boolean;
+  readonly height: number;
+  /** How far the dialog scrolls as a whole. */
+  readonly overflow: number;
+  /** The box of the left-out entities while it is open: its height, how far it scrolls, and the headings and names that are in view in full. */
+  readonly list: { readonly height: number; readonly overflow: number; readonly headings: number; readonly names: number } | null;
+}
+
+/** How the application settings take the height of the window. */
+function dialogShape(page: Page): Promise<DialogShape> {
+  return settingsDialog(page).evaluate((panel) => {
+    const backdrop = panel.parentElement!;
+    const padding = getComputedStyle(backdrop);
+    const room = backdrop.clientHeight - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom);
+    const { height } = panel.getBoundingClientRect();
+    const box = panel.querySelector(".left-out-groups");
+    const frame = box?.getBoundingClientRect();
+    const inView = (selector: string): number => [...box!.querySelectorAll(selector)].map((element) => element.getBoundingClientRect()).filter((rect) => rect.top >= frame!.top && rect.bottom <= frame!.bottom).length;
+    return {
+      fills: Math.abs(height - room) < 1,
+      height,
+      overflow: panel.scrollHeight - panel.clientHeight,
+      list: box && frame ? { height: frame.height, overflow: box.scrollHeight - box.clientHeight, headings: inView("h4"), names: inView("li") } : null,
+    };
+  });
+}
+
 test("a read says how many entities it left out, lists them by reason behind a disclosure, copies the list, and has it after a restart", async () => {
   const SUMMARY = "3 entities of your game were left out: they cannot be placed or imported, because the game's data about them does not fit together. Such entities are mostly internal helper entities of mods.";
   const SIZE_FOUND = "tile size is 0 x 0 at run time, 1 x 1 as derived from data.raw";
@@ -330,7 +359,10 @@ test("a read says how many entities it left out, lists them by reason behind a d
     await expect(group("size").locator("h4")).toHaveText("The running game gives them another size in tiles than the game's data files do. (1)");
     await expect(group("size").locator(".left-out-found")).toHaveText(`Found: ${SIZE_FOUND}`);
     await expect(group("size").locator("li")).toHaveText(["mod-hidden-lamp"]);
-    expect(await list(page).evaluate((element) => [getComputedStyle(element).maxHeight, getComputedStyle(element).overflowY])).toEqual(["220px", "auto"]);
+    // With the list open the dialog is as high as the window allows and does not scroll as a whole: the box of the list takes
+    // the height the other parts leave. These few lines fit it, so both reasons are in view.
+    expect(await list(page).evaluate((element) => [getComputedStyle(element).maxHeight, getComputedStyle(element).overflowY, element.scrollHeight - element.clientHeight])).toEqual(["none", "auto", 0]);
+    expect(await dialogShape(page)).toMatchObject({ fills: true, overflow: 0, list: { headings: 2, names: 3 } });
     await page.screenshot({ path: resolve(SHOTS, "left-out.png") });
 
     // A name is text: a triple click selects it, and the copy key takes it.
@@ -364,6 +396,53 @@ test("a read says how many entities it left out, lists them by reason behind a d
     await builtInButton(page).click();
     await expect(source(page)).toHaveText(BUILT_IN_SOURCE, { timeout: 20_000 });
     await expect(leftOut(page)).toHaveCount(0);
+  } finally {
+    await closeApp(app);
+  }
+});
+
+test("a long list of left-out entities takes the height the dialog has left and scrolls by itself; the dialog scrolls as a whole only in a window too low for that", async () => {
+  // Two helpers without a collision box, and two dozen without a size: the second reason begins a few lines below the first.
+  const ghosts = Array.from({ length: 24 }, (_, index): WiredEntity => ({ name: `mod-ghost-${String(index + 1).padStart(2, "0")}`, type: "lamp", label: `Ghost ${index + 1}`, size: [1, 1], module: "some-mod", flaw: "no-size" }));
+  const { app, page } = await launchWithGame({ dump: { entities: [...FLAWED_ENTITIES.slice(0, 2), ...ghosts] } });
+  try {
+    await readGame(app, page);
+    const leftOut = message(page, "left-out");
+    await expect(leftOut.locator("p.settings-message")).toContainText("26 entities of your game were left out");
+    // Closed, the dialog is as high as its content.
+    const closed = await dialogShape(page);
+    expect(closed).toMatchObject({ fills: false, overflow: 0, list: null });
+
+    await leftOut.getByRole("button", { name: "Left-out entities" }).click();
+    const box = leftOut.getByRole("group", { name: "Entities that were left out, by reason" });
+    await expect(box.locator("section")).toHaveCount(2);
+    await expect(box.locator("li")).toHaveCount(26);
+    // Open, it is as high as the window allows and does not scroll as a whole: the list is the one part that scrolls. It has
+    // what the other parts leave, which is room for the first reason with its two names, the heading of the second and more.
+    const open = await dialogShape(page);
+    expect(open).toMatchObject({ fills: true, overflow: 0 });
+    expect(open.height).toBeGreaterThan(closed.height);
+    expect(open.list!.overflow).toBeGreaterThan(0);
+    expect(open.list!.height).toBeGreaterThanOrEqual(120);
+    expect(open.list!.headings).toBe(2);
+    expect(open.list!.names).toBeGreaterThan(2);
+    // The parts below the list are in view with it: nothing of the dialog is outside of it.
+    await expect(leftOut.getByRole("button", { name: "Copy list" })).toBeInViewport({ ratio: 1 });
+    await expect(readButton(page)).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: resolve(SHOTS, "left-out-long.png") });
+
+    // The smallest window leaves the list less than its minimum: it keeps that, and only then does the dialog scroll as a whole.
+    await shrinkToMinimum(app, page);
+    const low = await dialogShape(page);
+    expect(low.fills).toBe(true);
+    expect(low.overflow).toBeGreaterThan(0);
+    expect(Math.round(low.list!.height)).toBe(120);
+    expect(low.list!.overflow).toBeGreaterThan(0);
+
+    // Closed again it is as high as its content, as before.
+    await leftOut.getByRole("button", { name: "Left-out entities" }).click();
+    await expect(box).toHaveCount(0);
+    expect((await dialogShape(page)).list).toBeNull();
   } finally {
     await closeApp(app);
   }
@@ -481,7 +560,9 @@ test("a mod is switched on in the project settings; what it brings is then in th
     await unused.getByRole("button", { name: "Switch it on" }).click();
     await expect(unused).toHaveCount(0);
     await expect(moduleRow(page, "some-mod").locator("input")).toBeChecked();
+    // The button went away under the focus: Escape closes the panel all the same.
     await page.keyboard.press("Escape");
+    await expect(projectSettings).toHaveCount(0);
     expect(await problems(page)).toEqual([]);
     await expect(card(page, "mod_crate1")).toHaveClass(/selected/);
     await expect(inspector.locator(".entity-warning")).toHaveCount(0);
@@ -667,7 +748,7 @@ test("a mod's combinators, lamps, poles and loaders are entities of their kinds:
   }
 });
 
-/** A game with many mods: twelve that add a crate each, and two that add nothing. */
+/** A game with many mods: twelve that add a crate each, two that add nothing, and one that adds only a hidden entity with its hidden item. */
 const CRATES = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, "0"));
 /** A title as a mod may write it: it is shown as the text it is. */
 const BOLD_TITLE = "<b>Bold</b> crates 03";
@@ -679,8 +760,14 @@ const MANY_MODS: readonly FakeMod[] = [
   ...CRATES.map((number) => ({ name: `crates-${number}`, version: "1.0.0", title: crateTitle(number), dependencies: ["base >= 2.1", ...(number === "02" ? ["crates-01"] : number === "05" ? ["glue-lib >= 0.1"] : [])] })),
   { name: "glue-lib", version: "0.1.0", title: "Glue", dependencies: ["base", "crates-04"] },
   { name: "zz-lib", version: "0.1.0", title: "A library", dependencies: ["base"] },
+  { name: "quiet-lib", version: "0.2.0", title: "Quiet Library", dependencies: ["base"] },
 ];
-const MANY_CRATES: CannedDump = { entities: CRATES.map((number) => ({ name: `crate-${number}`, type: "container", label: `Crate ${number}`, size: [1, 1], module: `crates-${number}` })) };
+const MANY_CRATES: CannedDump = {
+  entities: [
+    ...CRATES.map((number): WiredEntity => ({ name: `crate-${number}`, type: "container", label: `Crate ${number}`, size: [1, 1], module: `crates-${number}` })),
+    { name: "quiet-helper", type: "container", label: "Quiet helper", size: [1, 1], module: "quiet-lib", hidden: true },
+  ],
+};
 const USES_CRATES = `circuit "Crates" {
     crate-07 box at (40, 80) {
     }
@@ -694,20 +781,22 @@ const USES_CRATES = `circuit "Crates" {
 test("a game with many mods: the list scrolls and filters, mods switch with what they need, a project says which it uses although they are off, and an import switches on what it needs", async () => {
   const { app, page } = await launchWithGame({ dump: MANY_CRATES, mods: MANY_MODS });
   try {
-    await readGame(app, page, /^Read from your game on .+: 2\.1\.25 with 15 mods$/);
+    await readGame(app, page, /^Read from your game on .+: 2\.1\.25 with 16 mods$/);
     await page.keyboard.press("Escape");
     await expect(settingsDialog(page)).toHaveCount(0);
     expect(await enabledModules(page)).toEqual(["base"]);
 
-    // The list: the game's module first, then the mods that add something by name; the two that add nothing are counted.
+    // The list: the game's module first, then the mods that add something to choose; the two that add nothing and the one
+    // that adds only what is hidden are counted.
     await page.locator("[data-settings-toggle]").click();
     const projectSettings = projectSettingsOf(page);
-    const rows = projectSettings.locator(".module-list li");
+    const rows = projectSettings.locator(".module-list li[data-module]");
     // The game's module, then the mods by title: the one whose title begins with a tag comes before the letters, "A Dozen" before "Crates".
     const listed = ["base", "crates-03", "crates-12", ...CRATES.filter((number) => number !== "03" && number !== "12").map((number) => `crates-${number}`), "some-mod"];
     expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(listed);
     await expect(moduleRow(page, "crates-01").locator(".module-title")).toHaveAttribute("title", "Crates 01 (crates-01)");
-    await expect(projectSettings.locator('[data-note="other-mods"]')).toHaveText("2 other mods of your game add no signals or entities.");
+    await expect(moduleRow(page, "quiet-lib")).toHaveCount(0);
+    await expect(projectSettings.locator('[data-note="other-mods"]')).toHaveText("3 other mods of your game add nothing that can be chosen here.");
     await expect(projectSettings.locator('[data-note="mods-hint"]')).toHaveCount(0);
     await expect(moduleRow(page, "crates-01").locator(".module-count")).toHaveText("1 signal, 1 entity");
     // A title is text, whatever a mod writes into it.
@@ -733,20 +822,34 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     await expect(moduleRow(page, "crates-12").locator(".module-count")).toHaveText("1 signal, 1 entity");
     await page.screenshot({ path: resolve(SHOTS, "project-settings-many-mods.png") });
 
-    // The filter finds a mod by its title or its name; Escape empties it and leaves the panel open.
+    // The filter finds a mod by its title or its name; Escape empties it and leaves the panel open. While it narrows the
+    // list, the panel keeps the height it had: the list keeps its room, empty below the rows that are left.
     const filter = projectSettings.getByLabel("Filter signal groups");
+    const heights = (): Promise<number[]> => projectSettings.evaluate((panel) => [panel.getBoundingClientRect().height, panel.querySelector(".module-list")!.getBoundingClientRect().height, panel.scrollHeight - panel.clientHeight]);
+    const full = await heights();
+    const expectSameShape = async (): Promise<void> => {
+      const now = await heights();
+      expect(Math.abs(now[0]! - full[0]!), "height of the panel").toBeLessThan(0.5);
+      expect(Math.abs(now[1]! - full[1]!), "height of the list").toBeLessThan(0.5);
+      expect(now[2], "the panel does not scroll").toBe(0);
+    };
     await filter.fill("bold");
     expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-03"]);
+    await expectSameShape();
     await filter.fill("CRATES-1");
     expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-module")))).toEqual(["crates-12", "crates-10", "crates-11"]);
+    await expectSameShape();
     await filter.fill("no such mod");
     await expect(rows).toHaveCount(0);
-    await expect(projectSettings.locator('[data-note="no-match"]')).toHaveText("No signal group matches the filter.");
+    // That nothing matches is said where the rows were.
+    await expect(list.locator('li[data-note="no-match"]')).toHaveText("No signal group matches the filter.");
+    await expectSameShape();
     await page.screenshot({ path: resolve(SHOTS, "project-settings-filter.png") });
     await filter.press("Escape");
     await expect(filter).toHaveValue("");
     await expect(rows).toHaveCount(listed.length);
     await expect(projectSettings).toBeVisible();
+    await expectSameShape();
 
     // Dependencies: a mod is switched on with what it requires, also through a mod that is not listed, and off with what requires it.
     await expect(moduleRow(page, "crates-02").locator("small")).toHaveText("Switching on also switches on Crates 01");
@@ -780,7 +883,38 @@ test("a game with many mods: the list scrolls and filters, mods switch with what
     expect(await enabledModules(page)).toEqual(["base", "crates-07", "crates-08"]);
     expect(await problems(page)).toEqual([]);
     await page.keyboard.press("Escape");
+    await expect(projectSettings).toHaveCount(0);
     await expect(paletteEntry(page, "crate-07")).toHaveCount(1);
+
+    // A mod that adds only hidden things has no row, since nothing of it can be chosen, until the project uses something of
+    // it: then the row and the notice are where it is switched on.
+    const quiet = moduleRow(page, "quiet-lib");
+    const otherMods = projectSettings.locator('[data-note="other-mods"]');
+    await setSource(page, USES_CRATES.replace("item:crate-08 = 1\n", "item:crate-08 = 1\n        item:quiet-helper = 2\n"));
+    expect(await problems(page)).toEqual(["warning disabled-signal: The signal 'item:quiet-helper' is of Quiet Library, which is switched off in the project settings"]);
+    await page.locator("[data-settings-toggle]").click();
+    await expect(quiet.locator(".module-title")).toHaveText("Quiet Library");
+    await expect(quiet.locator(".module-count")).toHaveText("Only hidden signals or entities");
+    await expect(quiet.locator("input")).not.toBeChecked();
+    await expect(otherMods).toHaveText("2 other mods of your game add nothing that can be chosen here.");
+    await expect(unused.locator("p")).toHaveText("This project uses signals or entities of Quiet Library, which is switched off. They are marked with a warning and are not offered.");
+    await unused.getByRole("button", { name: "Switch it on" }).click();
+    await expect(unused).toHaveCount(0);
+    await expect(quiet.locator("input")).toBeChecked();
+    expect(await enabledModules(page)).toEqual(["base", "crates-07", "crates-08", "quiet-lib"]);
+    expect(await problems(page)).toEqual([]);
+    // Switched on it keeps its row, where it is switched off again. Off and still in use it keeps the row too; once the source
+    // uses nothing of it, the row is gone and the mod is counted with the others.
+    await quiet.locator("input").uncheck();
+    await expect(quiet.locator("input")).not.toBeChecked();
+    await expect(unused).toHaveCount(1);
+    await setSource(page, USES_CRATES);
+    await expect(quiet).toHaveCount(0);
+    await expect(unused).toHaveCount(0);
+    await expect(otherMods).toHaveText("3 other mods of your game add nothing that can be chosen here.");
+    // The row went away under the focus: Escape closes the panel all the same.
+    await page.keyboard.press("Escape");
+    await expect(projectSettings).toHaveCount(0);
 
     // A blueprint with a crate of one mod and a signal of another opens as a project that has those mods on, with what they
     // require, and the report names them in the order of the rows of the project settings. The mods of the project before play no part.

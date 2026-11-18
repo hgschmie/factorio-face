@@ -3,6 +3,7 @@
 import type { CatalogSignal, PickerGroup } from "@face/catalog";
 import { NORMAL_QUALITY, signal, signalKey, type SignalId, type Wildcard } from "@face/model";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useFocusReturn } from "../dialog/focusReturn.ts";
 import { shortSignal } from "../entities/signalText.ts";
 import { Icon } from "../icons/Icon.tsx";
 import { IconImage } from "../icons/IconImage.tsx";
@@ -21,7 +22,33 @@ export interface SignalPickerPanelProps {
   close(): void;
 }
 
+/** Kept free between the panel and the ends of the area it stays in. */
 const MARGIN = 8;
+const MAX_HEIGHT = 520;
+/** The signal list is rows of tiles, and in a search headings as high as one: the height of a row and the gap to the next (picker.css). */
+const ROW = { height: 36, gap: 3 } as const;
+const MIN_ROWS = 3;
+
+export interface PickerPlacement {
+  /** Top of the panel in the window. */
+  readonly top: number;
+  /** The most the signal list gets: a whole number of rows. */
+  readonly listHeight: number;
+}
+
+/**
+ * Where the picker opens and how high its signal list gets at most. The panel is level with its field (`fieldTop`) and stays in
+ * the area that ends at `bottom`, the top of the status line, a margin from both ends; it is at most `MAX_HEIGHT` high.
+ * `chrome` is the height of everything in it but the list. The list gets a whole number of rows of what is left, so that its
+ * lower edge cuts no row, and the panel is placed for the highest list: another tab or a search changes the height of the
+ * panel, and neither moves it nor takes it out of the area.
+ */
+export function pickerPlacement(fieldTop: number, chrome: number, bottom: number): PickerPlacement {
+  const room = Math.min(MAX_HEIGHT, bottom - 2 * MARGIN) - chrome;
+  const rows = Math.max(MIN_ROWS, Math.floor((room + ROW.gap) / (ROW.height + ROW.gap)));
+  const listHeight = rows * (ROW.height + ROW.gap) - ROW.gap;
+  return { top: Math.max(MARGIN, Math.min(fieldTop, bottom - MARGIN - chrome - listHeight)), listHeight };
+}
 
 function matches(entry: CatalogSignal, query: string): boolean {
   return entry.displayName.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query);
@@ -41,10 +68,12 @@ function visibleGroups(groups: readonly PickerGroup[], wildcards: readonly Wildc
 
 export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onSelect, close }: SignalPickerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const giveFocusBack = useFocusReturn();
   const [query, setQuery] = useState("");
   const [quality, setQuality] = useState(value?.quality ?? NORMAL_QUALITY);
-  const [position, setPosition] = useState<{ readonly top: number; readonly right: number } | null>(null);
+  const [position, setPosition] = useState<(PickerPlacement & { readonly right: number }) | null>(null);
   const valueKey = value ? signalKey({ kind: value.kind, name: value.name }) : undefined;
   const needle = query.trim().toLowerCase();
   const shown = useMemo(() => visibleGroups(groups, wildcards, needle), [groups, wildcards, needle]);
@@ -53,17 +82,31 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
   const listed = needle === "" ? shown.filter((group) => group.group.name === tab) : shown;
   const first = listed[0]?.subgroups[0]?.signals[0];
 
-  const pick = (entry: CatalogSignal): void => onSelect(entry.wildcard === undefined && quality !== NORMAL_QUALITY ? signal(entry.kind, entry.name, quality) : entry.id);
+  // Closed by a choice, by a key or by its close button, the picker gives the focus back to the button of its field.
+  const pick = (entry: CatalogSignal): void => {
+    onSelect(entry.wildcard === undefined && quality !== NORMAL_QUALITY ? signal(entry.kind, entry.name, quality) : entry.id);
+    giveFocusBack();
+  };
+  const dismiss = (): void => {
+    close();
+    giveFocusBack();
+  };
 
-  // The panel opens beside the inspector, level with its field, and stays inside the window.
+  // The panel opens beside the inspector, level with its field, and stays above the status line (`pickerPlacement`).
   useLayoutEffect(() => {
     const panel = panelRef.current;
-    if (!panel) return;
+    const list = listRef.current;
+    if (!panel || !list) return;
     const field = panel.parentElement?.getBoundingClientRect();
     const inspector = panel.closest(".inspector")?.getBoundingClientRect();
-    const top = Math.max(MARGIN, Math.min(field?.top ?? MARGIN, window.innerHeight - panel.offsetHeight - MARGIN));
-    setPosition({ top, right: inspector ? window.innerWidth - inspector.left + MARGIN : MARGIN });
+    const bottom = document.querySelector(".statusbar")?.getBoundingClientRect().top ?? window.innerHeight;
+    setPosition({ ...pickerPlacement(field?.top ?? MARGIN, panel.offsetHeight - list.offsetHeight, bottom), right: inspector ? window.innerWidth - inspector.left + MARGIN : MARGIN });
   }, []);
+
+  // Another tab or another search is another list: it starts at its top.
+  useLayoutEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = 0;
+  }, [tab, needle]);
 
   // The panel is invisible until it is positioned, and an invisible input cannot take the focus.
   const placed = position !== null;
@@ -90,7 +133,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.stopPropagation();
-        close();
+        dismiss();
       }}
     >
       <div className="picker-search">
@@ -107,7 +150,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
             if (event.key === "Enter" && first) pick(first);
           }}
         />
-        <button type="button" className="icon-button" aria-label="Close signal picker" onClick={close}>
+        <button type="button" className="icon-button" aria-label="Close signal picker" onClick={dismiss}>
           <Icon name="close" size={14} />
         </button>
       </div>
@@ -124,7 +167,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
         })}
       </div>
 
-      <div className="picker-signals" role="tabpanel">
+      <div ref={listRef} className="picker-signals" role="tabpanel" style={position ? { maxHeight: position.listHeight } : undefined}>
         {listed.length === 0 && <p className="muted-note">No signal matches "{query.trim()}".</p>}
         {listed.map(({ group, subgroups }) => (
           <section key={group.name} aria-label={group.displayName}>

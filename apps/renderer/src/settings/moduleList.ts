@@ -35,8 +35,17 @@ export function consequence(module: ModuleView, modules: readonly ModuleView[]):
   return null;
 }
 
-/** A module is listed for what it adds; one whose counts are both zero adds only what cannot be chosen. */
+/** What the row of a module says whose counts are both zero: it adds only what cannot be chosen. */
 export const NOTHING_TO_CHOOSE = "Only hidden signals or entities";
+
+/**
+ * The modules that have a row. A mod that adds only hidden signals or entities has one only while the project has it switched on
+ * or uses something of it (`used`: the modules the source uses although they are off); otherwise nothing of it can be chosen
+ * and it counts among the other mods. The catalog lists it all the same: the import of a blueprint switches it on by that list.
+ */
+export function listedRows(modules: readonly ModuleView[], used: readonly string[]): readonly ModuleView[] {
+  return modules.filter((module) => module.game || module.signalCount > 0 || module.entityCount > 0 || module.enabled || used.includes(module.name));
+}
 
 /** What the module brings, without a count of none: "12 signals, 3 entities", "771 signals", "3 entities". */
 export function moduleCounts(module: ModuleView): string {
@@ -61,9 +70,9 @@ export function modulesOffNotice(names: readonly string[], modules: readonly Mod
   return `This project uses signals or entities of ${moduleTitles(names, modules)}, which ${names.length === 1 ? "is" : "are"} switched off. They are marked with a warning and are not offered.`;
 }
 
-/** The mods that are not in the list, in a line; null when every mod is. */
+/** The mods without a row, in a line: those that add no signal or entity, and those that add only hidden ones. Null when every mod has a row. */
 export function otherModsNote(amount: number): string | null {
-  return amount > 0 ? `${count(amount, "other mod")} of your game ${amount === 1 ? "adds" : "add"} no signals or entities.` : null;
+  return amount > 0 ? `${count(amount, "other mod")} of your game ${amount === 1 ? "adds" : "add"} nothing that can be chosen here.` : null;
 }
 
 /** With the built-in data: where the mods come from. */

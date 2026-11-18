@@ -58,6 +58,8 @@ export interface WiredEntity {
   /** An electric pole's one distance for all its wires. */
   readonly poleReach?: number;
   readonly module?: string;
+  /** Hidden in the game, with the item that builds it, as the helper entities of a mod are: it is in the data, and nothing offers it. */
+  readonly hidden?: boolean;
   /** What is wrong with it, as with a mod's helper entities: the game's data gives it no collision box, or the running game no size. A read leaves it out. */
   readonly flaw?: "no-collision-box" | "no-size";
 }
@@ -116,7 +118,7 @@ export function someModArchive(info: { readonly name: string; readonly version: 
  */
 export async function writeCannedDump(directory: string, { activeMods = { base: "2.1.25" }, gameVersion = "2.1.25", editor = false, without = [], entities = [] }: CannedDump = {}): Promise<string> {
   const createdBy = (module?: string): string => (module !== undefined && module in activeMods ? module : "base");
-  const signal = (name: string, type: string, module?: string): object => ({ name, type, created: createdBy(module), order: name, group: "g", subgroup: "s", hidden: false, parameter: false });
+  const signal = (name: string, type: string, module?: string, hidden = false): object => ({ name, type, created: createdBy(module), order: name, group: "g", subgroup: "s", hidden, parameter: false });
   const wired = editor ? [...EDITOR_ENTITIES, ...entities].filter((entity) => !without.includes(entity.name)) : [];
   const iconOf = (entity: WiredEntity): string => `__${entity.module ?? "base"}__/graphics/icons/${entity.name}.png`;
   const boxOf = ([width, height]: readonly [number, number], inset: number): number[][] => [[-width / 2 + inset, -height / 2 + inset], [width / 2 - inset, height / 2 - inset]];
@@ -125,7 +127,7 @@ export async function writeCannedDump(directory: string, { activeMods = { base: 
     const reach = entity.poleReach === undefined ? { circuit_wire_max_distance: 9 } : { maximum_wire_distance: entity.poleReach };
     const sounds = entity.type === "programmable-speaker" ? { maximum_polyphony: 10, instruments: [{ name: "alarms", notes: [{ name: "alarm-1" }, { name: "alarm-2" }] }] } : {};
     const collision = entity.flaw === "no-collision-box" ? {} : { collision_box: boxOf(entity.size, 0.15) };
-    (byType[entity.type] ??= {})[entity.name] = { name: entity.name, icon: iconOf(entity), ...collision, selection_box: boxOf(entity.size, 0), ...reach, ...sounds };
+    (byType[entity.type] ??= {})[entity.name] = { name: entity.name, icon: iconOf(entity), ...(entity.hidden && { hidden: true }), ...collision, selection_box: boxOf(entity.size, 0), ...reach, ...sounds };
   }
   const virtual = editor ? { "signal-A": { icon: "__base__/graphics/icons/signal/signal_A.png" }, [MOD_SIGNAL]: { icon: "__some-mod__/graphics/icons/mod-signal.png" } } : {};
   const raw = {
@@ -142,10 +144,10 @@ export async function writeCannedDump(directory: string, { activeMods = { base: 
   const runtime = {
     game_version: gameVersion,
     active_mods: activeMods,
-    item: [{ name: "plate" }, { name: "gadget", module: "some-mod" }, { name: "lamp" }, ...wired].map(({ name, module }) => ({ ...signal(name, "item", module), stack_size: 50, weight: 100 })),
+    item: [{ name: "plate" }, { name: "gadget", module: "some-mod" }, { name: "lamp" }, ...wired].map(({ name, module, hidden }: Partial<WiredEntity> & { readonly name: string }) => ({ ...signal(name, "item", module, hidden), stack_size: 50, weight: 100 })),
     virtual_signal: Object.keys(virtual).map((name) => signal(name, "virtual-signal", name === MOD_SIGNAL ? "some-mod" : undefined)),
     fluid: [], recipe: [], space_location: [], asteroid_chunk: [], quality: [],
-    entity: [{ ...signal("lamp", "lamp"), items_to_place_this: ["lamp"] }, ...wired.map((entity) => ({ ...signal(entity.name, entity.type, entity.module), items_to_place_this: [entity.name] }))],
+    entity: [{ ...signal("lamp", "lamp"), items_to_place_this: ["lamp"] }, ...wired.map((entity) => ({ ...signal(entity.name, entity.type, entity.module, entity.hidden), items_to_place_this: [entity.name] }))],
     item_group: [{ name: "g", order: "a", created: "core" }],
     item_subgroup: [{ name: "s", group: "g", order: "a", created: "base" }],
     utility_constants: { default_item_weight: 100 },

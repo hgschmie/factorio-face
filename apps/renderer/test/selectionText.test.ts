@@ -1,7 +1,7 @@
 import { wireKey, type Circuit, type Wire } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
-import { countLabel, entityNames, inspectedSubject, selectedItems, selectionStatus, wireEndsLabel } from "../src/workbench/selectionText.ts";
+import { componentsNote, countLabel, entityNames, inspectedSubject, selectedItems, selectionStatus, wireEndsLabel } from "../src/workbench/selectionText.ts";
 import { createSession } from "./session/helpers.ts";
 
 const circuit: Circuit = createSession(EXAMPLE_SOURCE).session.state.circuit;
@@ -56,6 +56,15 @@ describe("selection text", () => {
     expect(status([], [red, loop])).toBe("2 wires selected");
     expect(status([gate], [red])).toBe("1 entity and 1 wire selected");
     expect(status([gate, light], [red, loop])).toBe("2 entities and 2 wires selected");
+  });
+
+  it("says how many components the circuit has, one of them in the singular", () => {
+    // The number stands above the words.
+    expect(componentsNote(0)).toBe("components in this circuit");
+    expect(componentsNote(1)).toBe("component in this circuit");
+    expect(componentsNote(2)).toBe("components in this circuit");
+    expect(countLabel(1, 1)).toBe("1 entity and 1 wire");
+    expect(countLabel(2, 0)).toBe("2 entities");
   });
 
   it("counts a selection of more than four entities", () => {

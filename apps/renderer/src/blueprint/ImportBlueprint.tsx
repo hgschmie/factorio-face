@@ -6,7 +6,7 @@
 import { useDeferredValue, useId, useMemo, useState } from "react";
 import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
 import { Modal } from "../dialog/Modal.tsx";
-import { noteWord, type BlueprintReading, type ImportedBlueprint, type ImportReportView } from "../session/blueprints.ts";
+import { noteWord, unlistedNote, type BlueprintReading, type ImportedBlueprint, type ImportReportView } from "../session/blueprints.ts";
 
 export interface ImportBlueprintProps {
   /** A file the user chose: its text is read in place of a pasted one, and there is no text box. */
@@ -120,7 +120,7 @@ export function ImportBlueprint({ file, read, open, close }: ImportBlueprintProp
               })}
             </ul>
           </div>
-          {reading.unlisted > 0 && <p className="muted-note">The book has {reading.unlisted} more items, which are not listed.</p>}
+          {reading.unlisted > 0 && <p className="muted-note">{unlistedNote(reading.unlisted)}</p>}
           {entry === undefined && (
             <p className="settings-message error" role="alert" data-message="error">
               No blueprint of this book has an entity the editor knows, so there is nothing to import.

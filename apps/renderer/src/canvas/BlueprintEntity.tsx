@@ -1,7 +1,7 @@
 // One entity on the blueprint board: its footprint on the tiles with compact content. The counterpart of EntityCard, and like
 // it purely presentational and memoized; the canvas finds it and its pins through the same data attributes. Coordinates are
 // canvas units from the top-left corner of the footprint.
-import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Entity, type TerminalSide, type TileBox, type TileSize, type WireColor } from "@face/model";
+import { facingOf, TERMINALS, tileHalves, tileCenter, tileSize, WIRE_COLORS, type Direction, type Entity, type EntityKind, type TerminalSide, type TileBox, type TileSize, type WireColor } from "@face/model";
 import { memo } from "react";
 import { truncate } from "../entities/summary.ts";
 import { EntityIconSvg, type EntityIconResolver } from "../icons/EntityIcon.tsx";
@@ -37,7 +37,7 @@ export interface BlueprintEntityProps {
 const INSET = 4;
 /** Icon edge on one tile, on the two tiles of a combinator, and without text. A larger footprint: `blockContent`. */
 const ICON = { single: 26, long: 28, outline: 40 } as const;
-/** How far the content of a 1x1 entity moves away from pins on its top or bottom end. */
+/** How far the content of an entity without halves moves away from its pins (`plainContent`). */
 const PIN_ROOM = 9;
 /** How far the arrows of a 2x1 entity sit from the middle of their half, towards its outer end. */
 const ARROW_SHIFT = 8;
@@ -58,6 +58,19 @@ export interface BlockContent {
   readonly font: number;
   readonly nameY: number;
   readonly nameChars: number;
+}
+
+/**
+ * The icon and the name of an entity without halves that is one tile wide or high (a constant combinator, a lamp, a small pole,
+ * a chest): in the middle of the footprint, moved by `PIN_ROOM` to leave the pins free. Up from pins on the bottom end; down from
+ * pins on the top end and, on a footprint one tile wide, from pins on a side, which a name of full length below the icon would
+ * run into; not at all between pins on both ends.
+ */
+export function plainContent(kind: EntityKind, facing: Direction, size: TileSize): BlockContent {
+  const headings = TERMINALS[kind].map((side) => pinHeading(side, facing));
+  const shift = headings.includes("south") ? (headings.includes("north") ? 0 : -PIN_ROOM) : headings.includes("north") || size.width === 1 ? PIN_ROOM : 0;
+  const middle = (size.height * TILE) / 2 + shift;
+  return { icon: ICON.single, iconTop: middle - 19, font: NAME_FONT, nameY: middle + 19, nameChars: size.width > 1 ? NAME_CHARS.wide : NAME_CHARS.single };
 }
 
 /** The size of the name of an entity that covers `size` tiles: larger on a footprint of more than one tile in both directions (`blockContent`). */
@@ -95,15 +108,12 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
   const middle = (half: TileBox) => ({ x: (half.x + half.width / 2) * TILE, y: (half.y + half.height / 2) * TILE });
   // Along the facing the halves follow each other, whatever the size of the entity: the standard combinator is 1 x 2, a modded one may be 2 x 2.
   const sideways = forward.x !== 0;
-  // The content sits in the middle of the footprint. On one tile it moves away from pins on the top or the bottom end, unless
-  // both ends carry pins (a combinator of one tile, which a mod may have).
-  const pinsTowards = long || square || TERMINALS[entity.kind].length > 1 ? { x: 0, y: 0 } : DIRECTION_VECTOR[pinHeading(TERMINALS[entity.kind][0]!, facing)];
-  const center = { x: width / 2, y: height / 2 - pinsTowards.y * PIN_ROOM };
-  const block = square ? blockContent(width, height) : undefined;
+  // An entity with halves has its content in the middle of the footprint, between its arrows; every other one where its pins leave room.
+  const block = long ? undefined : square ? blockContent(width, height) : plainContent(entity.kind, facing, size);
   // Without text the icon alone fills the middle: as large as with it, and larger on a footprint that has the room.
-  const icon = outline ? Math.max(ICON.outline, block?.icon ?? 0) : long ? ICON.long : (block?.icon ?? ICON.single);
-  const iconTop = outline ? height / 2 - icon / 2 : block ? block.iconTop : center.y + (long ? -27 : -19);
-  const nameChars = block ? block.nameChars : size.width > 1 ? NAME_CHARS.wide : long ? NAME_CHARS.tall : NAME_CHARS.single;
+  const icon = outline ? Math.max(ICON.outline, block?.icon ?? 0) : (block?.icon ?? ICON.long);
+  const iconTop = outline ? height / 2 - icon / 2 : (block?.iconTop ?? height / 2 - 27);
+  const nameChars = block?.nameChars ?? (size.width > 1 ? NAME_CHARS.wide : NAME_CHARS.tall);
   // A lamp that is lit and a speaker that plays show it: the indicator, and a glow over the body in the color of the light.
   const lit = status?.active ?? false;
   // A generic entity shows its conditions: the indicator is on while the one that enables it holds, or any where it has no such one.
@@ -147,14 +157,14 @@ export const BlueprintEntity = memo(function BlueprintEntity({ entity, tileX, ti
           <path className="board-arrow out" d={arrowPath(middle(halves.output).x + forward.x * ARROW_SHIFT, middle(halves.output).y + forward.y * ARROW_SHIFT, forward)} />
         </>
       )}
-      <EntityIconSvg entity={entity} x={center.x - icon / 2} y={iconTop} size={icon} resolveIcon={resolveIcon} />
+      <EntityIconSvg entity={entity} x={width / 2 - icon / 2} y={iconTop} size={icon} resolveIcon={resolveIcon} />
       {!outline && (
         <>
-          <text className="board-name" x={center.x} y={block ? block.nameY : center.y + (long ? 13 : 19)} style={block && block.font !== NAME_FONT ? { fontSize: block.font } : undefined}>
+          <text className="board-name" x={width / 2} y={block?.nameY ?? height / 2 + 13} style={block && block.font !== NAME_FONT ? { fontSize: block.font } : undefined}>
             {truncate(entity.name, nameChars)}
           </text>
           {long && status?.output && (
-            <text className="board-output" x={center.x} y={center.y + 26}>
+            <text className="board-output" x={width / 2} y={height / 2 + 26}>
               {compactOutput(status.output, size.width > 1 ? OUTPUT_CHARS.wide : OUTPUT_CHARS.tall)}
             </text>
           )}

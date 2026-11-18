@@ -3,6 +3,7 @@ import { analyze } from "@face/language";
 import { DIRECTIONS, facingOf, isTileCenter, occupiedTiles, prototypesOf, TERMINALS, tileHalves, tileCenter, tileOrigin, tileSize, WIRE_COLORS, type Entity, type Point } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { arrangeBoard, blockedMoves, blockedReshape, blockedTurn, BOARD_PIN, boardPinOffset, boardWireLine, canStandAt, derivedTiles, EDIT_UNITS_PER_TILE, editPositionOf, footprintOriginAt, freeOriginNear, TILE, WIRE_PIN_CLEARANCE } from "../src/canvas/board.ts";
+import { BOARD_NAME_FONT, plainContent } from "../src/canvas/BlueprintEntity.tsx";
 import { CARD, GRID, PIN_SPACING } from "../src/canvas/geometry.ts";
 import { EXAMPLE_SOURCE } from "./fixtures/example.ts";
 import { gridSource } from "../../../tests/e2e/fixtures.ts";
@@ -278,6 +279,48 @@ describe("pins on a footprint", () => {
         }
       }
     }
+  });
+
+  it("leaves the pins of an entity of one tile free of its icon and of a name of full length, whatever it is and faces", () => {
+    const tile = { width: 1, height: 1 };
+    // The width of a name by the rule its length is cut by: 0.62 of the font size per character.
+    const box = (left: number, top: number, right: number, bottom: number) => ({ left, top, right, bottom });
+    for (const [kind, prototype] of [["constant", "constant-combinator"], ["lamp", "small-lamp"], ["speaker", "programmable-speaker"], ["pole", "small-electric-pole"], ["pole", "medium-electric-pole"], ["entity", "iron-chest"]] as const) {
+      expect(tileSize({ prototype }, "east"), prototype).toEqual(tile);
+      for (const facing of DIRECTIONS) {
+        const { icon, iconTop, font, nameY, nameChars } = plainContent(kind, facing, tile);
+        const half = (nameChars * font * 0.62) / 2;
+        const name = box(TILE / 2 - half, nameY - font * 0.8, TILE / 2 + half, nameY + font * 0.3);
+        const picture = box(TILE / 2 - icon / 2, iconTop, TILE / 2 + icon / 2, iconTop + icon);
+        expect(font).toBe(BOARD_NAME_FONT);
+        // Inside the body, the name below the icon.
+        expect([picture.top >= 4, name.top >= picture.bottom, name.bottom <= TILE - 4, name.left >= 4, name.right <= TILE - 4], `${prototype} ${facing}`).toEqual([true, true, true, true, true]);
+        for (const side of TERMINALS[kind]) {
+          for (const color of WIRE_COLORS) {
+            const pin = boardPinOffset({ prototype }, facing, side, color);
+            for (const [what, content] of [["name", name], ["icon", picture]] as const) {
+              const apart = pin.x + BOARD_PIN.radius <= content.left || pin.x - BOARD_PIN.radius >= content.right || pin.y + BOARD_PIN.radius <= content.top || pin.y - BOARD_PIN.radius >= content.bottom;
+              expect(apart, `${prototype} ${facing} ${side} ${color} ${what}`).toBe(true);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it("moves the content of an entity without halves away from its pins: up from the bottom end, down from the top end and from the sides of one tile", () => {
+    const nameY = (kind: Parameters<typeof plainContent>[0], facing: Parameters<typeof plainContent>[1], width = 1, height = 1): number => plainContent(kind, facing, { width, height }).nameY;
+    // A constant combinator has its pins where it faces; a lamp, which does not turn, on the left.
+    expect((["north", "east", "south", "west"] as const).map((facing) => nameY("constant", facing))).toEqual([68, 68, 50, 68]);
+    expect(nameY("lamp", "east")).toBe(68);
+    // The one connection point of a pole and of a chest is on the top end.
+    expect([nameY("pole", "east"), nameY("entity", "south")]).toEqual([68, 68]);
+    // A combinator of one tile, which a mod may have: between pins on both ends it stays in the middle, beside pins on both sides it moves down.
+    expect([nameY("decider", "north"), nameY("decider", "south"), nameY("decider", "east"), nameY("decider", "west")]).toEqual([59, 59, 68, 68]);
+    // Two tiles wide, a name of full length ends before the pins on a side: the content stays in the middle. One tile wide and two high it does not.
+    expect([nameY("lamp", "east", 2, 1), nameY("lamp", "east", 1, 2)]).toEqual([59, 108]);
+    expect(plainContent("lamp", "east", { width: 2, height: 1 }).nameChars).toBeGreaterThan(plainContent("lamp", "east", { width: 1, height: 1 }).nameChars);
+    expect(plainContent("constant", "east", { width: 1, height: 1 })).toMatchObject({ icon: 26, iconTop: 30 });
   });
 
   it("turns with the facing as the pins of a card do: red on the left seen along the facing", () => {

@@ -1,7 +1,8 @@
 /*
  * Project settings: a popover below the project bar, as high as its content up to the height of the window. Every part keeps
  * its height except the module list, which takes what is left and scrolls by itself. The popover scrolls as a whole only where
- * that leaves the list less than its minimum: in a low window, or with the text about the wire reach open.
+ * that leaves the list less than its minimum: in a low window, or with the text about the wire reach open. While its filter
+ * narrows the list, the list keeps the height it had (set by the panel), so the popover does not change its height under the typing.
  */
 .project-settings {
   position: absolute;
@@ -23,6 +24,11 @@
 
 .project-settings > * {
   flex: none;
+}
+
+/* The popover takes the focus when it opens, for its keys; that is no place to show. */
+.project-settings:focus-visible {
+  outline: none;
 }
 
 .project-settings header {
@@ -168,6 +174,16 @@
 
 .module-list li.invalid {
   border-color: var(--notice-border);
+}
+
+/* That the filter leaves no row is said in the room of the list. */
+.module-list li.no-match {
+  padding: 0;
+  border: 0;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: none;
 }
 
 /* The title has the width of the row; what the module adds is a line below it, and below that the note of the row. */
@@ -422,7 +438,12 @@
   padding-left: 26px;
 }
 
-/* The entities a read left out: the count, and behind a disclosure the names by reason, in a box of its own that scrolls. */
+/*
+ * The entities a read left out: the count, and behind a disclosure the names by reason, in a box of its own that scrolls. With
+ * the list open the dialog is as high as the window allows: every other part keeps its height, and the list takes what is left.
+ * That room is handed down from the dialog through the boxes around the list, each of which grows and none of which shrinks,
+ * so the dialog scrolls as a whole only where the list would get less than its minimum.
+ */
 .left-out,
 .left-out-list {
   display: flex;
@@ -430,11 +451,23 @@
   gap: 8px;
 }
 
+.app-settings:has(.left-out-list) {
+  height: 100%;
+}
+
+.app-settings:has(.left-out-list) .game-data,
+.left-out:has(.left-out-list),
+.left-out-list {
+  flex: 1 0 auto;
+}
+
+/* The basis is a length: a percentage would stand for the height of all lines until the box around has its height. */
 .left-out-groups {
   display: flex;
+  flex: 1 1 0px;
   flex-direction: column;
   gap: 12px;
-  max-height: 220px;
+  min-height: 120px;
   padding: 9px 11px;
   overflow: auto;
   border: 1px solid var(--border-subtle);

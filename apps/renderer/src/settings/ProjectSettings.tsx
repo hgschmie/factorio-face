@@ -2,10 +2,11 @@
 // read from a game, its mods), shown as the signal groups they contribute. Presentational; enabling and disabling (with
 // dependencies) is decided by the session.
 import { DEFAULT_WIRE_REACH, UNLIMITED_WIRE_REACH, WIRE_REACH_RANGE } from "@face/model";
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useFocusReturn } from "../dialog/focusReturn.ts";
 import { Icon } from "../icons/Icon.tsx";
 import type { CatalogView, ProjectView } from "../workbench/controller.ts";
-import { consequence, FILTER_FROM, filterModules, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote, rowHint } from "./moduleList.ts";
+import { consequence, FILTER_FROM, filterModules, listedRows, listOrder, moduleCounts, MODS_HINT, modulesOffNotice, otherModsNote, rowHint } from "./moduleList.ts";
 import { parseWireReach, WIRE_REACH_DETAILS_LABEL, WIRE_REACH_ERROR, WIRE_REACH_NOTE } from "./wireReach.ts";
 
 export interface ProjectSettingsProps {
@@ -59,6 +60,7 @@ function NameField({ name, onRename }: { readonly name: string; onRename(name: s
  */
 function WireReachField({ wireReach, onChange }: { readonly wireReach: number; onChange(wireReach: number): void }) {
   const id = useId();
+  const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const parsed = draft === null ? wireReach : parseWireReach(draft);
@@ -73,6 +75,7 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
       </label>
       <div className="wire-reach-row">
         <input
+          ref={inputRef}
           id={id}
           type="text"
           inputMode="decimal"
@@ -101,6 +104,8 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
           onClick={() => {
             setDraft(null);
             onChange(DEFAULT_WIRE_REACH);
+            // The button is disabled now: the focus goes to the field it reset, and stays in the panel.
+            inputRef.current?.focus();
           }}
         >
           Reset to {DEFAULT_WIRE_REACH}
@@ -131,11 +136,44 @@ function WireReachField({ wireReach, onChange }: { readonly wireReach: number; o
 
 export function ProjectSettings({ project, catalog, onRename, onWireReachChange, onModuleChange, onEnableUsedModules, close }: ProjectSettingsProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const giveFocusBack = useFocusReturn();
   const [filter, setFilter] = useState("");
-  const filtered = catalog.modules.length >= FILTER_FROM;
-  const rows = listOrder(filtered ? filterModules(catalog.modules, filter) : catalog.modules);
+  /** The height of the list when the filter began to narrow it. The list keeps it while the filter does, so that the panel does not shrink and grow under the typing. */
+  const [fullHeight, setFullHeight] = useState<number>();
+  const listed = listedRows(catalog.modules, project.modulesOff);
+  const filtered = listed.length >= FILTER_FROM;
+  const rows = listOrder(filtered ? filterModules(listed, filter) : listed);
   const offNotice = modulesOffNotice(project.modulesOff, catalog.modules);
-  const otherMods = otherModsNote(catalog.otherMods);
+  const otherMods = otherModsNote(catalog.otherMods + catalog.modules.length - listed.length);
+  const changeFilter = (text: string): void => {
+    if (filter === "") setFullHeight(listRef.current?.getBoundingClientRect().height);
+    setFilter(text);
+  };
+  // Closed by a key or by its close button, the panel gives the focus back to the button that opened it.
+  const dismiss = useCallback((): void => {
+    close();
+    giveFocusBack();
+  }, [close, giveFocusBack]);
+
+  // The focus goes into the panel as it opens, so that the keys are the panel's from the start and Escape closes it. It goes to
+  // the panel itself and to none of its fields: a key typed then must not rename the project.
+  useEffect(() => panelRef.current?.focus(), []);
+
+  // A control that goes away under the focus (the button of the notice, the row of a mod with hidden signals only that is switched
+  // off) leaves the focus with the page. The next key brings it back to the panel, and Escape closes the panel all the same,
+  // before the key means anything to the circuit behind it.
+  useEffect(() => {
+    const onStrayKey = (event: KeyboardEvent): void => {
+      if (document.activeElement !== document.body) return;
+      panelRef.current?.focus();
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      dismiss();
+    };
+    document.addEventListener("keydown", onStrayKey, true);
+    return () => document.removeEventListener("keydown", onStrayKey, true);
+  }, [dismiss]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
@@ -155,15 +193,16 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
       className="project-settings"
       role="dialog"
       aria-label="Project settings"
+      tabIndex={-1}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.stopPropagation();
-        close();
+        dismiss();
       }}
     >
       <header>
         <span className="eyebrow">Project settings</span>
-        <button type="button" className="icon-button" aria-label="Close project settings" onClick={close}>
+        <button type="button" className="icon-button" aria-label="Close project settings" onClick={dismiss}>
           <Icon name="close" size={14} />
         </button>
       </header>
@@ -189,20 +228,26 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
           type="search"
           className="module-filter"
           aria-label="Filter signal groups"
-          placeholder={`Filter ${catalog.modules.length} groups`}
+          placeholder={`Filter ${listed.length} groups`}
           maxLength={100}
           spellCheck={false}
           autoComplete="off"
           value={filter}
-          onChange={(event) => setFilter(event.target.value)}
+          onChange={(event) => changeFilter(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== "Escape" || filter === "") return;
             event.stopPropagation();
-            setFilter("");
+            changeFilter("");
           }}
         />
       )}
-      <ul className={filtered ? "module-list scrolling" : "module-list"} aria-label="Signal groups">
+      <ul ref={listRef} className={filtered ? "module-list scrolling" : "module-list"} aria-label="Signal groups" style={filtered && filter !== "" ? { flexBasis: fullHeight } : undefined}>
+        {/* Said in the room of the list, which keeps its height. */}
+        {rows.length === 0 && (
+          <li className="no-match" data-note="no-match">
+            No signal group matches the filter.
+          </li>
+        )}
         {rows.map((module) => {
           const note = consequence(module, catalog.modules);
           return (
@@ -219,11 +264,6 @@ export function ProjectSettings({ project, catalog, onRename, onWireReachChange,
           );
         })}
       </ul>
-      {rows.length === 0 && (
-        <p className="muted-note" data-note="no-match">
-          No signal group matches the filter.
-        </p>
-      )}
       {otherMods !== null && (
         <p className="muted-note" data-note="other-mods">
           {otherMods}

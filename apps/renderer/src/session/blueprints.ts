@@ -144,6 +144,11 @@ export function bookRows(entries: readonly BookEntry[]): BookRow[] {
   });
 }
 
+/** That a book has more items than the rows that are listed. */
+export function unlistedNote(unlisted: number): string {
+  return `The book has ${count(unlisted, "more item")}, which ${unlisted === 1 ? "is" : "are"} not listed.`;
+}
+
 /** A blueprint as the editor takes it: the circuit of its known entities as source, and what there is to say about the rest. */
 export interface ImportedBlueprint {
   /** The name of the project it opens as: its label, or `IMPORTED_PROJECT_NAME`. */

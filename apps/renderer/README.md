@@ -106,10 +106,11 @@ src/
                        lamp and generic entity, where a condition in use without a signal is the unset one)
     immutable.ts, validation.ts
   picker/
-    SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row
+    SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row; where it opens and how
+                       high its list gets (`pickerPlacement`, pure)
   settings/
     ProjectSettings.tsx  project name, wire reach and the modules of the project as signal groups (the game's, and the mods of a game that was read)
-    moduleList.ts        the module list in words: row notes, counts, filter, the notes around the list
+    moduleList.ts        the module list in words: which modules have a row, row notes, counts, filter, the notes around the list
     wireReach.ts       the text of the wire reach field as a number in range, the line under the field   (pure)
     AppSettings.tsx    the settings of the application on this machine: the game installation the icons are read from, the game data (modal)
     appSettings.ts     what that dialog says about an installation, when the hint is due, which report of the state counts   (pure)
@@ -117,6 +118,8 @@ src/
   dialog/
     Modal.tsx          the modal dialog: backdrop, title, close button, focus kept inside and given back; it starts in the
                        control marked `data-autofocus`, otherwise in its first one
+    focusReturn.ts     `useFocusReturn`: a panel that opens from a button and is not modal (project settings, signal picker)
+                       gives the focus back to that button
   blueprint/
     ImportBlueprint.tsx  the dialog to paste a blueprint string into (also: what is in the way of a chosen file, the list of a
                        blueprint book), and the report on what an import left out
@@ -315,7 +318,9 @@ simulation (`run`, `pause`,
 - **Modules.** The enabled modules are the project's list (`modules` of `face.json`), whatever data is in use; `base` is on in any
   case. What the project switches (`CatalogView.modules`, `listedModules` of the catalog package) is the game's own modules that
   the data has and, with data read from a game, every mod that a signal or a record of the entity table names as its module; the
-  other mods are counted (`otherMods`), never listed and never written into a project. A module switches on with what it requires
+  other mods are counted (`otherMods`), never listed and never written into a project. Which of those modules has a row in the
+  project settings is the panel's business (`listedRows`, see "The module list in the project settings"): the list here also has
+  the mods that add only hidden signals or entities, since a source and the import of a blueprint switch them on by it. A module switches on with what it requires
   and recommends and off with what requires it, also through mods that are not listed. Names of the project file that are not in
   the list are kept at its end; those the data does not know at all are shown (`unknownModules`).
   A signal or an entity of a module that is off stays in the source and is parsed, drawn, simulated and exported; it gets a warning
@@ -548,8 +553,11 @@ a lamp is on, in the lamp's color when it has one; a lit lamp also gets a glow o
 (11 characters on one tile and on an upright 2x1 entity, 18 on a lying one) in the middle, and on a 2x1 entity below the name
 what it emits in short (`compactOutput`: the first signal, `+N`, a dash for nothing). A 2x1 entity has a notch on both long
 edges where the input half ends and two yellow arrows along its facing, one at the input end and one at the output end, as the
-game draws them. Below 50 % zoom the text is left out and the icon is larger. On one tile the content moves 9 units away from
-pins on the top or the bottom end.
+game draws them. Below 50 % zoom the text is left out and the icon is larger. The content of an entity without halves that is
+one tile wide or high (`plainContent`: a constant combinator, a lamp, a small pole, a chest) moves 9 units away from its pins: up
+from pins on the bottom end; down from pins on the top end and, on a footprint one tile wide, from pins on a side, where a name
+of full length would otherwise run into the lower pin; not at all between pins on both ends. A name of 11 characters by the
+width rule (0.62 of the font size per character) then overlaps no pin, whatever the entity is and faces.
 
 - Pins (`boardPinOffset`): inside the footprint, 12 units from the outer end of their tile, 20 apart; input pins on the input
   half, output pins on the output half (a constant has its output where it faces, a lamp and a speaker their input on the
@@ -959,6 +967,23 @@ when two rows share a key on a platform or when one key event matches two rows.
   a click on its text focuses the dialog itself, so no key reaches the circuit behind it. Escape, Close and a press beside the
   dialog close it and give the focus back to where it was. Escape closes the dialog only; a tool picked before stays picked.
   That behaviour is `dialog/Modal.tsx`, which the application settings share.
+- **Panels that open from a button** and are not modal, the project settings and the signal picker, take the focus when they
+  open, so that the keys are theirs from the start and Escape closes them: the project settings on the panel itself
+  (`tabIndex={-1}`, no tab stop and no field, so a key typed then does not rename the project), the picker in its search field.
+  Closed by Escape, by their close button or, the picker, by a choice, they give the focus back to the button that opened them
+  (`useFocusReturn` of `dialog/focusReturn.ts`). Closed by a press elsewhere they do not: the focus goes where the press takes it.
+  A click on the "Project Settings" button closes the open panel as before. A control of the project settings that goes away
+  under the focus ("Switch them on", the row of a mod with hidden signals only that is switched off) leaves the focus with the
+  page: the next key brings it back to the panel, and Escape closes the panel all the same. "Reset to 9", which is disabled
+  once it is pressed, hands the focus to the field of the wire reach.
+- **The place of the signal picker** (`pickerPlacement` in `picker/SignalPicker.tsx`, `styles/picker.css`). The panel opens
+  beside the inspector, level with its field, and stays in the area above the status line, 8 pixels from both ends: from a field
+  low in the inspector it moves up. It is at most 520 pixels high. Everything in its list of signals is a row of 36 pixels with
+  3 to the next (the lines of tiles, and in a search the heading of a group), the list gets a whole number of rows at most
+  (ten with one row of tabs and no qualities), and the room above and below it is outside of what scrolls: the lower edge cuts
+  no row before the list is scrolled, nor at its end. Another tab or another search starts at the top of its list. The panel is
+  placed for the highest list it can get, so another tab or a search changes its height and neither moves it nor takes it out
+  of the area.
 
 ## Icons
 
@@ -1087,13 +1112,19 @@ in a native dialog of its own before it starts the game.
   `workbench/moduleOrder.ts`; the catalog has them by name): the checkbox and the title, which has the width of the row (a mod's
   own text, rendered as text, on two lines where it needs them and cut after that; on hover the title in full with the name,
   `rowHint`); below it what the module adds (`.module-count`, `moduleCounts`: "N signals, M entities", a count of none left out,
-  "Only hidden signals or entities" for a module that is listed for records none of which can be chosen); and below that the note
+  "Only hidden signals or entities" for a mod none of whose records can be chosen); and below that the note
   of what switching it does ("Switching on also switches on ...", "Always enabled" for `base`; `small`). The signals counted are
   the selectable ones that are there only with the module: those it created, and those of another creator that need it, so a
   record of two modules counts in both rows (the sum of the rows can exceed the number of signals). From eleven rows on the list
-  has a filter field above it ("Filter signal groups": title or name, any case; Escape empties it; `[data-note="no-match"]`).
-  Below the list: the mods that are not in it, counted (`[data-note="other-mods"]`, "14 other mods of your game add no signals
-  or entities."); with the built-in data the line that the mods of the game appear here after the game has been read in the
+  has a filter field above it ("Filter signal groups": title or name, any case; Escape empties it; that no row matches is said
+  in the list, `li[data-note="no-match"]`).
+  Which modules have a row is `listedRows`: the game's own, every mod that adds a signal or an entity that can be chosen, and a
+  mod that adds only hidden ones while the project has it switched on or uses something of it (`ProjectView.modulesOff`; the row
+  is then where it is switched on with "Switch them on" or by its checkbox, and switched off again). Such a mod has no row
+  otherwise, since nothing of it can be chosen; the catalog lists it all the same, and the import of a blueprint that uses a
+  hidden signal of it switches it on and names it in its report.
+  Below the list: the mods without a row, counted (`[data-note="other-mods"]`, "14 other mods of your game add nothing that can
+  be chosen here.": those that add no signal or entity, `otherMods`, and those that add only hidden ones); with the built-in data the line that the mods of the game appear here after the game has been read in the
   application settings (`[data-note="mods-hint"]`); and the names the data does not know. Above the list, when the project uses
   signals or entities of modules that are off (`[data-note="modules-off"]`): which, by title and counted after four, and the
   button "Switch them on" (`enableUsedModules`). Every sentence that lists modules (that notice, the notes of the rows,
@@ -1104,7 +1135,10 @@ in a native dialog of its own before it starts the game.
   the mods of a game it takes what the name, the wire reach, the notice, the filter and the lines below it leave, and those stay
   in view while it scrolls. A list of four rows or more is never squeezed below 148 pixels (three rows and the top of a
   fourth); only where the window leaves less (the smallest window with the notice on show, or the text about the wire reach
-  open in a low window) does the panel scroll as a whole (`overflow: auto`).
+  open in a low window) does the panel scroll as a whole (`overflow: auto`). While the filter narrows the list, the list keeps
+  the height it had when the typing began (the panel measures it and sets it as the list's `flex-basis`; it still shrinks with
+  the window), so the panel neither shrinks nor jumps under the typing and the room below the rows that are left stays empty.
+  A list without the filter, like the five rows of the built-in data, is as high as its rows.
 - **The record of the mods** (`gameData/projectMods.ts`). `toProjectData` gets `modsRecord(data)`: the game version and what the game
   had loaded, when the data was read from a game with at least one mod; it replaces the project's `gameMods`. Otherwise the record
   the project was loaded with is written back unchanged. When a project is loaded, `modsNotice` compares its record with the data in
@@ -1127,8 +1161,12 @@ in a native dialog of its own before it starts the game.
   were left out: they cannot be placed or imported, because the game's data about them does not fit together. Such entities are
   mostly internal helper entities of mods."); under it a disclosure button "Left-out entities" (`aria-expanded`, closed at first)
   opens the list: one group per reason (`leftOutView`, `LEFT_OUT_REASON_TEXT`: the reason in plain words and the count, what the
-  build found once for the group where all share it, else per name), the names sorted, in a box that scrolls (220px at most,
-  focusable), as text that can be selected. "Copy list" puts the same list on the clipboard as plain text (`copyText` of
+  build found once for the group where all share it, else per name), the names sorted, in a box that scrolls (focusable), as
+  text that can be selected. With the list open the dialog is as high as the window allows (`.app-settings:has(.left-out-list)`):
+  every other part keeps its height, and the box takes the height that is left, 120 pixels at least. That room is handed down
+  from the dialog through the boxes around the list (`.game-data`, `.left-out`, `.left-out-list` grow and do not shrink; the box
+  is `flex: 1 1 0px`), so the dialog scrolls as a whole only where the window leaves the box less than its minimum, and a short
+  list leaves room in its box. Closed, the dialog is as high as its content. "Copy list" puts the same list on the clipboard as plain text (`copyText` of
   `textSelection.ts`, the copy event a page may start on a click). Names and findings are the game's and its mods': bounded by
   the main process and rendered as text. "Read from the game..." is disabled with the
   reason below it (`"unavailable"`) without an installation that has its program; "Use built-in data" discards what was read (or a

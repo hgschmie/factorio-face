@@ -36,6 +36,11 @@ export function countLabel(entities: number, wires: number): string {
   return [entities > 0 ? counted(entities, "entity", "entities") : "", wires > 0 ? counted(wires, "wire", "wires") : ""].filter((part) => part !== "").join(" and ");
 }
 
+/** What the empty inspector says below the number of entities of the circuit. */
+export function componentsNote(count: number): string {
+  return `${count === 1 ? "component" : "components"} in this circuit`;
+}
+
 export type EntityNames = ReadonlyMap<EntityId, string>;
 
 export function entityNames(circuit: Circuit): EntityNames {

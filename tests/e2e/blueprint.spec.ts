@@ -141,6 +141,55 @@ test("the inspector edits on the board, and a turn keeps the top-left tile of th
   await expect(card(page, "door")).toHaveClass(/selected/);
 });
 
+test("the name of an entity of one tile leaves its pins free, whatever the entity is and faces", async ({ page }) => {
+  // Names as long as a tile shows and longer, on every kind of one tile: pins on the right, at the bottom, on the left and on top.
+  const names = ["constant1", "constant_down", "constant_up1", "lamp_number_1", "pole_number_1", "chest_number1"];
+  await openBoard(
+    page,
+    `circuit "Names" {
+    constant-combinator constant1 at (40, 80) tile (0.5, 0.5) {
+    }
+
+    constant-combinator constant_down at (240, 80) tile (2.5, 0.5) facing south {
+    }
+
+    constant-combinator constant_up1 at (440, 80) tile (4.5, 0.5) facing north {
+    }
+
+    small-lamp lamp_number_1 at (640, 80) tile (6.5, 0.5) {
+    }
+
+    small-electric-pole pole_number_1 at (840, 80) tile (8.5, 0.5) {
+    }
+
+    iron-chest chest_number1 at (1040, 80) tile (10.5, 0.5) {
+    }
+}
+`,
+  );
+  await expect(card(page, "constant1").locator(".board-name")).toHaveText("constant1");
+  // A name of more than eleven characters is cut, with an ellipsis for its end.
+  await expect(card(page, "constant_down").locator(".board-name")).toHaveText("constant_d…");
+  for (const name of names) {
+    await expect(card(page, name).locator(".board-name")).toHaveCount(1);
+    const { label, body, pins } = await card(page, name).evaluate((group) => {
+      const box = (element: Element): { left: number; top: number; right: number; bottom: number } => {
+        const { left, top, right, bottom } = element.getBoundingClientRect();
+        return { left, top, right, bottom };
+      };
+      return { label: box(group.querySelector(".board-name")!), body: box(group.querySelector(".card-body")!), pins: [...group.querySelectorAll(".pin-dot")].map(box) };
+    });
+    expect(pins.length, name).toBe(2);
+    for (const pin of pins) {
+      const apart = pin.right <= label.left || pin.left >= label.right || pin.bottom <= label.top || pin.top >= label.bottom;
+      expect(apart, `${name}: the name ${JSON.stringify(label)} and the pin ${JSON.stringify(pin)}`).toBe(true);
+    }
+    // The name stays inside the body of its tile.
+    expect(label.top, name).toBeGreaterThanOrEqual(body.top);
+    expect(label.bottom, name).toBeLessThanOrEqual(body.bottom);
+  }
+});
+
 test("an entity without a tile stands at a derived place, marked as not placed, and nothing is written", async ({ page }) => {
   const source = await sourceText(page);
   expect(source).not.toContain("tile");

@@ -8,7 +8,7 @@ import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
 import { EDIT_UNITS_PER_TILE } from "../../src/canvas/board.ts";
 import { GRID } from "../../src/canvas/geometry.ts";
 import {
-  BOOK_ROWS, bookRows, exportCircuit, IMPORT_SCALE, importedProject, importedProjectName, importReport, INVALID_SOURCE_PROBLEM, noteWord, readBlueprint, REPORT_LINES, unplacedEntities,
+  BOOK_ROWS, bookRows, exportCircuit, IMPORT_SCALE, importedProject, importedProjectName, importReport, INVALID_SOURCE_PROBLEM, noteWord, readBlueprint, REPORT_LINES, unlistedNote, unplacedEntities,
   type BlueprintReading, type ImportedBlueprint,
 } from "../../src/session/blueprints.ts";
 import { createSession, EMPTY_SOURCE, fakeDesktop, type } from "./helpers.ts";
@@ -257,6 +257,8 @@ describe("the import report", () => {
 
     const book = read({ blueprint_book: { item: "blueprint-book", blueprints: Array.from({ length: BOOK_ROWS + 5 }, (_, index) => ({ index, blueprint: { item: "blueprint", label: index === 0 ? long : `b${index}`, entities: [lamp(1, 0)] } })) } });
     expect(book).toMatchObject({ kind: "book", unlisted: 5 });
+    expect(unlistedNote(5)).toBe("The book has 5 more items, which are not listed.");
+    expect(unlistedNote(1)).toBe("The book has 1 more item, which is not listed.");
     expect(book.kind === "book" && [book.rows.length, book.rows[0]!.label.length]).toEqual([BOOK_ROWS, 83]);
   });
 
