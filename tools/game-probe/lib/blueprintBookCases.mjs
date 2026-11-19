@@ -1,8 +1,11 @@
 // What the blueprint book probe sends to the game: books written by hand, as a tool other than the game might write them.
 // The strings are made here with fflate alone, not with packages/blueprints, so that the fixture can be held against that package.
+// The books that package writes into are made by lib/blueprintBookEdits.ts, which `loadEdits` loads.
+import { build } from "esbuild";
 import { strToU8, zlibSync } from "fflate";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 // 2.1.25.0, which the game takes like its own 2.1.25.10 (fixture F-01).
 const VERSION = 562954250027008;
@@ -46,10 +49,26 @@ export const encodeString = (data) => `0${Buffer.from(zlibSync(strToU8(JSON.stri
 /** JSON in ASCII only, so that the Lua file is the same bytes whatever reads it. */
 const asciiJson = (value) => JSON.stringify(value).replace(/[^\x00-\x7e]/g, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
-/** The Lua source of the scenario: one line that holds the cases as a JSON string, then blueprint-book.lua. */
-export function composeScenario(cases = CASES) {
-  const json = asciiJson(cases.map(({ label, data, plain }) => ({ label, string: plain ? JSON.stringify(data) : encodeString(data) })));
+/** What the game is given for each case: its label and its string, the JSON text itself for a `plain` one. */
+export const sentCases = (cases = CASES) => cases.map(({ label, data, plain }) => ({ label, string: plain ? JSON.stringify(data) : encodeString(data) }));
+
+/**
+ * The Lua source of the scenario: one line that holds the books ([{ label, string }]) as a JSON string, one that says whether
+ * the game is to import them and do nothing else, then blueprint-book.lua.
+ */
+export function composeScenario(books, importsOnly = false) {
+  const json = asciiJson(books);
   // A long string ends at the first `]==]`; base64 and JSON of ours have none, and a check costs nothing.
   if (json.includes("]==]")) throw new Error("the cases contain ']==]', which ends the Lua string they are passed in");
-  return `local CASES_JSON = [==[${json}]==]\n${fs.readFileSync(path.join(import.meta.dirname, "..", "blueprint-book.lua"), "utf8")}`;
+  return `local CASES_JSON = [==[${json}]==]\nlocal IMPORTS_ONLY = ${importsOnly}\n${fs.readFileSync(path.join(import.meta.dirname, "..", "blueprint-book.lua"), "utf8")}`;
+}
+
+/**
+ * lib/blueprintBookEdits.ts ({ EDIT_INPUTS, editCases }): TypeScript that imports packages/blueprints and its samples, which Node
+ * cannot run by stripping types, so it is bundled with esbuild first; the bundle is written to `workDir`.
+ */
+export async function loadEdits(workDir) {
+  const outfile = path.join(workDir, "blueprint-book-edits.mjs");
+  await build({ entryPoints: [path.join(import.meta.dirname, "blueprintBookEdits.ts")], bundle: true, format: "esm", platform: "node", target: "node24", outfile, logLevel: "silent" });
+  return import(`${pathToFileURL(outfile).href}?at=${Date.now()}`);
 }

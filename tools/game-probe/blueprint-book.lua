@@ -1,12 +1,15 @@
--- Scenario run headless by tools/game-probe/blueprint-book.mjs via `factorio --test-scenario`. The tool puts one line in front
--- of this file that defines CASES_JSON: the books written by hand of tools/game-probe/lib/blueprintBookCases.mjs, as
--- [{ label, string }]. The game is asked three things, and the answers go to script-output/face-blueprint-book.json:
---   1. native:  what it exports for books made through the runtime API alone: an empty one, and one with a blueprint, an empty
+-- Scenario run headless by tools/game-probe/blueprint-book.mjs via `factorio --test-scenario`. The tool puts two lines in front
+-- of this file: CASES_JSON, books as [{ label, string }], and IMPORTS_ONLY. The game is asked three things, and the answers go to
+-- script-output/face-blueprint-book.json:
+--   1. native:  what it exports for books made through the runtime API alone: an empty one, one with a blueprint, an empty
 --               slot, a blueprint, a book with a blueprint, an upgrade planner and a deconstruction planner, with label,
---               description, icons and active index; and where it puts an item that is added to a book.
---   2. imports: what it makes of each book written by hand: the result of import_stack, the item in every slot of the
+--               description, icons and active index, and one with a blueprint that has every field of a blueprint as an item
+--               (snapping among them); and where it puts an item that is added to a book.
+--   2. imports: what it makes of each book of CASES_JSON: the result of import_stack, the item in every slot of the
 --               inventory the book then has, and the string it exports for it.
 --   3. limits:  how many slots a book has: MANY blueprints are inserted one by one, and imported in one book written here.
+-- The tool runs it twice: with the books written by hand of lib/blueprintBookCases.mjs, and then, IMPORTS_ONLY, with books of
+-- the first run that packages/blueprints wrote a blueprint into (lib/blueprintBookEdits.ts), for the second answer alone.
 -- A step the game refuses is recorded with its error and the rest goes on.
 
 local OUTPUT = "face-blueprint-book.json"
@@ -103,6 +106,27 @@ local function native(scratch)
   out.blank_blueprint = { inserts = { insert(blank, "blueprint"), insert(blank, "blueprint") } }
   try(errors, "blank_blueprint", function() set_up_blueprint(blank[2], "second") end)
   out.blank_blueprint.state = state(stack)
+
+  -- A blueprint with everything a blueprint has as an item, in a book of its own.
+  stack.set_stack({ name = "blueprint-book" })
+  local carried = inventory_of(stack)
+  carried.insert({ name = "blueprint", count = 1 })
+  local kept = carried[1]
+  try(errors, "carried: entities", function()
+    kept.set_blueprint_entities({
+      { entity_number = 1, name = "constant-combinator", position = { x = 0.5, y = 0.5 } },
+      { entity_number = 2, name = "small-lamp", position = { x = 2.5, y = 0.5 } },
+    })
+    kept.label = "kept"
+  end)
+  try(errors, "carried: description", function() kept.blueprint_description = "What a replacement keeps" end)
+  try(errors, "carried: icons", function() kept.preview_icons = { { index = 1, signal = { type = "virtual", name = "signal-K" } }, { index = 4, signal = { type = "item", name = "small-lamp" } } } end)
+  try(errors, "carried: label_color", function() kept.label_color = { r = 0, g = 0.5, b = 1, a = 1 } end)
+  try(errors, "carried: snap-to-grid", function() kept.blueprint_snap_to_grid = { x = 8, y = 4 } end)
+  try(errors, "carried: absolute-snapping", function() kept.blueprint_absolute_snapping = true end)
+  try(errors, "carried: position-relative-to-grid", function() kept.blueprint_position_relative_to_grid = { x = 3, y = 1 } end)
+  try(errors, "carried: label of the book", function() stack.label = "Carried" end)
+  out.carried = state(stack)
 
   -- The full book: every item is inserted, the first three being blueprints, then the second is taken out again.
   stack.set_stack({ name = "blueprint-book" })
@@ -246,9 +270,9 @@ end
 local function run()
   local scratch = game.create_inventory(2)
   local record = { game_version = helpers.game_version }
-  record.native = native(scratch)
+  if not IMPORTS_ONLY then record.native = native(scratch) end
   record.imports = imports(scratch)
-  record.limits = limits(scratch)
+  if not IMPORTS_ONLY then record.limits = limits(scratch) end
   scratch.destroy()
   helpers.write_file(OUTPUT, helpers.table_to_json(record))
 end

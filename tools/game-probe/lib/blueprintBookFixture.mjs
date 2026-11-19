@@ -16,13 +16,19 @@ function contents(held) {
 const state = (recorded) => defined({ contents: contents(recorded?.contents), exported: decoded(recorded?.exported), error: recorded?.error });
 const inserts = (recorded) => list(recorded).map(({ item, inserted, slot, size }) => defined({ item, inserted, slot, size }));
 
+// Where in the fixture the book is that an edit wrote into, by the name lib/blueprintBookEdits.ts has for it.
+const inputPlace = (input, lastSlotCase) => ({ book: "book.exported", empty: "native.empty.exported", "last slot": `the exported of the import '${lastSlotCase}'`, carried: "native.carried.exported" })[input];
+
 /**
- * The fixture for a recording `{ game_version, native: { errors, empty, empty_labelled, beyond_size, blank_blueprint, full }, imports:
- * [{ label, import_result, contents, exported, error }], limits: { inserted, imported } }` and the books that were sent (`cases` of
- * blueprintBookCases.mjs: { label, data, plain }); `source` says where the recording is from.
+ * The fixture for a recording `{ game_version, native: { errors, empty, empty_labelled, beyond_size, blank_blueprint, carried, full },
+ * imports: [{ label, import_result, contents, exported, error }], limits: { inserted, imported } }` and the books that were sent (`cases`
+ * of blueprintBookCases.mjs: { label, data, plain }); `source` says where the recording is from. `edits` has the second run:
+ * `cases` of lib/blueprintBookEdits.ts ({ label, input, operation, target, keep, sample, path, string }), the `imports` the game
+ * recorded for them, and `lastSlotCase`, the label of the case whose export is the input 'last slot'.
  */
-export function buildFixture({ game_version: gameVersion, native, imports, limits }, cases, source) {
+export function buildFixture({ game_version: gameVersion, native, imports, limits }, cases, source, edits) {
   if (!gameVersion || !native?.full?.state?.exported || list(imports).length !== cases.length || !limits) throw new Error("the recording has no game version, no book, no limits or not one import per case");
+  if (list(edits.imports).length !== edits.cases.length) throw new Error("the second recording has not one import per edit");
   const { full } = native;
   const { inserted, imported } = limits;
   return {
@@ -43,13 +49,18 @@ export function buildFixture({ game_version: gameVersion, native, imports, limit
       "added: two more blueprints inserted, afterAdding the book then (exportedIndexes: the `index` of every item it writes), sizeAfterClearingLast the size once the last slot is cleared. " +
       "imports: per book written by hand what was sent (sent; plain: as JSON text, not deflated), the result of LuaItemStack.import_stack (0: no errors, -1: imported with errors, 1: failed), what the stack then holds and what the game exports for it. " +
       "limits: inserted: blueprints inserted into a new book one by one until it took no more (filled: slots that are not empty; canInsert: whether it takes one more); " +
-      "imported: one book written by hand with `sent` blueprints labelled 1 to `sent`, none with an index (exported: how many items the game writes for it, lastIndex the `index` of the last). errors: what the game refused while the probe made its books.",
+      "imported: one book written by hand with `sent` blueprints labelled 1 to `sent`, none with an index (exported: how many items the game writes for it, lastIndex the `index` of the last). errors: what the game refused while the probe made its books. " +
+      "carried (in native): a book of one blueprint with two entities that has, set through the runtime API, every field a replacement can keep: description, icons, label color, snap-to-grid, absolute-snapping and position-relative-to-grid. " +
+      "edits: books of this recording that packages/blueprints wrote a blueprint into and the game then read, in a second run: input says where in the fixture the book is that was written into, operation, target and keep what was done " +
+      "(add: addToBook to the book at the path `target`; replace: replaceInBook of the blueprint at `target`, with `keep`), sample the sample circuit of packages/blueprints/test/samples.ts whose export was written, " +
+      "path the path the function returned for it, sent the book it returned; importResult, contents and exported as for imports.",
     errors: list(native.errors),
     native: {
       empty: state(native.empty),
       emptyLabelled: state(native.empty_labelled),
       beyondSize: defined({ sizeBefore: native.beyond_size?.size_before, error: native.beyond_size?.error, sizeAfter: native.beyond_size?.size_after }),
       blankBlueprint: { inserts: inserts(native.blank_blueprint?.inserts), ...state(native.blank_blueprint?.state) },
+      carried: state(native.carried),
     },
     book: {
       sizeFresh: full.size_fresh,
@@ -70,6 +81,12 @@ export function buildFixture({ game_version: gameVersion, native, imports, limit
       if (recorded.label !== label) throw new Error(`the recording has '${recorded.label}' where '${label}' was sent`);
       return defined({ label, plain, sent: data, importResult: recorded.import_result, contents: contents(recorded.contents), exported: decoded(recorded.exported), error: recorded.error });
     }),
+    edits: edits.cases.map(({ label, input, operation, target, keep, sample, path, string }, index) => {
+      const recorded = edits.imports[index];
+      if (recorded.label !== label) throw new Error(`the second recording has '${recorded.label}' where '${label}' was sent`);
+      const what = { label, input: inputPlace(input, edits.lastSlotCase), operation, target, keep, sample, path, sent: decoded(string) };
+      return defined({ ...what, importResult: recorded.import_result, contents: contents(recorded.contents), exported: decoded(recorded.exported), error: recorded.error });
+    }),
     limits: {
       inserted: defined({ tried: inserted.tried, inserted: inserted.inserted, size: inserted.size, filled: inserted.filled, canInsert: inserted.can_insert, error: inserted.error }),
       imported: defined({
@@ -82,7 +99,7 @@ export function buildFixture({ game_version: gameVersion, native, imports, limit
 
 /** Everything the game could not do, as "step: error". */
 export function fixtureErrors(fixture) {
-  const refused = [...fixture.imports.map((entry) => [entry.label, entry.error]), ["inserting", fixture.limits.inserted.error], ["importing many", fixture.limits.imported.error]];
+  const refused = [...[...fixture.imports, ...fixture.edits].map((entry) => [entry.label, entry.error]), ["inserting", fixture.limits.inserted.error], ["importing many", fixture.limits.imported.error]];
   return [...fixture.errors, ...refused.filter(([, error]) => error !== undefined).map(([step, error]) => `${step}: ${error}`)];
 }
 
@@ -102,19 +119,19 @@ function render(value, shape, indent) {
 /** One book per line: readable, and the same bytes for the same recording. */
 export function serialiseFixture(fixture) {
   const top = Object.fromEntries(Object.keys(fixture).map((key) => [key, 0]));
-  return `${render(fixture, { ...top, native: 1, book: { items: 1, active: 1, afterAdding: 1 }, imports: 2, limits: 1 }, "")}\n`;
+  return `${render(fixture, { ...top, native: 1, book: { items: 1, active: 1, afterAdding: 1 }, imports: 2, edits: 2, limits: 1 }, "")}\n`;
 }
 
 const slotsOf = (held) => (held?.slots ?? []).map((item) => `${item.slot}: ${item.item === "blueprint-book" ? `book '${item.label}' [${slotsOf(item)}]` : item.label ?? item.item}`).join(", ");
 
 /** The answers of a fixture, as lines to print. */
-export function summarise({ native, book, imports, limits }) {
+export function summarise({ native, book, imports, edits, limits }) {
   const { inserted, imported } = limits;
   return [
     `a new book has ${native.empty.contents.size} slots and exports ${JSON.stringify(native.empty.exported)}`,
     `the book of the probe: slots ${slotsOf(book.contents)}; exported with index ${book.exported.blueprint_book.blueprints.map((item) => item.index).join(", ")} and active_index ${book.exported.blueprint_book.active_index}`,
     `two blueprints added to it land in slots ${book.added.map((entry) => entry.slot).join(" and ")}`,
-    ...imports.map((entry) => `${entry.label}: import_stack ${entry.importResult}; ${entry.contents ? `${entry.contents.size} slots, active ${entry.contents.activeIndex}; ${slotsOf(entry.contents)}` : "nothing"}`),
+    ...[...imports, ...edits].map((entry) => `${entry.label}: import_stack ${entry.importResult}; ${entry.contents ? `${entry.contents.size} slots, active ${entry.contents.activeIndex}; ${slotsOf(entry.contents)}` : "nothing"}`),
     `a book took ${inserted.inserted} of ${inserted.tried} blueprints inserted one by one (${inserted.size} slots)`,
     `a book written by hand with ${imported.sent} blueprints: import_stack ${imported.importResult}, ${imported.filled} in ${imported.size} slots, the last one '${imported.lastLabel}'`,
   ];
