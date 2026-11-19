@@ -223,7 +223,7 @@ describe("project file", () => {
     await expect(readProject(await projectFile("bad-json", zipSync({ ...validEntries(), "face.json": strToU8("{ nope") })))).rejects.toThrow(/not valid JSON/);
     const withManifest = (overrides: Record<string, unknown>): Uint8Array => zipSync({ ...validEntries(), "face.json": manifestEntry(overrides) });
     await expect(readProject(await projectFile("bad-manifest", withManifest({ circuits: ["../../outside.face"] })))).rejects.toThrow(ValidationError);
-    await expect(readProject(await projectFile("future-version", withManifest({ formatVersion: 2 })))).rejects.toThrow(/Unsupported project format version/);
+    await expect(readProject(await projectFile("future-version", withManifest({ formatVersion: 3 })))).rejects.toThrow(/Unsupported project format version/);
     const { "second.face": _second, ...withoutSecond } = validEntries();
     await expect(readProject(await projectFile("missing-circuit", zipSync(withoutSecond)))).rejects.toThrow(/lists second\.face but does not contain it/);
     // A circuit is an entry at the root, not one that merely ends in the same name.
@@ -323,6 +323,175 @@ describe("project file", () => {
     expect(empty.files[0]!.source).toBe('circuit "Fresh" {\n}\n');
     expect(empty.manifest.modules).toEqual(["base", "space-age", "quality", "recycler", "elevated-rails"]);
     expect(empty.manifest.gameVersion).toBe(STANDARD_CATALOG_VERSION);
+  });
+});
+
+describe("project file with a blueprint book", () => {
+  const string = "0eNqVkMEKwjAQRH9l2XMQe1DBq78h";
+  const withBook: ProjectData = { ...project, manifest: { ...project.manifest, formatVersion: 2 }, book: { string, origin: [2, 0] } };
+  const entriesOf = async (path: string): Promise<Entries> => unzipSync(await readFile(path));
+  const manifestOf = async (path: string): Promise<unknown> => JSON.parse(strFromU8((await entriesOf(path))["face.json"]!));
+  /** A project file as another tool could have written it: the manifest with `overrides`, the circuits, and `book` as book.txt. */
+  const fileWith = (name: string, overrides: Record<string, unknown>, book?: Uint8Array | string): Promise<string> =>
+    projectFile(name, zipSync({ ...validEntries(), "face.json": manifestEntry(overrides), ...(book === undefined ? {} : { "book.txt": typeof book === "string" ? strToU8(book) : book }) }));
+
+  it("writes the book as the entry book.txt, names it in the manifest of version 2 and reads both back", async () => {
+    const path = await projectFile("book-roundtrip");
+    // The renderer spreads the manifest of an empty or a loaded project: the version it sends says nothing.
+    await writeProject(path, parseProjectData({ ...project, book: withBook.book }));
+    const entries = await entriesOf(path);
+    expect(Object.keys(entries).sort()).toEqual(["book.txt", "face.json", "main.face", "second.face"]);
+    expect(strFromU8(entries["book.txt"]!)).toBe(string);
+    expect(strFromU8(entries["face.json"]!)).toBe(JSON.stringify({ ...project.manifest, formatVersion: 2, book: { file: "book.txt", origin: [2, 0] } }, null, 2) + "\n");
+    expect(await readProject(path)).toEqual({ path, data: withBook });
+  });
+
+  it("keeps a book without an origin without one", async () => {
+    const path = await projectFile("book-no-origin");
+    await writeProject(path, { ...project, book: { string } });
+    expect(await manifestOf(path)).toEqual({ ...project.manifest, formatVersion: 2, book: { file: "book.txt" } });
+    const loaded = await readProject(path);
+    expect(loaded.data).toEqual({ ...withBook, book: { string } });
+    expect(loaded.data.book).not.toHaveProperty("origin");
+  });
+
+  it("writes a project without a book as before: the same bytes of face.json, version 1, no book.txt", async () => {
+    const path = await projectFile("book-none");
+    await writeProject(path, project);
+    const entries = await entriesOf(path);
+    expect(strFromU8(entries["face.json"]!)).toBe(JSON.stringify(project.manifest, null, 2) + "\n");
+    expect(Object.keys(entries).sort()).toEqual(["face.json", "main.face", "second.face"]);
+    expect((await readProject(path)).data).not.toHaveProperty("book");
+  });
+
+  it("goes back to version 1 when the book is taken out of a project, and to version 2 when one is put in", async () => {
+    const path = await projectFile("book-removed");
+    await writeProject(path, withBook);
+    const { book: _book, ...loaded } = (await readProject(path)).data;
+    expect(loaded.manifest.formatVersion).toBe(2);
+    await writeProject(path, parseProjectData(loaded));
+    expect(Object.keys(await entriesOf(path)).sort()).toEqual(["face.json", "main.face", "second.face"]);
+    expect(await manifestOf(path)).toEqual(project.manifest);
+    expect(await readProject(path)).toEqual({ path, data: project });
+    await writeProject(path, parseProjectData({ ...(await readProject(path)).data, book: { string } }));
+    expect(await manifestOf(path)).toEqual({ ...project.manifest, formatVersion: 2, book: { file: "book.txt" } });
+  });
+
+  it("writes the book after the known fields and before the unknown ones, and keeps both across a save", async () => {
+    const onDisk = { ...project.manifest, formatVersion: 2, wireReach: 12, book: { file: "book.txt", origin: [7] }, editor: { theme: "dusk" } };
+    const path = await fileWith("book-unknown-fields", onDisk, string);
+    const loaded = await readProject(path);
+    expect(loaded.data.manifest.extras).toEqual({ editor: { theme: "dusk" } });
+    expect(loaded.data.book).toEqual({ string, origin: [7] });
+    await writeProject(path, parseProjectData(loaded.data));
+    expect(await manifestOf(path)).toEqual(onDisk);
+    expect(Object.keys((await manifestOf(path)) as object).slice(-3)).toEqual(["wireReach", "book", "editor"]);
+  });
+
+  it("reads a file of version 2 without a book and a file of version 1 with one", async () => {
+    const versionTwo = await readProject(await fileWith("book-version-2-none", { formatVersion: 2 }));
+    expect(versionTwo.data).toEqual({ ...project, manifest: { ...project.manifest, formatVersion: 2 } });
+    const versionOne = await fileWith("book-version-1", { formatVersion: 1, book: { file: "book.txt", origin: [0] } }, string);
+    expect((await readProject(versionOne)).data).toEqual({ ...project, book: { string, origin: [0] } });
+    // Saved as it was read, the file gets the version that fits what it holds.
+    await writeProject(versionOne, parseProjectData((await readProject(versionOne)).data));
+    expect(await manifestOf(versionOne)).toEqual({ ...project.manifest, formatVersion: 2, book: { file: "book.txt", origin: [0] } });
+  });
+
+  it("ignores an entry book.txt that the manifest does not name, whatever it holds and without inflating it", async () => {
+    expect((await readProject(await fileWith("book-unlisted", {}, string))).data).toEqual(project);
+    expect((await readProject(await fileWith("book-unlisted-junk", { formatVersion: 2 }, new Uint8Array([0xff, 0xfe, 0x00])))).data).not.toHaveProperty("book");
+    const claim = (view: DataView, record: number): void => view.setUint32(record + DECLARED_SIZE, 0xfffffff0, true);
+    const huge = patchEntry(zipSync({ ...validEntries(), "book.txt": strToU8(string) }), "book.txt", claim);
+    expect((await readProject(await projectFile("book-unlisted-huge", huge))).data).toEqual(project);
+  });
+
+  it("refuses a manifest that names a book the file does not have, like a missing circuit", async () => {
+    await expect(readProject(await fileWith("book-missing", { formatVersion: 2, book: { file: "book.txt" } }))).rejects.toThrow(/lists book\.txt but does not contain it/);
+    // The book is an entry at the root, under exactly that name.
+    const elsewhere = zipSync({ ...validEntries(), "face.json": manifestEntry({ book: { file: "book.txt" } }), "Book.txt": strToU8(string), assets: { "book.txt": strToU8(string) } });
+    await expect(readProject(await projectFile("book-elsewhere", elsewhere))).rejects.toThrow(/lists book\.txt but does not contain it/);
+  });
+
+  it.each([
+    ["a circuit", "main.face"],
+    ["the manifest", "face.json"],
+    ["another entry", "notes.txt"],
+    ["a path", "../book.txt"],
+  ])("refuses a manifest whose book is %s", async (_what, file) => {
+    const path = await fileWith(`book-file-${encodeURIComponent(file).replaceAll("%", "_").replaceAll(".", "_")}`, { book: { file } }, string);
+    await expect(readProject(path)).rejects.toThrow(/the manifest names another one/);
+  });
+
+  it.each([
+    ["plain JSON", '{"blueprint_book":{}}'],
+    ["another version character", "1eNqVkMEK"],
+    ["a line break at the end", `${string}\n`],
+    ["nothing", ""],
+  ])("refuses a book that is %s, which is not a blueprint string", async (what, content) => {
+    const path = await fileWith(`book-content-${what.replaceAll(" ", "-")}`, { book: { file: "book.txt" } }, content);
+    const error: unknown = await readProject(path).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(ValidationError);
+    expect((error as Error).message).toBe("The blueprint book is not a blueprint string");
+  });
+
+  it("reads a stored book with a byte order mark, as it reads the other entries, and does not keep the mark", async () => {
+    const entries = { ...validEntries(), "face.json": manifestEntry({ book: { file: "book.txt" } }), "book.txt": strToU8(`\ufeff${string}`) };
+    expect((await readProject(await projectFile("book-stored", zipSync(entries, { level: 0 })))).data.book).toEqual({ string });
+  });
+
+  it("refuses a book that is not text", async () => {
+    const path = await fileWith("book-not-text", { book: { file: "book.txt" } }, new Uint8Array([0x30, 0xe4, 0xf6, 0xfc]));
+    await expect(readProject(path)).rejects.toThrow(/book\.txt is not valid UTF-8/);
+  });
+
+  it.each([["an empty list", []], ["no list", 2], ["a negative position", [0, -1]], ["a fraction", [1.5]], ["text", ["0"]], ["a position beyond the limit", [LIMITS.bookOriginIndex + 1]], ["too many positions", Array.from({ length: LIMITS.bookOriginDepth + 1 }, () => 0)]])(
+    "refuses an origin that is %s",
+    async (what, origin) => {
+      const path = await fileWith(`book-origin-${what.replaceAll(" ", "-")}`, { book: { file: "book.txt", origin } }, string);
+      const error: unknown = await readProject(path).catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as Error).message).toMatch(/origin in the blueprint book/);
+    },
+  );
+
+  it("takes a book up to the longest blueprint string and refuses a longer one, by its declared size and before inflating it", async () => {
+    const longest = "0" + "A".repeat(LIMITS.blueprintStringLength - 1);
+    const path = await projectFile("book-longest");
+    await writeProject(path, { ...project, book: { string: longest } });
+    expect((await readProject(path)).data.book?.string).toBe(longest);
+    await expect(readProject(await fileWith("book-too-long", { book: { file: "book.txt" } }, longest + "A"))).rejects.toThrow(/book\.txt is too large/);
+    const claim = (view: DataView, record: number): void => view.setUint32(record + DECLARED_SIZE, 0xfffffff0, true);
+    const claimed = patchEntry(zipSync({ ...validEntries(), "face.json": manifestEntry({ book: { file: "book.txt" } }), "book.txt": strToU8(string) }), "book.txt", claim);
+    await expect(readProject(await projectFile("book-declared", claimed))).rejects.toThrow(/book\.txt is too large/);
+  });
+
+  it("leaves room beside the largest book that does not compress: a tenth of the file limit, a fifteenth of the content limit", async () => {
+    // Base64 of bytes without a pattern, as a book of the game is: deflate takes it down to three quarters and no further.
+    const length = LIMITS.blueprintStringLength;
+    let state = 1;
+    const bytes = Uint8Array.from({ length: (length / 4) * 3 }, () => (state = (Math.imul(state, 1103515245) + 12345) >>> 0) >>> 24);
+    const longest = ("0" + Buffer.from(bytes).toString("base64")).slice(0, length);
+    const path = await projectFile("book-incompressible");
+    await writeProject(path, { ...project, book: { string: longest } });
+    const size = (await readFile(path)).length;
+    expect(size).toBeGreaterThan(length / 2);
+    expect(size).toBeLessThan(LIMITS.projectFileBytes / 8);
+    expect(length).toBeLessThan(LIMITS.projectContentBytes / 15);
+    expect((await readProject(path)).data.book?.string).toBe(longest);
+  });
+
+  it.each([
+    ["no blueprint string", { string: "book" }],
+    ["longer than the limit", { string: "0" + "A".repeat(LIMITS.blueprintStringLength) }],
+    ["no string", { string: 5 }],
+    ["with an empty origin", { string, origin: [] }],
+    ["with an origin that is no position", { string, origin: [0.5] }],
+  ])("refuses to save a book that is %s, and keeps the previous project", async (what, book) => {
+    const path = await projectFile(`book-save-${what.replaceAll(" ", "-")}`);
+    await writeProject(path, withBook);
+    await expect(writeProject(path, { ...project, book: book as ProjectData["book"] })).rejects.toThrow(ValidationError);
+    expect(await readProject(path)).toEqual({ path, data: withBook });
   });
 });
 

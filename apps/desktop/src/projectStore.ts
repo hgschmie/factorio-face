@@ -1,11 +1,12 @@
-// Reads and writes project files (format v1): a zip archive with face.json and the circuit sources at its root.
+// Reads and writes project files (format versions 1 and 2): a zip archive with face.json, the circuit sources and, in a project
+// that has one, the blueprint book (book.txt) at its root.
 // Callers pass validated paths and data; everything read from disk is untrusted and validated here.
 import { strToU8, unzipSync, zipSync, type UnzipFileInfo, type Unzipped } from "fflate";
 import { randomBytes } from "node:crypto";
 import { open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { LIMITS, MANIFEST_FILE_NAME, PROJECT_FILE_EXTENSION, type LoadedProject, type ProjectData } from "./ipc.ts";
-import { manifestFileContent, parseArchiveEntryName, parseCircuitFileName, parseManifestFile, ValidationError } from "./validation.ts";
+import { BOOK_FILE_NAME, LIMITS, MANIFEST_FILE_NAME, PROJECT_FILE_EXTENSION, type LoadedProject, type ProjectData } from "./ipc.ts";
+import { manifestFileContent, parseArchiveEntryName, parseCircuitFileName, parseManifestFile, parseProjectBook, ValidationError } from "./validation.ts";
 
 /** Writes to a temporary file in the same directory, flushes it and renames it over the target, so readers never see a partial file. */
 export async function writeFileAtomic(path: string, content: string | Uint8Array): Promise<void> {
@@ -28,6 +29,10 @@ export async function writeFileAtomic(path: string, content: string | Uint8Array
 const STORED = 0;
 const DEFLATED = 8;
 const UTF8 = new TextDecoder("utf-8", { fatal: true });
+
+function fail(message: string): never {
+  throw new ValidationError(message);
+}
 
 function megabytes(bytes: number): string {
   return `${Math.round(bytes / 1_000_000)} MB`;
@@ -111,23 +116,31 @@ export async function readProject(path: string): Promise<LoadedProject> {
   } catch {
     throw new ValidationError(`${MANIFEST_FILE_NAME} is not valid JSON`);
   }
-  const manifest = parseManifestFile(manifestJson);
+  const { manifest, book: listedBook } = parseManifestFile(manifestJson);
   // A UTF-8 file can need up to three bytes per UTF-16 code unit.
-  const sources = extractEntries(archive, new Map(manifest.circuits.map((name) => [name, LIMITS.circuitSourceLength * 3])), path);
+  const wanted = new Map(manifest.circuits.map((name) => [name, LIMITS.circuitSourceLength * 3]));
+  // A blueprint string is ASCII: a character is a byte. A book the manifest does not list is an entry like any other that is ignored.
+  if (listedBook) wanted.set(BOOK_FILE_NAME, LIMITS.blueprintStringLength);
+  const entries = extractEntries(archive, wanted, path);
+  const listed = (name: string): Uint8Array => entries.get(name) ?? fail(`The project file lists ${name} but does not contain it: ${path}`);
   const files = manifest.circuits.map((name) => {
-    const bytes = sources.get(name);
-    if (!bytes) throw new ValidationError(`The project file lists ${name} but does not contain it: ${path}`);
-    const source = decodeText(name, bytes);
+    const source = decodeText(name, listed(name));
     if (source.length > LIMITS.circuitSourceLength) throw new ValidationError(`${name} is too large: ${path}`);
     return { name, source };
   });
-  return { path, data: { manifest, files } };
+  if (!listedBook) return { path, data: { manifest, files } };
+  return { path, data: { manifest, files, book: parseProjectBook({ ...listedBook, string: decodeText(BOOK_FILE_NAME, listed(BOOK_FILE_NAME)) }) } };
 }
 
-/** The project as a zip archive: face.json and the circuit files at the root. Refuses what `readProject` would not read back. */
+/**
+ * The project as a zip archive: face.json, the circuit files and the book, when there is one, at the root. Refuses what
+ * `readProject` would not read back.
+ */
 function packProject(data: ProjectData): Uint8Array {
-  const entries: Record<string, Uint8Array> = { [MANIFEST_FILE_NAME]: strToU8(JSON.stringify(manifestFileContent(data.manifest), null, 2) + "\n") };
+  const book = data.book && parseProjectBook(data.book);
+  const entries: Record<string, Uint8Array> = { [MANIFEST_FILE_NAME]: strToU8(JSON.stringify(manifestFileContent(data.manifest, book), null, 2) + "\n") };
   for (const file of data.files) entries[parseCircuitFileName(file.name)] = strToU8(file.source);
+  if (book) entries[BOOK_FILE_NAME] = strToU8(book.string);
   const contentBytes = Object.values(entries).reduce((sum, bytes) => sum + bytes.length, 0);
   if (contentBytes > LIMITS.projectContentBytes) throw new ValidationError(`The project is too large to save (limit ${megabytes(LIMITS.projectContentBytes)})`);
   const archive = zipSync(entries);

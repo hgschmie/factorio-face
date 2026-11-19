@@ -113,7 +113,7 @@ describe("example projects", () => {
     expect(await examples.list()).toHaveLength(2);
     // Both files change after they were listed: one grows beyond the size limit, the other gets a manifest that is not valid.
     await truncate(scratch("limits", "grown.faceproj"), LIMITS.projectFileBytes + 1);
-    await writeFile(scratch("limits", "changed.faceproj"), zipSync({ "face.json": strToU8(JSON.stringify({ ...example("Changed").manifest, formatVersion: 2 })), "main.face": strToU8("") }));
+    await writeFile(scratch("limits", "changed.faceproj"), zipSync({ "face.json": strToU8(JSON.stringify({ ...example("Changed").manifest, formatVersion: 3 })), "main.face": strToU8("") }));
     await expect(examples.open("grown.faceproj")).rejects.toThrow(/project file is too large/);
     await expect(examples.open("changed.faceproj")).rejects.toThrow(/Unsupported project format version/);
   });

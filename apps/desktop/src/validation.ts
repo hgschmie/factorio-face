@@ -3,10 +3,12 @@ import { clampWireReach, isSignalKind } from "@face/model";
 import { basename, isAbsolute, normalize } from "node:path";
 import type { AppSettings } from "./appSettings.ts";
 import {
+  BOOK_FILE_NAME,
   CIRCUIT_FILE_EXTENSION,
   LIMITS,
   PROJECT_FILE_EXTENSION,
   PROJECT_FORMAT_VERSION,
+  PROJECT_FORMAT_VERSION_WITH_BOOK,
   type CircuitFile,
   type CustomSignal,
   type CustomSignalGroup,
@@ -14,7 +16,9 @@ import {
   type GameMod,
   type HiddenModuleItems,
   type JsonValue,
+  type ProjectBook,
   type ProjectData,
+  type ProjectFormatVersion,
   type ProjectManifest,
   type ProjectMods,
   type RecentProject,
@@ -94,7 +98,7 @@ export function parseExampleFileName(value: unknown): string {
 
 const CIRCUIT_FILE_NAME = /^[A-Za-z0-9_][A-Za-z0-9 ._-]*$/;
 
-/** A plain `*.face` file name: project format v1 keeps circuit files at the root of the project file. */
+/** A plain `*.face` file name: circuit files are entries at the root of the project file. Never the name of another entry the format knows (face.json, book.txt). */
 export function parseCircuitFileName(value: unknown): string {
   if (typeof value !== "string") fail("Circuit file name must be a string");
   if (value.length > LIMITS.circuitFileNameLength) fail("Circuit file name is too long");
@@ -158,7 +162,51 @@ function parseProjectMods(value: unknown): ProjectMods {
   return { gameVersion: parseModVersion(value.gameVersion, "The game version of the mods"), mods };
 }
 
-const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach", "gameMods"]);
+/** What the game writes and reads: the version character `0`, then base64 with its padding. Nothing else, so no blanks and no line breaks. */
+const BLUEPRINT_STRING = /^0[A-Za-z0-9+/]+={0,2}$/;
+
+function parseBlueprintString(value: unknown, what: string, mismatch: string): string {
+  if (typeof value !== "string") fail(`${what} must be a string`);
+  if (value.length > LIMITS.blueprintStringLength) fail(`${what} is too long (limit ${LIMITS.blueprintStringLength} characters)`);
+  if (!BLUEPRINT_STRING.test(value)) fail(mismatch);
+  return value;
+}
+
+/** Where in a book a circuit came from: whole numbers from 0, at least one, bounded in count and in value. */
+function parseBookOrigin(value: unknown): readonly number[] {
+  const origin = parseArray(value, "The origin in the blueprint book", LIMITS.bookOriginDepth);
+  if (origin.length === 0) fail("The origin in the blueprint book must not be empty");
+  return origin.map((position) => (typeof position === "number" && Number.isInteger(position) && position >= 0 && position <= LIMITS.bookOriginIndex ? position : fail(`The origin in the blueprint book must be whole numbers from 0 to ${LIMITS.bookOriginIndex}`)));
+}
+
+/** The blueprint book of a project, from the renderer or from a project file: a blueprint string of bounded length and an optional origin. Anything else of it is dropped. */
+export function parseProjectBook(value: unknown): ProjectBook {
+  if (!isRecord(value)) fail("The blueprint book must be an object");
+  const string = parseBlueprintString(value.string, "The blueprint book", "The blueprint book is not a blueprint string");
+  return { string, ...(value.origin === undefined ? {} : { origin: parseBookOrigin(value.origin) }) };
+}
+
+/** What face.json says of the book of a project: that the project file holds one, as the entry `BOOK_FILE_NAME`, and the origin. */
+export type ManifestBook = Pick<ProjectBook, "origin">;
+
+/** face.json as read: the manifest, and `book` when the file says it has one. */
+export interface ManifestFile {
+  readonly manifest: ProjectManifest;
+  readonly book?: ManifestBook;
+}
+
+function parseManifestBook(value: unknown): ManifestBook {
+  if (!isRecord(value)) fail("The blueprint book of the manifest must be an object");
+  // One book, in one entry whose name is fixed: a name of the file's choosing could be that of the manifest or of a circuit.
+  if (value.file !== BOOK_FILE_NAME) fail(`The blueprint book of a project is its entry ${BOOK_FILE_NAME}; the manifest names another one`);
+  return value.origin === undefined ? {} : { origin: parseBookOrigin(value.origin) };
+}
+
+const MANIFEST_FIELDS: ReadonlySet<string> = new Set(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach", "gameMods", "book"]);
+
+function parseFormatVersion(value: unknown): ProjectFormatVersion {
+  return value === PROJECT_FORMAT_VERSION || value === PROJECT_FORMAT_VERSION_WITH_BOOK ? value : fail(`Unsupported project format version: ${JSON.stringify(value)}`);
+}
 
 function parseJsonValue(value: unknown, what: string, depth: number): JsonValue {
   if (value === null || typeof value === "boolean" || typeof value === "string") return value;
@@ -185,15 +233,18 @@ function parseManifestExtras(value: unknown): Readonly<Record<string, JsonValue>
   return extras;
 }
 
-/** The in-memory manifest, as it crosses the IPC boundary: known fields plus `extras`. Anything else is dropped. */
+/**
+ * The in-memory manifest, as it crosses the IPC boundary: known fields plus `extras`. Anything else is dropped, a `book` as well:
+ * in memory the book is part of the project data, not of the manifest.
+ */
 export function parseManifest(value: unknown): ProjectManifest {
   if (!isRecord(value)) fail("Project manifest must be an object");
-  if (value.formatVersion !== PROJECT_FORMAT_VERSION) fail(`Unsupported project format version: ${JSON.stringify(value.formatVersion)}`);
+  const formatVersion = parseFormatVersion(value.formatVersion);
   const circuits = parseArray(value.circuits, "Circuit file list", LIMITS.circuitFiles).map(parseCircuitFileName);
   if (new Set(circuits.map((name) => name.toLowerCase())).size !== circuits.length) fail("Circuit file names must be unique");
   const extras = parseManifestExtras(value.extras);
   return {
-    formatVersion: PROJECT_FORMAT_VERSION,
+    formatVersion,
     name: parseString(value.name, "Project name", LIMITS.projectNameLength),
     gameVersion: parseString(value.gameVersion, "Game version", 32, true),
     modules: parseArray(value.modules, "Module list", LIMITS.modules).map((module) => parseString(module, "Module name", LIMITS.identifierLength)),
@@ -205,19 +256,28 @@ export function parseManifest(value: unknown): ProjectManifest {
   };
 }
 
-/** The content of face.json: known fields are validated as in `parseManifest`, every other top-level field is kept in `extras`. */
-export function parseManifestFile(value: unknown): ProjectManifest {
+/**
+ * The content of face.json: known fields are validated as in `parseManifest`, every other top-level field is kept in `extras`.
+ * `book` is taken whatever the format version says, so a file of version 1 can have a book and one of version 2 can have none.
+ */
+export function parseManifestFile(value: unknown): ManifestFile {
   if (!isRecord(value)) fail("Project manifest must be an object");
   const known: Record<string, unknown> = {};
   const extras: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value)) Object.defineProperty(MANIFEST_FIELDS.has(key) ? known : extras, key, { value: item, enumerable: true, writable: true, configurable: true });
-  return parseManifest({ ...known, extras });
+  const manifest = parseManifest({ ...known, extras });
+  return known.book === undefined ? { manifest } : { manifest, book: parseManifestBook(known.book) };
 }
 
-/** The content of face.json for a manifest: unknown fields return to the top level, after the known ones. */
-export function manifestFileContent(manifest: ProjectManifest): Record<string, JsonValue> {
+/**
+ * The content of face.json for a manifest, and for the book of the project when it has one: unknown fields return to the top
+ * level, after the known ones. The format version is set here and nowhere else: the one for a book with a book, else the one
+ * every build reads, whatever the manifest says.
+ */
+export function manifestFileContent(manifest: ProjectManifest, book?: ManifestBook): Record<string, JsonValue> {
   const { extras, ...known } = manifest;
-  const content: Record<string, JsonValue> = { ...(known as unknown as Record<string, JsonValue>) };
+  const content: Record<string, JsonValue> = { ...(known as unknown as Record<string, JsonValue>), formatVersion: book ? PROJECT_FORMAT_VERSION_WITH_BOOK : PROJECT_FORMAT_VERSION };
+  if (book) content.book = { file: BOOK_FILE_NAME, ...(book.origin ? { origin: book.origin } : {}) };
   for (const [key, item] of Object.entries(extras ?? {})) Object.defineProperty(content, key, { value: item, enumerable: true, writable: true, configurable: true });
   return content;
 }
@@ -237,7 +297,7 @@ export function parseProjectData(value: unknown): ProjectData {
   const listed = new Set(manifest.circuits);
   if (files.length !== listed.size || files.some((file) => !listed.has(file.name))) fail("Circuit files must match the manifest's circuit list");
   if (new Set(files.map((file) => file.name)).size !== files.length) fail("Circuit files must be unique");
-  return { manifest, files };
+  return { manifest, files, ...(value.book === undefined ? {} : { book: parseProjectBook(value.book) }) };
 }
 
 export function parseSaveProjectRequest(value: unknown): SaveProjectRequest {
@@ -245,18 +305,11 @@ export function parseSaveProjectRequest(value: unknown): SaveProjectRequest {
   return { path: value.path === null ? null : parseProjectPath(value.path), data: parseProjectData(value.data) };
 }
 
-/** What the game writes and reads: the version character `0`, then base64 with its padding. Nothing else, so no blanks and no line breaks. */
-const BLUEPRINT_STRING = /^0[A-Za-z0-9+/]+={0,2}$/;
-
 /** What File > Export Blueprint writes to a file: a blueprint string of bounded length, and the project name the file name is suggested from. */
 export function parseExportBlueprintRequest(value: unknown): ExportBlueprintRequest {
   if (!isRecord(value)) fail("Export request must be an object");
   const name = parseString(value.name, "Project name", LIMITS.projectNameLength);
-  const text = value.text;
-  if (typeof text !== "string") fail("Blueprint string must be a string");
-  if (text.length > LIMITS.blueprintStringLength) fail(`Blueprint string is too long (limit ${LIMITS.blueprintStringLength} characters)`);
-  if (!BLUEPRINT_STRING.test(text)) fail("Not a blueprint string");
-  return { name, text };
+  return { name, text: parseBlueprintString(value.text, "Blueprint string", "Not a blueprint string") };
 }
 
 /** Tolerant reader for the recent-projects file: malformed entries are dropped instead of failing the whole list. */

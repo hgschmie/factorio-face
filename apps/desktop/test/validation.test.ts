@@ -1,6 +1,6 @@
 import { STANDARD_SIGNAL_KINDS } from "@face/model";
 import { describe, expect, it } from "vitest";
-import { LIMITS, type ProjectData } from "../src/ipc.ts";
+import { BOOK_FILE_NAME, LIMITS, type ProjectData } from "../src/ipc.ts";
 import {
   manifestFileContent,
   hiddenItemCount,
@@ -15,6 +15,7 @@ import {
   parseHiddenModuleItems,
   parseManifest,
   parseManifestFile,
+  parseProjectBook,
   parseProjectData,
   parseProjectPath,
   parseRecentProjects,
@@ -114,6 +115,14 @@ describe("circuit file names", () => {
   );
 });
 
+describe("the entry of the blueprint book", () => {
+  it("is no circuit file name, and no circuit file name is the entry", () => {
+    expect(BOOK_FILE_NAME).toBe("book.txt");
+    expect(() => parseCircuitFileName(BOOK_FILE_NAME)).toThrow(/must end in \.face/);
+    expect(parseArchiveEntryName(BOOK_FILE_NAME)).toBe("root");
+  });
+});
+
 describe("project file entry names", () => {
   it("accepts root entries and tolerates entries below assets/", () => {
     for (const name of ["face.json", "main.face", "notes.txt", ".DS_Store", "assets"]) expect(parseArchiveEntryName(name)).toBe("root");
@@ -139,17 +148,17 @@ describe("manifest", () => {
 
   it("keeps unknown top-level fields of face.json in extras and writes them back at the top level", () => {
     const onDisk = { ...manifest, layout: { zoom: 1.5, panels: ["dock", null] }, futureFlag: true, extras: "a field that happens to be called extras" };
-    const parsed = parseManifestFile(onDisk);
+    const parsed = parseManifestFile(onDisk).manifest;
     expect(parsed).toEqual({ ...manifest, extras: { layout: { zoom: 1.5, panels: ["dock", null] }, futureFlag: true, extras: "a field that happens to be called extras" } });
     expect(manifestFileContent(parsed)).toEqual(onDisk);
     // The in-memory form survives the IPC validation unchanged, and a file without unknown fields has no extras.
     expect(parseManifest(parsed)).toEqual(parsed);
-    expect(parseManifestFile(manifest)).toEqual(manifest);
+    expect(parseManifestFile(manifest).manifest).toEqual(manifest);
     expect(Object.keys(manifestFileContent(parsed)).slice(0, 6)).toEqual(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits"]);
   });
 
   it("keeps a __proto__ field as data without touching any prototype", () => {
-    const parsed = parseManifestFile(JSON.parse(`{ "formatVersion": 1, "name": "Demo", "gameVersion": "2.1.25", "modules": [], "circuits": ["main.face"], "__proto__": { "polluted": true }, "nested": { "__proto__": { "polluted": true } } }`));
+    const parsed = parseManifestFile(JSON.parse(`{ "formatVersion": 1, "name": "Demo", "gameVersion": "2.1.25", "modules": [], "circuits": ["main.face"], "__proto__": { "polluted": true }, "nested": { "__proto__": { "polluted": true } } }`)).manifest;
     expect(({} as Record<string, unknown>).polluted).toBeUndefined();
     expect((parsed as unknown as Record<string, unknown>).polluted).toBeUndefined();
     expect(Object.keys(parsed.extras!)).toEqual(["__proto__", "nested"]);
@@ -158,7 +167,7 @@ describe("manifest", () => {
 
   it("validates known fields of face.json as strictly as before", () => {
     expect(() => parseManifestFile({ ...manifest, circuits: ["../main.face"], note: "x" })).toThrow(ValidationError);
-    expect(() => parseManifestFile({ ...manifest, formatVersion: 2 })).toThrow(ValidationError);
+    expect(() => parseManifestFile({ ...manifest, formatVersion: 3 })).toThrow(/Unsupported project format version: 3/);
     expect(() => parseManifestFile([])).toThrow(ValidationError);
   });
 
@@ -182,7 +191,7 @@ describe("manifest", () => {
     expect(parseManifest({ ...manifest, gameMods })).toEqual({ ...manifest, gameMods });
     expect(parseManifest({ ...manifest, gameMods: { gameVersion: "2.1.25", mods: [] } }).gameMods).toEqual({ gameVersion: "2.1.25", mods: [] });
     // What is not part of the record is dropped from it; unknown fields beside it stay unknown fields.
-    const parsed = parseManifestFile({ ...manifest, gameMods: { ...gameMods, note: "x", mods: gameMods.mods.map((mod) => ({ ...mod, enabled: true })) }, later: true });
+    const parsed = parseManifestFile({ ...manifest, gameMods: { ...gameMods, note: "x", mods: gameMods.mods.map((mod) => ({ ...mod, enabled: true })) }, later: true }).manifest;
     expect(parsed).toEqual({ ...manifest, gameMods, extras: { later: true } });
     expect(Object.keys(manifestFileContent(parsed))).toEqual(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "gameMods", "later"]);
     const many = { gameVersion: "2.1.25", mods: Array.from({ length: LIMITS.projectMods }, (_, index) => ({ name: `mod-${index}`, version: "0.0.1" })) };
@@ -210,11 +219,11 @@ describe("manifest", () => {
 
   it("takes an optional wire reach from 0 (unlimited) to 64 tiles, fractions included, and leaves an absent one absent", () => {
     expect(parseManifest(manifest)).not.toHaveProperty("wireReach");
-    expect(parseManifestFile(manifest)).not.toHaveProperty("wireReach");
+    expect(parseManifestFile(manifest).manifest).not.toHaveProperty("wireReach");
     for (const wireReach of [0, 0.5, 9, 12.5, 64]) {
       expect(parseManifest({ ...manifest, wireReach })).toEqual({ ...manifest, wireReach });
       // In face.json it is a known field, not one of the unknown ones, and it is written back after the others.
-      const parsed = parseManifestFile({ ...manifest, wireReach, later: true });
+      const parsed = parseManifestFile({ ...manifest, wireReach, later: true }).manifest;
       expect(parsed).toEqual({ ...manifest, wireReach, extras: { later: true } });
       expect(Object.keys(manifestFileContent(parsed))).toEqual(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach", "later"]);
     }
@@ -227,7 +236,7 @@ describe("manifest", () => {
     ["the old maximum", 100, 64],
   ])("brings a wire reach that is %s into the range", (_name, wireReach, expected) => {
     expect(parseManifest({ ...manifest, wireReach })).toEqual({ ...manifest, wireReach: expected });
-    expect(parseManifestFile({ ...manifest, wireReach })).toEqual({ ...manifest, wireReach: expected });
+    expect(parseManifestFile({ ...manifest, wireReach }).manifest).toEqual({ ...manifest, wireReach: expected });
   });
 
   it.each([
@@ -249,7 +258,9 @@ describe("manifest", () => {
   });
 
   it.each([
-    ["wrong version", { ...manifest, formatVersion: 2 }],
+    ["a version of a later build", { ...manifest, formatVersion: 3 }],
+    ["a version that is none", { ...manifest, formatVersion: "1" }],
+    ["no version", { ...manifest, formatVersion: undefined }],
     ["missing name", { ...manifest, name: undefined }],
     ["empty name", { ...manifest, name: "" }],
     ["oversized name", { ...manifest, name: "n".repeat(LIMITS.projectNameLength + 1) }],
@@ -264,6 +275,113 @@ describe("manifest", () => {
   ])("rejects %s", (_name, value) => {
     expect(() => parseManifest(value)).toThrow(ValidationError);
   });
+});
+
+describe("format version", () => {
+  it("takes both versions this build reads, over IPC and from face.json, and keeps what it was given", () => {
+    for (const formatVersion of [1, 2]) {
+      expect(parseManifest({ ...manifest, formatVersion }).formatVersion).toBe(formatVersion);
+      expect(parseManifestFile({ ...manifest, formatVersion })).toEqual({ manifest: { ...manifest, formatVersion } });
+    }
+  });
+
+  it("writes the version from the presence of a book, whatever the manifest says", () => {
+    for (const formatVersion of [1, 2] as const) {
+      expect(manifestFileContent({ ...manifest, formatVersion })).toEqual(manifest);
+      expect(manifestFileContent({ ...manifest, formatVersion }, {})).toEqual({ ...manifest, formatVersion: 2, book: { file: "book.txt" } });
+      expect(manifestFileContent({ ...manifest, formatVersion }, { origin: [2, 0] })).toEqual({ ...manifest, formatVersion: 2, book: { file: "book.txt", origin: [2, 0] } });
+    }
+  });
+});
+
+describe("blueprint book of a project", () => {
+  const string = "0eNqVkMEKwjAQRH9l2XMQe1DBq78h";
+  const deepest = Array.from({ length: LIMITS.bookOriginDepth }, () => LIMITS.bookOriginIndex);
+
+  it("takes a blueprint string with or without an origin, and nothing else of the book", () => {
+    expect(parseProjectBook({ string })).toEqual({ string });
+    expect(parseProjectBook({ string })).not.toHaveProperty("origin");
+    expect(parseProjectBook({ string, origin: [2, 0] })).toEqual({ string, origin: [2, 0] });
+    expect(parseProjectBook({ string, origin: deepest, file: "/etc/passwd", label: "x" })).toEqual({ string, origin: deepest });
+    const longest = "0" + "A".repeat(LIMITS.blueprintStringLength - 1);
+    expect(parseProjectBook({ string: longest }).string).toHaveLength(LIMITS.blueprintStringLength);
+    expect(() => parseProjectBook({ string: longest + "A" })).toThrow(/too long/);
+  });
+
+  it.each([
+    ["an empty string", ""],
+    ["the version character alone", "0"],
+    ["another version character", "1eNqVkMEK"],
+    ["plain JSON", '{"blueprint_book":{}}'],
+    ["a line break at the end", `${string}\n`],
+    ["a blank", "0eNqV kMEK"],
+    ["characters outside base64", "0eNqV-kMEK_"],
+    ["too much padding", "0eNqV==="],
+    ["a number", 5],
+    ["nothing", undefined],
+    ["null", null],
+  ])("refuses %s as the string of the book", (_name, value) => {
+    expect(() => parseProjectBook({ string: value })).toThrow(ValidationError);
+    expect(() => parseProjectData({ ...data, book: { string: value } })).toThrow(ValidationError);
+  });
+
+  it.each([
+    ["an empty list", []],
+    ["no list", 2],
+    ["null", null],
+    ["an object", { 0: 2, length: 1 }],
+    ["a negative position", [-1]],
+    ["a fraction", [1.5]],
+    ["a number as text", ["2"]],
+    ["a position that is not a number", [Number.NaN]],
+    ["an infinite position", [Number.POSITIVE_INFINITY]],
+    ["a nested list", [[2]]],
+    ["a position beyond the limit", [0, LIMITS.bookOriginIndex + 1]],
+    ["more positions than the limit", [...deepest, 0]],
+  ])("refuses %s as the origin", (_name, origin) => {
+    expect(() => parseProjectBook({ string, origin })).toThrow(/origin in the blueprint book/);
+    expect(() => parseProjectData({ ...data, book: { string, origin } })).toThrow(ValidationError);
+    expect(() => parseManifestFile({ ...manifest, book: { file: "book.txt", origin } })).toThrow(/origin in the blueprint book/);
+  });
+
+  it.each([["null", null], ["a string", string], ["a list", [{ string }]], ["a number", 0]])("refuses %s as the book", (_name, book) => {
+    expect(() => parseProjectBook(book)).toThrow("The blueprint book must be an object");
+    expect(() => parseProjectData({ ...data, book })).toThrow(ValidationError);
+    expect(() => parseManifestFile({ ...manifest, book })).toThrow("The blueprint book of the manifest must be an object");
+  });
+
+  it("is part of the project data and of a save request, and absent when the project has none", () => {
+    expect(parseProjectData(data)).not.toHaveProperty("book");
+    expect(parseProjectData({ ...data, book: undefined })).not.toHaveProperty("book");
+    for (const book of [{ string }, { string, origin: [0] }]) {
+      expect(parseProjectData({ ...data, book })).toEqual({ ...data, book });
+      expect(parseSaveProjectRequest({ path: null, data: { ...data, book } }).data.book).toEqual(book);
+    }
+  });
+
+  it("is not part of the manifest in memory: one that arrives there over IPC is dropped, one among the unknown fields is refused", () => {
+    expect(parseManifest({ ...manifest, book: { file: "book.txt", origin: [1] } })).toEqual(manifest);
+    expect(() => parseManifest({ ...manifest, extras: { book: { file: "book.txt" } } })).toThrow(/must not redefine "book"/);
+  });
+
+  it("is a known field of face.json that names the entry and holds the origin, in a file of either version", () => {
+    for (const formatVersion of [1, 2]) {
+      expect(parseManifestFile({ ...manifest, formatVersion, book: { file: "book.txt" } })).toEqual({ manifest: { ...manifest, formatVersion }, book: {} });
+      expect(parseManifestFile({ ...manifest, formatVersion, book: { file: "book.txt", origin: [2, 0] } })).toEqual({ manifest: { ...manifest, formatVersion }, book: { origin: [2, 0] } });
+    }
+    expect(parseManifestFile({ ...manifest, book: { file: "book.txt", note: "x" }, later: true })).toEqual({ manifest: { ...manifest, extras: { later: true } }, book: {} });
+    // Written back after the other known fields and before the unknown ones.
+    const content = manifestFileContent({ ...data.manifest, wireReach: 12, extras: { later: true } }, { origin: [1] });
+    expect(Object.keys(content)).toEqual(["formatVersion", "name", "gameVersion", "modules", "customSignalGroups", "circuits", "wireReach", "book", "later"]);
+    expect(parseManifestFile(content)).toEqual({ manifest: { ...manifest, formatVersion: 2, wireReach: 12, extras: { later: true } }, book: { origin: [1] } });
+  });
+
+  it.each([["no entry", undefined], ["a circuit", "main.face"], ["the manifest", "face.json"], ["another file", "other.txt"], ["another case", "Book.txt"], ["a path", "../book.txt"], ["a list", ["book.txt"]]])(
+    "refuses a manifest whose book names %s",
+    (_name, file) => {
+      expect(() => parseManifestFile({ ...manifest, book: { file } })).toThrow(/the manifest names another one/);
+    },
+  );
 });
 
 describe("project data and save requests", () => {

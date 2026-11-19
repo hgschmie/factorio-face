@@ -15,10 +15,20 @@ export const ASSET_SCHEME = "face-asset";
 /** Host part of asset URLs that maps to the catalog asset root: `face-asset://catalog/<relative path>`. */
 export const ASSET_HOST_CATALOG = "catalog";
 
+/** The format version of a project file without a blueprint book. Builds that do not know books read it. */
 export const PROJECT_FORMAT_VERSION = 1;
+/**
+ * The format version of a project file with a blueprint book. A build that does not know books would drop the book on a save, so
+ * it must refuse the file: that is all the higher number is for. Everything else is as in version 1.
+ */
+export const PROJECT_FORMAT_VERSION_WITH_BOOK = 2;
+/** The versions this build reads. Which one a file gets is decided when it is written, from whether the project has a book. */
+export type ProjectFormatVersion = typeof PROJECT_FORMAT_VERSION | typeof PROJECT_FORMAT_VERSION_WITH_BOOK;
 /** A project is one file with this extension: a zip archive. */
 export const PROJECT_FILE_EXTENSION = ".faceproj";
 export const MANIFEST_FILE_NAME = "face.json";
+/** The entry of a project file that holds its blueprint book. Not a circuit file name: those end in `CIRCUIT_FILE_EXTENSION`. */
+export const BOOK_FILE_NAME = "book.txt";
 export const CIRCUIT_FILE_EXTENSION = ".face";
 export const DEFAULT_CIRCUIT_FILE = "main.face";
 
@@ -28,7 +38,7 @@ export const LIMITS = {
   projectFileBytes: 64_000_000,
   /** Entries of a project file, ignored ones included. */
   projectEntries: 4096,
-  /** Sum of the uncompressed sizes of the manifest and the circuit files of one project. */
+  /** Sum of the uncompressed sizes of the manifest, the circuit files and the blueprint book of one project. */
   projectContentBytes: 128_000_000,
   projectNameLength: 200,
   circuitFiles: 256,
@@ -53,8 +63,12 @@ export const LIMITS = {
    * 8 MiB of characters and refuses text of more than twice that unread, which leaves room for line breaks and for the plain JSON.
    */
   blueprintFileBytes: 16 * 1024 * 1024,
-  /** Characters of a blueprint string File > Export Blueprint writes: the longest one the importer reads back. */
+  /** Characters of a blueprint string File > Export Blueprint writes, and of the blueprint book of a project: the longest one the importer reads back. */
   blueprintStringLength: 8 * 1024 * 1024,
+  /** Positions in the origin of a project's book. The importer reads JSON nested up to 64 levels (`DEFAULT_LIMITS` of @face/blueprints), so no path into a book it reads is longer. */
+  bookOriginDepth: 64,
+  /** The highest position in the origin of a project's book. The game counts the slots of an inventory, and so of a book, in 16 bits (`ItemStackIndex`). */
+  bookOriginIndex: 65_535,
   /** Modules the application settings hold hidden signals or entities for. */
   hiddenModules: 2000,
   /** Hidden signals and entities of all modules together. */
@@ -66,7 +80,8 @@ export const LIMITS = {
 /** The extension a blueprint file gets unless the user names another one. The file is the blueprint string as text. */
 export const BLUEPRINT_FILE_EXTENSION = ".txt";
 
-// Project format v1 (ADR 0001, item 6): a zip archive (*.faceproj) with face.json and the *.face sources at its root; assets/ is reserved for custom icons.
+// Project format (ADR 0001, item 6): a zip archive (*.faceproj) with face.json and the *.face sources at its root; assets/ is reserved for custom icons.
+// A project can hold one blueprint book of the game, as the entry book.txt; face.json names it, and the format version is then 2 instead of 1.
 
 export interface CustomSignal {
   readonly name: string;
@@ -101,7 +116,11 @@ export interface ProjectMods {
 export type JsonValue = null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
 export interface ProjectManifest {
-  readonly formatVersion: typeof PROJECT_FORMAT_VERSION;
+  /**
+   * The version the project file had; `PROJECT_FORMAT_VERSION` for a project that was never saved. Nobody has to keep it up to
+   * date: a save writes the version that fits the project, whatever this says (`manifestFileContent`).
+   */
+  readonly formatVersion: ProjectFormatVersion;
   readonly name: string;
   readonly gameVersion: string;
   /** Enabled standard module groups, e.g. "base", "space-age". */
@@ -125,10 +144,23 @@ export interface CircuitFile {
   readonly source: string;
 }
 
+/** A blueprint book of the game that a project holds, kept as the game wrote it. In the project file: the entry `BOOK_FILE_NAME`, and `book` in face.json. */
+export interface ProjectBook {
+  /** The blueprint string of the book: the character `0` and base64, at most `LIMITS.blueprintStringLength` characters. */
+  readonly string: string;
+  /**
+   * The item of the book the circuit of the project came from: its positions in the nested `blueprints` lists of the book, from
+   * the outermost one in. Never empty; absent when the circuit came from none of them.
+   */
+  readonly origin?: readonly number[];
+}
+
 export interface ProjectData {
   readonly manifest: ProjectManifest;
   /** One entry per name in `manifest.circuits`. */
   readonly files: readonly CircuitFile[];
+  /** Absent for a project without a book. */
+  readonly book?: ProjectBook;
 }
 
 export interface LoadedProject {
