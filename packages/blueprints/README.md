@@ -1,6 +1,6 @@
 # @face/blueprints
 
-Blueprints of the game: the blueprint string, import of a blueprint as a circuit of the editor, export of a circuit as a blueprint. Pure TypeScript without Node APIs; it runs in the renderer, in a worker and in vitest. It depends on `@face/model`, on `@face/language` (the importer checks with `checkEntity` that the circuit it returns can be written in the circuit language exactly) and on `fflate`. It does not depend on `@face/catalog`: the one thing it needs from the game data, the instruments of the speaker, is passed in.
+Blueprints of the game: the blueprint string, import of a blueprint as a circuit of the editor, export of a circuit as a blueprint, and writing a blueprint into a blueprint book. Pure TypeScript without Node APIs; it runs in the renderer, in a worker and in vitest. It depends on `@face/model`, on `@face/language` (the importer checks with `checkEntity` that the circuit it returns can be written in the circuit language exactly) and on `fflate`. It does not depend on `@face/catalog`: the one thing it needs from the game data, the instruments of the speaker, is passed in.
 
 The editor is a circuit editor, not a blueprint editor. An import keeps the entities the editor knows with their circuit wires, drops everything else and says what it dropped. The editor knows every entity of the game that a circuit wire connects to (`PROTOTYPES` of `@face/model`, 98 prototypes of Factorio 2.1.25): the four combinators, the lamp, the four electric poles and the programmable speaker with a kind of their own, and the other 88 (chests, inserters, belts, machines, turrets, train stops, ...) as generic entities (kind `entity`), whose circuit settings it models and whose other fields it keeps for the blueprint unread. What it drops is what no circuit wire connects to: gates, rails, rolling stock, and entities the game data in use does not have. With data read from a game with mods (`setEntityTable`) a modded prototype of one of the six types with a kind of its own is an entity of that kind that holds its `prototype`, and its name is what the export writes; a modded speaker stays unknown.
 
@@ -9,7 +9,7 @@ Game facts are in `docs/factorio-audit.md` (sections 3 to 5 and 12; the control 
 ## API
 
 ```ts
-import { decodeBlueprintString, encodeBlueprintString, inspectBlueprint, importBlueprint, importBlueprintString, exportBlueprint } from "@face/blueprints";
+import { decodeBlueprintString, encodeBlueprintString, canonicalBlueprintString, inspectBlueprint, importBlueprint, importBlueprintString, exportBlueprint, addToBook, replaceInBook } from "@face/blueprints";
 ```
 
 ### The string
@@ -52,10 +52,10 @@ type BlueprintInspection =
   | { kind: "book"; label: string; entries: readonly BookEntry[] }
   | { kind: "deconstruction-planner" | "upgrade-planner" | "unknown"; label: string };
 
-interface BookEntry { path: readonly number[]; kind: "blueprint" | "book" | "deconstruction-planner" | "upgrade-planner" | "unknown"; label: string; entities: number; known: number }
+interface BookEntry { path: readonly number[]; kind: "blueprint" | "book" | "deconstruction-planner" | "upgrade-planner" | "unknown"; label: string; entities: number; known: number; tiles: number }
 ```
 
-For a book the entries are all its items in order, a book inside a book included and followed by its own entries (the tree is in `path`: the positions in the nested `blueprints` lists). `entities` and `known` are filled for blueprints: how many entities it has and how many of them the editor knows.
+For a book the entries are all its items in order, a book inside a book included and followed by its own entries (the tree is in `path`: the positions in the nested `blueprints` lists). `entities`, `known` and `tiles` are filled for blueprints: how many entities it has, how many of them the editor knows, and how many tiles (the length of its `tiles` list: landfill, concrete), of which the editor holds none. With them a caller can say what writing over a blueprint destroys: `entities - known` entities and `tiles` tiles that the editor does not hold.
 
 ### Import
 
@@ -77,7 +77,7 @@ type ImportResult =
 type ImportErrorCode = DecodeErrorCode | "not-a-blueprint" | "book" | "unsupported-item" | "unsupported-version" | "invalid-selection" | "too-many-entities";
 ```
 
-- **A book is not imported.** The result is `code: "book"` with `book`, the entries as `inspectBlueprint` lists them; the caller lets the user choose a blueprint and imports again with `select: entry.path`. Selecting a book inside the book lists that one.
+- **A book is not imported.** The result is `code: "book"` with `book`, the entries as `inspectBlueprint` lists them; the caller lets the user choose a blueprint and imports again with `select: entry.path`. Selecting a book inside the book lists that one. Writing a blueprint into a book is another matter: "Books" below.
 - **Planners are refused** (`unsupported-item`: "This is a deconstruction planner, not a blueprint; the editor imports blueprints only"), and so is anything that is neither (`not-a-blueprint`).
 - **Versions.** Factorio 2.0 and 2.1 are imported. Strings of the pre-release of 2.0 (version 1.2.x, the only circuit the game data ships is one) have the same layout and are imported with a warning. 1.1 and older are refused (`unsupported-version`): they stored wires and combinator settings differently. A newer version is imported with a warning. A blueprint without a usable `version` is imported.
 - **The circuit.** The label of the blueprint is its name ("" without one). Entities are in the order of the blueprint and named by the naming rule of the editor for new entities (`entityNameBase` of the model), what the entity is and a number: `constant1`, `decider1`, `decider2`, `pole1`, and for a generic entity its prototype without a tier number, `fast_inserter1`, `steel_chest2`, `assembling_machine1`. Ids are `e1`, `e2`, ... The blueprint position is `placement.tile`, unchanged, also when it is off the tile grid (the editor then warns `tile-off-grid`). The direction is `placement.direction`; east is not said, as the editor does not say it, and an entity that cannot turn (a lamp, a pole, a speaker, a chest) has none. For the directions of the generic entities see "Generic entities" below. A blueprint of a space platform has its hub at (0, 0) and comes in as it is.
@@ -165,6 +165,40 @@ The export fails, with everything that is in the way at once, when
 It warns, and exports, when anything but a combinator has a description (the game has one on combinators only), when a wire is longer than it reaches in the game (9 tiles, a pole its own reach: the game may not connect it), and when the circuit has an entity that no item builds (`no-item`: the chests of the game's editor and of the crash site, `blue-chest`, `red-chest`, `crash-site-chest-1` and `-2`): the game leaves such an entity and its wires out when it reads the blueprint, and says that the import had errors.
 
 `connectorId(entity, end, color)` is the connector number of a wire end, exported for callers that show it.
+
+### Books
+
+```ts
+addToBook(data: unknown, book: readonly number[], blueprint: Blueprint, limits?: Partial<BlueprintLimits>): BookEdit
+replaceInBook(data: unknown, path: readonly number[], blueprint: Blueprint, options?: { keep?: boolean; limits?: Partial<BlueprintLimits> }): BookEdit
+
+type BookEdit =
+  | { ok: true; data: Json; string: string; path: readonly number[] }
+  | { ok: false; code: "not-a-book" | "invalid-selection" | "not-a-blueprint" | "book-full" | "too-long"; message: string };
+
+canonicalBlueprintString(text: string, limits?: Partial<BlueprintLimits>): { ok: true; data: Json; string: string } | { ok: false; code: DecodeErrorCode; message: string }
+```
+
+A project can keep a whole book as the game wrote it and write its circuit into it. `data` is the decoded object of the book's string, `blueprint` the `data.blueprint` of a successful `exportBlueprint`, and a path is what `BookEntry.path` is: the positions in the nested `blueprints` lists, `[]` for the book itself. The result has the new book as an object and as its blueprint string (encoded once), and the path of the blueprint that was written, which `select` of the import takes.
+
+- **Nothing else is touched.** `data` is not changed. In the result every object and list on the way from the root to the written item is a new one, and everything else is the very object it was in `data`: the other blueprints, planners, books inside the book, and every field this package does not know.
+- **Adding** (`addToBook`) appends the item `{ blueprint, index }` to the `blueprints` list of the book at `book`. The path of the new item is its position in that list, like every path; its `index` is its slot in the book, counted from 0, and the two are not the same in a book with empty slots. The `index` is the slot after the last one in use (`nextBookIndex`), so the blueprint is the last of the book as it is the last of the list, and gaps before it stay. Which slots are in use is worked out as the game reads the list (`bookSlots`): in order, an item with an `index` in that slot, one without in the first slot that is empty at that moment, and an item whose slot is taken dropped. A book has 65535 slots (`BOOK_SLOTS`); when the last one is in use the new item gets the first empty slot, and it still stands at the end of the list. A `blueprints` that is missing (the game writes none for an empty book) or no list counts as an empty one, as it does in the listing, and a list takes its place.
+- **Replacing** (`replaceInBook`) puts the blueprint in the place of the one at `path`. The item keeps its `index` and whatever else stands next to its blueprint. Of the replaced blueprint nothing stays: its entities, known to the editor or not, its tiles, schedules and parameters, its label (the label is the new one's, or none). With `keep` the fields of `CARRIED_BLUEPRINT_FIELDS` that the replaced blueprint has are carried over and take the place of the new one's: `description`, `icons`, `label_color`, `snap-to-grid`, `absolute-snapping`, `position-relative-to-grid`. A blueprint of `exportBlueprint` has `icons` of its own; they stay only where the replaced one had none.
+- **Refused**, as a result with a code and a message for a person; never an exception for any data that JSON can hold:
+
+| Code | When |
+| --- | --- |
+| `not-a-book` | `data` is no blueprint book ("This is a blueprint, not a blueprint book"), or `book` names an item that is none ("The item to add to is a deconstruction planner, not a blueprint book") |
+| `invalid-selection` | the path leads nowhere: past the end of a list, through an item that is no book, or by a position that is no whole number from 0 |
+| `not-a-blueprint` | `path` of a replacement names a book (also `[]`, the book itself), a planner or an item the editor does not know |
+| `book-full` | adding to a book that has an item in every one of its 65535 slots |
+| `too-long` | the string of the new book is longer than `maxStringLength`: the decoder would not take it back |
+
+`canonicalBlueprintString` turns a text that was pasted or read from a file into what a project keeps. It decodes like `decodeBlueprintString`, with the same failures, and also gives `string`: the text itself without its blanks and line breaks when it was a blueprint string (padding or none, and the compression of whoever wrote it, stay as they are), and the encoding of the data when the text was plain JSON (`too-long` when that is longer than `maxStringLength`). A book that nothing was written into is therefore given back to the game byte for byte as it came.
+
+`itemsAlong(data, path)` gives the items on the way to a path, the root first (`BlueprintItem`: `kind`, the `key` the body stands under, `body`, and the `wrapper` object with the `index`), or undefined for a path that leads nowhere; `itemOf(node)` is one step of it. Import and books walk a path with the same function.
+
+What this says about the game is from fixture F-30 (`tests/fixtures/game/F-30-blueprint-book.json`, `docs/factorio-audit.md` 5.2: a book the game wrote, and what it made of books written by hand, with and without `index`, with gaps, with an `index` twice, out of order and at the end of the slots). `test/book.test.ts` holds `bookSlots` and `nextBookIndex` against every one of those books: each item gets the slot the game gave it, the items the game dropped get none, and the index of a new item is a slot the game left empty. It also adds to and replaces in the book the game wrote. Not recorded: a book that these functions wrote into going through the game, and that the game takes the description, the icons and the snapping of a replaced blueprint next to other entities. Where the recording has nothing, `bookSlots` takes a slot as in use: an `index` that is no number counts as none, and an element of the list that is no item as one. `active_index` of a book is left as it is. The game itself puts a blueprint that is inserted into a book into its first empty slot; `addToBook` puts it after the last, where the end of the list is.
 
 ## In the app
 
@@ -276,6 +310,7 @@ What the game corrected in this package is listed in `docs/factorio-audit.md` 12
 | What the game does with a wire longer than its reach when it reads a blueprint | No sample has one: it would be missing from what the game built and the comparison would say so for the wrong reason. The reach itself is fixture F-24 |
 | A control behaviour of a generic entity without a circuit wire, through a build | Every generic sample is wired. Lamps and speakers without a wire kept theirs |
 | `read_fuel` of a lab; the networks of a heat exchanger, an electric turret, an infinity chest | The game has no value for them on these prototypes; a field written for them is not kept |
+| That the game reads a book that `addToBook` or `replaceInBook` wrote into as it was written, also with the fields `keep` carried over | Fixture F-30 has books of the game and books written by hand, which the index rule is tested against, but none that went through these functions (see "Books") |
 | Blueprints of other versions (2.0, the 1.2 pre-release, 1.1) and of mods | The probe runs the installed game, 2.1.25 with the standard modules. Older strings are tested with the ones the game data ships (`test/shipped.test.ts`) |
 
 ### The probe
@@ -292,4 +327,4 @@ To compare the fixture with the game without writing it: `source scripts/env.sh 
 
 ## Tests
 
-`npx vitest run packages/blueprints`: the codec with malformed, truncated, damaged and oversized input (`string.test.ts`); export and import of every setting of every kind, wires between every two kinds of connection point, books, refused items, versions, dropped entities and the report (`export.test.ts`, `import.test.ts`); the generic entities, driven by the settings table: every prototype type with every setting in and out, defaults left out and spelled out, junk in every field, the kept data byte for byte also through the source of the editor, the directions of prototypes with one, two, four, eight and sixteen of them, wires, a foreign blueprint and its further trips (`generic.test.ts`); the two round trips and import of damaged blueprints (`roundtrip.test.ts`); the condition in use without a signal, from the blueprints the game wrote for 22 prototypes (fixture F-29) through the source and the simulation and back (`unsetCondition.test.ts`); the strings that ship with the game (`shipped.test.ts`); the recording of the game (`game.test.ts` with `recording.ts`). The parts of the probe that run without the game are tested in `tools/game-probe/lib/blueprintFixture.test.ts`.
+`npx vitest run packages/blueprints`: the codec with malformed, truncated, damaged and oversized input (`string.test.ts`); export and import of every setting of every kind, wires between every two kinds of connection point, books, refused items, versions, dropped entities and the report (`export.test.ts`, `import.test.ts`); the generic entities, driven by the settings table: every prototype type with every setting in and out, defaults left out and spelled out, junk in every field, the kept data byte for byte also through the source of the editor, the directions of prototypes with one, two, four, eight and sixteen of them, wires, a foreign blueprint and its further trips (`generic.test.ts`); the two round trips and import of damaged blueprints (`roundtrip.test.ts`); the condition in use without a signal, from the blueprints the game wrote for 22 prototypes (fixture F-29) through the source and the simulation and back (`unsetCondition.test.ts`); adding to a book and to a book inside it, replacing with and without `keep`, the slots and the index of a new item (also against the books of fixture F-30), every refusal, junk in every place, that untouched items are the same objects, the trip through `importBlueprint` with `select`, and the string a project keeps (`book.test.ts`); the strings that ship with the game (`shipped.test.ts`); the recording of the game (`game.test.ts` with `recording.ts`). The parts of the probe that run without the game are tested in `tools/game-probe/lib/blueprintFixture.test.ts`.

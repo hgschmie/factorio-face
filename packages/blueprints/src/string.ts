@@ -30,6 +30,9 @@ export type DecodeErrorCode =
 
 export type DecodeResult = { readonly ok: true; readonly data: Readonly<Record<string, unknown>> } | { readonly ok: false; readonly code: DecodeErrorCode; readonly message: string };
 
+/** A decoded text with the blueprint string a project keeps for it. */
+export type CanonicalResult = { readonly ok: true; readonly data: Readonly<Record<string, unknown>>; readonly string: string } | Extract<DecodeResult, { ok: false }>;
+
 /** The only version character the game has used so far. */
 export const STRING_VERSION = "0";
 
@@ -159,7 +162,12 @@ function parseJson(text: string, limits: BlueprintLimits): DecodeResult {
   return { ok: true, data: data as Record<string, unknown> };
 }
 
-const megabytes = (bytes: number): string => `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+const withoutBlanks = (text: string): string => text.replace(/\s+/g, "");
+/** Text that starts with `{` is the plain JSON and not a blueprint string, which starts with its version character. */
+const isPlainJson = (compact: string): boolean => compact[0] === "{";
+
+/** A size in a message: "8 MB". */
+export const megabytes = (bytes: number): string => `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
 
 /**
  * Decodes a blueprint string to its JSON object. Blanks and line breaks anywhere in the text are ignored, as a string pasted from a
@@ -170,10 +178,10 @@ export function decodeBlueprintString(text: string, limits: Partial<BlueprintLim
   const bounds = { ...DEFAULT_LIMITS, ...limits };
   // A string that is too long is refused before any work proportional to it beyond this one pass.
   if (text.length > bounds.maxStringLength * 2) return fail("too-long", `The text is longer than ${megabytes(bounds.maxStringLength)}`);
-  const compact = text.replace(/\s+/g, "");
+  const compact = withoutBlanks(text);
   if (compact.length === 0) return fail("empty", "There is no blueprint string");
   if (compact.length > bounds.maxStringLength) return fail("too-long", `The blueprint string is longer than ${megabytes(bounds.maxStringLength)}`);
-  if (compact[0] === "{") {
+  if (isPlainJson(compact)) {
     const trimmed = text.trim();
     if (trimmed.length > bounds.maxDecodedBytes) return fail("too-large", `The blueprint is larger than ${megabytes(bounds.maxDecodedBytes)}`);
     return parseJson(trimmed, bounds);
@@ -199,4 +207,21 @@ export function decodeBlueprintString(text: string, limits: Partial<BlueprintLim
 /** The blueprint string of a JSON object, as the game writes it: version character, base64, zlib at level 9. */
 export function encodeBlueprintString(data: unknown): string {
   return STRING_VERSION + encodeBase64(zlibSync(new TextEncoder().encode(JSON.stringify(data)), { level: 9 }));
+}
+
+/**
+ * Decodes like `decodeBlueprintString` and also gives the blueprint string to keep: the text itself without its blanks and line
+ * breaks when it was a blueprint string, so that what is kept unchanged is written out again byte for byte, and the encoding of
+ * the data when the text was plain JSON.
+ */
+export function canonicalBlueprintString(text: string, limits: Partial<BlueprintLimits> = {}): CanonicalResult {
+  const decoded = decodeBlueprintString(text, limits);
+  if (!decoded.ok) return decoded;
+  const compact = withoutBlanks(text);
+  if (!isPlainJson(compact)) return { ...decoded, string: compact };
+  const string = encodeBlueprintString(decoded.data);
+  const { maxStringLength } = { ...DEFAULT_LIMITS, ...limits };
+  // What is kept has to be a string the decoder takes back.
+  if (string.length > maxStringLength) return { ok: false, code: "too-long", message: `The blueprint string is longer than ${megabytes(maxStringLength)}` };
+  return { ...decoded, string };
 }

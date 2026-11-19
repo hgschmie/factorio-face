@@ -9,7 +9,7 @@ import {
   type PrototypeName, type RgbColor, type SelectorMode, type SpeakerInstrument, type TerminalSide, type Wire, type WireColor,
 } from "@face/model";
 import { readGeneric } from "./generic.ts";
-import { circuitCondition, Fields, float32, isObject, type Json, type NoteKind, type NoteSink } from "./reader.ts";
+import { circuitCondition, Fields, float32, isObject, listOf, type Json, type NoteKind, type NoteSink } from "./reader.ts";
 import { CONNECTOR, formatVersion, isBlankDecider, unpackVersion } from "./schema.ts";
 import { decodeBlueprintString, DEFAULT_LIMITS, type BlueprintLimits, type DecodeErrorCode } from "./string.ts";
 
@@ -48,6 +48,8 @@ export interface BookEntry {
   /** For a blueprint: its entities, and how many of them the editor knows. 0 for everything else. */
   readonly entities: number;
   readonly known: number;
+  /** For a blueprint: its tiles (landfill, concrete, ...), of which the editor holds none. 0 for everything else. */
+  readonly tiles: number;
 }
 
 export type BlueprintInspection =
@@ -109,7 +111,8 @@ const ROOT_KEYS: readonly (readonly [string, BlueprintItemKind])[] = [
   ["upgrade-planner", "upgrade-planner"],
 ];
 
-const ITEM_WORDS: Readonly<Record<BlueprintItemKind, string>> = {
+/** An item kind in a message: "This is a deconstruction planner, ...". */
+export const ITEM_WORDS: Readonly<Record<BlueprintItemKind, string>> = {
   blueprint: "a blueprint",
   book: "a blueprint book",
   "deconstruction-planner": "a deconstruction planner",
@@ -117,23 +120,44 @@ const ITEM_WORDS: Readonly<Record<BlueprintItemKind, string>> = {
   unknown: "an item the editor does not know",
 };
 
-interface Item {
+/** An item as the game wraps it: an object with the body under the key that says what it is. */
+export interface BlueprintItem {
   readonly kind: BlueprintItemKind;
+  /** The key of `wrapper` the body stands under: `blueprint`, `blueprint_book`, ... "" for an item that is none. */
+  readonly key: string;
   readonly body: Json;
+  /** The object that holds the body, with what else it has: the `index` of an item of a book. */
+  readonly wrapper: Json;
 }
 
-function itemOf(node: unknown): Item {
+/** What a node of blueprint data is: the root of a string, or an element of the `blueprints` list of a book. */
+export function itemOf(node: unknown): BlueprintItem {
   if (isObject(node)) {
     for (const [key, kind] of ROOT_KEYS) {
       const body = node[key];
-      if (isObject(body)) return { kind, body };
+      if (isObject(body)) return { kind, key, body, wrapper: node };
     }
   }
-  return { kind: "unknown", body: {} };
+  return { kind: "unknown", key: "", body: {}, wrapper: {} };
 }
 
 const labelOf = (body: Json): string => (typeof body.label === "string" ? body.label : "");
-const listOf = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
+
+/**
+ * The items on the way from the root to the one at `path` (positions in the nested `blueprints` lists, what `BookEntry.path` is),
+ * the root first. Undefined when the path leads nowhere: past the end of a list, into something that is no book, or by a
+ * position that is no whole number.
+ */
+export function itemsAlong(data: unknown, path: readonly number[]): readonly BlueprintItem[] | undefined {
+  const items = [itemOf(data)];
+  for (const index of path) {
+    const parent = items[items.length - 1]!;
+    const next = parent.kind === "book" && Number.isInteger(index) ? listOf(parent.body.blueprints)[index] : undefined;
+    if (next === undefined) return undefined;
+    items.push(itemOf(next));
+  }
+  return items;
+}
 
 function countEntities(body: Json): { entities: number; known: number } {
   const entities = listOf(body.entities);
@@ -144,7 +168,7 @@ function bookEntries(book: Json, path: readonly number[]): BookEntry[] {
   return listOf(book.blueprints).flatMap((element, index) => {
     const { kind, body } = itemOf(element);
     const own = [...path, index];
-    const counts = kind === "blueprint" ? countEntities(body) : { entities: 0, known: 0 };
+    const counts = kind === "blueprint" ? { ...countEntities(body), tiles: listOf(body.tiles).length } : { entities: 0, known: 0, tiles: 0 };
     return [{ path: own, kind, label: labelOf(body), ...counts }, ...(kind === "book" ? bookEntries(body, own) : [])];
   });
 }
@@ -532,17 +556,11 @@ function terminalOf(kind: EntityKind, output: boolean): TerminalSide | undefined
 
 const fail = (code: ImportErrorCode, message: string, book?: readonly BookEntry[]): ImportResult => ({ ok: false, code, message, ...(book && { book }) });
 
-/** The blueprint to import: the root itself, or the one `select` names in a book. */
-function locate(data: unknown, select: readonly number[] | undefined): { readonly blueprint: Json } | ImportResult {
-  let item = itemOf(data);
-  if (item.kind === "unknown") return fail("not-a-blueprint", "This is not a blueprint: the data holds neither a blueprint nor a blueprint book");
-  const path: number[] = [];
-  for (const index of select ?? []) {
-    const next = item.kind === "book" ? listOf(item.body.blueprints)[index] : undefined;
-    if (next === undefined || !Number.isInteger(index)) return fail("invalid-selection", "The blueprint book has no such blueprint");
-    item = itemOf(next);
-    path.push(index);
-  }
+/** The blueprint to import: the root itself, or the one at `path` in a book. */
+function locate(data: unknown, path: readonly number[]): { readonly blueprint: Json } | ImportResult {
+  if (itemOf(data).kind === "unknown") return fail("not-a-blueprint", "This is not a blueprint: the data holds neither a blueprint nor a blueprint book");
+  const item = itemsAlong(data, path)?.at(-1);
+  if (!item) return fail("invalid-selection", "The blueprint book has no such blueprint");
   if (item.kind === "blueprint") return { blueprint: item.body };
   if (item.kind === "book") {
     const entries = bookEntries(item.body, path);
@@ -565,7 +583,7 @@ function isEmptyValue(value: unknown): boolean {
  */
 export function importBlueprint(data: unknown, options: ImportOptions = {}): ImportResult {
   const limits = { ...DEFAULT_LIMITS, ...options.limits };
-  const located = locate(data, options.select);
+  const located = locate(data, options.select ?? []);
   if (!("blueprint" in located)) return located;
   const { blueprint } = located;
 

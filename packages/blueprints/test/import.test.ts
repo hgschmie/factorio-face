@@ -123,14 +123,14 @@ describe("import: books and other items", () => {
     },
   };
   const entries = [
-    { path: [0], kind: "blueprint", label: "Lamps", entities: 3, known: 2 },
-    { path: [1], kind: "deconstruction-planner", label: "Trees", entities: 0, known: 0 },
-    { path: [2], kind: "book", label: "Inner", entities: 0, known: 0 },
-    { path: [2, 0], kind: "blueprint", label: "Gates", entities: 1, known: 0 },
-    { path: [2, 1], kind: "blueprint", label: "Pole", entities: 1, known: 1 },
-    { path: [3], kind: "upgrade-planner", label: "", entities: 0, known: 0 },
-    { path: [4], kind: "blueprint", label: "", entities: 0, known: 0 },
-    { path: [5], kind: "unknown", label: "", entities: 0, known: 0 },
+    { path: [0], kind: "blueprint", label: "Lamps", entities: 3, known: 2, tiles: 0 },
+    { path: [1], kind: "deconstruction-planner", label: "Trees", entities: 0, known: 0, tiles: 0 },
+    { path: [2], kind: "book", label: "Inner", entities: 0, known: 0, tiles: 0 },
+    { path: [2, 0], kind: "blueprint", label: "Gates", entities: 1, known: 0, tiles: 0 },
+    { path: [2, 1], kind: "blueprint", label: "Pole", entities: 1, known: 1, tiles: 0 },
+    { path: [3], kind: "upgrade-planner", label: "", entities: 0, known: 0, tiles: 0 },
+    { path: [4], kind: "blueprint", label: "", entities: 0, known: 0, tiles: 0 },
+    { path: [5], kind: "unknown", label: "", entities: 0, known: 0, tiles: 0 },
   ];
 
   it("does not import a book but lists its items, books inside it included, with label and entity counts", () => {
@@ -164,6 +164,14 @@ describe("import: books and other items", () => {
       expect(inspectBlueprint(data)).toEqual({ kind: "unknown", label: "" });
     }
     expect(importBlueprint(blueprintOf([lamp(1)]), { select: [0] })).toMatchObject({ code: "invalid-selection" });
+  });
+
+  it("counts the tiles of a blueprint in a book, and none for anything else or for tiles that are no list", () => {
+    const tile = (x: number) => ({ name: "landfill", position: { x, y: 0 } });
+    const paved = (tiles: unknown) => ({ blueprint: { item: "blueprint", entities: [lamp(1)], tiles } });
+    const data = { blueprint_book: { blueprints: [paved([tile(0), tile(1), tile(2)]), paved("landfill"), { deconstruction_planner: { tiles: [tile(0)] } }, { blueprint_book: { tiles: [tile(0)], blueprints: [paved([tile(0)])] } }] } };
+    const inspection = inspectBlueprint(data);
+    expect(inspection.kind === "book" && inspection.entries.map((entry) => [entry.path.join("."), entry.tiles])).toEqual([["0", 3], ["1", 0], ["2", 0], ["3", 0], ["3.0", 1]]);
   });
 
   it("describes a single blueprint", () => {

@@ -9,6 +9,9 @@ export function isObject(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A list where a list is expected; anything else is an empty one. */
+export const listOf = (value: unknown): readonly unknown[] => (Array.isArray(value) ? value : []);
+
 /**
  * What became of a setting: `ignored` (the editor has nothing like it, it is dropped), `invalid` (not a value the field takes,
  * the default stands in), `changed` (read, but the editor cannot keep it as it is) or `reset` (the whole entity went back to
