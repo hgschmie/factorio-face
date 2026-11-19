@@ -1,12 +1,15 @@
 // Bringing a blueprint of the game in. The game has no blueprint files: it shows a text box to copy a blueprint string from, so the
 // dialog here has a text box to paste one into. The same dialog shows what is in the way of a file the user chose, and the
-// blueprints of a blueprint book to choose from. After an import that left something out, or that switched on mods of the
-// game, a second dialog reports it.
+// blueprints of a blueprint book to choose from: the project the chosen one opens as keeps the book, and a book without a
+// blueprint the editor can import opens as a project without a circuit. After an import that left something out, or that
+// switched on mods of the game, a second dialog reports it.
 // Presentational: reading the text and opening the project are the session's.
-import { useDeferredValue, useId, useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import type { BlueprintFileText } from "../../../desktop/src/ipc.ts";
 import { Modal } from "../dialog/Modal.tsx";
-import { noteWord, unlistedNote, type BlueprintReading, type ImportedBlueprint, type ImportReportView } from "../session/blueprints.ts";
+import { noteWord, unlistedNote, type BlueprintReading, type ImportedBlueprint, type ImportedBook, type ImportReportView } from "../session/blueprints.ts";
+import { pathKey } from "./bookText.ts";
+import { BookTree, importChoice } from "./BookTree.tsx";
 
 export interface ImportBlueprintProps {
   /** A file the user chose: its text is read in place of a pasted one, and there is no text box. */
@@ -15,37 +18,44 @@ export interface ImportBlueprintProps {
   read(text: string, select?: readonly number[]): BlueprintReading;
   /** Opens the blueprint as a new project. Resolves false when it was not opened; the dialog then stays. */
   open(blueprint: ImportedBlueprint): Promise<boolean>;
+  /** Opens a blueprint book as a new project without a circuit. Resolves like `open`. */
+  openBook(book: ImportedBook): Promise<boolean>;
   close(): void;
 }
-
-const pathKey = (path: readonly number[]): string => path.join(".");
 
 function summaryOf({ name, entities, total }: ImportedBlueprint): string {
   const all = `${total} ${total === 1 ? "entity" : "entities"}`;
   return entities === total ? `"${name}": ${all}.` : `"${name}": ${entities} of ${all} can be imported. The rest is dropped; a report lists it after the import.`;
 }
 
-export function ImportBlueprint({ file, read, open, close }: ImportBlueprintProps) {
+export function ImportBlueprint({ file, read, open, openBook, close }: ImportBlueprintProps) {
   const [pasted, setPasted] = useState("");
   const [chosen, setChosen] = useState<string>();
   const [failure, setFailure] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const group = useId();
   const text = file?.text ?? pasted;
   // Reading a long string takes a moment, which typing does not wait for.
   const shown = useDeferredValue(text);
   const reading = useMemo(() => (file || shown.trim() !== "" ? read(shown) : undefined), [file, shown, read]);
   const rows = reading?.kind === "book" ? reading.rows : [];
   const entry = rows.find((row) => row.importable && pathKey(row.path) === chosen) ?? rows.find((row) => row.importable);
-  const ready = !busy && shown === text && (reading?.kind === "blueprint" || entry !== undefined);
+  // A book of which nothing can be imported still opens: as a project that holds the book and has no circuit.
+  const bookOnly = reading?.kind === "book" && entry === undefined;
+  const ready = !busy && shown === text && (reading?.kind === "blueprint" || reading?.kind === "book");
+  const keepsBook = reading?.kind === "book" ? "The project keeps the book: File > Blueprint Book has its other blueprints and exports it again. " : "";
 
   const run = async (): Promise<void> => {
     if (!ready || !reading) return;
-    const picked = reading.kind === "blueprint" ? reading : read(text, entry?.path);
-    if (picked.kind !== "blueprint") return setFailure(picked.kind === "error" ? picked.message : "This item of the book is a book itself.");
+    let opening: Promise<boolean>;
+    if (reading.kind === "book" && !entry) opening = openBook(reading.book);
+    else {
+      const picked = reading.kind === "blueprint" ? reading : read(text, entry?.path);
+      if (picked.kind !== "blueprint") return setFailure(picked.kind === "error" ? picked.message : "This item of the book is a book itself.");
+      opening = open(picked.blueprint);
+    }
     setBusy(true);
     // Opened: the dialog is closed by its owner. Not opened (the user kept the current project): it stays as it is.
-    if (!(await open(picked.blueprint))) setBusy(false);
+    if (!(await opening)) setBusy(false);
   };
 
   return (
@@ -86,44 +96,23 @@ export function ImportBlueprint({ file, read, open, close }: ImportBlueprintProp
           <p className="blueprint-summary" role="status" data-message="book">
             {reading.message}
           </p>
-          <div role="radiogroup" aria-label="Blueprints of the book">
-            <ul className="book-list">
-              {rows.map((row) => {
-                const key = pathKey(row.path);
-                const content = (
-                  <>
-                    <span className="book-label">{row.label}</span>
-                    <small>{row.detail}</small>
-                  </>
-                );
-                return (
-                  <li key={key} data-kind={row.kind} data-path={key} style={{ paddingLeft: row.depth * 18 }}>
-                    {row.kind === "blueprint" ? (
-                      <label className={row.importable ? undefined : "unavailable"}>
-                        <input
-                          type="radio"
-                          name={group}
-                          checked={row === entry}
-                          disabled={!row.importable}
-                          onChange={() => {
-                            setChosen(key);
-                            setFailure(undefined);
-                          }}
-                        />
-                        {content}
-                      </label>
-                    ) : (
-                      <div>{content}</div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+          {rows.length > 0 && (
+            <BookTree
+              label="Blueprints of the book"
+              rows={rows}
+              chosen={entry && pathKey(entry.path)}
+              choice={importChoice}
+              onChoose={(key) => {
+                setChosen(key);
+                setFailure(undefined);
+              }}
+            />
+          )}
           {reading.unlisted > 0 && <p className="muted-note">{unlistedNote(reading.unlisted)}</p>}
-          {entry === undefined && (
-            <p className="settings-message error" role="alert" data-message="error">
-              No blueprint of this book has an entity the editor knows, so there is nothing to import.
+          {bookOnly && (
+            <p className="settings-message" role="status" data-message="book-only">
+              {rows.some((row) => row.kind === "blueprint") && "No blueprint of this book has an entity the editor knows, so there is no circuit to import. "}
+              The book can be opened as a project without a circuit: the project keeps the book, and File &gt; Export Blueprint &gt; To Blueprint Book writes a circuit into it.
             </p>
           )}
         </>
@@ -133,10 +122,14 @@ export function ImportBlueprint({ file, read, open, close }: ImportBlueprintProp
           {failure}
         </p>
       )}
-      <p className="muted-note">The blueprint opens as a new project on the blueprint board. This is a circuit editor: entities it does not know are dropped.</p>
+      <p className="muted-note" data-message="note">
+        {bookOnly
+          ? "The book opens as a new project that holds it and has no circuit."
+          : `The blueprint opens as a new project on the blueprint board. ${keepsBook}This is a circuit editor: entities it does not know are dropped.`}
+      </p>
       <div className="dialog-actions">
         <button type="button" className="settings-button primary-button" data-autofocus={file ? true : undefined} disabled={!ready} onClick={() => void run()}>
-          Import
+          {bookOnly ? "Open Book" : "Import"}
         </button>
         <button type="button" className="settings-button" onClick={close}>
           Cancel

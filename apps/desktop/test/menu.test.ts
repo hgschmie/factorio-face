@@ -17,8 +17,8 @@ const flatten = (items: readonly MenuItemConstructorOptions[]): MenuItemConstruc
 const menu = (template: readonly MenuItemConstructorOptions[], label: string): MenuItemConstructorOptions[] => itemsOf(template.find((item) => item.label === label)!);
 const names = (items: readonly MenuItemConstructorOptions[]): string[] => items.map((item) => (item.type === "separator" ? "-" : (item.label ?? `role:${item.role}`)));
 const click = (item: MenuItemConstructorOptions): void => (item.click as () => void)();
-/** The blueprint group of the File menu, two submenus: in from a file or the clipboard, out to a file or a dialog to copy from. */
-const BLUEPRINT_ITEMS = ["Import Blueprint", "Export Blueprint"];
+/** The blueprint group of the File menu, three submenus: in from a file or the clipboard, out to a file, a dialog to copy from or the book of the project, and that book. */
+const BLUEPRINT_ITEMS = ["Import Blueprint", "Export Blueprint", "Blueprint Book"];
 
 describe("application menu", () => {
   it("has the application menu first on macOS only", () => {
@@ -91,7 +91,8 @@ describe("application menu", () => {
     for (const item of flatten(template)) if (item.click) click(item);
     expect(sent.map((command) => command.id)).toEqual([
       "app.settings",
-      "file.new", "file.open", "file.save", "file.saveAs", "file.importBlueprint", "file.pasteBlueprint", "file.exportBlueprint", "file.showBlueprint",
+      "file.new", "file.open", "file.save", "file.saveAs", "file.importBlueprint", "file.pasteBlueprint", "file.exportBlueprint", "file.showBlueprint", "file.exportToBook",
+      "file.chooseFromBook", "file.loadBook", "file.pasteBook", "file.exportBook", "file.showBook", "file.removeBook",
       "edit.undo", "edit.redo", "edit.delete", "edit.selectAll",
       "view.circuit", "view.source", "view.split", "view.zoomIn", "view.zoomOut", "view.zoomReset", "view.fit",
       "simulation.toggleRun", "simulation.step", "simulation.reset",
@@ -125,18 +126,28 @@ describe("application menu", () => {
     }
   });
 
-  it("has the blueprint commands in two submenus of the File menu with their keys, and nowhere else", () => {
+  it("has the blueprint commands in three submenus of the File menu, those of the circuit with their keys, and nowhere else", () => {
     for (const platform of ["darwin", "linux", "win32"] as const) {
       const { template, sent } = build({ platform });
       const file = menu(template, "File");
       expect(names(menu(file, "Import Blueprint"))).toEqual(["From File...", "Paste Blueprint..."]);
-      expect(names(menu(file, "Export Blueprint"))).toEqual(["As File...", "Show Blueprint"]);
-      const items = BLUEPRINT_ITEMS.flatMap((label) => menu(file, label));
-      expect(items.map((item) => item.accelerator)).toEqual(["CmdOrCtrl+Shift+O", "CmdOrCtrl+Shift+B", "CmdOrCtrl+Shift+E", "CmdOrCtrl+Shift+C"]);
+      expect(names(menu(file, "Export Blueprint"))).toEqual(["As File...", "Show Blueprint", "-", "To Blueprint Book..."]);
+      // The book of the project: a blueprint out of it, a book into the project, the book out, and away with it.
+      expect(names(menu(file, "Blueprint Book"))).toEqual(["Choose Blueprint...", "-", "Load Book From File...", "Paste Book...", "-", "Export As File...", "Show Book String", "-", "Remove Book From Project..."]);
+      const items = BLUEPRINT_ITEMS.flatMap((label) => menu(file, label)).filter((item) => item.type !== "separator");
+      // The commands of the book have no key: none next to those of the blueprint is free and says what it does.
+      expect(items.map((item) => item.accelerator)).toEqual(["CmdOrCtrl+Shift+O", "CmdOrCtrl+Shift+B", "CmdOrCtrl+Shift+E", "CmdOrCtrl+Shift+C", ...Array.from({ length: 7 }, () => undefined)]);
       for (const item of items) click(item);
-      expect(sent).toEqual([{ id: "file.importBlueprint" }, { id: "file.pasteBlueprint" }, { id: "file.exportBlueprint" }, { id: "file.showBlueprint" }]);
-      // The two submenus and the two of their items that name the blueprint: no blueprint item anywhere else, the Edit menu included.
-      expect(flatten(template).filter((item) => /blueprint/i.test(item.label ?? ""))).toHaveLength(4);
+      expect(sent.map((command) => command.id)).toEqual([
+        "file.importBlueprint", "file.pasteBlueprint", "file.exportBlueprint", "file.showBlueprint", "file.exportToBook",
+        "file.chooseFromBook", "file.loadBook", "file.pasteBook", "file.exportBook", "file.showBook", "file.removeBook",
+      ]);
+      // The three submenus and the four of their items that name a blueprint: no blueprint item anywhere else, the Edit menu included.
+      expect(flatten(template).filter((item) => /blueprint/i.test(item.label ?? "")).map((item) => item.label)).toEqual([
+        "Import Blueprint", "Paste Blueprint...", "Export Blueprint", "Show Blueprint", "To Blueprint Book...", "Blueprint Book", "Choose Blueprint...",
+      ]);
+      // Every item of the book that goes on to ask something says so with its dots; Show Book String shows the string at once, like Show Blueprint.
+      expect(flatten(file).filter((item) => /book/i.test(item.label ?? "") && item.click && !item.label!.endsWith("...")).map((item) => item.label)).toEqual(["Show Book String"]);
     }
   });
 

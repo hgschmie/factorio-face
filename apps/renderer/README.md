@@ -54,8 +54,8 @@ src/
     Workbench.tsx      shell: lays out the panels, routes callbacks to commands, wires the native menu and the close handshake
     selectionText.ts   the selection in words: status bar text, counts, wire labels, what the inspector is about   (pure)
     moduleOrder.ts     the order in which modules are shown and named: the game's own, then the mods by title   (pure)
-    statusText.ts      what the status line says about the source and about the project file, a path in the two parts it is
-                       shortened by   (pure)
+    statusText.ts      what the status line says about the source, about the project file and about the blueprint book of the
+                       project, a path in the two parts it is shortened by   (pure)
     TopBar.tsx         title bar (brand, Circuit / Source / Split) and project bar (name, undo, redo, fit, "Project Settings", save)
     CanvasStrip.tsx    the strip above the canvas: title and counts, the tools (select, red wire, green wire), the Edit | Blueprint
                        switch, "Place all"
@@ -133,7 +133,14 @@ src/
   blueprint/
     ImportBlueprint.tsx  the dialog to paste a blueprint string into (also: what is in the way of a chosen file, the list of a
                        blueprint book), and the report on what an import left out
-    ExportBlueprint.tsx  the dialog with the blueprint string to copy, and the one that lists what is in the way of a blueprint
+    ExportBlueprint.tsx  the dialog with the blueprint string to copy (also the string of the book of the project), and the one
+                       that lists what is in the way of a blueprint
+    BookTree.tsx       the items of a blueprint book as a list in the nesting of the book, a radio group where rows can be
+                       chosen: shared by the import dialog and the dialogs of the book of the project
+    BlueprintBook.tsx  the dialogs of the blueprint book of the project: choose a blueprint, attach a book, export into the
+                       book with its confirmation, remove the book, and the message for a command without a book
+    bookText.ts        what those dialogs start with and say: the row chosen at the start, the target of an export, the
+                       warning before a blueprint is overwritten   (pure)
   shortcuts/
     shortcuts.ts       the shortcut table: every key of the app, key matching, labels per platform, the arrow distance   (pure)
     ShortcutOverview.tsx  the modal overview of all shortcuts
@@ -748,7 +755,8 @@ and the name is set in 15px. The title bar keeps 62 units (66 in a window at lea
   | amber (`checking`) | Checking the source | no error is known but the analysis has not caught up with the text (`editable` is false). The analysis is synchronous today, so this state is not seen; it is there for an analysis in a worker. |
 
 - `.status-middle`: the selection in words (`.status-selection`) and the grid of the display mode.
-- `.project-meta`: the path of the project file (`.path`, "Not saved yet" without one) and the save state
+- `.project-meta`: while the project holds a blueprint book, the book (`button.status-book`, see "The dialogs and the menu
+  of the book"; nothing is there without a book), then the path of the project file (`.path`, "Not saved yet" without one) and the save state
   (`[data-testid="save-state"]`, `role="status"`: "Unsaved changes" with the class `unsaved`, "All changes saved", "No
   changes" for a project without a file; `saveStateText`). Both were under the project name in the project bar until
   2026-11-13; the bar keeps the name. A long path is shortened in the middle by the layout, not by cutting the text:
@@ -1074,11 +1082,13 @@ as `?r=<n>` (`revisionQuery`; nothing for revision 0, the installation found at 
 
 ## Blueprints of the game
 
-The File menu has two submenus with two commands each (`menu.ts`; the keys are in the table above): Import Blueprint with From File...
-(`file.importBlueprint`) and Paste Blueprint... (`file.pasteBlueprint`), Export Blueprint with As File... (`file.exportBlueprint`) and
-Show Blueprint (`file.showBlueprint`). They are in no other menu. The format, the mapping and what an import
+The File menu has three submenus for it (`menu.ts`; the keys are in the table above): Import Blueprint with From File...
+(`file.importBlueprint`) and Paste Blueprint... (`file.pasteBlueprint`), Export Blueprint with As File... (`file.exportBlueprint`),
+Show Blueprint (`file.showBlueprint`) and To Blueprint Book... (`file.exportToBook`), and Blueprint Book with the commands of the
+book a project holds (the last subsection). They are in no other menu. The format, the mapping and what an import
 drops are the business of `@face/blueprints`; `session/blueprints.ts` (pure) turns its results into what the dialogs show, and the
-session has six commands for it (and six more for the blueprint book a project holds, at the end of this section). `Workbench` holds which of the four dialogs is on show (`BlueprintDialog`, one at a time).
+session has six commands for it (and six more for the blueprint book a project holds, at the end of this section). `Workbench` holds which of the dialogs is on show
+(`BlueprintDialog`, one at a time): the four of this section and those of the book.
 
 - **In, three ways, one result.** `readBlueprint(text, select?)` says what a text holds (`BlueprintReading`): a blueprint with the
   source of its circuit and its report, the rows of a blueprint book, or an error as a sentence. `openBlueprint(blueprint)` opens it
@@ -1098,9 +1108,15 @@ session has six commands for it (and six more for the blueprint book a project h
   or `5 of 9 entities can be imported. ...`), or the book. Import is enabled only for something that can be imported; Cancel, Escape
   and the backdrop close. When the user keeps the current project in the unsaved-changes prompt the dialog stays with its text.
 - **A book** is listed as the package returns it: every item in its order, a book inside it followed by its own items, indented by
-  its depth (`bookRows`: label or "Blueprint without a label", "12 entities, 4 known to the editor", `importable`). The blueprints
+  its depth (`bookRows`: label or "Blueprint without a label", "12 entities, 4 known to the editor", `importable`). The list is
+  `BookTree` (`li[data-kind][data-path]`, the path as `pathKey` writes it: "3.0"), which the dialogs of the book of a project share. The blueprints
   are radio buttons (`role="radiogroup"` "Blueprints of the book"); one without an entity the editor knows, a planner and a book
-  are listed and cannot be chosen. The first importable one is chosen at the start.
+  are listed and cannot be chosen. The first importable one is chosen at the start. The project the chosen blueprint opens as
+  holds the book, and the note of the dialog says so (`[data-message="note"]`: "The project keeps the book: File > Blueprint Book
+  has its other blueprints and exports it again.").
+- **A book with nothing to import** (no blueprint with an entity the editor knows, or no items at all) is no dead end: the
+  dialog says so as a notice (`[data-message="book-only"]`), its button is "Open Book" in place of "Import", and it opens the
+  book as a project without a circuit (`openBook`).
 - **A file** (Import Blueprint > From File...): `chooseBlueprintFile()` has the main process show the file dialog and read the file; the renderer
   gets the text and the file name. One blueprint opens at once, without a dialog. A book or an error is shown in the same dialog
   ("Import blueprint"), with the name of the file in place of the text box.
@@ -1128,7 +1144,7 @@ session has six commands for it (and six more for the blueprint book a project h
 
 ### The blueprint book of a project
 
-The session side only; the dialogs and the menu for it are not built yet. A project holds at most one blueprint book of the
+A project holds at most one blueprint book of the
 game, as the string the game wrote (`ProjectData.book` of `ipc.ts`: the string, and `origin`, the path of the blueprint the
 circuit came from). `session/book.ts` (pure) decodes it and makes what the window shows; the session keeps it and has six
 commands for it. The format and the two edits are `@face/blueprints` ("Books" in its README).
@@ -1190,6 +1206,69 @@ commands for it. The format and the two edits are `@face/blueprints` ("Books" in
   back from another book is void. The modules a choice switched on are a project setting and stay on through an undo.
 - **Not done here.** Entity names, comments and card positions are not in a book: choosing a blueprint again gives fresh names.
   Writing into a large book encodes the whole book, in the renderer, when the command runs.
+
+#### The dialogs and the menu of the book
+
+File > Blueprint Book (`menu.ts`), after Export Blueprint: Choose Blueprint... (`file.chooseFromBook`), Load Book From File...
+(`file.loadBook`), Paste Book... (`file.pasteBook`), Export As File... (`file.exportBook`), Show Book String (`file.showBook`) and
+Remove Book From Project... (`file.removeBook`); File > Export Blueprint > To Blueprint Book... is `file.exportToBook`. None of
+them has a key: next to those of the blueprint (`⇧⌘O`, `⇧⌘B`, `⇧⌘E`, `⇧⌘C`) no free one says what it does. The dialogs are in
+`blueprint/BlueprintBook.tsx`, what they start with and their sentences in `blueprint/bookText.ts` (pure,
+`test/bookText.test.ts`); they are modal dialogs like the others (`Modal`: focus on open, Escape, the backdrop). Labels of a
+book are untrusted text, bounded by the session and rendered as text.
+
+- **The line in the window.** While the project holds a book the status line has `button.status-book` at the start of
+  `.project-meta`: "Book: Probe" and, when the circuit came from a blueprint of it, "Blueprint: third" (`bookLine` in
+  `workbench/statusText.ts`; `origin` is also the blueprint the circuit was last exported to). Each of the two is cut off with an
+  ellipsis where it does not fit, the button takes at most 45% of its end of the line, and the tooltip has both in sentences.
+  A press opens Choose Blueprint. A book that cannot be read shows "Book cannot be read" with the problem as the tooltip.
+  Without a book there is no element.
+- **Choose Blueprint** (`ChooseFromBook`, dialog "Choose blueprint"): the rows of the book in `BookTree`, the importable
+  blueprints as radio buttons. The blueprint the circuit came from carries the mark "Circuit came from here"
+  (`[data-mark="origin"]`) and is the one chosen at the start when it is importable, otherwise the first importable one
+  (`initialChoice`). The note says that the blueprint replaces the circuit of the project and that Undo brings it back.
+  "Replace Circuit" calls `chooseFromBook`; a refusal is shown in the dialog, and after a choice the report of the import is shown
+  when there is one (`ImportReport`, as after an import).
+- **Load Book From File and Paste Book** (`AttachBook`, dialogs "Load blueprint book" and "Paste blueprint book string"): the
+  text box of the paste dialog, or the name of the chosen file. What the text holds is read on every change with
+  `readBookPreview` (`readBookText` of the session, which is what `attachBook` refuses by): the refusal as the error of the
+  dialog ("This is a blueprint, not a blueprint book. ..."), or the label of the book and its items in `BookTree`, as a plain
+  list. While the project holds a book the dialog says which one goes (`[data-message="replaces"]`, `replacedBookNote`) and its
+  button is "Replace Book", otherwise "Attach Book"; it calls `attachBook`, and a refusal of that is shown too. The circuit is
+  left alone.
+- **To Blueprint Book** (`ExportToBook`, dialog "Export to blueprint book"). What is in the way of a blueprint of the circuit is
+  said first, in "No blueprint yet" (`exportBlueprint()` is asked when the command arrives, and `reason: "circuit"` of
+  `exportToBook` ends there too). The list has the book itself as its first row (`data-path=""`, "The book itself") and its
+  items one step in; the book itself and every book inside it (`addable`) take the circuit as a new blueprint, every blueprint
+  (`replaceable`) can be overwritten, planners are only listed (`targetOf`). The dialog starts with the book itself, or, when
+  the circuit came from a blueprint of the book that is among the rows, with that blueprint (`initialTarget`).
+  `[data-message="target"]` says what the choice does. "Add to Book" writes at once. "Overwrite..." leads to a second step
+  (dialog "Overwrite blueprint", which starts in "Back"): it names the blueprint and the book and lists what is lost
+  (`overwriteWarning`): the whole blueprint is replaced; "2 entities and 2 tiles that the editor does not hold are gone from
+  it." when `lost` counts any; whether description, icons and snapping are kept, which they are for the blueprint the circuit
+  came from; and that Undo does not bring it back. A refusal of the book (`reason: "book"`) is shown in the step that asked.
+- **After an export into the book** (`BookExported`, dialog "Exported to blueprint book"): `The circuit was added to the book
+  "Probe" as the blueprint "Counter".`, or `The circuit was written over the blueprint "third" of the book "Probe". It is now
+  "Counter".` (`exportedText`; the label of the written blueprint is read from the book afterwards, whose origin it is), the
+  warnings of the export, and that the book is saved with the project and goes to the game through File > Blueprint Book.
+- **Export As File and Show Book String**: `saveBookFile()`, whose toast says where the file went, and `exportBook()` in
+  `BlueprintString` with `kind="book"`: title and label "Blueprint book string", no version and no warnings, and a note that a
+  book nothing was written into is the string it came in as.
+- **Remove Book From Project** (`RemoveBook`, dialog "Remove blueprint book", which starts in "Cancel"): `Remove the blueprint
+  book "Probe" from the project?`, that the circuit stays, and that blueprints written into the book and not exported are lost
+  with it because Undo does not bring the book back. "Remove Book" calls `removeBook`.
+- **Without a book** the commands that need one (Choose Blueprint, Export As File, Show Book String, Remove Book, To Blueprint
+  Book) open `BookUnavailable` (dialog "No blueprint book"): "The project holds no blueprint book.", where the menu has the two
+  ways to give it one, and the buttons "Load Book From File..." and "Paste Book...". The menu items are never disabled: the
+  main process does not know the state of the renderer, as for the other commands. **With a book that cannot be read**
+  (`BookView.problem`) the same commands and the line in the window open it as "Blueprint book cannot be read": the problem,
+  and "Remove Book...", "Load Book From File..." and "Paste Book...". Removing and attaching work as for any book; the
+  dialogs say that the book cannot be read in place of its label.
+- **A dialog of the book does not outlive the book**: when another project is opened under it (the menu stays usable), the
+  dialogs that show a book are closed (`SHOWS_BOOK` and the effect next to it in `Workbench`).
+- **Tests.** `test/bookText.test.ts` (the starting choices, the targets, the sentences, the line of the status line),
+  `apps/desktop/test/menu.test.ts` (the submenus) and `tests/e2e/blueprintBook.spec.ts` (every dialog against the book of
+  fixture F-30 and a book made for the test).
 
 ## Application settings
 

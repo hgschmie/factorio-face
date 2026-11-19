@@ -1,4 +1,5 @@
-/* The blueprint dialogs: paste or import, the import report, the blueprint string, what is in the way of an export. */
+/* The blueprint dialogs: paste or import, the import report, the blueprint string, what is in the way of an export, and those
+   of the blueprint book of a project. */
 .blueprint-dialog {
   width: min(620px, 100%);
 }
@@ -119,6 +120,12 @@
   flex-shrink: 0;
   font-size: var(--text-md);
   color: var(--text-muted);
+}
+
+/* The mark of the blueprint the circuit came from. */
+.book-list .note-kind {
+  flex-shrink: 0;
+  margin: 0;
 }
 
 .report-list {

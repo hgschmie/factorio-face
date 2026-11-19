@@ -3,6 +3,8 @@
 import type { Point } from "@face/model";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { BlueprintFileText, FaceApi, MenuCommand } from "../../../desktop/src/ipc.ts";
+import { AttachBook, BookExported, BookUnavailable, ChooseFromBook, ExportToBook, RemoveBook } from "../blueprint/BlueprintBook.tsx";
+import { readBookPreview } from "../blueprint/bookText.ts";
 import { BlueprintString, ExportProblems } from "../blueprint/ExportBlueprint.tsx";
 import { ImportBlueprint, ImportReport } from "../blueprint/ImportBlueprint.tsx";
 import { Canvas, type CanvasHandle, type CanvasViews } from "../canvas/Canvas.tsx";
@@ -17,7 +19,8 @@ import { InstrumentsContext } from "../inspector/instruments.ts";
 import type { SignalDescriber, SignalPickerRenderer } from "../inspector/SignalField.tsx";
 import { isTextEntryTarget, isTextField, usesArrowKeys } from "../platform.ts";
 import { clipboardIsForEntities, dropTextSelectionOnPress, pageTextIsSelected } from "../textSelection.ts";
-import type { BlueprintExport, BlueprintProblem, ImportedBlueprint, ImportReportView } from "../session/blueprints.ts";
+import type { BlueprintExport, BlueprintProblem, ImportedBlueprint, ImportedBook, ImportReportView } from "../session/blueprints.ts";
+import type { BookChoice, BookResult, BookTarget } from "../session/book.ts";
 import type { GameDataController } from "../gameData/useGameData.ts";
 import { takeSettingsOpen } from "../gameData/reopen.ts";
 import { offerSelectAll } from "../dialog/selectAll.ts";
@@ -34,7 +37,7 @@ import { DISPLAY_CAPABILITIES, flippedTool, SELECT_TOOL, toolAllowed, turnedTool
 import { Palette } from "./Palette.tsx";
 import { selectedItems, selectionStatus } from "./selectionText.ts";
 import { SourcePane } from "./SourcePane.tsx";
-import { NOT_SAVED_YET, saveStateText, splitPath, statusLead } from "./statusText.ts";
+import { bookLine, NOT_SAVED_YET, saveStateText, splitPath, statusLead } from "./statusText.ts";
 import { TopBar } from "./TopBar.tsx";
 
 export interface WorkbenchProps {
@@ -64,7 +67,21 @@ type BlueprintDialog =
   | { readonly type: "import"; readonly file?: BlueprintFileText }
   | { readonly type: "report"; readonly name: string; readonly report: ImportReportView }
   | { readonly type: "string"; readonly exported: BlueprintExport & { readonly ok: true } }
-  | { readonly type: "problems"; readonly problems: readonly BlueprintProblem[] };
+  | { readonly type: "problems"; readonly problems: readonly BlueprintProblem[] }
+  // The blueprint book of the project. What these show of the book is read from the state when they are drawn.
+  | { readonly type: "chooseFromBook" }
+  /** The text box to paste the string of a book into; with `file`, what a chosen file holds. */
+  | { readonly type: "attachBook"; readonly file?: BlueprintFileText }
+  | { readonly type: "exportToBook" }
+  /** After an export into the book: `replaced` is the label the overwritten blueprint had, null for a new blueprint. */
+  | { readonly type: "bookExported"; readonly replaced: string | null; readonly warnings: readonly string[] }
+  | { readonly type: "bookString"; readonly string: string }
+  | { readonly type: "removeBook" }
+  /** A command needs a book and the project has none, or one that cannot be read. */
+  | { readonly type: "bookUnavailable" };
+
+/** The dialogs that show a book that can be read; they go when the project has no such book any more (another project was opened under them). */
+const SHOWS_BOOK: ReadonlySet<BlueprintDialog["type"]> = new Set(["chooseFromBook", "exportToBook", "bookExported", "bookString"]);
 
 const clipboardEvents = ["cut", "copy", "paste"] as const;
 
@@ -116,6 +133,14 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
   const [iconHintDismissed, setIconHintDismissed] = useState(false);
   const [blueprintDialog, setBlueprintDialog] = useState<BlueprintDialog | null>(null);
   const closeBlueprintDialog = useCallback(() => setBlueprintDialog(null), []);
+  const book = state.book;
+  const readableBook = book !== null && book.problem === null ? book : null;
+  // A dialog about the book does not outlive the book it is about: it is closed for good, not until a book is back.
+  useEffect(() => {
+    if (!blueprintDialog) return;
+    const { type } = blueprintDialog;
+    if (SHOWS_BOOK.has(type) ? readableBook === null : type === "removeBook" ? book === null : type === "bookUnavailable" && readableBook !== null) setBlueprintDialog(null);
+  }, [blueprintDialog, book, readableBook]);
   const revealDiagnostic = useCallback((diagnostic: Diagnostic) => editorRef.current?.reveal(diagnostic.from, diagnostic.to), []);
   // The canvas unmounts in Source mode; its views, one per display mode, are kept here so that coming back does not reset them.
   const viewsRef = useRef<CanvasViews>({});
@@ -311,6 +336,14 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
     },
     [commands],
   );
+  const openBook = useCallback(
+    async (imported: ImportedBook): Promise<boolean> => {
+      if (!(await commands.openBook(imported))) return false;
+      setBlueprintDialog(null);
+      return true;
+    },
+    [commands],
+  );
   // A file that holds one blueprint needs no dialog. A book, or text that is no blueprint, is shown in the import dialog.
   const importBlueprintFile = useCallback(async (): Promise<void> => {
     const file = await commands.chooseBlueprintFile();
@@ -333,6 +366,77 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
     },
     [commands],
   );
+
+  // The blueprint book of the project. A command that needs one that can be read says so in a dialog when there is none.
+  const withBook = useCallback((run: () => void): void => {
+    const current = stateRef.current.book;
+    if (current === null || current.problem !== null) setBlueprintDialog({ type: "bookUnavailable" });
+    else run();
+  }, []);
+  const chooseBlueprint = useCallback(() => withBook(() => setBlueprintDialog({ type: "chooseFromBook" })), [withBook]);
+  // The blueprint replaces the circuit; what its import left out is reported as after an import.
+  const chooseFromBook = useCallback(
+    (path: readonly number[]): BookChoice => {
+      const choice = commands.chooseFromBook(path);
+      if (choice.ok) setBlueprintDialog(choice.report ? { type: "report", name: choice.name, report: choice.report } : null);
+      return choice;
+    },
+    [commands],
+  );
+  const pasteBook = useCallback(() => setBlueprintDialog({ type: "attachBook" }), []);
+  // What the file holds is shown before it becomes the book of the project, with the book it replaces.
+  const loadBookFile = useCallback(async (): Promise<void> => {
+    const file = await commands.chooseBlueprintFile();
+    if (file) setBlueprintDialog({ type: "attachBook", file });
+  }, [commands]);
+  const attachBook = useCallback(
+    (text: string): BookResult => {
+      const result = commands.attachBook(text);
+      if (result.ok) setBlueprintDialog(null);
+      return result;
+    },
+    [commands],
+  );
+  // What is in the way of a blueprint of the circuit is said before the user chooses where in the book it goes.
+  const openExportToBook = useCallback(
+    () =>
+      withBook(() => {
+        writeFocusedField();
+        const exported = commands.exportBlueprint();
+        setBlueprintDialog(exported.ok ? { type: "exportToBook" } : { type: "problems", problems: exported.problems });
+      }),
+    [commands, withBook],
+  );
+  const exportToBook = useCallback(
+    (target: BookTarget, replaced: string | null): string | undefined => {
+      const result = commands.exportToBook(target);
+      if (result.ok) setBlueprintDialog({ type: "bookExported", replaced, warnings: result.warnings });
+      else if (result.reason === "circuit") setBlueprintDialog({ type: "problems", problems: result.problems });
+      else return result.message;
+      return undefined;
+    },
+    [commands],
+  );
+  const exportBook = useCallback(
+    (target: "dialog" | "file"): void =>
+      withBook(() => {
+        // The file: the session shows the save dialog and says in the message on show where the book went.
+        if (target === "file") {
+          setBlueprintDialog(null);
+          return void commands.saveBookFile();
+        }
+        const exported = commands.exportBook();
+        setBlueprintDialog(exported.ok ? { type: "bookString", string: exported.string } : { type: "bookUnavailable" });
+      }),
+    [commands, withBook],
+  );
+  // A book that cannot be read can be removed as well.
+  const askRemoveBook = useCallback(() => setBlueprintDialog({ type: stateRef.current.book === null ? "bookUnavailable" : "removeBook" }), []);
+  const removeBook = useCallback((): void => {
+    commands.removeBook();
+    setBlueprintDialog(null);
+  }, [commands]);
+
   const showBoard = useCallback(
     (names: readonly string[]): void => {
       const { circuit, mode } = stateRef.current;
@@ -379,6 +483,20 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
           return exportBlueprint("file");
         case "file.showBlueprint":
           return exportBlueprint("dialog");
+        case "file.exportToBook":
+          return openExportToBook();
+        case "file.chooseFromBook":
+          return chooseBlueprint();
+        case "file.loadBook":
+          return void loadBookFile();
+        case "file.pasteBook":
+          return pasteBook();
+        case "file.exportBook":
+          return exportBook("file");
+        case "file.showBook":
+          return exportBook("dialog");
+        case "file.removeBook":
+          return askRemoveBook();
         case "edit.undo":
           return history("undo");
         case "edit.redo":
@@ -415,12 +533,13 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
       }
     };
     return api.onMenuCommand(run);
-  }, [api, commands, history, save, importBlueprintFile, exportBlueprint]);
+  }, [api, commands, history, save, importBlueprintFile, exportBlueprint, openExportToBook, chooseBlueprint, loadBookFile, pasteBook, exportBook, askRemoveBook]);
 
   const errors = state.diagnostics.filter((diagnostic) => diagnostic.severity === "error").length;
   const warnings = state.diagnostics.length - errors;
   const lead = statusLead(errors, editable);
   const [pathHead, pathTail] = splitPath(project.path ?? NOT_SAVED_YET);
+  const bookStatus = book && bookLine(book);
   /** On the board: how many entities have no `tile`. */
   const unplacedCount = useMemo(() => (capabilities.tiles ? circuit.entities.filter((entity) => !entity.placement?.tile).length : 0), [capabilities.tiles, circuit.entities]);
   const selectionText = selectionStatus(circuit, selectedItems(circuit, selection, wireSelection));
@@ -621,6 +740,16 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
           {displayMode === "blueprint" ? "Tile grid" : "20 unit grid"}
         </span>
         <span className="project-meta">
+          {/* The blueprint book of the project and the blueprint the circuit came from; nothing without a book. Long labels are cut off. */}
+          {bookStatus && (
+            <>
+              <button type="button" className="status-book" title={bookStatus.title} onClick={chooseBlueprint}>
+                <span>{bookStatus.label}</span>
+                {bookStatus.origin !== null && <span>{bookStatus.origin}</span>}
+              </button>
+              <span className="meta-dot" />
+            </>
+          )}
           {/* Shortened in the middle: the folders give way, the file name stays. */}
           <span className="path" title={project.path ?? undefined}>
             {pathHead !== "" && <span className="path-head">{pathHead}</span>}
@@ -647,10 +776,25 @@ export function Workbench({ controller, api, appSettings, gameData, dataProblem 
       )}
       {shortcutsOpen && <ShortcutOverview close={closeShortcuts} />}
       {appSettingsOpen && appSettings && <AppSettings settings={appSettings} gameData={gameData} close={closeAppSettings} />}
-      {blueprintDialog?.type === "import" && <ImportBlueprint key={blueprintDialog.file?.name} file={blueprintDialog.file} read={commands.readBlueprint} open={openBlueprint} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "import" && (
+        <ImportBlueprint key={blueprintDialog.file?.name} file={blueprintDialog.file} read={commands.readBlueprint} open={openBlueprint} openBook={openBook} close={closeBlueprintDialog} />
+      )}
       {blueprintDialog?.type === "report" && <ImportReport name={blueprintDialog.name} report={blueprintDialog.report} close={closeBlueprintDialog} />}
       {blueprintDialog?.type === "string" && <BlueprintString exported={blueprintDialog.exported} close={closeBlueprintDialog} />}
       {blueprintDialog?.type === "problems" && <ExportProblems problems={blueprintDialog.problems} showBoard={showBoard} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "chooseFromBook" && readableBook && <ChooseFromBook book={readableBook} choose={chooseFromBook} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "attachBook" && (
+        <AttachBook key={blueprintDialog.file?.name} file={blueprintDialog.file} current={book} read={readBookPreview} attach={attachBook} close={closeBlueprintDialog} />
+      )}
+      {blueprintDialog?.type === "exportToBook" && readableBook && <ExportToBook book={readableBook} write={exportToBook} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "bookExported" && readableBook && (
+        <BookExported book={readableBook} replaced={blueprintDialog.replaced} warnings={blueprintDialog.warnings} close={closeBlueprintDialog} />
+      )}
+      {blueprintDialog?.type === "bookString" && readableBook && <BlueprintString kind="book" exported={blueprintDialog} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "removeBook" && book && <RemoveBook book={book} remove={removeBook} close={closeBlueprintDialog} />}
+      {blueprintDialog?.type === "bookUnavailable" && !readableBook && (
+        <BookUnavailable problem={book?.problem ?? null} loadFile={() => void loadBookFile()} paste={pasteBook} remove={askRemoveBook} close={closeBlueprintDialog} />
+      )}
 
       {!showCanvas && toast}
     </div>

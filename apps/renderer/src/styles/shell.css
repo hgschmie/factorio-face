@@ -420,6 +420,29 @@
   text-overflow: ellipsis;
 }
 
+/* The blueprint book of the project and the blueprint its circuit came from: a button that opens the choice of a blueprint.
+   It takes no more than its share of the line, and long labels are cut off, each on its own. */
+.status-book {
+  flex: 0 1 auto;
+  gap: 8px;
+  min-width: 3em;
+  max-width: 45%;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--text-soft);
+}
+
+.status-book > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-book > span + span {
+  color: var(--text-muted);
+}
+
 .save-state {
   flex-shrink: 0;
 }

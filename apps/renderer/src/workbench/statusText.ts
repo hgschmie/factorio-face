@@ -1,4 +1,5 @@
-// What the status line says about the source and about the project file. Pure.
+// What the status line says about the source, about the project file and about the blueprint book of the project. Pure.
+import type { BookView } from "../session/book.ts";
 import type { ProjectView } from "./controller.ts";
 
 export type StatusLevel = "ok" | "error" | "checking";
@@ -41,4 +42,24 @@ export function splitPath(path: string): readonly [head: string, tail: string] {
   // The separator the path ends in does not count: a folder is its own last part.
   const cut = Math.max(path.lastIndexOf("/", path.length - 2), path.lastIndexOf("\\", path.length - 2));
   return cut <= 0 ? ["", path] : [path.slice(0, cut), path.slice(cut)];
+}
+
+export interface BookLine {
+  /** "Book: Probe", or that the book cannot be read. */
+  readonly label: string;
+  /** "Blueprint: third": the blueprint the circuit came from; null when it came from none. */
+  readonly origin: string | null;
+  /** The whole of it in sentences, for the tooltip: the line itself clips long labels. */
+  readonly title: string;
+}
+
+/** The blueprint book of the project in the status line: its label and the blueprint the circuit came from. The labels are bounded by the session. */
+export function bookLine(book: Pick<BookView, "label" | "originLabel" | "problem">): BookLine {
+  if (book.problem !== null) return { label: "Book cannot be read", origin: null, title: book.problem };
+  const from = book.originLabel === null ? "The circuit came from none of its blueprints." : `The circuit came from its blueprint "${book.originLabel}", or was last exported to it.`;
+  return {
+    label: `Book: ${book.label}`,
+    origin: book.originLabel === null ? null : `Blueprint: ${book.originLabel}`,
+    title: `The project holds the blueprint book "${book.label}". ${from} Press to choose a blueprint of the book.`,
+  };
 }

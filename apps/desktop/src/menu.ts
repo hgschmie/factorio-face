@@ -72,7 +72,25 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         separator,
         // A blueprint of the game comes in as a new project and goes out as its string: from and to a text file, or the clipboard.
         { label: "Import Blueprint", submenu: [command("From File...", "file.importBlueprint"), command("Paste Blueprint...", "file.pasteBlueprint")] },
-        { label: "Export Blueprint", submenu: [command("As File...", "file.exportBlueprint"), command("Show Blueprint", "file.showBlueprint")] },
+        {
+          label: "Export Blueprint",
+          submenu: [command("As File...", "file.exportBlueprint"), command("Show Blueprint", "file.showBlueprint"), separator, command("To Blueprint Book...", "file.exportToBook")],
+        },
+        // The blueprint book the project holds: a blueprint of it becomes the circuit, a book comes in and leaves the circuit alone, the book goes out.
+        {
+          label: "Blueprint Book",
+          submenu: [
+            command("Choose Blueprint...", "file.chooseFromBook"),
+            separator,
+            command("Load Book From File...", "file.loadBook"),
+            command("Paste Book...", "file.pasteBook"),
+            separator,
+            command("Export As File...", "file.exportBook"),
+            command("Show Book String", "file.showBook"),
+            separator,
+            command("Remove Book From Project...", "file.removeBook"),
+          ],
+        },
         separator,
         ...(isMac ? [{ role: "close" } as const] : [settings, separator, { role: "quit" } as const]),
       ],
