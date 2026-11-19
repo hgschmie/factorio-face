@@ -1,5 +1,5 @@
 // Signal picker, organised like the one in the game: one tab per item group, one row block per subgroup, signals in game
-// order. Presentational: the tree, the qualities and the icon URLs arrive as props.
+// order. Presentational: the tree, what it leaves out, the qualities and the icon URLs arrive as props.
 import type { CatalogSignal, PickerGroup } from "@face/catalog";
 import { NORMAL_QUALITY, signal, signalKey, type SignalId, type Wildcard } from "@face/model";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -7,10 +7,13 @@ import { useFocusReturn } from "../dialog/focusReturn.ts";
 import { shortSignal } from "../entities/signalText.ts";
 import { Icon } from "../icons/Icon.tsx";
 import { IconImage } from "../icons/IconImage.tsx";
-import type { QualityOption } from "../workbench/controller.ts";
+import type { NotOfferedSignal, QualityOption } from "../workbench/controller.ts";
+import { matchesSearch, notOfferedNote } from "./notOffered.ts";
 
 export interface SignalPickerPanelProps {
   readonly groups: readonly PickerGroup[];
+  /** The signals `groups` leaves out because their modules are switched off or the user hid them: a search says that it matches some of them. */
+  readonly notOffered: readonly NotOfferedSignal[];
   /** Selectable qualities, lowest first; empty when the project has no quality module. */
   readonly qualities: readonly QualityOption[];
   readonly value: SignalId | undefined;
@@ -25,7 +28,10 @@ export interface SignalPickerPanelProps {
 /** Kept free between the panel and the ends of the area it stays in. */
 const MARGIN = 8;
 const MAX_HEIGHT = 520;
-/** The signal list is rows of tiles, and in a search headings as high as one: the height of a row and the gap to the next (picker.css). */
+/**
+ * The signal list is rows of tiles, and in a search headings as high as one: the height of a row and the gap to the next (picker.css).
+ * The note of a search (`notOfferedNote`) is text at the end of the list and no row: it scrolls with the list and changes neither its height nor the place of the panel.
+ */
 const ROW = { height: 36, gap: 3 } as const;
 const MIN_ROWS = 3;
 
@@ -50,23 +56,18 @@ export function pickerPlacement(fieldTop: number, chrome: number, bottom: number
   return { top: Math.max(MARGIN, Math.min(fieldTop, bottom - MARGIN - chrome - listHeight)), listHeight };
 }
 
-function matches(entry: CatalogSignal, query: string): boolean {
-  return entry.displayName.toLowerCase().includes(query) || entry.name.toLowerCase().includes(query);
-}
-
 /** The tree without the wildcards this slot does not accept and, with a query, without everything that does not match. */
 function visibleGroups(groups: readonly PickerGroup[], wildcards: readonly Wildcard[], query: string): PickerGroup[] {
   const result: PickerGroup[] = [];
   for (const group of groups) {
-    const subgroups = group.subgroups
-      .map((subgroup) => ({ ...subgroup, signals: subgroup.signals.filter((entry) => (entry.wildcard === undefined || wildcards.includes(entry.wildcard)) && (query === "" || matches(entry, query))) }))
-      .filter((subgroup) => subgroup.signals.length > 0);
+    const shown = (entry: CatalogSignal): boolean => (entry.wildcard === undefined || wildcards.includes(entry.wildcard)) && (query === "" || matchesSearch(entry, query));
+    const subgroups = group.subgroups.map((subgroup) => ({ ...subgroup, signals: subgroup.signals.filter(shown) })).filter((subgroup) => subgroup.signals.length > 0);
     if (subgroups.length > 0) result.push({ group: group.group, subgroups });
   }
   return result;
 }
 
-export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onSelect, close }: SignalPickerPanelProps) {
+export function SignalPicker({ groups, notOffered, qualities, value, wildcards, iconUrl, onSelect, close }: SignalPickerPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -81,6 +82,7 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
   // A search looks through every group; without one, the active tab is shown.
   const listed = needle === "" ? shown.filter((group) => group.group.name === tab) : shown;
   const first = listed[0]?.subgroups[0]?.signals[0];
+  const note = useMemo(() => notOfferedNote(notOffered, needle), [notOffered, needle]);
 
   // Closed by a choice, by a key or by its close button, the picker gives the focus back to the button of its field.
   const pick = (entry: CatalogSignal): void => {
@@ -194,6 +196,11 @@ export function SignalPicker({ groups, qualities, value, wildcards, iconUrl, onS
             ))}
           </section>
         ))}
+        {note !== null && (
+          <p className="muted-note" data-note="not-offered">
+            {note}
+          </p>
+        )}
       </div>
 
       {qualities.length > 0 && (

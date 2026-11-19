@@ -278,9 +278,16 @@ test("what is hidden is offered by neither the picker nor the selector, a projec
     await picker(page).getByLabel("Search signals").fill("wooden chest");
     await expect(picker(page).locator('[data-signal="entity:wooden-chest-remnants"]')).toHaveCount(1);
     await expect(picker(page).locator('[data-signal="item:wooden-chest"]')).toHaveCount(0);
+    // Below what the search found, the picker says that it matches a signal that is hidden, and where.
+    const hiddenNote = picker(page).locator('.picker-signals [data-note="not-offered"]');
+    await expect(hiddenNote).toHaveText('1 matching signal is hidden on this machine (Project Settings, "Signals and entities" of its group).');
     await picker(page).getByLabel("Search signals").fill("signal");
     await expect(picker(page).locator('[data-signal="virtual:signal-B"]')).toHaveCount(1);
     await expect(picker(page).locator('[data-signal="virtual:signal-A"]')).toHaveCount(0);
+    await expect(hiddenNote).toHaveCount(1);
+    await picker(page).getByLabel("Search signals").fill("iron plate");
+    await expect(picker(page).locator('[data-signal="item:iron-plate"]')).toHaveCount(1);
+    await expect(hiddenNote).toHaveCount(0);
     await page.keyboard.press("Escape");
     await expect(picker(page)).toHaveCount(0);
 

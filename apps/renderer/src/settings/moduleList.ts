@@ -8,11 +8,11 @@ export { listOrder };
 /** The list gets a filter field from this many rows on. */
 export const FILTER_FROM = 11;
 /** Titles named in a sentence before it says how many more there are. */
-const NAMED = 4;
+export const NAMED = 4;
 const TITLE_LENGTH = 60;
 
-const clip = (text: string): string => (text.length > TITLE_LENGTH ? `${text.slice(0, TITLE_LENGTH)}...` : text);
-const count = (amount: number, one: string, many = `${one}s`): string => `${amount} ${amount === 1 ? one : many}`;
+export const clip = (text: string): string => (text.length > TITLE_LENGTH ? `${text.slice(0, TITLE_LENGTH)}...` : text);
+export const count = (amount: number, one: string, many = `${one}s`): string => `${amount} ${amount === 1 ? one : many}`;
 
 /**
  * The titles of the modules named, in a list for a sentence: "Space Age, Quality", "A, B, C, D and 3 more". They come in the

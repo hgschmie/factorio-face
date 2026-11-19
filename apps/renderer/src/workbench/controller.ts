@@ -309,6 +309,17 @@ export interface ModuleItems {
   readonly entities: readonly ModuleItem[];
 }
 
+/** A signal the picker does not offer although a search of it may name it, and why not. */
+export interface NotOfferedSignal {
+  /** `kind:name`, as a source has it. */
+  readonly key: string;
+  /** Its internal name and its name in the game: what the search of the picker goes by. */
+  readonly name: string;
+  readonly displayName: string;
+  /** The titles of the modules it needs that are switched off in the project, in the signal's order. None for a signal of modules that are on: the user hid it. */
+  readonly switchedOff: readonly string[];
+}
+
 /** Catalog data for the project's enabled modules. A new object whenever the module set changes, and whenever the user hides or shows a signal or an entity. */
 export interface CatalogView {
   readonly gameVersion: string;
@@ -324,6 +335,11 @@ export interface CatalogView {
   readonly speakerInstruments: readonly SpeakerInstrumentInfo[];
   /** The signal picker for the enabled modules in game order, wildcards included, without the signals the user hid. Built on first use. */
   picker(): readonly PickerGroup[];
+  /**
+   * What `picker()` leaves out of the signals the game offers: those of modules that are switched off and that the project can switch on, and, of the modules
+   * that are on, those the user hid. No wildcard and nothing the game hides. Built on first use.
+   */
+  notOffered(): readonly NotOfferedSignal[];
   /** The entity selector for the enabled modules: what can be placed, in the game's groups and order. Built on first use. */
   entities(): EntityRegistry;
   /** What the dialog of a module lists, hidden or not: its signals and entities as they would be offered with the module on. Built on first use. */

@@ -1,5 +1,5 @@
 // Catalog integration: signal status per module set, module settings, the picker data, completion and the simulation environment.
-import { loadStandardCatalog } from "@face/catalog";
+import { createCatalog, loadStandardCatalog, type CatalogData } from "@face/catalog";
 import { analyze, completionContext } from "@face/language";
 import { signal, wildcardSignal } from "@face/model";
 import { compile, createSimulation } from "@face/simulation";
@@ -8,10 +8,14 @@ import { signalWarning } from "../../src/inspector/signalWarning.ts";
 import { CatalogService } from "../../src/session/catalogService.ts";
 import { completionCandidates } from "../../src/session/completion.ts";
 import { createCatalogEnvironment, environmentData, rocketCapacityOf, rocketLiftWeight, UNLIMITED_LIFT_WEIGHT } from "../../src/session/environment.ts";
+import { hiddenItems } from "../../src/settings/hiddenItems.ts";
+import { MOD, MOD_ENTITY, MOD_SIGNAL, moddedData } from "../fixtures/moddedData.ts";
 import { createSession, idOf } from "./helpers.ts";
 
 const catalog = loadStandardCatalog();
 const ALL = ["base", "elevated-rails", "recycler", "quality", "space-age"];
+
+const notOffered = (service: CatalogService, key: string) => service.notOffered().filter((entry) => entry.key === key);
 
 const SPACE = `circuit "Space" {
     // carbon fiber is a Space Age item
@@ -174,6 +178,71 @@ describe("picker data and completion", () => {
     expect(names(base).has("item:carbon-fiber")).toBe(false);
     // The wildcards are part of the tree; the picker filters them per slot.
     expect(all.flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals)).filter((entry) => entry.wildcard).map((entry) => entry.wildcard).sort()).toEqual(["anything", "each", "everything"]);
+  });
+
+  it("lists the signals of the modules that are switched off as not offered, with the titles of those modules", () => {
+    const base = new CatalogService(catalog, ["base"]);
+    expect(notOffered(base, "item:carbon-fiber")).toEqual([{ key: "item:carbon-fiber", name: "carbon-fiber", displayName: "Carbon fiber", switchedOff: ["Space Age"] }]);
+    expect(notOffered(base, "item:rail-ramp")).toMatchObject([{ displayName: "Rail ramp", switchedOff: ["Elevated Rails"] }]);
+    // As many as the rows of the modules that are off count (no signal of the game needs two of them), and none the picker has.
+    expect(base.notOffered()).toHaveLength(base.modules.filter((module) => !module.enabled).reduce((sum, module) => sum + module.signalCount, 0));
+    const offered = new Set(base.picker().flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals.map((entry) => entry.key))));
+    expect(base.notOffered().filter((entry) => offered.has(entry.key))).toEqual([]);
+    expect(base.notOffered()).toBe(base.notOffered());
+    // Space Age without the modules it does not require: theirs are left.
+    const space = new CatalogService(catalog, ["base", "space-age"]);
+    expect(new Set(space.notOffered().flatMap((entry) => entry.switchedOff))).toEqual(new Set(["Elevated Rails", "Recycler", "Quality"]));
+    expect(new CatalogService(catalog, ALL).notOffered()).toEqual([]);
+  });
+
+  it("lists what the user hid of the modules that are on as not offered, and a hidden signal of a module that is off as one of that module", () => {
+    const hidden = hiddenItems([{ module: "base", signals: ["item:wooden-chest"], entities: [] }, { module: "space-age", signals: ["item:carbon-fiber"], entities: [] }]);
+    const all = new CatalogService(catalog, ALL, hidden);
+    expect(all.notOffered()).toEqual([
+      { key: "item:wooden-chest", name: "wooden-chest", displayName: "Wooden chest", switchedOff: [] },
+      { key: "item:carbon-fiber", name: "carbon-fiber", displayName: "Carbon fiber", switchedOff: [] },
+    ]);
+    expect(all.notOffered()).toBe(all.notOffered());
+    const base = new CatalogService(catalog, ["base"], hidden);
+    expect(notOffered(base, "item:carbon-fiber")).toMatchObject([{ switchedOff: ["Space Age"] }]);
+    expect(base.notOffered().filter((entry) => entry.switchedOff.length === 0).map((entry) => entry.key)).toEqual(["item:wooden-chest"]);
+    // The services with other things hidden have the part of the modules as it was made, and their own for what is hidden.
+    const plain = new CatalogService(catalog, ["base"]);
+    const length = plain.notOffered().length;
+    expect(plain.withHidden(hidden).notOffered()).toEqual(base.notOffered());
+    expect(plain.withHidden(hidden).notOffered()).toHaveLength(length + 1);
+    expect(plain.notOffered()).toHaveLength(length);
+  });
+
+  it("lists no wildcard, nothing the game hides and nothing that switching a module on does not bring as not offered", () => {
+    const stored = ["item:space-platform-hub", "recipe:satellite", "item:satellite"].map((key) => catalog.signalsByKey.get(key)!);
+    expect(stored.map((entry) => [entry.visibility, entry.modules])).toEqual([["hidden", ["space-age"]], ["hidden", ["base"]], ["normal", ["base"]]]);
+    // Hidden by the game: of a module that is off, and of one that is on although a settings file names it, like a wildcard.
+    const base = new CatalogService(catalog, ["base"], hiddenItems([{ module: "base", signals: ["recipe:satellite", "virtual:signal-each"], entities: [] }]));
+    expect(notOffered(base, "item:space-platform-hub")).toEqual([]);
+    expect(base.notOffered().filter((entry) => entry.switchedOff.length === 0)).toEqual([]);
+    expect(base.notOffered().filter((entry) => entry.name.startsWith("signal-e") || entry.name === "signal-anything")).toEqual([]);
+    // Space Age removes the satellite: no module that is off has it.
+    expect(notOffered(new CatalogService(catalog, ["base", "space-age"]), "item:satellite")).toEqual([]);
+  });
+
+  it("names every module a signal needs that is off, and leaves out a signal that needs a module the project does not list", () => {
+    const game = moddedData().catalog!;
+    const virtual = (name: string, modules: readonly string[]) => ({ name, displayName: name, order: "zy", subgroup: "virtual-signal", modules });
+    const added = [virtual("both", [MOD, "space-age"]), virtual("unlisted", ["no-such-mod"]), virtual("half-unlisted", [MOD, "no-such-mod"])];
+    const data: CatalogData = { ...game, signals: { ...game.signals, virtual: [...game.signals.virtual!, ...added] } };
+    const modded = createCatalog(data);
+    const base = new CatalogService(modded, ["base"]);
+    expect(notOffered(base, `virtual:${MOD_SIGNAL}`)).toEqual([{ key: `virtual:${MOD_SIGNAL}`, name: MOD_SIGNAL, displayName: "Mod signal", switchedOff: ["Some Mod"] }]);
+    expect(notOffered(base, "virtual:both")).toMatchObject([{ switchedOff: ["Some Mod", "Space Age"] }]);
+    expect(notOffered(new CatalogService(modded, ["base", "space-age"]), "virtual:both")).toMatchObject([{ switchedOff: ["Some Mod"] }]);
+    expect(base.notOffered().filter((entry) => entry.name.endsWith("unlisted"))).toEqual([]);
+    // The crate of the mod is an entity signal the game hides behind its item.
+    expect(notOffered(base, `entity:${MOD_ENTITY}`)).toEqual([]);
+    // With the mod on, what is hidden of it is of the user's rule.
+    const on = new CatalogService(modded, ["base", MOD], hiddenItems([{ module: MOD, signals: [`virtual:${MOD_SIGNAL}`, "virtual:both"], entities: [] }]));
+    expect(on.notOffered().filter((entry) => entry.switchedOff.length === 0).map((entry) => entry.key)).toEqual([`virtual:${MOD_SIGNAL}`]);
+    expect(notOffered(on, "virtual:both")).toMatchObject([{ switchedOff: ["Space Age"] }]);
   });
 
   it("completes keywords, properties, enum values, terminals and catalog signals of enabled modules", () => {

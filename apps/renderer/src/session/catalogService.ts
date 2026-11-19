@@ -9,7 +9,7 @@
 // read from the user's game has the modules of that game and its mods. `base` is on in any case.
 import {
   availableQualities, availableSignals, BASE_MODULE, dependentModules, disableModule, enableModule, findSignal, isAvailable, isGameModule, listedModules, namedModules, pickerTree, resolveModules,
-  speakerInstruments,
+  resolveSignal, speakerInstruments,
   type Catalog, type CatalogSignal, type ModuleInfo, type PickerGroup, type SpeakerInstrumentInfo,
 } from "@face/catalog";
 import { disabledPrototypeMessage, type PrototypeResolver, type SignalResolver } from "@face/language";
@@ -17,7 +17,7 @@ import { entityTable, isPrototypeName, NORMAL_QUALITY, signalKey, type EntityPro
 import type { HiddenModuleItems } from "../../../desktop/src/ipc.ts";
 import { entityRegistry, PINNED_KINDS, standardPrototype, type EntityRegistry } from "../entities/registry.ts";
 import { NOTHING_HIDDEN, type HiddenItems } from "../settings/hiddenItems.ts";
-import type { CatalogView, ModuleItem, ModuleItems, ModuleView, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
+import type { CatalogView, ModuleItem, ModuleItems, ModuleView, NotOfferedSignal, QualityOption, SignalInfo, SignalStatus } from "../workbench/controller.ts";
 
 const NONE: readonly string[] = [];
 const NO_ITEMS: ModuleItems = { signals: [], entities: [] };
@@ -48,9 +48,15 @@ export class CatalogService implements CatalogView, SignalResolver {
   private readonly active: ReadonlySet<string>;
   private readonly titles: ReadonlyMap<string, string>;
   private readonly lookups = new Map<string, Lookup>();
-  /** What does not depend on what the user hid, so that `withHidden` hands it on: the picker and the selector of the modules, and what the dialog of a module lists. */
-  private made: { tree?: readonly PickerGroup[]; registry?: EntityRegistry; readonly listings: Map<string, ModuleItems> } = { listings: new Map() };
+  /**
+   * What does not depend on what the user hid, so that `withHidden` hands it on: the picker and the selector of the modules, the signals of the modules that are
+   * switched off, and what the dialog of a module lists.
+   */
+  private made: { tree?: readonly PickerGroup[]; registry?: EntityRegistry; switchedOff?: readonly NotOfferedSignal[]; readonly listings: Map<string, ModuleItems> } = {
+    listings: new Map(),
+  };
   private offered: readonly PickerGroup[] | undefined;
+  private unoffered: readonly NotOfferedSignal[] | undefined;
   private registry: EntityRegistry | undefined;
   /** The four entities of the selector's first row: always offered, so the user's rule passes them over. */
   private readonly pinned: ReadonlySet<string> = new Set(PINNED_KINDS.map(standardPrototype));
@@ -282,6 +288,35 @@ export class CatalogService implements CatalogView, SignalResolver {
         return signals.length > 0 ? [{ ...subgroup, signals }] : [];
       });
       return subgroups.length > 0 ? [{ ...group, subgroups }] : [];
+    }));
+  }
+
+  /**
+   * What the picker does not offer of the signals the game offers, each with the reason: a search of the picker says that it
+   * matches them. A signal of modules that are switched off is in it as that, hidden or not; one the user hid, when its modules are on.
+   */
+  notOffered(): readonly NotOfferedSignal[] {
+    const off = this.signalsSwitchedOff();
+    if (this.hidden.entries.length === 0) return off;
+    const offered = this.allSignals().flatMap((group) => group.subgroups.flatMap((subgroup) => subgroup.signals));
+    return (this.unoffered ??= [...off, ...offered.filter((entry) => this.hidesSignal(entry)).map(({ key, name, displayName }) => ({ key, name, displayName, switchedOff: NONE }))]);
+  }
+
+  /**
+   * The signals the picker would offer were the modules they need switched on, as they would be then. A signal that switching
+   * modules on does not bring is not among them: one that a module of the project removes, and one that needs a module the
+   * project does not list.
+   */
+  private signalsSwitchedOff(): readonly NotOfferedSignal[] {
+    if (this.made.switchedOff) return this.made.switchedOff;
+    const listed = new Set(this.listed.map((module) => module.name));
+    return (this.made.switchedOff = this.catalog.signals.flatMap((stored): NotOfferedSignal[] => {
+      const off = this.off(stored.modules);
+      if (off.length === 0 || !off.every((name) => listed.has(name))) return [];
+      const on = new Set([...this.active, ...off]);
+      if (!isAvailable(stored, on)) return [];
+      const { key, name, displayName, visibility } = resolveSignal(stored, on);
+      return visibility === "normal" ? [{ key, name, displayName, switchedOff: off.map((module) => this.titleOf(module)) }] : [];
     }));
   }
 

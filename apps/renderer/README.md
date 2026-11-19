@@ -108,6 +108,7 @@ src/
   picker/
     SignalPicker.tsx   signal picker like the game's: group tabs, subgroup rows, search, quality row; where it opens and how
                        high its list gets (`pickerPlacement`, pure)
+    notOffered.ts      the search rule of the picker, and what a search says about signals it matches that are not offered   (pure)
   settings/
     ProjectSettings.tsx  project name, wire reach and the modules of the project as signal groups (the game's, and the mods of a game that was read)
     moduleList.ts        the module list in words: which modules have a row, row notes, counts, filter, the notes around the list
@@ -168,7 +169,7 @@ interface WorkbenchController {
 `WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, otherMods, unknownModules, qualities,
-`speakerInstruments`, `picker()`, `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`, `entityWarning(prototype)`, and for what the user hid `items(module)`, `hiddenOf(module)`, `hiddenCount(module)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
+`speakerInstruments`, `picker()`, `notOffered()` (what the picker leaves out, for the note of its search), `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`, `entityWarning(prototype)`, and for what the user hid `items(module)`, `hiddenOf(module)`, `hiddenCount(module)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
 below).
 
 `WorkbenchCommands`: view (`setMode`, `setDisplayMode`, `setTool`, `select`, `dismissError`), document (`placeEntity`, `moveEntities`, `rotateEntities`, `faceEntities`, `flipEntities`, `updateEntity`,
@@ -337,6 +338,19 @@ simulation (`run`, `pause`,
 - **Catalog.** `CatalogService` is rebuilt when the project's module list changes. It is the language's `SignalResolver` (unknown and
   disabled signals are warnings; text is never touched), the source of names and icon ids, and the picker tree. `SignalField` receives
   the wildcards its slot accepts (`SIGNAL_SLOTS` of the language) and the picker offers no others.
+- **What a search of the picker does not offer.** A search goes by the name in the game and the internal name (`matchesSearch`
+  of `picker/notOffered.ts`). `CatalogView.notOffered()` lists what `picker()` leaves out of the signals the game offers, each
+  with the reason (`NotOfferedSignal.switchedOff`): a signal of modules that are switched off, with the titles of those modules,
+  hidden by the user or not, as it would be with them on; and with no title a signal the user hid of modules that are on. It
+  has no wildcard, nothing the game hides, and nothing that switching a module on does not bring: a signal that a module of the
+  project removes, and one that needs a module the project does not list. The part of the modules is made once per module set
+  and handed on by `withHidden`. While a search is active the picker says below its results, and below "No signal matches",
+  what the search matches of that list (`notOfferedNote`, `p.muted-note[data-note="not-offered"]`, text only): "2 signals of
+  Space Age match. It is switched off in this project (Project Settings)."; for several modules "Signals of groups that are
+  switched off in this project match: Quality (1), Space Age (12). They are switched on in the Project Settings.", by title, four
+  named at most and then "and 2 more", a signal that needs several counted for the first one it names; and for what the user hid
+  "1 matching signal is hidden on this machine (Project Settings, "Signals and entities" of its group)." A search that matches
+  nothing of the list has no note. The note is no tile: Enter takes the first tile as before.
 - **Modules.** The enabled modules are the project's list (`modules` of `face.json`), whatever data is in use; `base` is on in any
   case. What the project switches (`CatalogView.modules`, `listedModules` of the catalog package) is the game's own modules that
   the data has and, with data read from a game, every mod that a signal or a record of the entity table names as its module; the
@@ -1019,7 +1033,9 @@ when two rows share a key on a platform or when one key event matches two rows.
   low in the inspector it moves up. It is at most 520 pixels high. Everything in its list of signals is a row of 36 pixels with
   3 to the next (the lines of tiles, and in a search the heading of a group), the list gets a whole number of rows at most
   (ten with one row of tabs and no qualities), and the room above and below it is outside of what scrolls: the lower edge cuts
-  no row before the list is scrolled, nor at its end. Another tab or another search starts at the top of its list. The panel is
+  no row before the list is scrolled, nor at its end. The note of a search about signals that are not offered is the one thing
+  in the list that is no row: text after the last row, which scrolls with the list and changes neither the height the list
+  gets nor the place of the panel. Another tab or another search starts at the top of its list. The panel is
   placed for the highest list it can get, so another tab or a search changes its height and neither moves it nor takes it out
   of the area.
 

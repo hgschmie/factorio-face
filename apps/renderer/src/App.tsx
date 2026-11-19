@@ -45,7 +45,9 @@ export function App({ data, hidden }: AppProps) {
   }, [catalog, iconUrl]);
 
   const renderSignalPicker = useCallback<SignalPickerRenderer>(
-    (props) => <SignalPicker groups={catalog.picker()} qualities={catalog.qualities} value={props.value} wildcards={props.wildcards} iconUrl={iconUrl} onSelect={props.onSelect} close={props.close} />,
+    ({ value, wildcards, onSelect, close }) => (
+      <SignalPicker groups={catalog.picker()} notOffered={catalog.notOffered()} qualities={catalog.qualities} value={value} wildcards={wildcards} iconUrl={iconUrl} onSelect={onSelect} close={close} />
+    ),
     [catalog, iconUrl],
   );
 

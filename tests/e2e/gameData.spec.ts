@@ -551,6 +551,18 @@ test("a mod is switched on in the project settings; what it brings is then in th
     await selectEntity(page, "constant1");
     await expect(inspector.locator(".entity-warning")).toHaveCount(0);
     await expect(inspector.locator(".field-warning")).toHaveText("Belongs to Some Mod, which is switched off in the project settings");
+    // The picker does not offer the signal any more, and a search that would find it says where it is switched on.
+    await inspector.getByRole("button", { name: "Choose signal 1" }).click();
+    await picker.getByLabel("Search signals").fill("mod sig");
+    await expect(picker.locator(".picker-signal")).toHaveCount(0);
+    await expect(picker.locator(".picker-signals .muted-note:not([data-note])")).toHaveText('No signal matches "mod sig".');
+    await expect(picker.locator('[data-note="not-offered"]')).toHaveText("1 signal of Some Mod matches. It is switched off in this project (Project Settings).");
+    // A search that finds nothing of the mod says nothing about it.
+    await picker.getByLabel("Search signals").fill("signal a");
+    await expect(picker.locator('[data-signal="virtual:signal-A"]')).toHaveCount(1);
+    await expect(picker.locator('[data-note="not-offered"]')).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(picker).toHaveCount(0);
     await selectEntity(page, "mod_crate1");
     await page.screenshot({ path: resolve(SHOTS, "inspector-mod-off.png") });
     await page.locator("[data-settings-toggle]").click();
@@ -718,8 +730,12 @@ test("signals and an entity of a mod are hidden in the dialog of its row: neithe
     await picker.getByLabel("Search signals").fill("mod");
     await expect(picker.locator('[data-signal="item:mod-crate"]')).toHaveCount(1);
     await expect(picker.locator(`[data-signal="virtual:${MOD_SIGNAL}"]`)).toHaveCount(0);
+    // A search says that it matches what is hidden, below what it found and below the line of a search that found nothing.
+    const hiddenNote = '1 matching signal is hidden on this machine (Project Settings, "Signals and entities" of its group).';
+    await expect(picker.locator('[data-note="not-offered"]')).toHaveText(hiddenNote);
     await picker.getByLabel("Search signals").fill("gadget");
-    await expect(picker.locator(".picker-signals .muted-note")).toHaveText('No signal matches "gadget".');
+    await expect(picker.locator(".picker-signals .muted-note:not([data-note])")).toHaveText('No signal matches "gadget".');
+    await expect(picker.locator('[data-note="not-offered"]')).toHaveText(hiddenNote);
     await page.keyboard.press("Escape");
     await expect(picker).toHaveCount(0);
 

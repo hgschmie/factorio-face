@@ -61,6 +61,8 @@
  * The list of signals, the one part that scrolls. Everything in it is a row of 36 with 3 to the next: the lines of tiles, and in
  * a search the heading of a group. The picker gives the list a whole number of rows at most (`pickerPlacement`), and its room
  * above and below is outside of what scrolls, so the lower edge cuts no row before the list is scrolled, nor at its end.
+ * The one thing in it that is no row is the note of a search about signals that are not offered, after the last row: text of
+ * its own height, which scrolls with the rest.
  */
 .picker-signals {
   flex: none;
@@ -81,6 +83,11 @@
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+.picker-signals [data-note="not-offered"] {
+  margin-top: 6px;
+  line-height: 1.5;
 }
 
 .picker-row {

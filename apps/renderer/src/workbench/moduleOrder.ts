@@ -2,7 +2,8 @@
 // that lists modules. Pure.
 import type { ModuleView } from "./controller.ts";
 
-const byTitle = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+/** Titles in the order they are shown in: whatever their case, numbers by their value. */
+export const byTitle = new Intl.Collator("en", { sensitivity: "base", numeric: true });
 
 /**
  * The game's own modules as the catalog has them, then the mods by title, whatever its case (the catalog has them by name,
