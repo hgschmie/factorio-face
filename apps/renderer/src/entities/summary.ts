@@ -32,6 +32,7 @@ function constantSummary(entity: ConstantCombinator): string {
   return `${shortSignal(first.signal)} = ${first.count}${more(filters.length - 1)}`;
 }
 
+// Without an output signal the combinator sends nothing: `?` in its place, as for a decider combinator without outputs.
 function arithmeticSummary(entity: ArithmeticCombinator): string {
   return `${operandText(entity.first)} ${symbol(entity.operation)} ${operandText(entity.second)} → ${signalOrBlank(entity.output)}`;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ARITHMETIC_OPERATIONS } from "@face/model";
-import { ARITHMETIC } from "../src/index.ts";
-import { EACH, GREEN, INT_MAX, INT_MIN, NEITHER, RED, arithmetic, evaluate, operand, v } from "./helpers.ts";
+import { ARITHMETIC, compile } from "../src/index.ts";
+import { EACH, GREEN, INT_MAX, INT_MIN, NEITHER, RED, arithmetic, circuit, constant, evaluate, operand, outputOf, simulate, v, wire } from "./helpers.ts";
 
 describe("arithmetic combinator", () => {
   it("applies every operation to signal and constant operands", () => {
@@ -91,7 +91,16 @@ describe("arithmetic combinator", () => {
     expect(evaluate(arithmetic("a", operand(EACH, RED), "+", operand("S", GREEN), EACH), { red: { A: 5 }, green: { S: 2 } })).toEqual(v({ A: 7 }));
   });
 
-  it("emits nothing while unconfigured", () => {
-    expect(evaluate(arithmetic("a", "A", "+", 1), { red: { A: 5 } })).toEqual({});
+  it("A-NOOUT assumption: without an output signal nothing is emitted, whatever the operands say, and a static note says so", () => {
+    const feed = { red: { A: 5, B: 3 } };
+    const silent = [arithmetic("a", "A", "+", 1), arithmetic("a", EACH, "*", 2), arithmetic("a", 6, "*", 7), arithmetic("a", 0, "*", 0)];
+    for (const entity of silent) {
+      expect(evaluate(entity, feed)).toEqual({});
+      expect(compile(circuit([entity])).notes).toEqual([{ severity: "info", code: "unconfigured", message: "No output signal; the combinator emits nothing.", entity: "a" }]);
+    }
+    // Nothing reaches the network behind it, over any number of ticks.
+    const chain = circuit([constant("c", { A: 5 }), arithmetic("a", EACH, "*", 2), arithmetic("b", "A", "+", 1, "B")], [wire("red", "c.out", "a.in"), wire("red", "a.out", "b.in")]);
+    expect(outputOf(simulate(chain, 4), "a")).toEqual({});
+    expect(outputOf(simulate(chain, 4), "b")).toEqual(v({ B: 1 }));
   });
 });

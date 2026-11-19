@@ -320,12 +320,15 @@ simulation (`run`, `pause`,
   command (`deleteEntities` with `wires`), which is one undo step. The simulation dock follows the entity selection only.
 - **Inspector drafts.** Forms emit complete entities. `drafts.ts` first sets fields without meaning to what the language implies (the
   output constant while copying the input count, the join of the first condition, the network selection of an empty signal slot, ...).
-  If the result is still not expressible (a comparison of a lamp, a speaker or a generic entity without signal, an expression without
-  output, a signal twice in a section), it is kept in `state.draft` with a hint; the inspector shows the draft instead of the entity,
+  If the result is still not expressible (a comparison of a lamp, a speaker or a generic entity without signal, a signal twice in a
+  section), it is kept in `state.draft` with a hint; the inspector shows the draft instead of the entity,
   and the next edit that makes it valid writes all of it as one step. A draft is dropped when the selection moves on, when it is
   discarded, or when its entity changes in the source. A condition of a decider combinator whose signal is emptied is no draft: the
   game reads the empty slot as 0, the source says `when 0 < 10`, and the form (`DeciderForm.tsx`) keeps the condition with the note
   "An empty signal reads as 0." and without the network toggle of the signal, which reads nothing. The card shows `0 < 10`.
+  Neither is an arithmetic combinator whose output signal is emptied: it sends nothing, the source says the right side alone
+  (`virtual:signal-A[red] * 2`), and the form (`ArithmeticForm.tsx`) has the note "Without an output signal the combinator sends
+  nothing." under the field. The card shows `A × 2 → ?`.
 - **Diagnostics** go to `state.diagnostics` and, as a separate effect-only transaction, to the lint extension. Highlighting uses the tokens
   of the analysis the session already has, and the word of an entity declaration, which is a name of the game and no keyword, has
   the class of a keyword (`declarationWords` of the language); completion maps the language's `completionContext` to keywords, at the

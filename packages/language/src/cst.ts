@@ -104,10 +104,14 @@ export interface CstSigRef extends Range {
 
 export type CstOperand = ({ readonly type: "int"; readonly token: Token } & Range) | ({ readonly type: "signal"; readonly ref: CstSigRef } & Range);
 
-/** `signal = operand [operator operand]`: a constant filter or an arithmetic expression. */
+/**
+ * `signal = operand [operator operand]`: a constant filter or an arithmetic expression. An arithmetic expression also stands
+ * without its output, `operand operator operand`.
+ */
 export interface CstAssign extends Range {
   readonly type: "assign";
-  readonly target: CstSigRef;
+  /** Absent only for an arithmetic expression without an output. */
+  readonly target?: CstSigRef;
   readonly first?: CstOperand;
   readonly operator?: Token;
   readonly second?: CstOperand;

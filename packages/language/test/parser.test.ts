@@ -77,6 +77,41 @@ describe("concrete syntax tree", () => {
     expect(expression.type === "assign" && [slice(text, expression.target), slice(text, expression.first), expression.operator?.text, slice(text, expression.second)]).toEqual(["each", "each", "AND", "0xff"]);
   });
 
+  it("parses an arithmetic expression without a target: the right side alone", () => {
+    const shape = (body: string) => {
+      const text = circuit(`arithmetic-combinator a { ${body} }`);
+      const result = parse(text);
+      expect(result.diagnostics, body).toEqual([]);
+      const statements = (result.cst.circuit!.members[0] as CstEntity).body!.statements;
+      return statements.map((s) => (s.type === "assign" ? [slice(text, s), s.target && slice(text, s.target), slice(text, s.first), s.operator?.text, slice(text, s.second)] : [s.type]));
+    };
+    expect(shape("each * 2")).toEqual([["each * 2", undefined, "each", "*", "2"]]);
+    expect(shape("virtual:signal-A[red] - each[none]")).toEqual([["virtual:signal-A[red] - each[none]", undefined, "virtual:signal-A[red]", "-", "each[none]"]]);
+    expect(shape("0 * 0")).toEqual([["0 * 0", undefined, "0", "*", "0"]]);
+    expect(shape("7 XOR item:a")).toEqual([["7 XOR item:a", undefined, "7", "XOR", "item:a"]]);
+    expect(shape("each - -5")).toEqual([["each - -5", undefined, "each", "-", "-5"]]);
+    expect(shape("each -5")).toEqual([["each -5", undefined, "each", "-", "5"]]);
+    // With a target as before, and a signal in front of an operator is no target.
+    expect(shape("item:a = each * 2")).toEqual([["item:a = each * 2", "item:a", "each", "*", "2"]]);
+    expect(shape("item:a << 2 description = \"x\"")).toEqual([["item:a << 2", undefined, "item:a", "<<", "2"], ["property"]]);
+  });
+
+  it("reads a negative integer at the start of an expression as one operand, also behind a statement that ends in an operand", () => {
+    for (const before of ["", 'description = "x"\n', 'description = "x" ', "item:a = 1 + 2\n"]) {
+      const text = circuit(`arithmetic-combinator a { ${before}-5 * each }`);
+      const result = parse(text);
+      expect(result.diagnostics, before).toEqual([]);
+      const expression = (result.cst.circuit!.members[0] as CstEntity).body!.statements.at(-1)!;
+      expect(expression.type === "assign" && [slice(text, expression), expression.target, expression.first?.type === "int" && expression.first.token, expression.operator?.text], before).toEqual([
+        "-5 * each", undefined, { kind: "int", from: text.indexOf("-5"), to: text.indexOf("-5") + 2, text: "-5" }, "*",
+      ]);
+    }
+    // A sign that stands apart from its digits is none, and an integer starts a statement of no other entity.
+    expect(messages(circuit("arithmetic-combinator a { - 5 * each }"))[0]).toBe("Unexpected '-'; expected a statement or '}'");
+    expect(messages(circuit("constant-combinator c { 5 * each }"))[0]).toBe("Unexpected '5'; expected a statement or '}'");
+    expect(messages(circuit("constant-combinator c { item:a * 2 }"))[0]).toBe("Expected '=' but found '*'");
+  });
+
   it("parses the network selections red, green and none", () => {
     const text = circuit("decider-combinator none { when each[none] > item:a[red] output each = input[none] }\nwire green none.out <-> none.in");
     const result = parse(text);
@@ -201,6 +236,13 @@ describe("error recovery", () => {
     expect(messages(circuit("arithmetic-combinator a { virtual:signal-A = }"))).toEqual(["Expected a signal or an integer but found '}'"]);
     expect(messages(circuit("arithmetic-combinator a { virtual:signal-A = 1 }"))).toEqual(["Expected an arithmetic operator but found '}'"]);
     expect(messages(circuit("arithmetic-combinator a { virtual:signal-A = 1 + }"))).toEqual(["Expected a signal or an integer but found '}'"]);
+    expect(messages(circuit("arithmetic-combinator a { virtual:signal-A }"))).toEqual(["Expected '=' or an arithmetic operator but found '}'"]);
+    expect(messages(circuit("arithmetic-combinator a { virtual:signal-A[red] }"))).toEqual(["Expected '=' or an arithmetic operator but found '}'"]);
+    expect(messages(circuit("arithmetic-combinator a { virtual:signal-A * }"))).toEqual(["Expected a signal or an integer but found '}'"]);
+    expect(messages(circuit("arithmetic-combinator a { 5 }"))).toEqual(["Expected an arithmetic operator but found '}'"]);
+    expect(messages(circuit("arithmetic-combinator a { 5 = each * 2 }"))[0]).toBe("Expected an arithmetic operator but found '='");
+    expect(messages(circuit("arithmetic-combinator a { -5 + }"))).toEqual(["Expected a signal or an integer but found '}'"]);
+    expect(messages(circuit("constant-combinator a { virtual:signal-A }"))).toEqual(["Expected '=' but found '}'"]);
     expect(messages(circuit("decider-combinator a { when }"))).toEqual(["Expected a signal or 0 but found '}'"]);
     expect(messages(circuit("decider-combinator a { when each }"))).toEqual(["Expected a comparator (<, >, =, !=, <=, >=) but found '}'"]);
     expect(messages(circuit("decider-combinator a { when each > 1 and }"))).toEqual(["Expected a signal or 0 but found '}'"]);

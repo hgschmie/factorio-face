@@ -212,9 +212,14 @@ export function entityItems(entity: Entity, options: PrintOptions & { readonly s
       } else for (const section of entity.sections) items.push(sectionItem(section, unit));
       break;
     }
-    case "arithmetic":
-      if (entity.output) items.push({ key: "expression", text: `${printSignal(entity.output)} = ${printOperand(entity.first)} ${entity.operation} ${printOperand(entity.second)}`, implicit: false });
+    case "arithmetic": {
+      // Without an output the expression is its right side alone; that of a new combinator (0 * 0) is said by saying nothing.
+      const rightSide = (config: Pick<EntityOfKind<"arithmetic">, "first" | "operation" | "second">) => `${printOperand(config.first)} ${config.operation} ${printOperand(config.second)}`;
+      const expression = rightSide(entity);
+      if (entity.output) items.push({ key: "expression", text: `${printSignal(entity.output)} = ${expression}`, implicit: false });
+      else items.push({ key: "expression", text: expression, implicit: expression === rightSide(DEFAULT_ENTITY.arithmetic) });
       break;
+    }
     case "decider": {
       if (entity.conditions.length) {
         // A condition without a first signal has 0 on its left side: the empty signal slot, which reads no network.

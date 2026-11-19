@@ -10,3 +10,5 @@ packages/catalog/generated/
 
 # Blueprint strings copied from the game data: Wube content, kept local until redistribution is decided.
 tests/fixtures/blueprints/shipped-*.json
+# written by a Playwright run started by hand
+test-results/

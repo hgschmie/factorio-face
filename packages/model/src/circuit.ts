@@ -120,7 +120,7 @@ export interface ArithmeticCombinator extends EntityBase {
   readonly first: Operand;
   readonly operation: ArithmeticOperation;
   readonly second: Operand;
-  /** Absent while unconfigured; the combinator then outputs nothing. */
+  /** Absent: the combinator sends nothing, whatever its operands say. */
   readonly output?: SignalId;
 }
 

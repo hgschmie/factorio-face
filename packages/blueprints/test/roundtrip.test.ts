@@ -1,7 +1,7 @@
 // The two round trips. Editor to blueprint to editor keeps everything the editor models, in the normal form `afterRoundTrip`
 // spells out; blueprint to editor to blueprint keeps everything about the known entities that the editor models.
 import { analyze, printCircuit } from "@face/language";
-import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, UNSET_CONDITION, type Circuit, type DeciderCombinator, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
+import { canRotate, entityNameBase, facingOf, gamePrototype, settingSpecsOf, tileCenter, UNSET_CONDITION, type ArithmeticCombinator, type Circuit, type DeciderCombinator, type Entity, type EntityKind, type EntitySettings, type SpeakerInstrument } from "@face/model";
 import { describe, expect, it } from "vitest";
 import { MODDED_RECORDS, withModdedTable } from "../../../tests/fixtures/game/moddedEntities.ts";
 import { Generator, portable, random } from "../../language/test/helpers.ts";
@@ -144,6 +144,35 @@ describe("round trip: editor to blueprint to editor", () => {
     }
   });
 
+  it("keeps an arithmetic combinator without an output signal: operands, operation and network selections, and no output_signal in the blueprint", () => {
+    const bodies = [
+      "arithmetic-combinator a { each[red] * 2 }",
+      "arithmetic-combinator a { -5 - virtual:signal-A[none] }",
+      "arithmetic-combinator a { virtual:signal-A[green] XOR virtual:signal-B }",
+      "arithmetic-combinator a { 0 + 0 }",
+      "arithmetic-combinator a { 7 * 0 }",
+    ];
+    for (const body of bodies) {
+      const circuit = circuitOf(body);
+      const { first, operation, second } = circuit.entities[0] as ArithmeticCombinator;
+      roundTrip(circuit, INSTRUMENTS);
+      const blueprint = exported(circuit);
+      expect(JSON.stringify(blueprint), body).not.toContain("output_signal");
+      const back = imported(blueprint);
+      expect(back.circuit.entities[0], body).toMatchObject({ kind: "arithmetic", first, operation, second });
+      expect("output" in back.circuit.entities[0]!, body).toBe(false);
+      expect(back.report.settings, body).toEqual([]);
+      expect(printCircuit(back.circuit), body).toContain(`        ${body.slice(body.indexOf("{") + 2, -2)}\n`);
+    }
+    // The expression of a new combinator, written out or not, is the combinator the game places.
+    for (const body of ["arithmetic-combinator a { 0 * 0 }", "arithmetic-combinator a { }"]) {
+      const circuit = circuitOf(body);
+      roundTrip(circuit, INSTRUMENTS);
+      expect(exported(circuit).blueprint.entities![0]!.control_behavior, body).toEqual({ arithmetic_conditions: { first_constant: 0, second_constant: 0, operation: "*" } });
+      expect(printCircuit(imported(exported(circuit)).circuit), body).toMatch(/arithmetic-combinator arithmetic1 at \(-?\d+, -?\d+\) tile \(1, 0\.5\) \{\n {4}\}/);
+    }
+  });
+
   it("keeps generated circuits of every kind of entity and wire", () => {
     const kinds = new Set<string>();
     /** The conditions in use without a signal among them: `lamp` for the one of a lamp, the key of the setting for one of a generic entity. */
@@ -184,6 +213,7 @@ describe("round trip: editor to blueprint to editor", () => {
         programmable-speaker s { when virtual:signal-A > 0  instrument = alarms  note = alarm-1 }
         programmable-speaker t { instrument = piano  note = F3 }
         selector-combinator q { operation = quality-transfer  source = signal  source-signal = item:iron-plate@rare }
+        arithmetic-combinator z { 0 * 0 }
       `,
     });
     const back = imported(exported(circuit)).circuit;
@@ -207,6 +237,9 @@ describe("round trip: editor to blueprint to editor", () => {
         operation = quality-transfer
         source = signal
         source-signal = item:iron-plate
+    }
+
+    arithmetic-combinator arithmetic1 at (0, 0) tile (3, 2.5) {
     }
 }
 `);

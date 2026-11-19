@@ -104,6 +104,42 @@ describe("arithmetic combinator", () => {
     expect(entity("arithmetic-combinator a { }", "arithmetic")).toEqual({ id: "e1", name: "a", position: { x: 40, y: 40 }, ...DEFAULT_ENTITY.arithmetic, prototype: "arithmetic-combinator" });
   });
 
+  it("reads the right side alone as an expression without an output signal, with a warning that says what is missing", () => {
+    const detail = (source: string) => analyze(source).diagnostics.map((d) => [d.code, d.severity, source.slice(d.from, d.to), d.message]);
+    const missing = ["unconfigured", "warning", "a", "This arithmetic combinator has no output signal and sends nothing"];
+    const a = entity("arithmetic-combinator a { each[red] * 2 }", "arithmetic");
+    const placed = { id: "e1", name: "a", position: { x: 40, y: 40 }, prototype: "arithmetic-combinator" };
+    expect(a).toEqual({ ...placed, kind: "arithmetic", first: { type: "signal", signal: wildcardSignal("each"), networks: RED }, operation: "*", second: { type: "constant", value: 2 } });
+    expect("output" in a).toBe(false);
+    expect(detail(circuit("arithmetic-combinator a { each[red] * 2 }"))).toEqual([missing]);
+    const minus7 = { type: "constant", value: -7 };
+    expect(entity("arithmetic-combinator a { -7 XOR virtual:signal-A[none] }", "arithmetic")).toMatchObject({ first: minus7, operation: "XOR", second: { type: "signal", signal: A, networks: NONE } });
+    expect(entity('arithmetic-combinator a { description = "x"\n-7 - -3 }', "arithmetic")).toMatchObject({ description: "x", first: minus7, operation: "-", second: { type: "constant", value: -3 } });
+    // The expression of a new combinator, written out: the same entity as the empty block, and printed as that.
+    for (const zero of ["0 * 0", "-0 * 0x0"]) {
+      const result = valid(circuit(`arithmetic-combinator a { ${zero} }`));
+      expect(result.circuit.entities[0], zero).toEqual({ ...placed, ...DEFAULT_ENTITY.arithmetic });
+      expect(detail(circuit(`arithmetic-combinator a { ${zero} }`)), zero).toEqual([missing]);
+      expect(printCircuit(result.circuit), zero).toContain("arithmetic-combinator a at (40, 40) {\n    }");
+    }
+    expect(detail(circuit("arithmetic-combinator a { }"))).toEqual([["unconfigured", "warning", "a", "This arithmetic combinator has no expression"]]);
+  });
+
+  it("holds an expression without an output to the rules of one with it: one statement, only each, integers in range", () => {
+    // The warning stands on the name, in front of what is wrong in the block.
+    expect(codes(circuit("arithmetic-combinator a { each * 2 each + 1 }"))).toEqual(["unconfigured", "duplicate-statement"]);
+    expect(codes(circuit("arithmetic-combinator a { each * 2 virtual:signal-A = each + 1 }"))).toEqual(["unconfigured", "duplicate-statement"]);
+    expect(codes(circuit("arithmetic-combinator a { virtual:signal-A = each + 1 each * 2 }"))).toEqual(["duplicate-statement"]);
+    expect(codes(circuit("arithmetic-combinator a { anything * 2 }"))).toEqual(["unconfigured", "illegal-wildcard"]);
+    expect(codes(circuit("arithmetic-combinator a { 2 + everything }"))).toEqual(["unconfigured", "illegal-wildcard"]);
+    expect(codes(circuit("arithmetic-combinator a { 99999999999 * each }"))).toEqual(["unconfigured", "integer-range"]);
+    expect(codes(circuit("arithmetic-combinator a { each[both] * 2 }"))).toContain("syntax-error");
+    expect(codes(circuit("arithmetic-combinator a { each * 2 }"))).toEqual(["unconfigured"]);
+    // No other entity takes one.
+    expect(codes(circuit("constant-combinator c { item:a * 2 }"))).toContain("syntax-error");
+    expect(codes(circuit("decider-combinator d { each * 2 }"))).toContain("syntax-error");
+  });
+
   it("normalizes the literal wildcard form", () => {
     expect(entity("arithmetic-combinator a { virtual:signal-each = virtual:signal-each + 1 }", "arithmetic").output).toEqual(wildcardSignal("each"));
   });
@@ -516,6 +552,7 @@ describe("diagnostics", () => {
   it("unconfigured", () => {
     expect(report(circuit("arithmetic-combinator a { }\ndecider-combinator d { }\nconstant-combinator c { }\ndecider-combinator e { when each > 1 }"))).toEqual([["unconfigured", "a"], ["unconfigured", "d"], ["unconfigured", "c"], ["unconfigured", "e"]]);
     expectCodes(circuit("arithmetic-combinator a { }"), ["unconfigured"]);
+    expectCodes(circuit("arithmetic-combinator a { each * 2 }"), ["unconfigured"]);
     expectCodes(circuit("small-lamp l { }\nselector-combinator s { }\nconstant-combinator c { section { } }"), []);
   });
 

@@ -377,7 +377,7 @@ Entity fields: common fields plus `player_description`, `control_behavior: {arit
 | `second_signal` | SignalID | none | if absent, the second operand is `second_constant` | [api] |
 | `second_signal_networks` | CircuitNetworkSelection | both | | [api] |
 | `second_constant` | int32 | 0 | | [api] |
-| `output_signal` | SignalID | none | no output when absent [unverified] | [api] |
+| `output_signal` | SignalID | none | no output when absent [unverified]. A combinator as placed has none (12.2), so the state itself is the game's; the editor has it with any operands (9.4) | [api] |
 
 Note the default operation is multiplication, not addition [api]. There is no output network selection: the result goes to both output connectors [web: https://wiki.factorio.com/Arithmetic_combinator].
 
@@ -1294,6 +1294,7 @@ entity quality, tags, the blueprint's description, icons, snapping and tiles). W
 | Operations `^`, `<<`, `>>` | supported, edge cases pending F-06 | |
 | each on one operand, each or specific output | supported | |
 | each on both operands | supported, pending F-08 | |
+| No `output_signal` | supported: the simulation emits nothing (rule A-NOOUT of `packages/simulation/CONFORMANCE.md`, assumed: 3.5 has it as unverified), the language writes the right side alone (`each * 2`), a blueprint keeps operands, operation and network selections both ways | |
 | everything / anything in any slot; each output without each operand | unsupported-with-diagnostic | Invalid configuration |
 
 ### 9.5 Decider combinator

@@ -360,7 +360,7 @@ class Parser {
       }
       const statement = this.statement(kind, section);
       if (statement) statements.push(statement);
-      else this.skip(() => this.startsStatement(), `Unexpected ${describe(this.tok)}; expected a statement or '}'`);
+      else this.skip(() => this.startsStatement(kind), `Unexpected ${describe(this.tok)}; expected a statement or '}'`);
     }
     let close: Token | undefined;
     if (this.is("}")) close = this.next();
@@ -373,9 +373,18 @@ class Parser {
     return (this.tok.kind === "ident" || this.tok.kind === "word") && this.is("when", this.peek());
   }
 
-  private startsStatement(): boolean {
+  /**
+   * An integer at the start of a statement: the first operand of an arithmetic expression without an output. A `-` directly in
+   * front of the digits is its sign; the lexer has it as an operator where the statement before ends in an operand.
+   */
+  private startsInteger(): boolean {
+    const [token, digits] = [this.tok, this.peek()];
+    return token.kind === "int" || (token.kind === "op" && token.text === "-" && digits.kind === "int" && digits.from === token.to && !digits.text.startsWith("-"));
+  }
+
+  private startsStatement(kind: EntityKind): boolean {
     const token = this.tok;
-    if (isSignalToken(token) || this.startsRoleCondition()) return true;
+    if (isSignalToken(token) || this.startsRoleCondition() || (kind === "arithmetic" && this.startsInteger())) return true;
     if (token.kind === "keyword" && (token.text === "when" || token.text === "else" || token.text === "output" || token.text === "section")) return true;
     return isWordLike(token) && this.is("=", this.peek());
   }
@@ -389,7 +398,7 @@ class Parser {
       if (token.text === "output") return this.output(kind);
       if (token.text === "section") return this.section(kind, section);
     }
-    if (isSignalToken(token)) return this.assign(kind);
+    if (isSignalToken(token) || (kind === "arithmetic" && this.startsInteger())) return this.assign(kind);
     if (isWordLike(token) && assignment) return this.property(kind, section);
     if (this.startsRoleCondition()) return this.when(kind, this.next());
     // A word at the end of the input may become a property or the role of a condition.
@@ -451,22 +460,47 @@ class Parser {
     return undefined;
   }
 
+  /** The integer `startsInteger` saw, as one operand: a sign the lexer split off is joined with its digits. */
+  private leadingInteger(): CstOperand {
+    const sign = this.tok.kind === "op" ? this.next() : undefined;
+    const digits = this.next();
+    const token: Token = sign ? { kind: "int", from: sign.from, to: digits.to, text: sign.text + digits.text } : digits;
+    return { type: "int", from: token.from, to: token.to, token };
+  }
+
+  private atArithmeticOperator(): boolean {
+    return (this.tok.kind === "op" || this.tok.kind === "keyword") && ARITHMETIC_SET.has(this.tok.text);
+  }
+
   private assign(kind: EntityKind): CstAssign {
-    const target = this.sigref();
+    const arithmetic = kind === "arithmetic";
+    const from = this.tok.from;
+    let target: CstSigRef | undefined;
     let first: CstOperand | undefined;
     let operator: Token | undefined;
     let second: CstOperand | undefined;
-    if (this.take("=")) {
-      first = this.operand(kind);
-      if (first) {
-        if (kind === "arithmetic") this.keywords(...ARITHMETIC_OPERATORS);
-        if ((this.tok.kind === "op" || this.tok.kind === "keyword") && ARITHMETIC_SET.has(this.tok.text)) {
-          operator = this.next();
-          second = this.operand(kind);
-        } else if (kind === "arithmetic") this.expected("an arithmetic operator");
+    if (!isSignalToken(this.tok)) first = this.leadingInteger();
+    else {
+      const ref = this.sigref();
+      // The signal an arithmetic statement starts with is the output in front of `=`, or the first operand of an expression without one.
+      if (arithmetic) this.keywords("=", ...ARITHMETIC_OPERATORS);
+      if (arithmetic && this.atArithmeticOperator()) first = { type: "signal", from: ref.from, to: ref.to, ref };
+      else {
+        target = ref;
+        if (this.is("=")) {
+          this.next();
+          first = this.operand(kind);
+        } else this.expected(arithmetic ? "'=' or an arithmetic operator" : "'='");
       }
     }
-    return { type: "assign", from: target.from, to: this.lastEnd, target, first, operator, second };
+    if (first) {
+      if (arithmetic) this.keywords(...ARITHMETIC_OPERATORS);
+      if (this.atArithmeticOperator()) {
+        operator = this.next();
+        second = this.operand(kind);
+      } else if (arithmetic) this.expected("an arithmetic operator");
+    }
+    return { type: "assign", from, to: this.lastEnd, target, first, operator, second };
   }
 
   private when(kind: EntityKind, role?: Token): CstWhen {

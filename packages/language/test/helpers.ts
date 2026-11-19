@@ -194,7 +194,9 @@ export class Generator {
         const first = this.operand(true);
         const second = this.operand(true);
         const hasEach = [first, second].some((o) => o.type === "signal" && o.signal.name === "signal-each");
-        return { ...base, kind, first, operation: this.pick(ARITHMETIC_OPERATIONS), second, output: hasEach && this.chance() ? wildcardSignal("each") : this.signal() };
+        const output = hasEach && this.chance() ? wildcardSignal("each") : this.signal();
+        // One in seven has no output signal: the expression is written as its right side alone.
+        return { ...base, kind, first, operation: this.pick(ARITHMETIC_OPERATIONS), second, ...(this.chance(1 / 7) ? {} : { output }) };
       }
       case "decider": {
         // One condition in seven has the empty signal slot on its left side, which reads no network.

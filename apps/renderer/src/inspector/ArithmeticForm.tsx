@@ -28,6 +28,7 @@ export function ArithmeticForm({ entity, onChange }: { readonly entity: Arithmet
         <SelectField label="Operation" wide value={entity.operation} options={OPERATIONS} onChange={(operation) => onChange({ ...entity, operation })} />
         <OperandField label="Second operand" wildcards={SIGNAL_SLOTS["arithmetic.operand"]} value={entity.second} onChange={(second) => onChange({ ...entity, second })} />
         <SignalField label="Output signal" wide wildcards={SIGNAL_SLOTS["arithmetic.output"]} value={entity.output} onChange={(output) => onChange(setOptional(entity, "output", output))} />
+        {!entity.output && <p className="muted-note" data-note="no-output">Without an output signal the combinator sends nothing.</p>}
       </div>
     </FormSection>
   );

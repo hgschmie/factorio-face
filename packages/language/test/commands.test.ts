@@ -1,5 +1,5 @@
 import {
-  BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, PROTOTYPE_NAMES, PROTOTYPES, wireKey,
+  BOTH_NETWORKS, DEFAULT_ENTITY, ENTITY_KINDS, PROTOTYPE_NAMES, PROTOTYPES, wildcardSignal, wireKey,
   type ArithmeticCombinator, type ConstantCombinator, type DeciderCombinator, type Entity, type Lamp, type NetworkSelection, type SelectorCombinator,
 } from "@face/model";
 import { describe, expect, it } from "vitest";
@@ -7,7 +7,7 @@ import {
   addEntity, addWire, analyze, applyChanges, deleteEntities, EditError, executeCommand, moveEntities, moveEntity, printCircuit, printEntity, removeWire, renameEntity, updateEntity,
   type ParseResult, type TextChange,
 } from "../src/index.ts";
-import { circuit, fixture, Generator, idOf, valid, withoutId } from "./helpers.ts";
+import { circuit, codes, fixture, Generator, idOf, valid, withoutId } from "./helpers.ts";
 
 const RED: NetworkSelection = { red: true, green: false };
 const NONE: NetworkSelection = { red: false, green: false };
@@ -490,6 +490,33 @@ describe("updateEntity: statement-level minimal rewrite", () => {
     const operand = update(arithmetic, "a", (e) => ({ ...(e as ArithmeticCombinator), second: { type: "signal", signal: { kind: "item", name: "b" }, networks: NONE } }));
     expect(operand).toBe(arithmetic.replace("item:b /* b */ ;", "item:b[none] /* b */ ;"));
     expect(update(operand, "a", (e) => ({ ...(e as ArithmeticCombinator), first: { type: "signal", signal: { kind: "item", name: "a" }, networks: NONE } }))).toBe(operand.replace("item:a[red]", "item:a[none]"));
+  });
+
+  it("writes an arithmetic expression without its output as the right side alone, in place, and with it again", () => {
+    const withoutOutput = (entity: Entity): Entity => {
+      const { output: _, ...rest } = entity as ArithmeticCombinator;
+      return rest;
+    };
+    const x = { kind: "item" as const, name: "x" };
+    const source = circuit('    arithmetic-combinator a {\n        description = "sum" // why\n        item:x = -5 + item:b[red] /* b */ ; // both\n    }');
+    const emptied = update(source, "a", withoutOutput);
+    expect(emptied).toBe(source.replace("item:x = -5 +", "-5 +"));
+    expect(codes(emptied)).toEqual(["unconfigured"]);
+    const changed = update(emptied, "a", (e) => ({ ...(e as ArithmeticCombinator), operation: "<<" }));
+    expect(changed).toBe(emptied.replace("-5 +", "-5 <<"));
+    expect(update(changed, "a", (e) => ({ ...(e as ArithmeticCombinator), operation: "+", output: x }))).toBe(source);
+    // The expression of a new combinator: not written into an empty block, written where a statement stands, and an output is added to either.
+    const blank = circuit("    arithmetic-combinator a {\n    }");
+    expect(update(blank, "a", (e) => e)).toBe(blank);
+    expect(update(blank, "a", (e) => ({ ...(e as ArithmeticCombinator), second: { type: "constant", value: 2 } }))).toBe(blank.replace("a {\n", "a {\n        0 * 2\n"));
+    expect(update(blank, "a", (e) => ({ ...(e as ArithmeticCombinator), output: x }))).toBe(blank.replace("a {\n", "a {\n        item:x = 0 * 0\n"));
+    const zero = update(source, "a", (e) => withoutOutput({ ...e, ...DEFAULT_ENTITY.arithmetic }));
+    expect(zero).toBe(source.replace("item:x = -5 + item:b[red]", "0 * 0"));
+    expect(update(zero, "a", (e) => ({ ...(e as ArithmeticCombinator), output: x }))).toBe(zero.replace("0 * 0", "item:x = 0 * 0"));
+    const written = circuit("    arithmetic-combinator a { 0 * 0 }");
+    expect(update(written, "a", (e) => e)).toBe(written);
+    const each = { type: "signal" as const, signal: wildcardSignal("each"), networks: BOTH_NETWORKS };
+    expect(update(written, "a", (e) => ({ ...(e as ArithmeticCombinator), first: each }))).toBe(written.replace("0 * 0", "each * 0"));
   });
 
   it("writes, changes and removes the networks property of a lamp in place", () => {

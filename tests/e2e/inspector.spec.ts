@@ -241,35 +241,75 @@ test("editing in the middle of an inspector field keeps the caret where the user
 
 test("an incomplete inspector edit stays a draft with a hint and is written once it is complete", async ({ page }) => {
   const inspector = page.getByRole("complementary", { name: "Inspector" });
-  const point = await cardGrabPoint(page, "twice");
-  await page.mouse.click(point.x, point.y);
-  const signal = inspector.getByLabel("Output signal", { exact: true });
+  await selectEntity(page, "light");
+  const signal = inspector.getByLabel("Condition signal", { exact: true });
+  const number = inspector.getByLabel("Number", { exact: true });
   const hint = inspector.locator(".draft-hint");
+  const summary = card(page, "light").locator(".card-summary");
   await expect(hint).toHaveCount(0);
 
-  // Clearing the output signal leaves an expression the language cannot write: nothing reaches the source.
+  // A lamp condition whose signal is taken out is unset, which the source says. A change behind the missing signal leaves a
+  // comparison the language cannot write: it does not reach the source.
   await signal.fill("");
+  const unset = FIVE_KINDS_SOURCE.replace("when virtual:signal-B > 8", "when unset");
+  await expect.poll(() => sourceText(page)).toBe(unset);
+  await expect(hint).toHaveCount(0);
+  await number.fill("5");
   await expect(hint).toContainText("Not written to the source yet.");
-  await expect(hint).toContainText("Choose an output signal to complete the expression.");
-  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE);
-  await expect(page.getByRole("button", { name: "Undo" })).toBeDisabled();
-  await expect(card(page, "twice").locator(".card-summary")).toHaveText("A × 2 → B");
+  await expect(hint).toContainText("The light condition needs a signal.");
+  expect(await sourceText(page)).toBe(unset);
+  await expect(summary).toHaveText("unset");
   // The form keeps working on the draft.
-  await inspector.getByLabel("Operation", { exact: true }).selectOption("+");
+  await inspector.getByLabel("Comparator", { exact: true }).selectOption("=");
   await expect(hint).toBeVisible();
   await expect(signal).toHaveValue("");
+  await expect(number).toHaveValue("5");
+  expect(await sourceText(page)).toBe(unset);
 
   await signal.fill("virtual:signal-C");
   await expect(hint).toHaveCount(0);
-  await expect(card(page, "twice").locator(".card-summary")).toHaveText("A + 2 → C");
-  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("virtual:signal-B = virtual:signal-A[red] * 2", "virtual:signal-C = virtual:signal-A[red] + 2"));
+  await expect(summary).toHaveText("C = 5");
+  expect(await sourceText(page)).toBe(FIVE_KINDS_SOURCE.replace("when virtual:signal-B > 8", "when virtual:signal-C = 5"));
 
   // Discard drops a draft and shows the entity as the source has it.
   await signal.fill("");
+  await expect.poll(() => sourceText(page)).toBe(unset);
+  await number.fill("7");
   await expect(hint).toBeVisible();
   await hint.getByRole("button", { name: "Discard" }).click();
   await expect(hint).toHaveCount(0);
-  await expect(signal).toHaveValue("virtual:signal-C");
+  await expect(number).toHaveValue("0");
+  expect(await sourceText(page)).toBe(unset);
+});
+
+test("an arithmetic combinator whose output signal is emptied stays, written as the right side alone", async ({ page }) => {
+  const inspector = page.getByRole("complementary", { name: "Inspector" });
+  await selectEntity(page, "twice");
+  const signal = inspector.getByLabel("Output signal", { exact: true });
+  const note = inspector.locator('[data-note="no-output"]');
+  const summary = card(page, "twice").locator(".card-summary");
+  await expect(note).toHaveCount(0);
+  await expect(summary).toHaveText("A × 2 → B");
+
+  // The game has such a combinator, and it sends nothing: the expression is complete, and the source says it without a target.
+  await signal.fill("");
+  const emptied = FIVE_KINDS_SOURCE.replace("virtual:signal-B = virtual:signal-A[red] * 2", "virtual:signal-A[red] * 2");
+  await expect.poll(() => sourceText(page)).toBe(emptied);
+  await expect(inspector.locator(".draft-hint")).toHaveCount(0);
+  await expect(note).toHaveText("Without an output signal the combinator sends nothing.");
+  await expect(signal).toHaveValue("");
+  await expect(summary).toHaveText("A × 2 → ?");
+  await expect(page.locator(".toast")).toHaveCount(0);
+
+  // It is edited like any other expression, and choosing a signal writes the full statement again.
+  await inspector.getByLabel("Operation", { exact: true }).selectOption("+");
+  await expect.poll(() => sourceText(page)).toBe(emptied.replace("virtual:signal-A[red] * 2", "virtual:signal-A[red] + 2"));
+  await expect(note).toBeVisible();
+  await signal.fill("virtual:signal-C");
+  await expect.poll(() => sourceText(page)).toBe(emptied.replace("virtual:signal-A[red] * 2", "virtual:signal-C = virtual:signal-A[red] + 2"));
+  await expect(note).toHaveCount(0);
+  await expect(inspector.locator(".draft-hint")).toHaveCount(0);
+  await expect(summary).toHaveText("A + 2 → C");
 });
 
 test("a decider condition whose signal is emptied stays, written with 0 on its left side", async ({ page }) => {

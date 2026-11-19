@@ -1,7 +1,12 @@
 // Inspector edits: configurations the language cannot write yet stay a draft, and typing in a field is one undo step.
 import { BOTH_NETWORKS, signal, wildcardSignal, type ArithmeticCombinator, type Condition, type DeciderCombinator, type Entity, type Lamp, type SelectorCombinator } from "@face/model";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { EntitySettingsForm } from "../../src/inspector/EntitySettingsForm.tsx";
+import { editedCondition } from "../../src/inspector/conditionEdits.ts";
 import { checkDraft, normalizeEntity } from "../../src/session/drafts.ts";
+import { EXAMPLE_SOURCE } from "../fixtures/example.ts";
 import { createSession, entityNamed, idOf, IRREGULAR, type } from "./helpers.ts";
 
 const A = signal("virtual", "signal-A");
@@ -43,18 +48,83 @@ describe("inspector drafts", () => {
     expect(session.state.draft).toBeNull();
   });
 
-  it("holds an expression without output signal until one is chosen", () => {
+  it("writes an arithmetic expression whose output signal is emptied as the right side alone: no output is no draft", () => {
+    const { session } = createSession();
+    const twice = (): ArithmeticCombinator => entityNamed(session, "twice") as ArithmeticCombinator;
+    session.commands.select([twice().id]);
+    const full = "virtual:signal-B = virtual:signal-A[red] * 2";
+    expect(EXAMPLE_SOURCE).toContain(full);
+
+    // The user clears the output signal field.
+    const { output: _output, ...emptied } = twice();
+    session.commands.updateEntity(emptied);
+    expect(session.state.draft).toBeNull();
+    expect(session.state.error).toBeNull();
+    const written = EXAMPLE_SOURCE.replace(full, "virtual:signal-A[red] * 2");
+    expect(session.state.source).toBe(written);
+    expect("output" in twice()).toBe(false);
+    expect(twice()).toMatchObject({ first: { type: "signal", signal: A, networks: { red: true, green: false } }, operation: "*", second: { type: "constant", value: 2 } });
+    // Nothing is wrong with it; the source says what it does not do.
+    expect(session.state.diagnostics.map((diagnostic) => [diagnostic.severity, diagnostic.message])).toEqual([["warning", "This arithmetic combinator has no output signal and sends nothing"]]);
+
+    // It is edited like any other, and a signal makes it the full statement again.
+    session.commands.updateEntity({ ...twice(), operation: "+", first: { type: "constant", value: -5 } });
+    expect(session.state.source).toBe(written.replace("virtual:signal-A[red] * 2", "-5 + 2"));
+    session.commands.updateEntity({ ...twice(), output: B });
+    expect(session.state.source).toBe(written.replace("virtual:signal-A[red] * 2", "virtual:signal-B = -5 + 2"));
+    expect(session.state.diagnostics).toEqual([]);
+    for (let step = 0; step < 3; step++) session.commands.undo();
+    expect(session.state.source).toBe(EXAMPLE_SOURCE);
+    expect(session.state.draft).toBeNull();
+  });
+
+  it("writes the operands of a new arithmetic combinator before it has an output signal", () => {
     const { session } = createSession('circuit "c" {\n  arithmetic-combinator sum at (0, 0) {\n  }\n}\n');
-    const sum = entityNamed(session, "sum") as ArithmeticCombinator;
-    session.commands.select([sum.id]);
-    session.commands.updateEntity({ ...sum, first: { type: "signal", signal: A, networks: BOTH_NETWORKS }, operation: "+" });
-    expect(session.state.draft?.message).toBe("Choose an output signal to complete the expression.");
-    expect(session.state.canUndo).toBe(false);
-    session.commands.updateEntity({ ...(session.state.draft!.entity as ArithmeticCombinator), second: { type: "constant", value: 1 } });
-    session.commands.updateEntity({ ...(session.state.draft!.entity as ArithmeticCombinator), output: A });
+    const sum = (): ArithmeticCombinator => entityNamed(session, "sum") as ArithmeticCombinator;
+    session.commands.select([sum().id]);
+    session.commands.updateEntity({ ...sum(), first: { type: "signal", signal: A, networks: BOTH_NETWORKS }, operation: "+" });
+    expect(session.state.draft).toBeNull();
+    expect(session.state.source).toContain("{\n    virtual:signal-A + 0\n  }");
+    session.commands.updateEntity({ ...sum(), second: { type: "constant", value: 1 } });
+    session.commands.updateEntity({ ...sum(), output: A });
     expect(session.state.draft).toBeNull();
     expect(session.state.source).toContain("virtual:signal-A = virtual:signal-A + 1");
     expect(session.state.diagnostics).toEqual([]);
+    expect(checkDraft({ ...sum(), output: undefined })).toEqual({ ok: true });
+  });
+
+  it("the form of an arithmetic combinator says under an empty output signal that nothing is sent", () => {
+    const { session } = createSession();
+    const twice = entityNamed(session, "twice") as ArithmeticCombinator;
+    const form = (entity: Entity): string => renderToStaticMarkup(createElement(EntitySettingsForm, { entity, onChange: () => undefined }));
+    const note = '<p class="muted-note" data-note="no-output">Without an output signal the combinator sends nothing.</p>';
+    expect(form(twice)).not.toContain("data-note");
+    const { output: _output, ...emptied } = twice;
+    expect(form(emptied)).toContain(note);
+    // The note stands directly under the field of the output signal, the last of the form.
+    expect(form(emptied).indexOf(note)).toBeGreaterThan(form(emptied).indexOf("Output signal"));
+  });
+
+  it("holds a lamp condition that is changed behind its missing signal until a signal is chosen", () => {
+    const { session } = createSession(IRREGULAR);
+    const light = (): Lamp => entityNamed(session, "light") as Lamp;
+    session.commands.select([light().id]);
+    // The signal is taken out: the unset condition, which is written. A change behind the missing signal waits for one.
+    session.commands.updateEntity({ ...light(), condition: editedCondition(light().condition!, { comparator: ">", second: { type: "constant", value: 3 } }) });
+    const unset = IRREGULAR.replace("{ when virtual:signal-A > 3 }", "{ when unset }");
+    expect(session.state).toMatchObject({ source: unset, draft: null });
+    session.commands.updateEntity({ ...light(), condition: editedCondition(light().condition!, { comparator: "<", second: { type: "constant", value: 5 } }) });
+    expect(session.state.draft?.message).toBe("The light condition needs a signal.");
+    expect(session.state.source).toBe(unset);
+    // The form keeps working on the draft, and the signal completes it.
+    const draft = session.state.draft!.entity as Lamp;
+    session.commands.updateEntity({ ...draft, condition: editedCondition(draft.condition!, { ...(draft.condition as Condition), comparator: "=" }) });
+    expect(session.state.draft?.entity).toMatchObject({ condition: { comparator: "=", second: { type: "constant", value: 5 } } });
+    expect(session.state.source).toBe(unset);
+    const pending = session.state.draft!.entity as Lamp;
+    session.commands.updateEntity({ ...pending, condition: editedCondition(pending.condition!, { ...(pending.condition as Condition), first: B }) });
+    expect(session.state.draft).toBeNull();
+    expect(session.state.source).toBe(IRREGULAR.replace("{ when virtual:signal-A > 3 }", "{ when virtual:signal-B = 5 }"));
   });
 
   it("explains edits the language rejects, such as a signal twice in one section or a misplaced wildcard", () => {

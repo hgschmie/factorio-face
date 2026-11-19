@@ -81,7 +81,7 @@ Columns: rule id (also in source comments), chosen behavior, audit section, fixt
 | A-EACH-SCOPE | each iterates the non-zero signals of the networks selected for that operand, keeping kind and quality | 6.3 | F-07 | assumed | `arithmetic.ts` |
 | A-EACH-EACH | each op each: union of both operands' signals, a signal missing on one side reads as 0 | 6.3 | F-08 | assumed | `arithmetic.ts` |
 | A-EACH-SPECIFIC | In `each op S` the signal S reads normally and is not removed from the iteration | 6.3 | F-09 | assumed | `rules.ts` `eachExcludesSpecificOperand` |
-| A-NOOUT | Without an output signal nothing is emitted | 3.5 | none | assumed | `arithmetic.ts` |
+| A-NOOUT | Without an output signal nothing is emitted, whatever the operands say. The source writes such a combinator as the right side alone (`each * 2`); a static note (`unconfigured`, info) says that it emits nothing | 3.5 | none | assumed | `arithmetic.ts` `planArithmetic`, `validate.ts` `checkArithmetic` |
 | A-INVALID | everything / anything in any slot, or an each output without an each operand: the combinator is invalid and emits nothing | 2.4, 6.3 | none | assumed (everything/anything), documented (each output) | `validate.ts` |
 
 ### Decider combinator

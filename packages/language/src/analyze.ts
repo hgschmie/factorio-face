@@ -507,7 +507,7 @@ class Analyzer {
       const filter = this.filter(assign);
       if (!filter) continue;
       const key = signalKey(filter.signal);
-      if (seen.has(key)) this.report(assign.target.signal, "duplicate-signal", `Signal '${key}' appears more than once in this section`);
+      if (seen.has(key)) this.report(assign.target?.signal ?? assign, "duplicate-signal", `Signal '${key}' appears more than once in this section`);
       else {
         seen.add(key);
         filters.push(filter);
@@ -517,7 +517,7 @@ class Analyzer {
   }
 
   private filter(assign: CstAssign): ConstantFilter | undefined {
-    const signal = this.slot(assign.target.signal, "constant.filter");
+    const signal = this.slot(assign.target?.signal, "constant.filter");
     this.noNetworks(assign.target, "A filter signal");
     if (!assign.first) return undefined;
     if (assign.operator || assign.first.type !== "int") {
@@ -555,14 +555,17 @@ class Analyzer {
       this.report(label, "unconfigured", "This arithmetic combinator has no expression");
       return DEFAULT_ENTITY.arithmetic;
     }
-    const output = this.slot(expression.target.signal, "arithmetic.output");
-    this.noNetworks(expression.target, "The output signal");
+    // Without a target the expression is the right side alone: a combinator without an output signal, which the game has and which sends nothing.
+    const { target } = expression;
+    const output = this.slot(target?.signal, "arithmetic.output");
+    this.noNetworks(target, "The output signal");
     const first = this.operand(expression.first, "arithmetic.operand");
     const second = this.operand(expression.second, "arithmetic.operand");
     const isEach = (operand: Operand | undefined) => operand?.type === "signal" && wildcardOf(operand.signal) === "each";
-    if (output && wildcardOf(output) === "each" && first && second && !isEach(first) && !isEach(second)) {
-      this.report(expression.target.signal, "illegal-wildcard", "'each' as output requires 'each' as an input operand");
+    if (target && output && wildcardOf(output) === "each" && first && second && !isEach(first) && !isEach(second)) {
+      this.report(target.signal, "illegal-wildcard", "'each' as output requires 'each' as an input operand");
     }
+    if (!target) this.report(label, "unconfigured", "This arithmetic combinator has no output signal and sends nothing");
     const fallback = DEFAULT_ENTITY.arithmetic;
     return compact({ kind: "arithmetic" as const, first: first ?? fallback.first, operation: (expression.operator?.text as ArithmeticOperation | undefined) ?? fallback.operation, second: second ?? fallback.second, output });
   }

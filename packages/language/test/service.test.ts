@@ -140,6 +140,17 @@ describe("completionContext", () => {
     expect(at(circuit("arithmetic-combinator a { each = | }")).expected).toEqual([{ type: "signal", wildcards: ["each"] }, { type: "literal", kind: "integer" }]);
     expect(at(circuit("arithmetic-combinator a { each = each | }")).get("keyword")!.values).toEqual(["*", "/", "+", "-", "%", "^", "<<", ">>", "AND", "OR", "XOR"]);
     expect(at(circuit("arithmetic-combinator a { each = each[| }")).get("keyword")!.values).toEqual(["red", "green", "none"]);
+    // An arithmetic expression starts with its output or, without one, with its first operand: behind a signal stands '=' or an operator.
+    const operators = ["*", "/", "+", "-", "%", "^", "<<", ">>", "AND", "OR", "XOR"];
+    const start = [{ type: "property", kind: "arithmetic", names: ["description"] }, { type: "signal", wildcards: ["each"] }, { type: "literal", kind: "integer" }];
+    expect(at(circuit("arithmetic-combinator a { | }")).expected).toEqual(start);
+    expect(at(circuit("arithmetic-combinator a { each | }")).expected).toEqual([{ type: "keyword", values: ["=", ...operators] }]);
+    expect(at(circuit("arithmetic-combinator a { each[red] | }")).expected).toEqual([{ type: "keyword", values: ["=", ...operators] }]);
+    expect(at(circuit("arithmetic-combinator a { 5 | }")).expected).toEqual([{ type: "keyword", values: operators }]);
+    expect(at(circuit("arithmetic-combinator a { each * | }")).expected).toEqual([{ type: "signal", wildcards: ["each"] }, { type: "literal", kind: "integer" }]);
+    expect(at(circuit("arithmetic-combinator a { each * each[| }")).get("keyword")!.values).toEqual(["red", "green", "none"]);
+    expect(at(circuit("arithmetic-combinator a { each * 2 | }")).expected).toEqual(start);
+    expect(at(circuit("constant-combinator c { item:a | }")).expected).toEqual([]);
     expect(at(circuit("decider-combinator d { output each = input[no| }"))).toMatchObject({ prefix: "no", expected: [{ type: "keyword", values: ["red", "green", "none"] }] });
     expect(at(circuit("small-lamp l { networks = | }")).expected).toEqual([{ type: "enum", property: "networks", values: ["red", "green", "none"] }]);
     expect(at(circuit("decider-combinator d { output | }")).expected).toEqual([{ type: "signal", wildcards: ["everything", "anything", "each"] }]);

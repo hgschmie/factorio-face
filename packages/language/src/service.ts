@@ -113,7 +113,8 @@ export function completionContext(parse: ParseResult, offset: number): Completio
         if (kind === "entity" && variant !== undefined) for (const role of conditionRoles(variant)) keywords.add(role);
         expected.push({ type: "property", kind, names: propertyNames(kind, variantFor(kind), section) });
         if (kind === "constant") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["constant.filter"] });
-        else if (kind === "arithmetic") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["arithmetic.output"] });
+        // An arithmetic expression starts with its output or, without one, with its first operand.
+        else if (kind === "arithmetic") expected.push({ type: "signal", wildcards: SIGNAL_SLOTS["arithmetic.output"] }, { type: "literal", kind: "integer" });
         break;
       }
       case "value": {

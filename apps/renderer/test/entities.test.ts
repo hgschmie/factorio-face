@@ -68,6 +68,9 @@ describe("card summaries", () => {
     // A lamp controlled by the circuit network shows its condition, always on or not.
     const condition = { first: A, comparator: ">", second: { type: "constant", value: 8 } } as const;
     for (const alwaysOn of [true, false]) expect(entitySummary({ ...base, ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", alwaysOn, condition })).toBe("A > 8");
+    // An arithmetic combinator without an output signal shows its expression, and that it goes nowhere.
+    const each = { type: "signal", signal: wildcardSignal("each"), networks: BOTH_NETWORKS } as const;
+    expect(entitySummary({ ...base, kind: "arithmetic", prototype: "arithmetic-combinator", first: each, operation: "*", second: { type: "constant", value: 2 } })).toBe("each × 2 → ?");
     expect(entitySummary({ ...base, kind: "decider", prototype: "decider-combinator", conditions: [{ join: "and", firstNetworks: BOTH_NETWORKS, comparator: "!=", second: { type: "signal", signal: A, networks: BOTH_NETWORKS } }], outputs: [], elseOutputs: [] })).toBe("0 ≠ A → ?");
   });
 

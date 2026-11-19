@@ -427,8 +427,21 @@ describe("import: arithmetic combinator", () => {
     expect(networks({ red: false, green: false })).toEqual({ red: false, green: false });
   });
 
-  it("takes operands without an output as not configured and says so", () => {
-    expect(read({ first_signal: B, second_constant: 2, operation: "+" })).toEqual({ entity: newEntity("arithmetic-combinator"), notes: ["changed control_behavior.arithmetic_conditions.output_signal"] });
+  it("keeps operands and operation without an output signal: such a combinator sends nothing, and nothing is reported", () => {
+    const base = { kind: "arithmetic", prototype: "arithmetic-combinator" };
+    expect(read({ first_signal: B, second_constant: 2, operation: "+" })).toEqual({
+      entity: { ...base, first: { type: "signal", signal: SB, networks: BOTH_NETWORKS }, operation: "+", second: { type: "constant", value: 2 } },
+      notes: [],
+    });
+    const each = { type: "virtual", name: "signal-each" };
+    expect(read({ first_constant: -5, second_signal: each, second_signal_networks: { red: false, green: true }, first_signal_networks: { red: true, green: false } })).toEqual({
+      entity: { ...base, first: { type: "constant", value: -5 }, operation: "*", second: { type: "signal", signal: sig("signal-each"), networks: GREEN } },
+      notes: [],
+    });
+    // A missing side is the constant 0, as the game reads it: one operand next to nothing.
+    expect(read({ second_constant: 7, operation: "*" }).entity).toEqual({ ...base, first: { type: "constant", value: 0 }, operation: "*", second: { type: "constant", value: 7 } });
+    expect(read({ operation: "-" }).entity).toEqual({ ...base, first: { type: "constant", value: 0 }, operation: "-", second: { type: "constant", value: 0 } });
+    for (const entity of [read({ first_signal: B, second_constant: 2 }).entity, read({ operation: "-" }).entity]) expect("output" in entity).toBe(false);
   });
 
   it("resets a configuration the game does not have, such as a wildcard that is not allowed there", () => {

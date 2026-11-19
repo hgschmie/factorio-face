@@ -91,6 +91,36 @@ describe("canonical printer", () => {
     for (const entity of [decider, arithmetic, lamp]) expect(checkEntity(entity)).toEqual({ ok: true });
   });
 
+  it("writes an arithmetic combinator without an output signal as the right side alone, and reads it back", () => {
+    const a: SignalId = { kind: "item", name: "a" };
+    const base = { ...DEFAULT_ENTITY.arithmetic, prototype: "arithmetic-combinator" as const, id: "a", name: "a", position: { x: 0, y: 0 } };
+    const each = { type: "signal" as const, signal: wildcardSignal("each"), networks: { red: true, green: false } };
+    const cases: [Entity, string][] = [
+      [{ ...base, first: each, second: { type: "constant", value: 2 } }, "    each[red] * 2\n"],
+      [{ ...base, first: { type: "constant", value: -5 }, operation: "-", second: { type: "signal", signal: a, networks: NONE } }, "    -5 - item:a[none]\n"],
+      // A description stands in front of the expression: the sign of a negative first operand still reads as one.
+      [{ ...base, description: "x", first: { type: "constant", value: -5 }, operation: "AND", second: { type: "constant", value: -1 } }, '    description = "x"\n    -5 AND -1\n'],
+      [{ ...base, first: { type: "constant", value: 5 } }, "    5 * 0\n"],
+      [{ ...base, operation: "+" }, "    0 + 0\n"],
+      // The expression of a new combinator is said by saying nothing; with an output it is written.
+      [base, ""],
+      [{ ...base, output: a }, "    item:a = 0 * 0\n"],
+    ];
+    for (const [entity, body] of cases) {
+      expect(printEntity(entity), body).toBe(`arithmetic-combinator a at (0, 0) {\n${body}}`);
+      expectRoundTrip({ name: "no output", entities: [entity], wires: [] });
+      expect(checkEntity(entity), body).toEqual({ ok: true });
+    }
+    // Generated combinators: one in seven has no output, some of those a negative first operand behind a description.
+    const generator = new Generator(7);
+    const generated = Array.from({ length: 400 }, (_, index) => generator.entity("arithmetic", `a${index}`)).filter((entity) => entity.kind === "arithmetic");
+    expectRoundTrip({ name: "generated", entities: generated, wires: [] });
+    const bare = generated.filter((entity) => !entity.output && !(entity.first.type === "constant" && entity.second.type === "constant" && entity.first.value === 0 && entity.second.value === 0));
+    expect(bare.length).toBeGreaterThan(30);
+    expect(generated.length - bare.length).toBeGreaterThan(300);
+    expect(bare.some((entity) => entity.description !== undefined && entity.first.type === "constant" && entity.first.value < 0)).toBe(true);
+  });
+
   it("writes a decider condition without a first signal with 0 on its left side, and reads it back", () => {
     const a: SignalId = { kind: "item", name: "a" };
     const blank = { join: "or" as const, firstNetworks: BOTH_NETWORKS, comparator: "<" as const, second: { type: "signal" as const, signal: a, networks: { red: true, green: false } } };
@@ -172,7 +202,6 @@ describe("checkEntity", () => {
 
   it("flags configurations the language cannot express", () => {
     const cases: Entity[] = [
-      { ...base, ...DEFAULT_ENTITY.arithmetic, prototype: "arithmetic-combinator", first: { type: "constant", value: 5 } },
       { ...base, ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", useColors: false, colorMode: "components" },
       { ...base, ...DEFAULT_ENTITY.lamp, prototype: "small-lamp", condition: { comparator: ">", second: { type: "constant", value: 1 } } },
       // The empty signal slot of a decider condition reads no network: the language has no selection for it.

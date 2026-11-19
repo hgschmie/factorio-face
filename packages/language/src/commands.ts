@@ -592,7 +592,7 @@ export type EntityCheck = { readonly ok: true } | { readonly ok: false; readonly
 /**
  * Checks that the language can express `entity` exactly: it is printed, parsed back and compared.
  * `invalid-entity`: the printed form has errors (bad name, illegal wildcard, integer out of range, ...).
- * `unrepresentable`: it parses, but to a different configuration (for example operands without an output signal).
+ * `unrepresentable`: it parses, but to a different configuration (for example a lamp condition that compares without a first signal).
  */
 export function checkEntity(entity: Entity): EntityCheck {
   if (!isIdentifier(entity.name) || isKeyword(entity.name)) return { ok: false, code: "invalid-entity", message: `'${entity.name}' is not a valid entity name` };

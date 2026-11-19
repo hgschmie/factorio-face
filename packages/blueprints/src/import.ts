@@ -247,11 +247,9 @@ function readArithmetic(entity: Fields): Settings<"arithmetic"> {
   };
   const [first, second] = [operand("first"), operand("second")];
   const operation = parameters.oneOf("operation", ARITHMETIC_OPERATIONS, fresh.operation);
+  // Without an output signal the combinator sends nothing; its operands are kept. A new one of the game (0 * 0) reads as the editor's.
   const output = parameters.signal("output_signal");
-  if (output) return { kind: "arithmetic", first, operation, second, output };
-  const isFresh = operation === fresh.operation && [first, second].every((side) => side.type === "constant" && side.value === 0);
-  if (!isFresh) parameters.changed("output_signal", "is missing: the editor has an arithmetic combinator with an output signal or not configured at all; the operands are dropped");
-  return fresh;
+  return { kind: "arithmetic", first, operation, second, ...(output && { output }) };
 }
 
 function readDecider(entity: Fields): Settings<"decider"> {
