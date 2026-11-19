@@ -401,7 +401,7 @@ test("exports the circuit into the book as a new blueprint and, after a second s
   await button(target, "Add to Book").click();
 
   const exported = dialog(page, "Exported to blueprint book");
-  await expect(exported.locator('[data-message="exported"]')).toHaveText(`The circuit was added to the book "Circuits" as the blueprint "${EXAMPLE_NAME}".`);
+  await expect(exported.locator('[data-message="exported"]')).toHaveText(`The circuit was added to "Inner", a book inside the book "Circuits", as the blueprint "${EXAMPLE_NAME}".`);
   await expect(exported.getByRole("region", { name: "Warnings" })).toHaveCount(0);
   await expect(exported).toContainText("The book is saved with the project. It goes to the game through File > Blueprint Book: Export As File or Show Book String.");
   await expect(button(exported, "OK")).toBeFocused();
@@ -438,7 +438,7 @@ test("exports the circuit into the book as a new blueprint and, after a second s
   expect(await bookString(page)).toBe(string);
   await button(target, "Overwrite...").click();
   await button(confirm, "Overwrite").click();
-  await expect(exported.locator('[data-message="exported"]')).toHaveText(`The circuit was written over the blueprint "Three lamps" of the book "Circuits". It is now "${EXAMPLE_NAME}".`);
+  await expect(exported.locator('[data-message="exported"]')).toHaveText(`The circuit was written over the blueprint "Three lamps" of "Inner", a book inside the book "Circuits". It is now "${EXAMPLE_NAME}".`);
   await button(exported, "OK").click();
   expect(await bookState(page)).toEqual({ label: "Circuits", origin: [3, 0], originLabel: EXAMPLE_NAME, problem: null });
   string = (await bookString(page))!;
@@ -463,7 +463,7 @@ test("exports the circuit into the book as a new blueprint and, after a second s
   await clickMenu(app, "File", "Export Blueprint", "To Blueprint Book...");
   await button(target, "Overwrite...").click();
   await button(confirm, "Overwrite").click();
-  await expect(exported.locator('[data-message="exported"]')).toHaveText(`The circuit was written over the blueprint "${EXAMPLE_NAME}" of the book "Circuits".`);
+  await expect(exported.locator('[data-message="exported"]')).toHaveText(`The circuit was written over the blueprint "${EXAMPLE_NAME}" of "Inner", a book inside the book "Circuits".`);
   await button(exported, "OK").click();
   string = (await bookString(page))!;
   expect(labelsAt(string, [3])).toEqual([EXAMPLE_NAME, EXAMPLE_NAME]);
