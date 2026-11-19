@@ -191,7 +191,7 @@ test("invalid source shows diagnostics and blocks canvas edits; fixing it recove
   const problems = page.getByRole("region", { name: "Diagnostics" });
   await expect(problems.locator("li.severity-error")).toHaveCount(1);
   // The parser notices the missing operand at the next token, on the following line.
-  await expect(problems.locator("li.severity-error")).toHaveText("Ln 9Expected a signal but found 'output'");
+  await expect(problems.locator("li.severity-error")).toHaveText("Ln 9Expected a signal or 0 but found 'output'");
   await expect(page.getByTestId("diagnostics-summary")).toHaveText("1 error");
   await expect(page.locator(".source-pane .cm-lintRange-error")).not.toHaveCount(0);
   await expect(page.locator(".statusbar")).toContainText("1 error in source");
