@@ -421,12 +421,13 @@
 }
 
 /* The blueprint book of the project and the blueprint its circuit came from: a button that opens the choice of a blueprint.
-   It takes no more than its share of the line, and long labels are cut off, each on its own. */
+   It takes no more than its share of the line, and long labels are cut off, each on its own. Within that share it does not
+   give way: the folders of the path do, which would otherwise keep their room while a short label is cut off. */
 .status-book {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   gap: 8px;
   min-width: 3em;
-  max-width: 45%;
+  max-width: 50%;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
   font-size: var(--text-sm);

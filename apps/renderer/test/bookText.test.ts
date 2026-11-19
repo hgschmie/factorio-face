@@ -105,10 +105,14 @@ describe("the warning before a blueprint is overwritten", () => {
 
 describe("what the dialogs say about a book", () => {
   it("names the book and the blueprint after an export", () => {
-    expect(exportedText({ label: "Probe", originLabel: "Placed" }, null)).toBe('The circuit was added to the book "Probe" as the blueprint "Placed".');
-    expect(exportedText({ label: "Probe", originLabel: null }, null)).toBe('The circuit was added to the book "Probe" as a new blueprint.');
-    expect(exportedText({ label: "Probe", originLabel: "Placed" }, "third")).toBe('The circuit was written over the blueprint "third" of the book "Probe". It is now "Placed".');
-    expect(exportedText({ label: "Probe", originLabel: "third" }, "third")).toBe('The circuit was written over the blueprint "third" of the book "Probe".');
+    const { rows } = view(GAME_BOOK);
+    expect(exportedText({ label: "Probe", rows, origin: [6], originLabel: "Placed" }, null)).toBe('The circuit was added to the book "Probe" as the blueprint "Placed".');
+    expect(exportedText({ label: "Probe", rows, origin: null, originLabel: null }, null)).toBe('The circuit was added to the book "Probe" as a new blueprint.');
+    expect(exportedText({ label: "Probe", rows, origin: [1], originLabel: "Placed" }, "third")).toBe('The circuit was written over the blueprint "third" of the book "Probe". It is now "Placed".');
+    expect(exportedText({ label: "Probe", rows, origin: [1], originLabel: "third" }, "third")).toBe('The circuit was written over the blueprint "third" of the book "Probe".');
+    // In a book inside the book, that book is named.
+    expect(exportedText({ label: "Probe", rows, origin: [2, 1], originLabel: "Placed" }, null)).toBe('The circuit was added to "inner", a book inside the book "Probe", as the blueprint "Placed".');
+    expect(exportedText({ label: "Probe", rows, origin: [2, 0], originLabel: "inside" }, "inside")).toBe('The circuit was written over the blueprint "inside" of "inner", a book inside the book "Probe".');
   });
 
   it("names the book another one replaces, and the book that is removed", () => {

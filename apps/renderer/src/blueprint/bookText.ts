@@ -63,11 +63,20 @@ export function overwriteWarning(row: Pick<BookRow, "lost">, fromHere: boolean):
   ];
 }
 
+/** The book inside the book that the blueprint the circuit came from stands in; undefined when it stands in the book itself. */
+function innerBook(book: Pick<BookView, "origin" | "rows">): BookRow | undefined {
+  if (book.origin === null || book.origin.length < 2) return undefined;
+  const parent = pathKey(book.origin.slice(0, -1));
+  return book.rows.find((row) => pathKey(row.path) === parent);
+}
+
 /** What an export into the book did. `replaced` is the label the overwritten blueprint had; null for a new blueprint. `book` is the book afterwards, whose origin is the written blueprint. */
-export function exportedText(book: Pick<BookView, "label" | "originLabel">, replaced: string | null): string {
+export function exportedText(book: Pick<BookView, "label" | "origin" | "originLabel" | "rows">, replaced: string | null): string {
   const now = book.originLabel;
-  if (replaced === null) return `The circuit was added to the book "${book.label}" as ${now === null ? "a new blueprint" : `the blueprint "${now}"`}.`;
-  return `The circuit was written over the blueprint "${replaced}" of the book "${book.label}".${now !== null && now !== replaced ? ` It is now "${now}".` : ""}`;
+  const inner = innerBook(book);
+  const holder = inner ? `"${inner.label}", a book inside the book "${book.label}"` : `the book "${book.label}"`;
+  if (replaced === null) return `The circuit was added to ${holder}${inner ? "," : ""} as ${now === null ? "a new blueprint" : `the blueprint "${now}"`}.`;
+  return `The circuit was written over the blueprint "${replaced}" of ${holder}.${now !== null && now !== replaced ? ` It is now "${now}".` : ""}`;
 }
 
 /** Which book a new one replaces, said before it does; null for a project without a book. */
