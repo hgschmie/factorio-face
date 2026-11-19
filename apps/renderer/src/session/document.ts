@@ -1,7 +1,7 @@
 // The source document: a CodeMirror EditorState (text, history, selection) that exists whether or not an editor view is
 // mounted. Every change is a transaction that passes through `apply`, so the session sees each one exactly once.
-import { history, isolateHistory, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
-import { Annotation, EditorState, Transaction, type Extension, type TransactionSpec } from "@codemirror/state";
+import { history, invertedEffects, isolateHistory, redo, redoDepth, undo, undoDepth } from "@codemirror/commands";
+import { Annotation, EditorState, StateEffect, StateField, Transaction, type Extension, type TransactionSpec } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
 import type { TextChange } from "@face/language";
 import { minimalChange } from "../editor/tokens.ts";
@@ -9,6 +9,20 @@ import type { EditorBinding } from "../workbench/controller.ts";
 
 /** Marks a transaction produced by a graphical command; the value says whether it continues the previous command's undo step. */
 const commandEdit = Annotation.define<"new" | "join">();
+
+/** Where the circuit of the text came from: an item of a blueprint book, by its path. `book` says which book, as the owner of the document counts them. */
+export interface TextOrigin {
+  readonly book: number;
+  readonly path: readonly number[];
+}
+
+const originEffect = StateEffect.define<TextOrigin | undefined>();
+const originField = StateField.define<TextOrigin | undefined>({
+  create: () => undefined,
+  update: (origin, transaction) => transaction.effects.reduce((current, effect) => (effect.is(originEffect) ? effect.value : current), origin),
+});
+/** The origin is part of the history: undoing a step that set it brings back the one before it, redoing it the one after. */
+const originHistory = invertedEffects.of((transaction) => (transaction.effects.some((effect) => effect.is(originEffect)) ? [originEffect.of(transaction.startState.field(originField))] : []));
 
 export interface DocumentHooks {
   /** Called for every applied batch, before an attached view is updated. */
@@ -28,16 +42,17 @@ export class SourceDocument implements EditorBinding {
   private lastCommandTime: number | undefined;
   private readonly extensions: Extension;
 
-  constructor(source: string, extensions: Extension, private readonly hooks: DocumentHooks) {
+  constructor(source: string, extensions: Extension, private readonly hooks: DocumentHooks, origin?: TextOrigin) {
     this.extensions = [
       history({ joinToEvent: (transaction, adjacent) => (transaction.annotation(commandEdit) === "join" ? true : adjacent && this.lastCommandTime === undefined) }),
+      originHistory,
       extensions,
     ];
-    this.current = this.createState(source);
+    this.current = this.createState(source, origin);
   }
 
-  private createState(source: string): EditorState {
-    return EditorState.create({ doc: source, extensions: this.extensions });
+  private createState(source: string, origin: TextOrigin | undefined): EditorState {
+    return EditorState.create({ doc: source, extensions: [this.extensions, originField.init(() => origin)] });
   }
 
   get state(): EditorState {
@@ -52,6 +67,11 @@ export class SourceDocument implements EditorBinding {
   get text(): string {
     if (this.cachedText?.state.doc !== this.current.doc) this.cachedText = { state: this.current, text: this.current.doc.toString() };
     return this.cachedText.text;
+  }
+
+  /** Where the circuit of the text came from, when the text was taken from a blueprint book. The same object until it changes. */
+  get origin(): TextOrigin | undefined {
+    return this.current.field(originField);
   }
 
   get canUndo(): boolean {
@@ -85,15 +105,22 @@ export class SourceDocument implements EditorBinding {
 
   /**
    * Applies the text changes of one graphical command as one transaction and one undo step. With `join`, the step is merged
-   * into the directly preceding command step instead (the caller decides that both belong to the same edit).
+   * into the directly preceding command step instead (the caller decides that both belong to the same edit). With `origin` the
+   * step also says where the text comes from now, null for no book: undoing it brings back the text and the origin before it.
    */
-  edit(changes: readonly TextChange[], join = false): void {
+  edit(changes: readonly TextChange[], join = false, origin?: TextOrigin | null): void {
     if (changes.length === 0) return;
     const joined = join && this.lastCommandTime !== undefined;
     this.dispatch({
       changes: changes.map((change) => ({ from: change.from, to: change.to, insert: change.insert })),
+      effects: origin === undefined ? undefined : originEffect.of(origin ?? undefined),
       annotations: joined ? [commandEdit.of("join"), Transaction.time.of(this.lastCommandTime!)] : [commandEdit.of("new"), isolateHistory.of("before")],
     });
+  }
+
+  /** Says where the text comes from, or that it comes from no book, without a step of the history: an undo does not take it back. */
+  setOrigin(origin: TextOrigin | undefined): void {
+    if (origin !== this.origin) this.dispatch({ effects: originEffect.of(origin), annotations: Transaction.addToHistory.of(false) });
   }
 
   /** Replaces the text with `source` as one ordinary edit of the differing part. */
@@ -111,8 +138,8 @@ export class SourceDocument implements EditorBinding {
   }
 
   /** Starts over with a new document and an empty history. */
-  replace(source: string): void {
-    this.current = this.createState(source);
+  replace(source: string, origin?: TextOrigin): void {
+    this.current = this.createState(source, origin);
     this.changes++;
     this.lastCommandTime = undefined;
     this.view?.setState(this.current);

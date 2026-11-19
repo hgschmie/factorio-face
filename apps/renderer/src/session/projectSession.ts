@@ -10,7 +10,7 @@ import type { Extension, Transaction } from "@codemirror/state";
 import { currentCatalog, type Catalog } from "@face/catalog";
 import { executeCommand, type EditCommand, type EditResult, type ParseResult } from "@face/language";
 import { canRotate, DEFAULT_FACING, facingOf, isPrototypeName, isWireReach, tileCenter, tileOrigin, wireKey, type Circuit, type Direction, type Entity, type EntityId, type Point, type PrototypeName } from "@face/model";
-import type { FaceApi, HiddenModuleItems, IpcResult, LoadedProject } from "../../../desktop/src/ipc.ts";
+import type { FaceApi, HiddenModuleItems, IpcResult, LoadedProject, ProjectBook } from "../../../desktop/src/ipc.ts";
 import { arrangeBoard, blockedMoves, blockedTurn, canStandAt, derivedTiles, editPositionOf } from "../canvas/board.ts";
 import { blockedFlip, flipCards, flipTiles } from "../canvas/flip.ts";
 import { editorChrome } from "../editor/extensions.ts";
@@ -25,7 +25,8 @@ import {
 } from "../workbench/controller.ts";
 import { listOrder } from "../workbench/moduleOrder.ts";
 import { Analysis } from "./analysis.ts";
-import { exportCircuit, importedProject, INVALID_SOURCE_PROBLEM, readBlueprint, type ImportModules } from "./blueprints.ts";
+import { circuitBlueprint, exportCircuit, importedProject, INVALID_SOURCE_PROBLEM, OPEN_PROJECT_HAD_OFF, originOf, readBlueprint, readBlueprintData, type ImportedBlueprint, type ImportedBook, type ImportModules } from "./blueprints.ts";
+import { bookFileName, bookView, NO_BOOK, readBookText, storedBook, writeToBook, type BookChoice, type BookExport, type BookTarget, type BookView, type StoredBook } from "./book.ts";
 import { CatalogService } from "./catalogService.ts";
 import { clipboardText, pasteShift, readClipboardText } from "./clipboard.ts";
 import { SourceDocument } from "./document.ts";
@@ -88,6 +89,13 @@ export class ProjectSession {
   private hidden: HiddenItems;
   private file: ProjectFile;
   private settings: ProjectSettings;
+  /** The blueprint book of the project as its blueprint string; undefined without one. Which item the circuit came from is with the document (`origin`). */
+  private bookString: string | undefined;
+  /** Counts the books the session has held. An origin in the history of the document is of the book it was set for and void for every other. */
+  private bookEpoch = 0;
+  /** `bookString` decoded: made when first asked for and kept while the string is the same. */
+  private decodedBook: StoredBook | undefined;
+  private shownBook: { readonly book: StoredBook; readonly origin: readonly number[] | undefined; readonly view: BookView } | undefined;
   private epoch = 0;
   /** The catalog as a new project has it, which is what an imported blueprint starts from. Made on first use. */
   private importServices: CatalogService | undefined;
@@ -126,9 +134,10 @@ export class ProjectSession {
     this.api = options.api;
     this.catalog = options.catalog ?? currentCatalog();
     this.data = options.data ?? builtInData();
-    const { file, source, settings } = openProjectFile(options.project ?? this.asNew(emptyProject()));
+    const { file, source, settings, book } = openProjectFile(options.project ?? this.asNew(emptyProject()));
     this.file = file;
     this.settings = settings;
+    this.bookString = book?.string;
     this.hidden = hiddenItems(options.hidden ?? []);
     this.services = this.servicesFor(settings.modules);
     this.simulation = new SimulationRunner(createCatalogEnvironment(this.catalog, this.services.enabled), () => this.touch(), options.scheduler);
@@ -137,7 +146,7 @@ export class ProjectSession {
       applied: (transactions) => this.documentApplied(transactions),
       settled: () => this.leave(),
       replaced: () => this.analyze(),
-    });
+    }, this.originIn(book?.origin));
     this.commands = this.createCommands();
     this.depth++;
     this.analyze();
@@ -202,7 +211,7 @@ export class ProjectSession {
   }
 
   private buildState(): WorkbenchState {
-    const dirty = isDirty(this.file, this.document.text, this.settings);
+    const dirty = this.dirty;
     const record = this.file.manifest.gameMods;
     const madeWith = record ? describeRecord(record) : null;
     const project: ProjectView = {
@@ -228,9 +237,98 @@ export class ProjectSession {
       canRedo: this.document.canRedo,
       simulation: this.simulation.view(),
       catalog: this.services,
+      book: this.viewOfBook(),
       draft,
       error: this.error,
     };
+  }
+
+  // The blueprint book of the project
+
+  /** The item of the book the circuit came from. It follows undo and redo, because it is part of the document's state. */
+  private get origin(): readonly number[] | undefined {
+    const origin = this.document.origin;
+    return this.bookString !== undefined && origin?.book === this.bookEpoch ? origin.path : undefined;
+  }
+
+  /** `path` as an origin of the book the session holds now. */
+  private originIn(path: readonly number[] | undefined): { readonly book: number; readonly path: readonly number[] } | undefined {
+    const origin = originOf(path);
+    return origin && { book: this.bookEpoch, path: origin };
+  }
+
+  /** The book as the project file holds it. */
+  private get book(): ProjectBook | undefined {
+    const origin = this.origin;
+    return this.bookString === undefined ? undefined : { string: this.bookString, ...(origin && { origin }) };
+  }
+
+  private get dirty(): boolean {
+    return isDirty(this.file, this.document.text, this.settings, this.book);
+  }
+
+  private storedBook(): StoredBook | undefined {
+    if (this.bookString === undefined) return undefined;
+    if (this.decodedBook?.string !== this.bookString) this.decodedBook = storedBook(this.bookString);
+    return this.decodedBook;
+  }
+
+  /** The view keeps its identity while neither the book nor the origin changed. */
+  private viewOfBook(): BookView | null {
+    const book = this.storedBook();
+    if (!book) return null;
+    const origin = this.origin;
+    if (this.shownBook?.book !== book || this.shownBook.origin !== origin) this.shownBook = { book, origin, view: bookView(book, origin) };
+    return this.shownBook.view;
+  }
+
+  /** Another book in place of the one the project holds, or none: the circuit then comes from no item of it. */
+  private replaceBook(book: StoredBook | undefined): void {
+    this.bookString = book?.string;
+    this.decodedBook = book;
+    this.bookEpoch++;
+    this.document.setOrigin(undefined);
+  }
+
+  /**
+   * Replaces the circuit by the blueprint at `path` of the book, as one step of the history that also sets the origin: an undo
+   * brings back the source and the origin before it. The modules the circuit needs are switched on, which is no part of that step.
+   */
+  private chooseFromBook(path: readonly number[]): BookChoice {
+    const book = this.storedBook();
+    if (!book?.ok) return { ok: false, message: book?.problem ?? NO_BOOK };
+    const reading = readBlueprintData(book.data, this.services.instruments, path, (source) => this.modulesNeeded(source, this.services), OPEN_PROJECT_HAD_OFF);
+    if (reading.kind !== "blueprint") return { ok: false, message: reading.message };
+    const { name, source, modules, report } = reading.blueprint;
+    this.change(() => {
+      if (modules && !sameList(modules, this.settings.modules)) this.applySettings({ ...this.settings, modules });
+      // The entities of the new circuit are others, whatever their ids: nothing said about the old ones holds.
+      this.setSelection([]);
+      this.pendingSelection = undefined;
+      this.coalesce = undefined;
+      this.show(null);
+      this.tool = SELECT_TOOL;
+      this.displayMode = "blueprint";
+      this.epoch++;
+      this.document.edit([{ from: 0, to: this.document.state.doc.length, insert: source }], false, this.originIn(path) ?? null);
+    });
+    return { ok: true, name, report };
+  }
+
+  /** Writes the circuit into the book. The book is no part of the history of the document: an undo does not take the blueprint out again. */
+  private exportToBook(target: BookTarget): BookExport {
+    const book = this.storedBook();
+    if (!book?.ok) return { ok: false, reason: "book", message: book?.problem ?? NO_BOOK };
+    const exported = this.editable ? circuitBlueprint(this.analysis.circuit, this.services.instruments) : { ok: false as const, problems: [INVALID_SOURCE_PROBLEM] };
+    if (!exported.ok) return { ok: false, reason: "circuit", problems: exported.problems };
+    const written = writeToBook(book, this.origin, target, exported.blueprint);
+    if (!written.ok) return { ok: false, reason: "book", message: written.message };
+    this.change(() => {
+      this.bookString = written.book.string;
+      this.decodedBook = written.book;
+      this.document.setOrigin(this.originIn(written.path));
+    });
+    return { ok: true, path: written.path, warnings: exported.warnings };
   }
 
   private servicesFor(modules: readonly string[]): CatalogService {
@@ -248,14 +346,13 @@ export class ProjectSession {
   }
 
   /**
-   * The modules an imported circuit opens with: those of a new project, and every module a signal or an entity of the circuit
-   * is of, with what it requires. `switchedOn` are the titles of what that adds, in the order of the rows of the project settings.
+   * The modules a circuit needs on top of those of `services` (for an import those of a new project): every module a signal or an
+   * entity of the circuit is of, with what it requires. `switchedOn` are the titles of what that adds, in the order of the rows of the project settings.
    */
-  private importModules(source: string): ImportModules {
-    const fresh = this.freshServices();
-    const modules = fresh.withModulesOn(modulesUsedOff(source, fresh));
-    if (!modules) return { modules: fresh.requested, switchedOn: NO_MODULES };
-    return { modules, switchedOn: listOrder(fresh.modules.filter((module) => !module.enabled && modules.includes(module.name))).map((module) => module.title) };
+  private modulesNeeded(source: string, services: CatalogService): ImportModules {
+    const modules = services.withModulesOn(modulesUsedOff(source, services));
+    if (!modules) return { modules: services.requested, switchedOn: NO_MODULES };
+    return { modules, switchedOn: listOrder(services.modules.filter((module) => !module.enabled && modules.includes(module.name))).map((module) => module.title) };
   }
 
   /** What the game the project was made with had that the data in use has not; null without a record or a difference. */
@@ -613,13 +710,9 @@ export class ProjectSession {
         return this.unwrap(await api.applyGameData()) !== undefined;
       },
 
-      readBlueprint: (text, select) => readBlueprint(text, this.freshServices().instruments, select, (source) => this.importModules(source)),
-      // The main process hands out the empty project and learns by it that the window shows a project without a file.
-      openBlueprint: (blueprint) =>
-        this.replaceProject(async (api) => {
-          const empty = await api.newProject();
-          return empty.ok ? { ok: true, value: importedProject(this.asNew(empty.value).data, blueprint) } : empty;
-        }, true),
+      readBlueprint: (text, select) => readBlueprint(text, this.freshServices().instruments, select, (source) => this.modulesNeeded(source, this.freshServices())),
+      openBlueprint: (blueprint) => this.openImported(blueprint),
+      openBook: (book) => this.openImported(book),
       chooseBlueprintFile: async () => {
         const api = this.api;
         if (!api) return void this.fail(NO_DESKTOP);
@@ -639,7 +732,41 @@ export class ProjectSession {
         this.change(() => this.show(`Blueprint exported to ${written.path}${warnings === 0 ? "" : `, with ${warnings} ${warnings === 1 ? "warning" : "warnings"}: File > Export Blueprint > Show Blueprint lists ${warnings === 1 ? "it" : "them"}`}.`));
         return true;
       },
+
+      attachBook: (text) => {
+        const read = readBookText(text);
+        if (read.ok) this.change(() => this.replaceBook(read.book));
+        return read.ok ? { ok: true } : read;
+      },
+      chooseFromBook: (path) => this.chooseFromBook(path),
+      exportToBook: (target) => this.exportToBook(target),
+      exportBook: () => {
+        const book = this.storedBook();
+        return book?.ok ? { ok: true, string: book.string } : { ok: false, message: book?.problem ?? NO_BOOK };
+      },
+      saveBookFile: async () => {
+        const api = this.api;
+        const book = this.storedBook();
+        if (!api || !book?.ok) {
+          this.fail(!api ? NO_DESKTOP : book && !book.ok ? book.problem : NO_BOOK);
+          return false;
+        }
+        const written = this.unwrap(await api.exportBlueprintFile({ name: bookFileName(book, this.settings.name), text: book.string }));
+        if (written) this.change(() => this.show(`Blueprint book exported to ${written.path}.`));
+        return Boolean(written);
+      },
+      removeBook: changing(() => {
+        if (this.bookString !== undefined) this.replaceBook(undefined);
+      }),
     };
+  }
+
+  /** Opens a blueprint, or a book without a circuit, as a new project. The main process hands out the empty project and learns by it that the window shows a project without a file. */
+  private openImported(imported: ImportedBlueprint | ImportedBook): Promise<boolean> {
+    return this.replaceProject(async (api) => {
+      const empty = await api.newProject();
+      return empty.ok ? { ok: true, value: importedProject(this.asNew(empty.value).data, imported) } : empty;
+    }, true);
   }
 
   // Project settings and files
@@ -665,9 +792,12 @@ export class ProjectSession {
    */
   load(project: LoadedProject, imported = false): void {
     this.change(() => {
-      const { file, source, settings } = openProjectFile(project);
+      const { file, source, settings, book } = openProjectFile(project);
       this.file = imported ? neverSaved(file) : file;
       this.settings = settings;
+      this.bookString = book?.string;
+      this.decodedBook = undefined;
+      this.bookEpoch++;
       this.epoch++;
       this.selection = [];
       this.wireSelection = NO_WIRES;
@@ -683,10 +813,12 @@ export class ProjectSession {
       this.simulation.setSelection(this.selection);
       this.simulation.setEnvironment(createCatalogEnvironment(this.catalog, this.services.enabled));
       this.analysis.reset();
-      this.document.replace(source);
+      this.document.replace(source, this.originIn(book?.origin));
       // The project opens whatever game it was made with; what the data in use lacks of it is said once, and stays in the project settings.
-      const notice = this.modsNotice();
-      if (notice !== null) this.show(notice);
+      // So does a book that cannot be read: the project opens, and the book stays in it.
+      const stored = this.storedBook();
+      const notices = [this.modsNotice(), stored && !stored.ok ? stored.problem : null].filter((notice) => notice !== null);
+      if (notices.length > 0) this.show(notices.join(" "));
     });
   }
 
@@ -707,7 +839,7 @@ export class ProjectSession {
     const last = await api.openLastProject().catch((error: unknown): IpcResult<null> => ({ ok: false, error: error instanceof Error ? error.message : String(error) }));
     if (!last.ok) return this.fail(`${LAST_PROJECT_NOT_REOPENED} ${last.error}`);
     // What the user made of the empty project meanwhile is not thrown away.
-    if (last.value && this.file === file && !isDirty(file, this.document.text, this.settings)) this.load(last.value);
+    if (last.value && this.file === file && !this.dirty) this.load(last.value);
   }
 
   private fail(message: string): void {
@@ -738,7 +870,7 @@ export class ProjectSession {
     const file = this.file;
     const source = this.document.text;
     const settings = this.settings;
-    const data = toProjectData(file, source, settings, modsRecord(this.data));
+    const data = toProjectData(file, source, settings, modsRecord(this.data), this.book);
     const saved = this.unwrap(saveAs ? await api.saveProjectAs(data) : await api.saveProject({ path: file.path, data }));
     if (!saved) return false;
     if (this.file === file) this.change(() => void (this.file = savedProjectFile(file, saved.path, data, source, settings)));
@@ -747,7 +879,7 @@ export class ProjectSession {
 
   /** Before the current project is replaced: offers to save unsaved changes. Resolves false when the user cancels. */
   private async mayReplaceProject(api: FaceApi): Promise<boolean> {
-    if (!isDirty(this.file, this.document.text, this.settings)) return true;
+    if (!this.dirty) return true;
     const choice = this.unwrap(await api.confirmUnsavedChanges());
     if (choice === "save") return this.writeProject(false);
     return choice === "discard";

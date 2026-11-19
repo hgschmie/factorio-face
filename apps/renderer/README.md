@@ -30,7 +30,8 @@ src/
                        elsewhere drops, a copy the page starts itself
   session/
     projectSession.ts  ProjectSession: implements WorkbenchController, wires the parts below, batches change notifications
-    document.ts        SourceDocument: the CodeMirror EditorState (text, history, selection) with or without a mounted view
+    document.ts        SourceDocument: the CodeMirror EditorState (text, history, selection) with or without a mounted view,
+                       and the item of the project's blueprint book the text came from, which follows undo
     analysis.ts        runs the language per document version, drops stale results, keeps the last valid circuit, shares structure
     drafts.ts          inspector edits the language cannot write yet: normalization, completeness check, hints
     clipboard.ts       copy and paste of entities: the clipboard text, what is accepted from it, where a pasted group lands   (pure)
@@ -43,6 +44,8 @@ src/
     persistence.ts     project file mapping, dirty comparison, the empty project a session begins with   (pure)
     blueprints.ts      blueprints of the game: what a pasted text or a file holds, the list of a book, the wording of the import
                        report, the project a blueprint opens as, the blueprint string of the circuit and what is in its way   (pure)
+    book.ts            the blueprint book a project holds: the stored string decoded, what the window shows of it, a text as
+                       the book, the circuit written into it   (pure)
     completion.ts      completion candidates from the language's expectations and the catalog   (pure)
     editorSupport.ts   CodeMirror glue: token kinds, lint transaction, completion source
     useProjectSession.ts  React binding (useSyncExternalStore) and the `window.faceSession` probe
@@ -166,7 +169,7 @@ interface WorkbenchController {
 }
 ```
 
-`WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `circuit` (last valid `Circuit`), `editable` (false while the source
+`WorkbenchState`: `project` (name, path, fileName, dirty, wireReach, epoch, madeWith, modsNotice), `book` (`BookView` of the blueprint book of the project, null without one; see "The blueprint book of a project"), `circuit` (last valid `Circuit`), `editable` (false while the source
 has errors), `selection` (entity ids), `wireSelection` (wire keys), `mode`, `displayMode` (`edit` or `blueprint`), `tool`, `source`, `diagnostics` (with line numbers), `canUndo` / `canRedo`, `simulation`
 (`SimulationView`: running, tick, speed, traces, per-entity status with inputs per wire color, notice), `catalog` (`CatalogView`: modules, otherMods, unknownModules, qualities,
 `speakerInstruments`, `picker()`, `notOffered()` (what the picker leaves out, for the note of its search), `entities()` (the `EntityRegistry` of the entity selector), `describe(signal)`, `entityWarning(prototype)`, and for what the user hid `items(module)`, `hiddenOf(module)`, `hiddenCount(module)`), `draft` (pending inspector edit of the selected entity) and `error` (the message of the toast; see "Messages"
@@ -177,8 +180,9 @@ below).
 `toggleWire`, `setSource`, `undo`, `redo`), the blueprint board (`setTiles`, `nudgeTiles`, `placeHere`, `unplace`, `placeEntityOnTile`; see "Editing on the board"),
 simulation (`run`, `pause`,
 `step`, `resetSimulation`, `setSpeed`), settings (`setModuleEnabled`, `enableUsedModules`, `setProjectName`, `setWireReach`), the one setting of the application the session holds (`setHiddenItems`; see "Hidden signals and entities") and project (`newProject`, `openProject`,
-`loadProject`, `openExample`, `save`, `saveAs`) and blueprints (`readBlueprint`, `openBlueprint`, `chooseBlueprintFile`, `exportBlueprint`,
-`saveBlueprintFile`; see "Blueprints of the game").
+`loadProject`, `openExample`, `save`, `saveAs`), blueprints (`readBlueprint`, `openBlueprint`, `openBook`, `chooseBlueprintFile`, `exportBlueprint`,
+`saveBlueprintFile`; see "Blueprints of the game") and the blueprint book of the project (`attachBook`, `chooseFromBook`, `exportToBook`,
+`exportBook`, `saveBookFile`, `removeBook`; see "The blueprint book of a project").
 
 ## How the session works
 
@@ -1074,7 +1078,7 @@ The File menu has two submenus with two commands each (`menu.ts`; the keys are i
 (`file.importBlueprint`) and Paste Blueprint... (`file.pasteBlueprint`), Export Blueprint with As File... (`file.exportBlueprint`) and
 Show Blueprint (`file.showBlueprint`). They are in no other menu. The format, the mapping and what an import
 drops are the business of `@face/blueprints`; `session/blueprints.ts` (pure) turns its results into what the dialogs show, and the
-session has five commands for it. `Workbench` holds which of the four dialogs is on show (`BlueprintDialog`, one at a time).
+session has six commands for it (and six more for the blueprint book a project holds, at the end of this section). `Workbench` holds which of the four dialogs is on show (`BlueprintDialog`, one at a time).
 
 - **In, three ways, one result.** `readBlueprint(text, select?)` says what a text holds (`BlueprintReading`): a blueprint with the
   source of its circuit and its report, the rows of a blueprint book, or an error as a sentence. `openBlueprint(blueprint)` opens it
@@ -1121,6 +1125,71 @@ session has five commands for it. `Workbench` holds which of the four dialogs is
 - **Problems.** Neither is produced while something is in the way: `ExportProblems` (dialog "No blueprint yet") lists the problems
   of the package with the entity names (`[data-problem="no-tile|off-grid|overlap|custom-signal|..."]`). For entities without a tile
   it offers "Show blueprint board": the board, with those entities selected, where "Place all" is.
+
+### The blueprint book of a project
+
+The session side only; the dialogs and the menu for it are not built yet. A project holds at most one blueprint book of the
+game, as the string the game wrote (`ProjectData.book` of `ipc.ts`: the string, and `origin`, the path of the blueprint the
+circuit came from). `session/book.ts` (pure) decodes it and makes what the window shows; the session keeps it and has six
+commands for it. The format and the two edits are `@face/blueprints` ("Books" in its README).
+
+- **In the file.** `openProjectFile` hands the book on and remembers it as `ProjectFile.savedBook`; `toProjectData` takes the
+  book the session holds and writes it back, the origin only when there is one. `isDirty` compares it too (`sameBook`: the
+  string and the origin), so a change of either marks the project as changed. A project without a book gives the project data
+  it gave before there were books: no `book` at all.
+- **In the session.** The string is `bookString`; it is decoded once per string (`storedBook`, kept as `decodedBook`), on the
+  first snapshot after it changed, and an export into the book hands on the object it made without decoding it again. The
+  origin is not next to it: it is a field of the document's state (`TextOrigin` in `session/document.ts`), because it has to
+  follow undo; see below.
+- **What the workbench sees** (`WorkbenchState.book`, a `BookView`, the same object while neither the book nor the origin
+  changed): `label` (bounded to 80 characters like every text of a blueprint; "Blueprint book without a label"), `rows` and
+  `unlisted` (`bookRows`, up to `BOOK_ROWS`), `origin` with `originLabel` (null unless the path names a blueprint of the book:
+  an origin is from a file), and `problem`. A `BookRow` now also says what an export into the book can do with it:
+  `replaceable` (a blueprint), `addable` (a book), and `lost`, what a replacement destroys because the editor does not hold it:
+  the entities it does not know (`entities - known`) and the tiles.
+- **A stored string that is no book.** The main process only checks that the entry is a blueprint string. One that does not
+  decode, or that holds a blueprint or a planner, opens like any project: the string stays in the session and is written back
+  with every save, `BookView.problem` says what is wrong ("The blueprint book of this project cannot be read. ... It stays in
+  the project file as it is until it is removed."; also the toast when the project opens), there are no rows, and every command
+  refuses with that sentence except `attachBook` and `removeBook`.
+- **An import keeps the book.** `readBlueprint` on a book gives the rows as before and now `book`, the whole book as a project
+  of its own (`ImportedBook`: a name from its label, "Imported blueprint book" without one, and the string a project keeps);
+  with `select` the blueprint comes with `ImportedBlueprint.book`, the same string with the selected path as origin.
+  `openBlueprint` therefore opens a blueprint of a book as a project that holds the book. `openBook(reading.book)` opens the
+  book without a circuit: the empty project, named after the book, on the blueprint board, never saved. A book without items,
+  which was an error, is a book with no rows. A single blueprint opens without a book. Whatever opens a project (New Project,
+  Open Project, an example, an import) ends with the book of that project or none: `load` takes it from the project data.
+  The string that is kept is `canonicalBlueprintString(text).string`: the pasted text without its blanks, and for plain JSON
+  its encoding, so a book nothing was written into leaves as the string it came in as.
+- **Attach** (`attachBook(text)`): the book a text holds replaces the one the project has; the circuit stays and comes from no
+  item of it. A single blueprint ("This is a blueprint, not a blueprint book. File > Import Blueprint opens a blueprint as a
+  project."), a planner and unreadable text are refused with a sentence, and nothing changes.
+- **Choose** (`chooseFromBook(path)`): the source becomes the import of that blueprint (`readBlueprintData`, the part of
+  `readBlueprint` after the decoding), as one transaction over the whole text, which is one undo step. Unlike an import into a
+  new project it is read with the instruments and against the modules of the open project: what its signals and entities need
+  in addition is switched on, nothing is switched off, and the report says "Switched on: ...; the project had them off." The
+  selection is dropped, the canvas goes to the blueprint board and starts over (`project.epoch`); name and file stay. The result
+  has the name of the blueprint and the `ImportReportView`. A book, a planner, a path that leads nowhere and a blueprint
+  without an entity the editor knows are refused with the sentence the import has for them.
+- **Export into the book** (`exportToBook(target)`, `BookTarget`: `add` at a book, `[]` for the book itself, or `replace` at a
+  blueprint): the circuit is exported as `exportBlueprint` does it (`circuitBlueprint`, which also gives the object) and written
+  with `addToBook` or `replaceInBook` (`writeToBook`); `keep` is on exactly when the replaced blueprint is the origin. Then the
+  new string is the book, the written path is the origin and the project counts as changed; the result has the path and the
+  warnings of the export. A failure changes nothing and says which side it is on: `reason: "circuit"` with the problems of the
+  export (the one for a source with errors included), or `reason: "book"` with the refusal of the package as a sentence.
+- **Export the book**: `exportBook()` gives the stored string; `saveBookFile()` writes it through `exportBlueprintFile` of the
+  main process, with the label of the book as the name the file name is suggested from (cleaned as a project name is, so the
+  main process takes it), or the name of the project without a label, and says in the toast where it went.
+- **Remove** (`removeBook()`): the project has no book; the circuit stays.
+- **Undo and the origin.** The book is no part of the history: no undo takes a blueprint out of it or brings a removed book
+  back. The origin is: `SourceDocument` holds it in a state field whose changes are inverted for the history (`invertedEffects`
+  of CodeMirror), and `chooseFromBook` sets it in the transaction that replaces the text. Undoing that step brings back the
+  text and the origin there was before, redoing it sets both again, and the dirty state follows. An export into the book sets
+  the origin outside the history (`setOrigin`), so undoing an edit leaves it. An origin names an item of one book: the session
+  counts its books (`bookEpoch`, a new one for every project, attached book and removal) and an origin that an undo brings
+  back from another book is void. The modules a choice switched on are a project setting and stay on through an undo.
+- **Not done here.** Entity names, comments and card positions are not in a book: choosing a blueprint again gives fresh names.
+  Writing into a large book encodes the whole book, in the renderer, when the command runs.
 
 ## Application settings
 

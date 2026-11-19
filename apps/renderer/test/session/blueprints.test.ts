@@ -5,10 +5,12 @@ import { decodeBlueprintString, DEFAULT_EDIT_GRID, DEFAULT_UNITS_PER_TILE, encod
 import { analyze } from "@face/language";
 import { describe, expect, it } from "vitest";
 import { createEmptyProject } from "../../../desktop/src/emptyProject.ts";
+import { LIMITS } from "../../../desktop/src/ipc.ts";
 import { EDIT_UNITS_PER_TILE } from "../../src/canvas/board.ts";
 import { GRID } from "../../src/canvas/geometry.ts";
 import {
-  BOOK_ROWS, bookRows, exportCircuit, IMPORT_SCALE, importedProject, importedProjectName, importReport, INVALID_SOURCE_PROBLEM, noteWord, readBlueprint, REPORT_LINES, unlistedNote, unplacedEntities,
+  BOOK_ROWS, bookRows, exportCircuit, IMPORT_SCALE, importedProject, importedProjectName, importReport, INVALID_SOURCE_PROBLEM, noteWord, ORIGIN_POSITION_LIMIT, originOf, readBlueprint, REPORT_LINES,
+  unlistedNote, unplacedEntities,
   type BlueprintReading, type ImportedBlueprint,
 } from "../../src/session/blueprints.ts";
 import { createSession, EMPTY_SOURCE, fakeDesktop, type } from "./helpers.ts";
@@ -97,7 +99,6 @@ describe("reading a text", () => {
     ["an old blueprint", encodeBlueprintString({ blueprint: { item: "blueprint", entities: [lamp(1, 0)], version: 281479275675648 } }), "This blueprint is from Factorio 1.1, which stored circuits differently. Import it into Factorio 2 and export it again."],
     ["a blueprint without entities", encodeBlueprintString(blueprint({ label: "Empty" })), "This blueprint has no entities."],
     ["a blueprint of unknown entities", encodeBlueprintString(blueprint({ entities: [belt(1, 0), belt(2, 1)] })), "The editor knows none of the 2 entities of this blueprint (straight-rail), so there is nothing to import."],
-    ["an empty book", encodeBlueprintString({ blueprint_book: { item: "blueprint-book", label: "Nothing" } }), "The blueprint book 'Nothing' has no blueprints."],
   ])("says why %s cannot be imported, as a sentence", (_name, text, message) => {
     expect(read(text)).toEqual({ kind: "error", message });
   });
@@ -116,6 +117,9 @@ describe("reading a text", () => {
 });
 
 describe("a blueprint book", () => {
+  /** What a row has for an export into the book. */
+  const BLUEPRINT_ROW = { replaceable: true, addable: false, lost: { entities: 0, tiles: 0 } };
+  const OTHER_ROW = { replaceable: false, addable: false, lost: { entities: 0, tiles: 0 } };
   const BOOK = {
     blueprint_book: {
       item: "blueprint-book",
@@ -137,26 +141,58 @@ describe("a blueprint book", () => {
       unlisted: 0,
       message: "This is a blueprint book 'Circuits' with 4 blueprints; choose one of them.",
       rows: [
-        { path: [0], depth: 0, kind: "blueprint", label: "Belts only", detail: "1 entity, none known to the editor", importable: false },
-        { path: [1], depth: 0, kind: "blueprint", label: "Blueprint without a label", detail: "2 entities, 2 known to the editor", importable: true },
-        { path: [2], depth: 0, kind: "blueprint", label: "Empty", detail: "No entities", importable: false },
-        { path: [3], depth: 0, kind: "upgrade-planner", label: "Belts up", detail: "Upgrade planner, cannot be imported", importable: false },
-        { path: [4], depth: 0, kind: "book", label: "Blueprint book without a label", detail: "Blueprint book", importable: false },
-        { path: [4, 0], depth: 1, kind: "blueprint", label: "Three lamps", detail: "4 entities, 3 known to the editor", importable: true },
-        { path: [4, 1], depth: 1, kind: "unknown", label: "Unknown item without a label", detail: "Unknown item, cannot be imported", importable: false },
+        { path: [0], depth: 0, kind: "blueprint", label: "Belts only", detail: "1 entity, none known to the editor", importable: false, ...BLUEPRINT_ROW, lost: { entities: 1, tiles: 0 } },
+        { path: [1], depth: 0, kind: "blueprint", label: "Blueprint without a label", detail: "2 entities, 2 known to the editor", importable: true, ...BLUEPRINT_ROW },
+        { path: [2], depth: 0, kind: "blueprint", label: "Empty", detail: "No entities", importable: false, ...BLUEPRINT_ROW },
+        { path: [3], depth: 0, kind: "upgrade-planner", label: "Belts up", detail: "Upgrade planner, cannot be imported", importable: false, ...OTHER_ROW },
+        { path: [4], depth: 0, kind: "book", label: "Blueprint book without a label", detail: "Blueprint book", importable: false, ...OTHER_ROW, addable: true },
+        { path: [4, 0], depth: 1, kind: "blueprint", label: "Three lamps", detail: "4 entities, 3 known to the editor", importable: true, ...BLUEPRINT_ROW, lost: { entities: 1, tiles: 0 } },
+        { path: [4, 1], depth: 1, kind: "unknown", label: "Unknown item without a label", detail: "Unknown item, cannot be imported", importable: false, ...OTHER_ROW },
       ],
+      // The whole book as the project it opens as without a circuit.
+      book: { name: "Circuits", book: { string: encodeBlueprintString(BOOK) } },
     });
     expect(bookRows([])).toEqual([]);
   });
 
-  it("gives the blueprint a row selects, and says why another row gives none", () => {
-    expect(imported(BOOK, [4, 0])).toMatchObject({ name: "Three lamps", entities: 3, total: 4, report: { summary: "Imported 3 of 4 entities and 0 wires.", dropped: ["1 x straight-rail"] } });
-    expect(imported(BOOK, [1])).toMatchObject({ name: "Imported blueprint", entities: 2, report: null });
+  it("says of a row what an export into the book can do with it and what a replacement destroys", () => {
+    const rows = bookRows([
+      { path: [0], kind: "blueprint", label: "Rails", entities: 12, known: 4, tiles: 30 },
+      { path: [1], kind: "book", label: "Inner", entities: 0, known: 0, tiles: 0 },
+      { path: [2], kind: "deconstruction-planner", label: "", entities: 0, known: 0, tiles: 0 },
+    ]);
+    expect(rows.map(({ replaceable, addable, lost }) => ({ replaceable, addable, lost }))).toEqual([
+      { replaceable: true, addable: false, lost: { entities: 8, tiles: 30 } },
+      { replaceable: false, addable: true, lost: { entities: 0, tiles: 0 } },
+      { replaceable: false, addable: false, lost: { entities: 0, tiles: 0 } },
+    ]);
+  });
+
+  it("is a book also without items or without anything to import: it opens as a project without a circuit", () => {
+    const empty = { blueprint_book: { item: "blueprint-book", label: "Nothing" } };
+    expect(read(empty)).toEqual({ kind: "book", message: "The blueprint book 'Nothing' has no blueprints.", rows: [], unlisted: 0, book: { name: "Nothing", book: { string: encodeBlueprintString(empty) } } });
+    const planners = { blueprint_book: { item: "blueprint-book", label: " \n ", blueprints: [{ index: 0, upgrade_planner: { item: "upgrade-planner" } }] } };
+    expect(read(planners)).toMatchObject({ kind: "book", rows: [{ importable: false }], book: { name: "Imported blueprint book" } });
+    // The string that is kept is the text without its blanks, and for the plain JSON its encoding.
+    const text = encodeBlueprintString(BOOK);
+    expect(read(`  ${text.slice(0, 40)}\n${text.slice(40)}\n`)).toMatchObject({ book: { book: { string: text } } });
+    expect(read(JSON.stringify(BOOK, null, 2))).toMatchObject({ book: { book: { string: text } } });
+  });
+
+  it("gives the blueprint a row selects, with the book it is of, and says why another row gives none", () => {
+    const string = encodeBlueprintString(BOOK);
+    expect(imported(BOOK, [4, 0])).toMatchObject({ name: "Three lamps", entities: 3, total: 4, report: { summary: "Imported 3 of 4 entities and 0 wires.", dropped: ["1 x straight-rail"] }, book: { string, origin: [4, 0] } });
+    expect(imported(BOOK, [1])).toMatchObject({ name: "Imported blueprint", entities: 2, report: null, book: { string, origin: [1] } });
+    // A blueprint that is in no book comes without one, whatever is selected; a position the project file does not take is no origin.
+    expect(imported(blueprint({ entities: [lamp(1, 0)] }), [])).not.toHaveProperty("book");
+    expect(originOf([0, 65_535])).toEqual([0, 65_535]);
+    expect([originOf([0, 65_536]), originOf([]), originOf(undefined)]).toEqual([undefined, undefined, undefined]);
+    expect(ORIGIN_POSITION_LIMIT).toBe(LIMITS.bookOriginIndex);
     expect(read(BOOK, [0])).toMatchObject({ kind: "error", message: "The editor knows none of the 1 entity of this blueprint (straight-rail), so there is nothing to import." });
     expect(read(BOOK, [3])).toEqual({ kind: "error", message: "This is an upgrade planner, not a blueprint; the editor imports blueprints only." });
     expect(read(BOOK, [9])).toEqual({ kind: "error", message: "The blueprint book has no such blueprint." });
-    // A book inside the book lists its own items.
-    expect(read(BOOK, [4])).toMatchObject({ kind: "book", rows: [{ path: [4, 0] }, { path: [4, 1] }] });
+    // A book inside the book lists its own items; the book to open is still the whole one.
+    expect(read(BOOK, [4])).toMatchObject({ kind: "book", rows: [{ path: [4, 0] }, { path: [4, 1] }], book: { name: "Circuits", book: { string } } });
   });
 });
 
@@ -253,7 +289,7 @@ describe("the import report", () => {
 
     const error = read(blueprint({ entities: [{ entity_number: 1, name: long, position: at(0, 0) }] }));
     expect(error.kind === "error" && error.message.length).toBeLessThan(200);
-    expect(read({ blueprint_book: { item: "blueprint-book", label: long } })).toMatchObject({ kind: "error", message: expect.stringMatching(/^The blueprint book 'n{580}\.\.\.$/) });
+    expect(read({ blueprint_book: { item: "blueprint-book", label: long } })).toMatchObject({ kind: "book", rows: [], message: expect.stringMatching(/^The blueprint book 'n{580}\.\.\.$/), book: { name: "n".repeat(200) } });
 
     const book = read({ blueprint_book: { item: "blueprint-book", blueprints: Array.from({ length: BOOK_ROWS + 5 }, (_, index) => ({ index, blueprint: { item: "blueprint", label: index === 0 ? long : `b${index}`, entities: [lamp(1, 0)] } })) } });
     expect(book).toMatchObject({ kind: "book", unlisted: 5 });

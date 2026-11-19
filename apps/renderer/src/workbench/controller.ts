@@ -9,7 +9,8 @@ import { canRotate, DEFAULT_FACING, facingOf, type Circuit, type Direction, type
 import type { BlueprintFileText, HiddenModuleItems } from "../../../desktop/src/ipc.ts";
 import { flipped, rotated, type FlipAxis, type RotationTurn } from "../entities/facing.ts";
 import type { EntityRegistry } from "../entities/registry.ts";
-import type { BlueprintExport, BlueprintReading, ImportedBlueprint } from "../session/blueprints.ts";
+import type { BlueprintExport, BlueprintReading, ImportedBlueprint, ImportedBook } from "../session/blueprints.ts";
+import type { BookChoice, BookExport, BookResult, BookStringExport, BookTarget, BookView } from "../session/book.ts";
 
 export const WORKBENCH_MODES = ["circuit", "source", "split"] as const;
 export type WorkbenchMode = (typeof WORKBENCH_MODES)[number];
@@ -135,11 +136,14 @@ export interface ProjectView {
   readonly path: string | null;
   /** Name of the circuit file shown in the editor. */
   readonly fileName: string;
-  /** True while the source or the project settings differ from what is on disk. */
+  /** True while the source, the project settings or the blueprint book (its string, or the item the circuit came from) differ from what is on disk. */
   readonly dirty: boolean;
   /** The longest a circuit wire may be, in tiles: a project setting. Longer wires between placed entities are flagged, never refused. */
   readonly wireReach: number;
-  /** Counts loaded projects. Views drop what they remember about the previous project (the camera) when it changes. */
+  /**
+   * Counts loaded projects, and circuits taken from the blueprint book of the project (`chooseFromBook`). Views drop what they
+   * remember about the previous circuit (the camera) when it changes.
+   */
   readonly epoch: number;
   /** The game the project was made with, when its file has a record of it: "Factorio 2.1.24 with some-mod 1.2.3". */
   readonly madeWith: string | null;
@@ -394,6 +398,11 @@ export interface WorkbenchState {
   readonly canRedo: boolean;
   readonly simulation: SimulationView;
   readonly catalog: CatalogView;
+  /**
+   * The blueprint book the project holds, null without one: its label, its items as rows, the blueprint the circuit came from,
+   * and what is wrong with it when it cannot be read. The same object while neither the book nor the origin changed.
+   */
+  readonly book: BookView | null;
   /** Pending inspector edit of the single selected entity, if any. */
   readonly draft: InspectorDraft | null;
   /**
@@ -554,20 +563,81 @@ export interface WorkbenchCommands {
   // Blueprints of the game. An import never changes the open project: it opens a new one.
   /**
    * What a text holds, pasted or read from a file: a blueprint with the circuit the editor makes of it, the items of a blueprint
-   * book (`select` then names one of them, by its `path`), or why it is neither. It changes nothing.
+   * book (`select` then names one of them, by its `path`), or why it is neither. A blueprint of a book comes with the book
+   * (`ImportedBlueprint.book`, the chosen item as its origin), and the list of a book with the book as a project of its own
+   * (`book`, for `openBook`). It changes nothing.
    */
   readBlueprint(text: string, select?: readonly number[]): BlueprintReading;
   /**
    * Opens an imported blueprint as a new project on the blueprint board: without a file, so that Save asks for a location, and
-   * with unsaved changes until then. Resolves false when the user kept the current project or it could not be opened.
+   * with unsaved changes until then. A blueprint of a book brings the book along: the project holds it, with that blueprint as
+   * the origin of its circuit. A single blueprint opens without a book. Resolves false when the user kept the current project
+   * or it could not be opened.
    */
   openBlueprint(blueprint: ImportedBlueprint): Promise<boolean>;
+  /**
+   * Opens a blueprint book as a new project without a circuit: the empty project, named after the book, that holds the book and
+   * has no origin. For a book of which the editor can import nothing (no row is `importable`), and for one whose blueprints the
+   * user wants to choose from later. Otherwise like `openBlueprint`.
+   */
+  openBook(book: ImportedBook): Promise<boolean>;
   /** Shows the native file dialog and resolves with the text of the chosen file; undefined when the user cancelled or it could not be read. */
   chooseBlueprintFile(): Promise<BlueprintFileText | undefined>;
   /** The blueprint string of the circuit, or what is in the way of one. It changes nothing. */
   exportBlueprint(): BlueprintExport;
   /** Shows the native save dialog and writes the blueprint string there; the message on show then says where it went. Resolves false when nothing was written. */
   saveBlueprintFile(exported: BlueprintExport & { readonly ok: true }): Promise<boolean>;
+
+  // The blueprint book of the project (`WorkbenchState.book`). The book is saved with the project and is no part of the undo
+  // history; a change of it marks the project as changed. None of these commands sets `WorkbenchState.error` for a refusal:
+  // what they return has the message, as a sentence, for the dialog that asked. Without a book they refuse with "The project
+  // holds no blueprint book."; with a book that cannot be read (`BookView.problem`) they refuse with that problem, but for
+  // `attachBook` and `removeBook`.
+  /**
+   * Makes the book a text holds (pasted, or read from a file by `chooseBlueprintFile`) the book of the project, in place of the
+   * one it has, without asking. The circuit stays as it is and comes from no item of the new book. A single blueprint, a
+   * planner and text that is no blueprint string are refused, and the project keeps the book it has.
+   */
+  attachBook(text: string): BookResult;
+  /**
+   * Replaces the circuit of the project by the blueprint at `path` of the book (a row that is `importable`): the source becomes
+   * the import of that blueprint, as one undo step; the modules its signals and entities are of are switched on in addition to
+   * those that are on (the report names them); the blueprint becomes the origin; the selection is dropped and the canvas shows
+   * the blueprint board. Project name and file stay. The result has what `ImportReport` shows: the name of the blueprint and
+   * the report, null when the blueprint arrived whole.
+   *
+   * The origin is part of that undo step: Undo brings back the source and the origin there was before, Redo sets both again.
+   * The modules are a project setting and stay on. The names of the entities are made anew each time: choosing a blueprint a
+   * second time does not bring back names, comments or card positions of the first time.
+   *
+   * Refused, with nothing changed: a path that names no item, a book, a planner, or a blueprint without an entity the editor knows.
+   */
+  chooseFromBook(path: readonly number[]): BookChoice;
+  /**
+   * Writes the circuit into the book as a blueprint: as a new one at the end of the book at `target.path` (`[]` is the book
+   * itself), or over the blueprint at `target.path`, which keeps its slot. Over the blueprint the circuit came from
+   * (`BookView.origin`) the description, the icons and the snapping of that blueprint stay; over any other blueprint nothing
+   * of it does. Either way the entities the editor does not hold and the tiles of a replaced blueprint are gone (`BookRow.lost`
+   * counts them: ask first). Afterwards the written blueprint is the origin and the project counts as changed.
+   *
+   * Nothing changes when it fails: `reason: "circuit"` with the problems `exportBlueprint` gives (also the one for a source
+   * with errors), or `reason: "book"` with a sentence (no such item, the item is no book or no blueprint, the book is full, its
+   * string would be longer than a blueprint string may be).
+   *
+   * The book is no part of the undo history: Undo afterwards changes the source and never the book. The origin stays through
+   * it as well, unless the step that is undone is a `chooseFromBook`, which brings back the origin there was before the choice.
+   */
+  exportToBook(target: BookTarget): BookExport;
+  /** The blueprint string of the book, to show and copy: for a book nothing was written into, the string it came in as, character for character. It changes nothing. */
+  exportBook(): BookStringExport;
+  /**
+   * Shows the native save dialog and writes the blueprint string of the book there; the suggested file name is made from the
+   * label of the book, or from the name of the project when it has none. The message on show then says where it went, or why
+   * it did not (this one command reports through `WorkbenchState.error`). Resolves false when nothing was written.
+   */
+  saveBookFile(): Promise<boolean>;
+  /** Takes the book out of the project; the circuit stays. What there is to offer for a book that cannot be read (`attachBook` would replace it as well). Nothing without a book. */
+  removeBook(): void;
 }
 
 /** What `App` hands to the workbench. */
