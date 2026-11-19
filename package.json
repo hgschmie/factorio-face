@@ -15,7 +15,8 @@
     "examples": "node tools/examples/generate.ts",
     "probe-wire-reach": "node tools/game-probe/wire-reach.mjs",
     "probe-blueprints": "node tools/game-probe/blueprints.mjs",
-    "probe-blank-condition": "node tools/game-probe/blank-condition.mjs"
+    "probe-blank-condition": "node tools/game-probe/blank-condition.mjs",
+    "probe-blueprint-book": "node tools/game-probe/blueprint-book.mjs"
   },
   "dependencies": {
     "react": "19.3.1",
