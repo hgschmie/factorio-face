@@ -330,6 +330,8 @@ The user, 2026-11-19: "For blueprints, we also need to implement blueprint books
 
 - Verified on 2026-11-19 with the user's word ("Run full suite"): the full end-to-end run at `24bbb99` passed, 226 of 226, the 11 tests of `tests/e2e/blueprintBook.spec.ts` among them on their first run. Still not done: a look at the dialogs and the status line in the native app, and the probe run that has the game import a book the editor wrote.
 
+- Verified on 2026-11-19 with the user's word ("Run the probe"): the game reads books the editor wrote. `make probe-blueprint-book` now runs the game twice; the second run imports six books that `addToBook` and `replaceInBook` wrote into the game's own exports (fixture F-30, `edits`). All six import with result 0 and export again with nothing lost. What the game changes: the `version` of the written blueprint becomes its own (2.1.25.0 to 2.1.25.10); items come back in slot order, so a blueprint that was added into an earlier empty slot (only when the last slot, 65534, is taken) stands elsewhere in the list after a trip through the game; two key orders. With "keep" all six carried fields come back unchanged next to the new entities. 3379 unit tests pass. Still open: whether the game builds a blueprint with carried snapping fields as expected (it reads and writes them), the game's own import dialog (the probe uses `import_stack`), and a look at the dialogs and the status line in the native app.
+
 ## Custom combinators (discussed 2026-11-18, parked by the user)
 
 The user: "ok, let's table this, store what we discussed so that we can pick this up later. For now ... I want to wrap up the blueprint work before we go to custom combinators." Nothing below is built or decided; it is the state of a design conversation.
